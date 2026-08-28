@@ -33,7 +33,7 @@ if(EMSCRIPTEN)
         "-sEXPORTED_FUNCTIONS=_main,_wasm_load_rom,_malloc,_free"
         "-sEXPORTED_RUNTIME_METHODS=ccall"
         "--shell-file=${CMAKE_SOURCE_DIR}/frontend/wasm/shell.html"
-        "--embed-file=${CMAKE_SOURCE_DIR}/assets/roms/adjustris.gb@demo.gb")
+        "--embed-file=${CMAKE_SOURCE_DIR}/assets/roms/tetris.gb@demo.gb")
 else()
     find_package(SDL2 QUIET)
     if(SDL2_FOUND)

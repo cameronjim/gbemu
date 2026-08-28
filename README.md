@@ -39,6 +39,7 @@ building, and a one-command installer that sets everything below up.
 
 ## Credits
 
-Tetris is [Adjustris](https://github.com/tbsp/Adjustris) by Dave VanEe
-(tbsp), public domain, vendored at `assets/roms/adjustris.gb`. Flappy Bird
+The included Tetris is based on [Adjustris](https://github.com/tbsp/Adjustris)
+by Dave VanEe (tbsp), public domain, vendored at `assets/roms/tetris.gb`.
+Flappy Bird
 and Crossy Road are this repo's own gbdk-2020 roms (`games/`).

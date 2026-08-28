@@ -73,20 +73,19 @@ ctest --test-dir build --output-on-failure
 
 (This is the same shape CI uses — see `.github/workflows/ci.yml`.)
 
-## 4. Tetris setup (Adjustris)
+## 4. Tetris setup
 
-Real Tetris is copyrighted, so it isn't included. The repo ships **Adjustris**,
-a free, public-domain Tetris-style game by Dave VanEe (tbsp), vendored at
-`assets/roms/adjustris.gb` — nothing to download.
+The repo's Tetris is vendored at `assets/roms/tetris.gb` — nothing to
+download. (It is Adjustris, a public-domain Tetris-style game by Dave VanEe;
+see `assets/roms/README.md` for credits.)
 
-1. Copy `assets/roms/adjustris.gb` into your `dist` folder next to
-   `gbemu-sdl.exe` and rename the copy to `tetris.gb` (the one-command
-   installer in step 7 does this for you).
-2. Optional: run `tools/patch_spin_icons.py` on it. Adjustris's piece editor
+1. Copy `assets/roms/tetris.gb` into your `dist` folder next to
+   `gbemu-sdl.exe` (the one-command installer in step 7 does this for you).
+2. Optional: run `tools/patch_spin_icons.py` on it. The piece editor
    shows cryptic glyphs for whether a piece spins fully or just wobbles; this
    script swaps them for a plain check mark and a bold X. It edits the rom's
    tile data in place (leaving a `.bak` copy next to it) and works on any
-   unpatched Adjustris rom:
+   unpatched copy:
    ```
    python tools/patch_spin_icons.py dist/tetris.gb
    ```
@@ -165,16 +164,16 @@ What it does:
   (`assets/icons/gbemu.bmp`). If a `gbemu-sdl.exe` already exists in `dist`,
   it's kept as `gbemu-sdl.old.exe` (or `.old2.exe`, etc.) rather than
   overwritten — it never touches your `.sav`/`.state` save files.
-- Copies the vendored Adjustris rom in as `tetris.gb` (reusing one already in
-  `dist` if present) and writes `tetris.cmd` / `flappy.cmd` / `crossy.cmd`
-  launcher scripts into `dist`.
+- Copies the vendored `tetris.gb` in (reusing one already in `dist` if
+  present) and writes `tetris.cmd` / `flappy.cmd` / `crossy.cmd` launcher
+  scripts into `dist`.
 - Creates per-user Start Menu shortcuts named `tetris`, `flappy`, and
   `crossy`, pointing at those launchers.
 
 Useful flags: `-Sdl2Prefix <path>` / `-GbdkHome <path>` if your installs
 aren't at the script's defaults, `-DistDir <path>` to build somewhere other
 than `dist`, `-NoShortcuts` to skip the Start Menu step, and `-NoTetris` to
-skip fetching Adjustris.
+skip copying `tetris.gb`.
 
 Afterwards, typing **tetris**, **flappy**, or **crossy** into the Windows
 search bar (or running the matching `.cmd` from a terminal) boots that game

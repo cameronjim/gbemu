@@ -25,10 +25,10 @@ if [ ! -f "$vendor/dmg-acid2.gb" ]; then
     echo "fetched dmg-acid2"
 fi
 
-# open-source homebrew game used as the demo rom; vendored in the repo
+# the vendored tetris doubles as the demo rom
 if [ ! -f "$vendor/demo.gb" ]; then
-    cp assets/roms/adjustris.gb "$vendor/demo.gb"
-    echo "copied adjustris demo"
+    cp assets/roms/tetris.gb "$vendor/demo.gb"
+    echo "copied tetris demo"
 fi
 
 echo "test roms ready in $vendor"

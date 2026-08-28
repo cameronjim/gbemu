@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# adjustris ships cryptic glyphs for the piece editor's spin/wobble state;
+# the tetris rom ships cryptic glyphs for the piece editor's spin/wobble state;
 # swap them for a check mark (spin) and a bold x (wobble). works on any
-# adjustris rom: finds the original tile bitmaps and replaces them in place,
+# unpatched copy: finds the original tile bitmaps and replaces them in place,
 # leaving a .bak copy next to the rom. tile data lives outside the header,
 # so the cartridge header checksum is unaffected.
 import sys
@@ -24,7 +24,7 @@ WOBBLE_NEW = tile_2bpp([0xC3, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0xC3, 0x00])  # bold
 
 def main():
     if len(sys.argv) != 2:
-        print("usage: patch_spin_icons.py <adjustris rom>")
+        print("usage: patch_spin_icons.py <tetris rom>")
         return 1
     path = sys.argv[1]
     rom = open(path, "rb").read()

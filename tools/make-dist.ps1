@@ -144,14 +144,14 @@ try {
         [System.IO.File]::WriteAllText((Join-Path $DistDir $name), $body)
     }
 
-    # --- tetris.gb (adjustris, renamed) ---
+    # --- tetris.gb ---
     if (-not $NoTetris) {
         $tetrisDest = Join-Path $DistDir "tetris.gb"
         if (Test-Path $tetrisDest) {
             Write-Step "tetris.gb already present in dist, leaving it alone"
         } else {
-            Write-Step "copying assets/roms/adjustris.gb as tetris.gb"
-            Copy-Item -Path (Join-Path $RepoRoot "assets\roms\adjustris.gb") -Destination $tetrisDest -Force
+            Write-Step "copying assets/roms/tetris.gb into dist"
+            Copy-Item -Path (Join-Path $RepoRoot "assets\roms\tetris.gb") -Destination $tetrisDest -Force
             Write-Host "note: run 'python tools/patch_spin_icons.py `"$tetrisDest`"' to swap the piece-editor glyphs (optional, not run by this script)" -ForegroundColor Yellow
         }
     } else {

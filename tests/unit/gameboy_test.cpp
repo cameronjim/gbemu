@@ -106,7 +106,7 @@ TEST_CASE("battery_ram_visible_through_facade") {
 }
 
 TEST_CASE("io_reads_observe_mid_instruction_time") {
-    // adjustris regression: an exact ly==144 poll must win the race against a
+    // tetris regression: an exact ly==144 poll must win the race against a
     // vblank isr longer than one scanline, because the in-flight read sees the flip
     std::vector<uint8_t> rom = make_test_rom();
     const uint8_t handler[] = {

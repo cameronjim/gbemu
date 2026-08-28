@@ -2,3 +2,9 @@ build/
 tests/roms/vendor/
 build-win/
 dist/
+
+# planning docs, local only
+CLAUDE.md
+claude-docs/
+later.md
+OVERVIEW.md

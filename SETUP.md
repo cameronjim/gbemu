@@ -66,7 +66,48 @@ Afterward, type **tetris**, **flappy**, or **crossy** in the Windows search
 bar to start that game. Drag any other `.gb` file onto
 `dist\gbemu-sdl.exe` to play it.
 
-## 4. Building by hand
+## 4. Mac and Linux
+
+Everything above is Windows. Here is the same easy path on a Mac or a Linux
+machine.
+
+First install the tools. On a Mac (with [Homebrew](https://brew.sh)):
+
+```bash
+brew install cmake ninja sdl2
+```
+
+On Ubuntu or Debian:
+
+```bash
+sudo apt install build-essential cmake ninja-build libsdl2-dev
+```
+
+Then get the code and run the setup script:
+
+```bash
+git clone https://github.com/cameronjim/gameboy-emulator.git
+cd gameboy-emulator
+./tools/make-dist.sh
+```
+
+That builds the emulator, fills a `dist` folder with all three games, and
+links `tetris`, `flappy`, and `crossy` into `~/.local/bin`. Type **tetris**,
+**flappy**, or **crossy** in a terminal to play. You can also run
+`./dist/tetris` from the project folder.
+
+If the command is not found, `~/.local/bin` is not on your PATH. Add this
+line to `~/.zshrc` (or `~/.bashrc` on Linux), then open a new terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+gbdk-2020 is optional here too. Without it the script uses the game files
+already in the repo. With it, pass `--gbdk-home /path/to/gbdk` to rebuild
+Flappy Bird and Crossy Road from source.
+
+## 5. Building by hand
 
 For developers who want to run the build steps themselves instead of the
 script above.
@@ -95,7 +136,7 @@ time, then run `cmake --build build --target flappy` (swap in `crossy` for
 the other game). The finished rom lands at `build/flappy.gb` (or
 `build/crossy.gb`).
 
-## 5. Optional
+## 6. Optional
 
 Tetris: swap the piece editor's spin-direction glyphs for a plain check
 mark and X:

@@ -8,6 +8,7 @@ building, and a one-command installer that sets everything below up.
 ## Running the games
 
 - Type **tetris**, **flappy**, or **crossy** in the Windows search bar **OR** see below for terminal instructions
+- Mac / Linux: after `./tools/make-dist.sh`, type **tetris**, **flappy**, or **crossy** in a terminal (or run `./dist/tetris`).
 - Any other `.gb` file: drag it onto `dist\gbemu-sdl.exe`.
 
 If the search bar isn't returning any results, run any the following inside of the /dist directory:

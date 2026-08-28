@@ -1,45 +1,79 @@
 # Setup
 
-How to get gbemu building and running from a clean machine, plus how to build
-the included games. This doc is Windows-first (that's where the shipped
-`dist/` app comes from) with a short Linux/macOS note where things differ.
+How to get gbemu running on Windows, starting from a totally clean machine.
+There's a short Linux/macOS note near the bottom for anyone building by hand.
 
-## 1. Prerequisites
+## 1. Install four things
 
-- **git**
-- **CMake >= 3.24**
-- **Ninja**
-- **A C++20 compiler.** On Windows, [winlibs mingw-w64](https://winlibs.com/)
-  is the easiest route (a plain g++ that doesn't need Visual Studio). Unpack
-  it somewhere like `C:\tools\mingw64` and either add its `bin` folder to
-  your `PATH` or pass the full compiler path to CMake.
-- **SDL2 development libraries.** Without these you still get the core
-  library and unit tests, just not the playable emulator window. On Windows,
-  grab the "mingw" devel package from [libsdl.org](https://www.libsdl.org/)
-  and unpack it somewhere like `C:\tools\SDL2-2.32.10`. You'll point CMake
-  at the architecture subfolder inside it, e.g.
-  `C:\tools\SDL2-2.32.10\x86_64-w64-mingw32`.
-- **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020)** — optional: only
-  needed to rebuild the two homemade game roms (Flappy Bird, Crossy Road)
-  from source. Prebuilt copies are committed at `assets/roms/flappy.gb` and
-  `assets/roms/crossy.gb`, so playing them needs nothing extra. Unpack a
-  release somewhere like `C:\tools\gbdk` if you want to hack on the games.
+Each of these is a normal download, either an installer or a zip you unpack
+anywhere. The examples below use `C:\tools`.
 
-Nothing above needs to live at a specific path; the paths shown are just
-examples used later in this doc (this machine happens to use
-`C:\Users\CJ\winlibs\mingw64`, `C:\Users\CJ\opt\SDL2-2.32.10`, and
-`C:\Users\CJ\opt\gbdk`).
+- **[git](https://git-scm.com/downloads).** Run the installer, defaults are
+  fine.
+- **[CMake](https://cmake.org/download/).** Run the installer. When asked
+  about PATH, choose "Add CMake to the system PATH".
+- **[Ninja](https://github.com/ninja-build/ninja/releases).** Download
+  `ninja-win.zip`, unzip it anywhere, and put that folder on your PATH (see
+  below). It's just one file, `ninja.exe`.
+- **[winlibs mingw-w64](https://winlibs.com/).** The compiler. Download a
+  zip release, unzip it to `C:\tools\mingw64`, and put its `bin` folder on
+  your PATH.
+- **SDL2 development package.** Lets the emulator open a window. Download
+  the "mingw" devel zip from the
+  [SDL releases page](https://github.com/libsdl-org/SDL/releases) and
+  unzip it to `C:\tools\SDL2-2.32.10`. No PATH needed, just remember the
+  folder.
+- **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020/releases).**
+  Optional, only needed if you want to change the Flappy Bird or Crossy
+  Road game code. Skip it if you just want to play: ready-made game files
+  are already in the repo (`assets/roms/`).
 
-## 2. Clone the repo
+**Adding a folder to PATH:** press the Windows key, type `env`, open "Edit
+environment variables for your account", pick `Path` under your user
+variables, click Edit, then New, paste the folder path, then OK everywhere.
 
-```
+## 2. Get the code
+
+Open PowerShell where you keep projects (right-click the folder and choose
+"Open in Terminal"), then run:
+
+```powershell
 git clone https://github.com/cameronjim/gameboy-emulator.git
 cd gameboy-emulator
 ```
 
-## 3. Build the emulator
+## 3. The easy path (recommended)
 
-### Windows (PowerShell, Ninja, mingw)
+Open PowerShell inside the `gameboy-emulator` folder and run:
+
+```powershell
+powershell -File tools/make-dist.ps1
+```
+
+If your SDL2 folder isn't where the script expects it, point it there:
+
+```powershell
+powershell -File tools/make-dist.ps1 -Sdl2Prefix "C:\tools\SDL2-2.32.10\x86_64-w64-mingw32"
+```
+
+This one command:
+
+- Builds the emulator. If you installed gbdk-2020 it also rebuilds the
+  games from source. Otherwise it uses the game files already in the repo.
+- Fills a `dist` folder with the emulator, all three games (`tetris.gb`,
+  `flappy.gb`, `crossy.gb`), and a launcher for each one.
+- Creates Start Menu shortcuts for all three games.
+
+Afterward, type **tetris**, **flappy**, or **crossy** in the Windows search
+bar to start that game. Drag any other `.gb` file onto
+`dist\gbemu-sdl.exe` to play it.
+
+## 4. Building by hand
+
+For developers who want to run the build steps themselves instead of the
+script above.
+
+Windows (PowerShell, Ninja, mingw):
 
 ```powershell
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
@@ -49,133 +83,29 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-If `gcc`/`g++` aren't on your `PATH`, use the full paths instead, e.g.
-`-DCMAKE_CXX_COMPILER="C:\tools\mingw64\bin\g++.exe"`.
-
-- **No SDL2 found** (`CMAKE_PREFIX_PATH` missing or wrong): CMake prints
-  `sdl2 not found; skipping gbemu-sdl target` and configures anyway — the
-  core library (`gbcore`) and unit tests still build and run, you just won't
-  get the `gbemu-sdl.exe` frontend.
-- **No `GBDK_HOME`**: CMake prints
-  `gbdk not found (set GBDK_HOME); skipping flappy/crossy rom targets` and
-  skips those two targets and their tests. Everything else builds normally.
-
-### Linux / macOS
-
-Install SDL2 from your package manager (e.g.
-`sudo apt-get install libsdl2-dev` or `brew install sdl2`), then:
+Linux/macOS (install SDL2 from your package manager first, e.g.
+`sudo apt-get install libsdl2-dev` or `brew install sdl2`):
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j && ctest --test-dir build --output-on-failure
 ```
 
-(This is the same shape CI uses — see `.github/workflows/ci.yml`.)
+No SDL2 found skips the `gbemu-sdl` window (the core library and tests
+still build). No `GBDK_HOME` skips rebuilding Flappy Bird and Crossy Road.
+To rebuild just one game, add `-DGBDK_HOME="C:\tools\gbdk"` at configure
+time, then run `cmake --build build --target flappy` (swap in `crossy` for
+the other game). The finished rom lands at `build/flappy.gb` (or
+`build/crossy.gb`).
 
-## 4. Tetris setup
+## 5. About Tetris
 
-The repo's Tetris is vendored at `assets/roms/tetris.gb` — nothing to
-download. (It is Adjustris, a public-domain Tetris-style game by Dave VanEe;
-see `assets/roms/README.md` for credits.)
+Tetris is already in the repo at `assets/roms/tetris.gb`, nothing to build
+or download. It's [Adjustris](https://github.com/tbsp/Adjustris) by Dave
+VanEe, public domain (credits in `assets/roms/README.md`).
 
-1. Copy `assets/roms/tetris.gb` into your `dist` folder next to
-   `gbemu-sdl.exe` (the one-command installer in step 7 does this for you).
-2. Optional: run `tools/patch_spin_icons.py` on it. The piece editor
-   shows cryptic glyphs for whether a piece spins fully or just wobbles; this
-   script swaps them for a plain check mark and a bold X. It edits the rom's
-   tile data in place (leaving a `.bak` copy next to it) and works on any
-   unpatched copy:
-   ```
-   python tools/patch_spin_icons.py dist/tetris.gb
-   ```
+Optional: swap the piece editor's spin-direction glyphs for a plain check
+mark and X:
 
-The same vendored rom doubles as the test suite's demo rom
-(`tools/fetch-test-roms.sh` copies it to `tests/roms/vendor/demo.gb`) and as
-the wasm build's embedded game.
-
-## 5. Flappy Bird setup
-
-Flappy Bird (`games/flappy/`) is a from-scratch rom built with gbdk-2020. A
-prebuilt rom is already committed at `assets/roms/flappy.gb` — the steps
-below are only needed if you want to hack on the game and rebuild it from
-source.
-
-1. Configure with gbdk pointed at your install:
-   ```powershell
-   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-       -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ `
-       -DCMAKE_PREFIX_PATH="C:\tools\SDL2-2.32.10\x86_64-w64-mingw32" `
-       -DGBDK_HOME="C:\tools\gbdk"
-   ```
-2. Build the rom:
-   ```
-   cmake --build build --target flappy
-   ```
-   The finished rom lands at `build/flappy.gb`. Copy it into your `dist`
-   folder alongside `gbemu-sdl.exe` to play it (or drag it onto the exe).
-3. Its emulator-driven tests build automatically alongside it (target
-   `flappy_tests`) and run with:
-   ```
-   ctest --test-dir build -R flappy
-   ```
-   or directly: `build/flappy_tests.exe`.
-
-## 6. Crossy Road setup
-
-Crossy Road (`games/crossy/`) is the same shape as Flappy Bird — another
-from-scratch gbdk-2020 rom, gated on the same `GBDK_HOME`. A prebuilt rom is
-already committed at `assets/roms/crossy.gb` — the steps below are only
-needed if you want to hack on the game and rebuild it from source.
-
-1. Configure the same way as step 5 (one `-DGBDK_HOME=...` configure builds
-   both games; no separate step needed if you've already done it).
-2. Build the rom:
-   ```
-   cmake --build build --target crossy
-   ```
-   The finished rom lands at `build/crossy.gb`. Copy it into `dist` next to
-   `gbemu-sdl.exe` (or drag it onto the exe).
-3. Run its tests:
-   ```
-   ctest --test-dir build -R crossy
-   ```
-   or directly: `build/crossy_tests.exe`.
-
-## 7. One-command install (Windows)
-
-`tools/make-dist.ps1` does steps 3-6 for you and assembles a ready-to-use
-`dist` folder in one go:
-
-```powershell
-powershell -File tools/make-dist.ps1
 ```
-
-What it does:
-
-- Configures (if not already configured) and builds `gbemu-sdl`, `flappy`,
-  and `crossy` in Release mode with Ninja/mingw. If `GBDK_HOME` isn't found,
-  it warns and builds only `gbemu-sdl`, taking `flappy.gb`/`crossy.gb` from
-  the committed `assets/roms/` copies instead — gbdk is not required to
-  produce a working `dist`. When gbdk is available, it also refreshes those
-  committed copies from the fresh build so they track the sources.
-- Creates the `dist` folder if needed, and copies in `gbemu-sdl.exe`,
-  `SDL2.dll`, `flappy.gb`, `crossy.gb`, and the window icon
-  (`assets/icons/gbemu.bmp`). If a `gbemu-sdl.exe` already exists in `dist`,
-  it's kept as `gbemu-sdl.old.exe` (or `.old2.exe`, etc.) rather than
-  overwritten — it never touches your `.sav`/`.state` save files.
-- Copies the vendored `tetris.gb` in (reusing one already in `dist` if
-  present) and writes `tetris.cmd` / `flappy.cmd` / `crossy.cmd` launcher
-  scripts into `dist`.
-- Creates per-user Start Menu shortcuts named `tetris`, `flappy`, and
-  `crossy`, pointing at those launchers.
-
-Useful flags: `-Sdl2Prefix <path>` / `-GbdkHome <path>` if your installs
-aren't at the script's defaults, `-DistDir <path>` to build somewhere other
-than `dist`, `-NoShortcuts` to skip the Start Menu step, and `-NoTetris` to
-skip copying `tetris.gb`.
-
-Afterwards, typing **tetris**, **flappy**, or **crossy** into the Windows
-search bar (or running the matching `.cmd` from a terminal) boots that game
-like any other installed Windows app. To play any other `.gb` file, just
-drag it onto `dist\gbemu-sdl.exe`.
+python tools/patch_spin_icons.py dist/tetris.gb
+```

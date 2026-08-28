@@ -1,7 +1,6 @@
 # gbemu
 
-A from-scratch Game Boy (DMG) emulator, with three playable games: Tetris
-(Adjustris), Flappy Bird, and Crossy Road.
+A from-scratch Game Boy (DMG) emulator, with three playable games: Tetris, Flappy Bird, and Crossy Road.
 
 **First time here?** Follow [SETUP.md](SETUP.md) — it covers cloning,
 building, and a one-command installer that sets everything below up.

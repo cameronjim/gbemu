@@ -80,10 +80,10 @@ constexpr int kSpriteRows = 16;
 constexpr uint8_t kInvFontFirstTile = 0x60;
 constexpr uint8_t kInvFontLastTile = 0x9F;
 
-// the popup band covers screen rows 5..11 of 18
-constexpr size_t kPopupTopPx = 40;
-constexpr size_t kPopupEndPx = 96;
-constexpr uint32_t kPopupPromptRow = 10;
+// the popup band covers screen rows 4..13 of 18, a blank row of air between every text line
+constexpr size_t kPopupTopPx = 32;
+constexpr size_t kPopupEndPx = 112;
+constexpr uint32_t kPopupPromptRow = 12;
 
 // input is ignored for this many frames after a death
 constexpr uint32_t kLockoutFrames = 20;

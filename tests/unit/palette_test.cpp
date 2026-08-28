@@ -194,13 +194,22 @@ TEST_CASE("colorize_crossy_digits_and_font_stay_gray") {
         for (uint16_t tile = 0x1C8; tile <= 0x1DB; ++tile) {
             REQUIRE(colorize_crossy(tile, shade) == kGrayShades[shade]);
         }
-        // font and popup tiles, and any unmapped tile
+        // the plain font, and any unmapped tile
         REQUIRE(colorize_crossy(0x41, shade) == kGrayShades[shade]);
-        REQUIRE(colorize_crossy(0x60, shade) == kGrayShades[shade]);
         REQUIRE(colorize_crossy(0x1BA, shade) == kGrayShades[shade]);
+        // the inverted font is the popup band, and both games share one card for it
+        REQUIRE(colorize_crossy(0x60, shade) == kPopupCard[shade]);
+        REQUIRE(colorize_crossy(0x9F, shade) == kPopupCard[shade]);
+        REQUIRE(colorize_crossy(0x60, shade) == colorize_flappy(0x60, shade));
     }
     REQUIRE(kGrayShades[0] == kBlack);
     REQUIRE(kGrayShades[3] == kWhite);
+    // white strokes on a dark navy fill, the same look flappy's popup wears
+    REQUIRE(colorize_crossy(0x60, 0) == kWhite);
+    const uint32_t card = colorize_crossy(0x60, 3);
+    REQUIRE(red_of(card) < 0x40u);
+    REQUIRE(green_of(card) < 0x60u);
+    REQUIRE(blue_of(card) > red_of(card));
     // digits match what the tetris path gives the same shades
     REQUIRE(colorize_crossy(0x1C8, 1) == colorize(0x1C8, 1, 3, 3, 0x0000, 0x0000));
     REQUIRE(colorize_crossy(0x1C8, 2) == colorize(0x1C8, 2, 3, 3, 0x0000, 0x0000));

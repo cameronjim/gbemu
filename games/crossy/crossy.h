@@ -258,8 +258,8 @@
 #define kEagleDivePx 4U
 
 // game over popup: a band of bg cells over the frozen world, no window layer involved
-#define kPopupTopRow 5U // rows 5..11 of 18 center the four text lines
-#define kPopupRows 7U
+#define kPopupTopRow 4U // rows 4..13 of 18 give the four text lines a blank row of air each
+#define kPopupRows 10U
 // the hover banner is the same machinery over a live world: rows 1..5, digits on the last
 #define kBannerTopRow 1U
 #define kBannerRows 5U
@@ -273,9 +273,9 @@
 #define kPopupCols 20U
 #define kPopupRowsPerFrame 2U // 40 cells is a comfortable vblank budget
 #define kPopupOverRow 1U
-#define kPopupScoreRow 2U
-#define kPopupBestRow 3U
-#define kPopupPromptRow 5U
+#define kPopupScoreRow 3U
+#define kPopupBestRow 5U
+#define kPopupPromptRow 8U
 // dead input after a death so a panic hop cannot skip the popup
 #define kOverLockoutFrames 20U
 

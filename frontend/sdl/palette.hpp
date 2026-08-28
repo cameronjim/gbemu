@@ -92,6 +92,10 @@ using Palette4 = std::array<uint32_t, 4>;
 // shade 0 is black and shade 3 white here, and the games set bgp to identity
 inline constexpr Palette4 kGrayShades = {kBlack, 0xFF4C4C55u, 0xFF9C9CA8u, kWhite};
 
+// both games draw their popup bands from an inverted copy of the font parked at 0x60,
+// which flips shade 0 and 3: white strokes on a dark card
+inline constexpr Palette4 kPopupCard = {kWhite, 0xFF9C9CA8u, 0xFF4C4C55u, 0xFF102040u};
+
 // crossy road pins every tile id, so each lane kind gets its own palette.
 // the art's own shade usage drives which entries matter: grass is shade 0 with
 // shade 1 sprigs, road is flat shade 2, water is one flat shade under its ripples.
@@ -151,6 +155,10 @@ inline uint32_t colorize_crossy(uint16_t id, uint8_t shade) {
     default:
         break;
     }
+    // the hover banner and the game over popup are inverted font cells, so they take the card
+    if (tile >= 0x60 && tile <= 0x9F) {
+        return kPopupCard[s];
+    }
     // every sprite is an 8x16 pair, so each family owns an even aligned run of tiles
     if (tile >= 0xB0 && tile <= 0xB3) {
         return kCrossyCar[s];
@@ -176,8 +184,6 @@ inline uint32_t colorize_crossy(uint16_t id, uint8_t shade) {
 inline constexpr uint32_t kFlappySkyBlue = 0xFF5C94FCu;
 // font strokes are shade 3; the title and hud text reads white on the sky
 inline constexpr Palette4 kFlappyText = {kFlappySkyBlue, kWhite, kWhite, kWhite};
-// the popup's inverted glyphs flip shade 0 and 3: white strokes on a dark card
-inline constexpr Palette4 kFlappyPopup = {kWhite, 0xFF9C9CA8u, 0xFF4C4C55u, 0xFF102040u};
 // pipe art: 1 highlight, 2 fill, 3 outline
 inline constexpr Palette4 kFlappyPipe = {kFlappySkyBlue, 0xFF80D010u, 0xFF00A800u, 0xFF0A3806u};
 // ground art: 1 brick fill, 2 speckles, 3 the rim row
@@ -196,7 +202,7 @@ inline uint32_t colorize_flappy(uint16_t id, uint8_t shade) {
         return kFlappyText[s];
     }
     if (tile <= 0x9F) {
-        return kFlappyPopup[s];
+        return kPopupCard[s];
     }
     if (tile >= 0xA0 && tile <= 0xA3) {
         return kFlappyPipe[s];

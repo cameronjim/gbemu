@@ -1,15 +1,25 @@
 # gbemu
 
-A from-scratch Game Boy (DMG) emulator, with three playable games: Tetris, Flappy Bird, and Crossy Road.
+A Game Boy (DMG) emulator made from scratch, with three playable games: Tetris, Flappy Bird, and Crossy Road.
 
-**First time here?** Follow [SETUP.md](SETUP.md) — it covers cloning,
+**First time here?** Follow [SETUP.md](SETUP.md): it covers cloning,
 building, and a one-command installer that sets everything below up.
 
 ## Running the games
 
-- Type **tetris**, **flappy**, or **crossy** in the Windows search bar (or run
-  the matching `.cmd` from a terminal).
+- Type **tetris**, **flappy**, or **crossy** in the Windows search bar **OR** see below for terminal instructions
 - Any other `.gb` file: drag it onto `dist\gbemu-sdl.exe`.
+
+If the search bar isn't returning any results, run any the following inside of the /dist directory:
+```bash
+tetris.cmd
+```
+```bash
+flappy.cmd
+```
+```bash
+crossy.cmd
+```
 
 ## Controls
 
@@ -24,16 +34,19 @@ building, and a one-command installer that sets everything below up.
 
 ## Emulator keys
 
-- `P` — pause. Hold `Tab` — fast-forward.
-- `F5` / `F8` — save / load state. `F10` — screenshot (`framebuffer.ppm`).
-- `T` — tile viewer. Resize the window freely.
+- `P` - pause. Hold `Tab` — fast-forward.
+- `F5` / `F8` - save / load state.
+- `F10` - screenshot (`framebuffer.ppm`).
+- `T` - tile viewer. Resize the window freely.
 
 ## Tuning
 
-- Volume: run from a terminal with `--volume 0-100` (default 25), e.g.
-  `dist\gbemu-sdl.exe --volume 60 dist\flappy.gb`.
+- Volume: run from a terminal with `--volume 0-100` (default 25), ex:
+```bash
+`dist\gbemu-sdl.exe --volume 60 dist\flappy.gb`
+```
 - Battery saves (`.sav`) and save states (`.state`) live next to each rom and
-  are automatic — delete one to reset that game.
+  are automatic - delete one to reset that game.
 - Window icon: a game named `<rom>.icon.bmp` next to its rom overrides the
   default `gbemu.bmp`.
 

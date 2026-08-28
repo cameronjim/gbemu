@@ -1,7 +1,6 @@
 # Setup
 
-How to get gbemu running on Windows, starting from a totally clean machine.
-There's a short Linux/macOS note near the bottom for anyone building by hand.
+Quick guide to get gbemu running on Windows (see below for MacOS/Linux).
 
 ## 1. Install four things
 
@@ -34,15 +33,14 @@ variables, click Edit, then New, paste the folder path, then OK everywhere.
 
 ## 2. Get the code
 
-Open PowerShell where you keep projects (right-click the folder and choose
-"Open in Terminal"), then run:
+Open PowerShell and run the following command where you want to store the source code:
 
 ```powershell
 git clone https://github.com/cameronjim/gameboy-emulator.git
 cd gameboy-emulator
 ```
 
-## 3. The easy path (recommended)
+## 3. The easy path
 
 Open PowerShell inside the `gameboy-emulator` folder and run:
 
@@ -97,13 +95,9 @@ time, then run `cmake --build build --target flappy` (swap in `crossy` for
 the other game). The finished rom lands at `build/flappy.gb` (or
 `build/crossy.gb`).
 
-## 5. About Tetris
+## 5. Optional
 
-Tetris is already in the repo at `assets/roms/tetris.gb`, nothing to build
-or download. It's [Adjustris](https://github.com/tbsp/Adjustris) by Dave
-VanEe, public domain (credits in `assets/roms/README.md`).
-
-Optional: swap the piece editor's spin-direction glyphs for a plain check
+Tetris: swap the piece editor's spin-direction glyphs for a plain check
 mark and X:
 
 ```

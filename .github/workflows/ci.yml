@@ -30,6 +30,26 @@ jobs:
         if: matrix.build_type == 'Release'
         run: BUILD_DIR=build ./tools/run-test-roms.sh
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install sdl2
+        run: brew install sdl2
+      - name: configure
+        # homebrew's prefix is not on cmake's default search path
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix sdl2)"
+      - name: build
+        run: cmake --build build -j
+      - name: frontend target built
+        run: cmake --build build --target gbemu-sdl -j
+      - name: test
+        run: ctest --test-dir build --output-on-failure
+      - name: fetch test roms
+        run: ./tools/fetch-test-roms.sh
+      - name: run test roms
+        run: BUILD_DIR=build ./tools/run-test-roms.sh
+
   format:
     runs-on: ubuntu-latest
     steps:

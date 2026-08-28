@@ -33,8 +33,10 @@ try {
     if (-not (Test-Path $Sdl2Prefix)) {
         Fail "sdl2 prefix not found: $Sdl2Prefix (pass -Sdl2Prefix or set SDL2_PREFIX)"
     }
-    if (-not (Test-Path $GbdkHome)) {
-        Fail "gbdk home not found: $GbdkHome (pass -GbdkHome or set GBDK_HOME)"
+    # gbdk is optional; without it we fall back to the vendored roms
+    $HaveGbdk = Test-Path $GbdkHome
+    if (-not $HaveGbdk) {
+        Write-Host "warning: gbdk not found; using the vendored roms" -ForegroundColor Yellow
     }
 
     # --- configure ---
@@ -43,23 +45,43 @@ try {
         Write-Step "reusing existing configure in $BuildDir"
     } else {
         Write-Step "configuring $BuildDir (release, ninja, mingw)"
-        cmake -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            "-DCMAKE_C_COMPILER=gcc" "-DCMAKE_CXX_COMPILER=g++" `
-            "-DCMAKE_PREFIX_PATH=$Sdl2Prefix" "-DGBDK_HOME=$GbdkHome"
+        if ($HaveGbdk) {
+            cmake -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release `
+                "-DCMAKE_C_COMPILER=gcc" "-DCMAKE_CXX_COMPILER=g++" `
+                "-DCMAKE_PREFIX_PATH=$Sdl2Prefix" "-DGBDK_HOME=$GbdkHome"
+        } else {
+            cmake -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release `
+                "-DCMAKE_C_COMPILER=gcc" "-DCMAKE_CXX_COMPILER=g++" `
+                "-DCMAKE_PREFIX_PATH=$Sdl2Prefix"
+        }
         if ($LASTEXITCODE -ne 0) { Fail "cmake configure failed" }
     }
 
     # --- build ---
-    Write-Step "building gbemu-sdl, flappy, crossy"
-    cmake --build $BuildDir --target gbemu-sdl flappy crossy -j
-    if ($LASTEXITCODE -ne 0) { Fail "build failed" }
+    if ($HaveGbdk) {
+        Write-Step "building gbemu-sdl, flappy, crossy"
+        cmake --build $BuildDir --target gbemu-sdl flappy crossy -j
+        if ($LASTEXITCODE -ne 0) { Fail "build failed" }
+    } else {
+        Write-Step "building gbemu-sdl"
+        cmake --build $BuildDir --target gbemu-sdl -j
+        if ($LASTEXITCODE -ne 0) { Fail "build failed" }
+    }
 
     $exeSrc = Join-Path $BuildDir "gbemu-sdl.exe"
-    $flappySrc = Join-Path $BuildDir "flappy.gb"
-    $crossySrc = Join-Path $BuildDir "crossy.gb"
     if (-not (Test-Path $exeSrc)) { Fail "expected build output missing: $exeSrc" }
-    if (-not (Test-Path $flappySrc)) { Fail "expected build output missing: $flappySrc" }
-    if (-not (Test-Path $crossySrc)) { Fail "expected build output missing: $crossySrc" }
+    if ($HaveGbdk) {
+        $flappySrc = Join-Path $BuildDir "flappy.gb"
+        $crossySrc = Join-Path $BuildDir "crossy.gb"
+        if (-not (Test-Path $flappySrc)) { Fail "expected build output missing: $flappySrc" }
+        if (-not (Test-Path $crossySrc)) { Fail "expected build output missing: $crossySrc" }
+    } else {
+        # no gbdk build; play from the committed roms instead
+        $flappySrc = Join-Path $RepoRoot "assets\roms\flappy.gb"
+        $crossySrc = Join-Path $RepoRoot "assets\roms\crossy.gb"
+        if (-not (Test-Path $flappySrc)) { Fail "expected vendored rom missing: $flappySrc" }
+        if (-not (Test-Path $crossySrc)) { Fail "expected vendored rom missing: $crossySrc" }
+    }
 
     # --- dist dir ---
     if (-not (Test-Path $DistDir)) {
@@ -94,6 +116,13 @@ try {
 
     Copy-Item -Path $flappySrc -Destination (Join-Path $DistDir "flappy.gb") -Force
     Copy-Item -Path $crossySrc -Destination (Join-Path $DistDir "crossy.gb") -Force
+
+    # gbdk built fresh roms; keep the committed copies in sync with the sources
+    if ($HaveGbdk) {
+        Write-Step "refreshing vendored roms in assets/roms from this build"
+        Copy-Item -Path $flappySrc -Destination (Join-Path $RepoRoot "assets\roms\flappy.gb") -Force
+        Copy-Item -Path $crossySrc -Destination (Join-Path $RepoRoot "assets\roms\crossy.gb") -Force
+    }
 
     $iconSrc = Join-Path $RepoRoot "assets\icons\gbemu.bmp"
     if (Test-Path $iconSrc) {

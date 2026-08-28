@@ -19,9 +19,11 @@ the included games. This doc is Windows-first (that's where the shipped
   and unpack it somewhere like `C:\tools\SDL2-2.32.10`. You'll point CMake
   at the architecture subfolder inside it, e.g.
   `C:\tools\SDL2-2.32.10\x86_64-w64-mingw32`.
-- **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020)** — only needed if
-  you want to build the two homemade game roms (Flappy Bird, Crossy Road)
-  from source. Unpack a release somewhere like `C:\tools\gbdk`.
+- **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020)** — optional: only
+  needed to rebuild the two homemade game roms (Flappy Bird, Crossy Road)
+  from source. Prebuilt copies are committed at `assets/roms/flappy.gb` and
+  `assets/roms/crossy.gb`, so playing them needs nothing extra. Unpack a
+  release somewhere like `C:\tools\gbdk` if you want to hack on the games.
 
 Nothing above needs to live at a specific path; the paths shown are just
 examples used later in this doc (this machine happens to use
@@ -95,7 +97,10 @@ the wasm build's embedded game.
 
 ## 5. Flappy Bird setup
 
-Flappy Bird (`games/flappy/`) is a from-scratch rom built with gbdk-2020.
+Flappy Bird (`games/flappy/`) is a from-scratch rom built with gbdk-2020. A
+prebuilt rom is already committed at `assets/roms/flappy.gb` — the steps
+below are only needed if you want to hack on the game and rebuild it from
+source.
 
 1. Configure with gbdk pointed at your install:
    ```powershell
@@ -120,7 +125,9 @@ Flappy Bird (`games/flappy/`) is a from-scratch rom built with gbdk-2020.
 ## 6. Crossy Road setup
 
 Crossy Road (`games/crossy/`) is the same shape as Flappy Bird — another
-from-scratch gbdk-2020 rom, gated on the same `GBDK_HOME`.
+from-scratch gbdk-2020 rom, gated on the same `GBDK_HOME`. A prebuilt rom is
+already committed at `assets/roms/crossy.gb` — the steps below are only
+needed if you want to hack on the game and rebuild it from source.
 
 1. Configure the same way as step 5 (one `-DGBDK_HOME=...` configure builds
    both games; no separate step needed if you've already done it).
@@ -148,7 +155,11 @@ powershell -File tools/make-dist.ps1
 What it does:
 
 - Configures (if not already configured) and builds `gbemu-sdl`, `flappy`,
-  and `crossy` in Release mode with Ninja/mingw.
+  and `crossy` in Release mode with Ninja/mingw. If `GBDK_HOME` isn't found,
+  it warns and builds only `gbemu-sdl`, taking `flappy.gb`/`crossy.gb` from
+  the committed `assets/roms/` copies instead — gbdk is not required to
+  produce a working `dist`. When gbdk is available, it also refreshes those
+  committed copies from the fresh build so they track the sources.
 - Creates the `dist` folder if needed, and copies in `gbemu-sdl.exe`,
   `SDL2.dll`, `flappy.gb`, `crossy.gb`, and the window icon
   (`assets/icons/gbemu.bmp`). If a `gbemu-sdl.exe` already exists in `dist`,

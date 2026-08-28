@@ -34,7 +34,7 @@ crossy.cmd
 
 ## Emulator keys
 
-- `P` - pause. Hold `Tab` — fast-forward.
+- `P` - pause. Hold `Tab` - fast-forward.
 - `F5` / `F8` - save / load state.
 - `F10` - screenshot (`framebuffer.ppm`).
 - `T` - tile viewer. Resize the window freely.

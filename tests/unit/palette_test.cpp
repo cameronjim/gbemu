@@ -282,3 +282,17 @@ TEST_CASE("colorize_flappy_popup_and_digits_stay_legible") {
     // unmapped tiles keep the plain gray look
     REQUIRE(colorize_flappy(0xC0, 2) == kGrayShades[2]);
 }
+
+TEST_CASE("rgb555_to_argb_channel_conversion") {
+    REQUIRE(rgb555_to_argb(0x0000) == kBlack);
+    REQUIRE(rgb555_to_argb(0x7FFF) == kWhite);
+    // pure red, green, blue, each isolated in its own 5-bit field
+    REQUIRE(rgb555_to_argb(0x001F) == 0xFFFF0000u);
+    REQUIRE(rgb555_to_argb(0x03E0) == 0xFF00FF00u);
+    REQUIRE(rgb555_to_argb(0x7C00) == 0xFF0000FFu);
+    // a mixed value exercises the 5-to-8 bit expansion on all three channels at once
+    REQUIRE(rgb555_to_argb(0x1234) == 0xFFA58C21u);
+    // bit 15 carries no color information and must not affect the result
+    REQUIRE(rgb555_to_argb(0x8000) == kBlack);
+    REQUIRE(rgb555_to_argb(0xFFFF) == kWhite);
+}

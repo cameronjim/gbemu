@@ -1,0 +1,143 @@
+#include "terrain.h"
+
+#include "assets.h"
+#include "level_1_1.h"
+#include "mario.h"
+
+#include <gb/gb.h>
+#include <stdint.h>
+
+// camera left edge and top edge, in px; world_x drives scx (mod 256, the ring's own wrap), world_y is scy
+static uint16_t world_x;
+static uint8_t world_y;
+static uint16_t max_world_x;
+// leftmost block column currently streamed into the ring; the ring always holds kRingBlocks of them
+static int16_t window_start;
+
+// one block-column's worth of tiles (2 tile columns x kBgRows), expanded from the banked level data
+static uint8_t tile_buf[kTilesPerBlock * kBgRows];
+static uint8_t attr_buf[kTilesPerBlock * kBgRows];
+
+// reads one column of the banked level grid; brackets the bank switch so bank 0 is current otherwise
+static void read_block_column(uint16_t block_col, uint8_t* out) {
+    uint8_t r;
+
+    SWITCH_ROM_MBC5(LEVEL_1_1_BANK);
+    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+        out[r] = level_1_1_blocks[block_col][r];
+    }
+    SWITCH_ROM_MBC5(0);
+}
+
+// expands one banked block column into its 2x2-per-block tile/attribute pair and writes the ring slot;
+// out of level bounds is left as whatever the ring already holds (sky, by the init fill below)
+static void stream_column(int16_t block_col) {
+    uint8_t rows[LEVEL_1_1_ROWS];
+    uint8_t r;
+    uint8_t kind;
+    uint8_t top;
+    uint8_t tile_col;
+
+    if (block_col < 0 || block_col >= (int16_t)LEVEL_1_1_LENGTH_COLUMNS) {
+        return;
+    }
+
+    read_block_column((uint16_t)block_col, rows);
+
+    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+        kind = rows[r];
+        top = (uint8_t)(r << 1);
+        tile_buf[top * kTilesPerBlock] = kBlockTileTl[kind];
+        tile_buf[top * kTilesPerBlock + 1U] = kBlockTileTr[kind];
+        tile_buf[(top + 1U) * kTilesPerBlock] = kBlockTileBl[kind];
+        tile_buf[(top + 1U) * kTilesPerBlock + 1U] = kBlockTileBr[kind];
+        attr_buf[top * kTilesPerBlock] = kBlockPalette[kind];
+        attr_buf[top * kTilesPerBlock + 1U] = kBlockPalette[kind];
+        attr_buf[(top + 1U) * kTilesPerBlock] = kBlockPalette[kind];
+        attr_buf[(top + 1U) * kTilesPerBlock + 1U] = kBlockPalette[kind];
+    }
+
+    // two calls total: one for the tile ids (vbk 0), one for the palette attributes (vbk 1)
+    tile_col = (uint8_t)(((uint16_t)block_col * kTilesPerBlock) & (kRingTileCols - 1U));
+    set_bkg_tiles(tile_col, 0, kTilesPerBlock, kBgRows, tile_buf);
+    set_bkg_attributes(tile_col, 0, kTilesPerBlock, kBgRows, attr_buf);
+}
+
+// the ring holds [window_start, window_start + kRingBlocks); shifts one column at a time either way
+static int16_t clamp_window_start(int16_t desired) {
+    int16_t max_start = (int16_t)LEVEL_1_1_LENGTH_COLUMNS - (int16_t)kRingBlocks;
+    if (max_start < 0) {
+        max_start = 0;
+    }
+    if (desired < 0) {
+        desired = 0;
+    }
+    if (desired > max_start) {
+        desired = max_start;
+    }
+    return desired;
+}
+
+static void sync_window(uint16_t cam_block) {
+    int16_t target = clamp_window_start((int16_t)cam_block - (int16_t)kWindowLeftMargin);
+
+    while (window_start < target) {
+        ++window_start;
+        stream_column((int16_t)(window_start + (int16_t)kRingBlocks - 1));
+    }
+    while (window_start > target) {
+        --window_start;
+        stream_column(window_start);
+    }
+}
+
+void terrain_init(void) {
+    uint16_t level_px;
+    int16_t i;
+
+    assets_load_bg_tiles();
+    assets_load_bg_palettes();
+
+    world_x = 0;
+    world_y = 0;
+    window_start = 0;
+
+    level_px = (uint16_t)(LEVEL_1_1_LENGTH_COLUMNS * kBlockPx);
+    max_world_x = (level_px > kScreenWidthPx) ? (uint16_t)(level_px - kScreenWidthPx) : 0U;
+
+    for (i = 0; i < (int16_t)kRingBlocks; ++i) {
+        stream_column(i);
+    }
+
+    terrain_apply_scroll();
+}
+
+void terrain_scroll_x(int8_t delta_px) {
+    int16_t next = (int16_t)world_x + delta_px;
+
+    if (next < 0) {
+        next = 0;
+    }
+    if (next > (int16_t)max_world_x) {
+        next = (int16_t)max_world_x;
+    }
+    world_x = (uint16_t)next;
+    sync_window((uint16_t)(world_x >> 4)); // /kBlockPx
+}
+
+void terrain_pan_y(int8_t delta_px) {
+    int16_t next = (int16_t)world_y + delta_px;
+
+    if (next < 0) {
+        next = 0;
+    }
+    if (next > (int16_t)kScyMax) {
+        next = (int16_t)kScyMax;
+    }
+    world_y = (uint8_t)next;
+}
+
+void terrain_apply_scroll(void) {
+    SCX_REG = (uint8_t)world_x; // truncation is the ring's own 256px wrap
+    SCY_REG = world_y;
+}

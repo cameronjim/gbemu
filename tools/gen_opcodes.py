@@ -223,8 +223,7 @@ def gen_unprefixed(op, info):
     if m == "NOP":
         pass
     elif m == "STOP":
-        # stop is a 2-byte nop stub for now
-        lines.append("fetch8();")
+        return ["return do_stop();"]
     elif m == "HALT":
         return ["return do_halt();"]
     elif m == "DI":

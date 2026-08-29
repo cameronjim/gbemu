@@ -14,6 +14,7 @@ constexpr uint8_t kOpHalt = 0x76;
 constexpr uint8_t kOpEi = 0xFB;
 constexpr uint8_t kOpDi = 0xF3;
 constexpr uint8_t kOpIncA = 0x3C;
+constexpr uint8_t kOpStop = 0x10;
 
 struct Rig {
     FakeBus bus;
@@ -200,4 +201,37 @@ TEST_CASE("unknown_opcode_stops_cleanly") {
     REQUIRE(rig.cpu.trap_pc() == 0x0100);
     // a stopped cpu makes no further progress
     REQUIRE(rig.cpu.step() == 0);
+}
+
+namespace {
+
+struct SpeedBus final : FakeBus {
+    bool commit_speed_switch() override {
+        ++commits;
+        return true;
+    }
+    uint32_t commits = 0;
+};
+
+} // namespace
+
+TEST_CASE("stop_asks_the_bus_to_commit_a_speed_switch") {
+    SpeedBus bus;
+    gb::Cpu cpu(bus);
+    bus.mem[0x0100] = kOpStop;
+    cpu.step();
+    REQUIRE(bus.commits == 1);
+    // stop stays a two-byte, four-cycle instruction that keeps the cpu running
+    REQUIRE(cpu.regs().pc == 0x0102);
+    REQUIRE(cpu.status() == gb::CpuStatus::Running);
+}
+
+TEST_CASE("stop_is_a_plain_two_byte_nop_without_a_bus_that_switches") {
+    Rig rig;
+    rig.bus.mem[0x0100] = kOpStop;
+    rig.bus.mem[0x0102] = kOpIncA;
+    REQUIRE(rig.cpu.step() == 4);
+    REQUIRE(rig.cpu.regs().pc == 0x0102);
+    rig.cpu.step();
+    REQUIRE(rig.cpu.regs().a == 0x02);
 }

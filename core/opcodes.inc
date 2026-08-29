@@ -74,8 +74,7 @@ uint32_t Cpu::execute_opcode(uint8_t opcode) {
         return 4;
     }
     case 0x10: // stop n8
-        fetch8();
-        return 4;
+        return do_stop();
     case 0x11: // ld de, n16
         set_de(fetch16());
         return 12;

@@ -104,6 +104,7 @@ private:
     uint32_t execute_cb(uint8_t opcode);
     uint32_t dispatch_interrupt(uint8_t pending);
     uint32_t do_halt();
+    uint32_t do_stop();
     uint32_t trap_unknown(uint8_t opcode);
 
     uint8_t fetch_opcode();

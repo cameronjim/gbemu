@@ -78,6 +78,14 @@ uint32_t Cpu::do_halt() {
     return 4;
 }
 
+uint32_t Cpu::do_stop() {
+    // stop is two bytes; the second one is discarded
+    fetch8();
+    // pandocs "key1": stop is what executes an armed cgb speed switch, otherwise it does nothing
+    bus_.commit_speed_switch();
+    return 4;
+}
+
 uint32_t Cpu::trap_unknown(uint8_t opcode) {
     status_ = CpuStatus::Stopped;
     trap_opcode_ = opcode;

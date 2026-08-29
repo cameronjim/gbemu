@@ -152,7 +152,7 @@ std::vector<uint8_t> cgb_scroll_rom() {
 
 TEST_CASE("state_sections_size_the_banked_regions") {
     REQUIRE(gb::Ppu::kStateSize == 16693u);
-    REQUIRE(gb::Bus::kStateSize == 32898u);
+    REQUIRE(gb::Bus::kStateSize == 32911u);
 }
 
 TEST_CASE("version_1_blobs_are_rejected") {
@@ -166,6 +166,55 @@ TEST_CASE("version_1_blobs_are_rejected") {
     v1[4] = 1;
     REQUIRE(!gameboy.load_state(v1));
     REQUIRE(gameboy.load_state(blob));
+}
+
+namespace {
+
+// cgb cart running in double speed with an hblank dma permanently in flight
+std::vector<uint8_t> speed_hdma_rom() {
+    std::vector<uint8_t> rom = make_test_rom(0x00, 0x00, 0x8000, 0xC0);
+    const uint8_t code[] = {
+        0x3E, 0x01, // ld a, 1
+        0xE0, 0x4D, // ldh (key1), a
+        0x10, 0x00, // stop: commits the switch
+        0x3E, 0xC1, // ld a, 0xc1
+        0xE0, 0x51, // ldh (hdma1), a
+        0xAF,       // xor a
+        0xE0, 0x52, // ldh (hdma2), a
+        0xE0, 0x53, // ldh (hdma3), a
+        0xE0, 0x54, // ldh (hdma4), a
+        0x3E, 0x9F, // loop: ld a, 0x9f
+        0xE0, 0x55, // ldh (hdma5), a: 32 chunks at hblank
+        0x0C,       // inc c
+        0x79,       // ld a, c
+        0xE0, 0x43, // ldh (scx), a
+        0x18, 0xF6, // jr loop
+    };
+    for (size_t i = 0; i < sizeof(code); ++i) {
+        rom[0x0100 + i] = code[i];
+    }
+    rom[0x014D] = test_rom_checksum(rom);
+    return rom;
+}
+
+} // namespace
+
+TEST_CASE("speed_and_hdma_state_roundtrips") {
+    gb::Gameboy g1;
+    REQUIRE(g1.load_rom(speed_hdma_rom()));
+    run_frames(g1, 3);
+    std::vector<uint8_t> b1;
+    g1.save_state(b1);
+    gb::Gameboy g2;
+    REQUIRE(g2.load_rom(speed_hdma_rom()));
+    REQUIRE(g2.load_state(b1));
+    std::vector<uint8_t> b2;
+    g2.save_state(b2);
+    // byte-identical re-save proves key1, the hdma registers and the in-flight chunk count survived
+    REQUIRE(b1 == b2);
+    run_frames(g1, 2);
+    run_frames(g2, 2);
+    REQUIRE(fb_hash(g1) == fb_hash(g2));
 }
 
 TEST_CASE("cgb_banked_state_roundtrips") {

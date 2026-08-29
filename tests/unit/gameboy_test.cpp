@@ -172,6 +172,51 @@ TEST_CASE("cgb_mode_follows_the_cart_header") {
     REQUIRE(only.cgb_mode());
 }
 
+namespace {
+
+// cgb cart that writes arm_bit to key1, runs stop, then spins forever
+std::vector<uint8_t> speed_rom(uint8_t arm_bit) {
+    std::vector<uint8_t> rom = make_test_rom(0x00, 0x00, 0x8000, 0xC0);
+    const uint8_t code[] = {
+        0x3E, arm_bit, // ld a, arm_bit
+        0xE0, 0x4D,    // ldh (key1), a
+        0x10, 0x00,    // stop
+        0x18, 0xFE,    // jr -2
+    };
+    for (size_t i = 0; i < sizeof(code); ++i) {
+        rom[0x0100 + i] = code[i];
+    }
+    rom[0x014D] = test_rom_checksum(rom);
+    return rom;
+}
+
+} // namespace
+
+TEST_CASE("run_frame_spans_one_video_frame_in_both_speeds") {
+    gb::Gameboy slow;
+    REQUIRE(slow.load_rom(speed_rom(0x00)));
+    gb::Gameboy fast;
+    REQUIRE(fast.load_rom(speed_rom(0x01)));
+    // the first call starts mid-frame; measure the steady state after it
+    slow.run_frame();
+    fast.run_frame();
+    uint64_t slow_mark = slow.cycles();
+    uint64_t fast_mark = fast.cycles();
+    for (int i = 0; i < 3; ++i) {
+        slow.run_frame();
+        fast.run_frame();
+        const uint64_t slow_frame = slow.cycles() - slow_mark;
+        const uint64_t fast_frame = fast.cycles() - fast_mark;
+        // one call is one video frame of 70224 dots, spent twice as fast in double speed
+        REQUIRE(slow_frame >= 70224u - 32u);
+        REQUIRE(slow_frame <= 70224u + 32u);
+        REQUIRE(fast_frame >= 2u * 70224u - 64u);
+        REQUIRE(fast_frame <= 2u * 70224u + 64u);
+        slow_mark = slow.cycles();
+        fast_mark = fast.cycles();
+    }
+}
+
 TEST_CASE("boot_registers_match_the_machine_mode") {
     gb::Gameboy dmg;
     REQUIRE(dmg.load_rom(make_test_rom()));

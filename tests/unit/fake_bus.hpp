@@ -6,7 +6,7 @@
 #include <cstdint>
 
 // scripted flat memory for layer-2 cpu tests
-class FakeBus final : public gb::Memory {
+class FakeBus : public gb::Memory {
 public:
     uint8_t read8(uint16_t addr) override {
         return mem[addr];

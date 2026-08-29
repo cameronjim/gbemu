@@ -15,6 +15,9 @@ public:
     explicit DoctorMemory(Memory& inner) : inner_(inner) {}
     uint8_t read8(uint16_t addr) override;
     void write8(uint16_t addr, uint8_t value) override;
+    bool commit_speed_switch() override {
+        return inner_.commit_speed_switch();
+    }
 
 private:
     Memory& inner_;

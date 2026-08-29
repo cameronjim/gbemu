@@ -8,7 +8,8 @@ namespace gb {
 
 namespace {
 constexpr std::array<uint8_t, 4> kStateMagic = {'G', 'B', 'S', 'T'};
-constexpr uint32_t kStateVersion = 1;
+// v2: banked vram/wram and the cgb bank registers; v1 blobs are rejected
+constexpr uint32_t kStateVersion = 2;
 } // namespace
 
 namespace {
@@ -23,7 +24,11 @@ bool Gameboy::load_rom(std::span<const uint8_t> bytes) {
         return false;
     }
     cart_ = std::move(cart);
+    cgb_mode_ = cart_->cgb();
     bus_.attach_mapper(cart_->mapper());
+    bus_.set_cgb_mode(cgb_mode_);
+    ppu_.set_cgb_mode(cgb_mode_);
+    cpu_.set_boot_state(cgb_mode_);
     return true;
 }
 
@@ -33,11 +38,13 @@ void Gameboy::run_frame() {
         const uint64_t frame_start = ppu_.frame_count();
         uint32_t elapsed = 0;
         while (ppu_.frame_count() == frame_start) {
+            // double speed spends two cpu cycles per video dot, so one frame costs twice as much
+            const uint32_t budget = bus_.double_speed() ? 2 * kFrameCycles : kFrameCycles;
             // lcd off never reaches vblank; spend one frame of cycles instead
-            if (elapsed >= kFrameCycles && !ppu_.lcd_enabled()) {
+            if (elapsed >= budget && !ppu_.lcd_enabled()) {
                 break;
             }
-            if (elapsed >= 2 * kFrameCycles) {
+            if (elapsed >= 2 * budget) {
                 break;
             }
             const uint32_t t = cpu_.step();
@@ -47,10 +54,7 @@ void Gameboy::run_frame() {
             }
             // the bus already ticked one m-cycle per access; spend the remainder here
             const uint32_t ticked = bus_.take_access_cycles();
-            const uint32_t remainder = t > ticked ? t - ticked : 0;
-            timer_.tick(remainder);
-            ppu_.tick(remainder);
-            apu_.tick(remainder);
+            bus_.tick_components(t > ticked ? t - ticked : 0);
             elapsed += t;
         }
         cycles_ += elapsed;

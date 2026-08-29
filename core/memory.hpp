@@ -14,6 +14,10 @@ public:
     virtual uint8_t peek8(uint16_t addr) {
         return read8(addr);
     }
+    // stop executes an armed cgb speed switch; false means nothing was armed
+    virtual bool commit_speed_switch() {
+        return false;
+    }
 };
 
 } // namespace gb

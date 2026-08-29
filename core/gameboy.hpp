@@ -36,6 +36,14 @@ public:
     uint64_t cycles() const {
         return cycles_;
     }
+    // fixed at load_rom from the cart header; dmg carts run exactly as before
+    bool cgb_mode() const {
+        return cgb_mode_;
+    }
+    // rgb555 bg/window output; filled in cgb mode only, contents undefined in dmg mode
+    std::span<const uint16_t> framebuffer_color() const {
+        return ppu_.framebuffer_color();
+    }
     // per-pixel tile source for frontend colorization
     std::span<const uint16_t> framebuffer_tiles() const {
         return ppu_.tile_ids();
@@ -73,6 +81,7 @@ private:
     Bus bus_{serial_, timer_, ppu_, apu_, joypad_, irq_};
     Cpu cpu_{bus_};
     std::optional<Cartridge> cart_;
+    bool cgb_mode_ = false;
     uint64_t cycles_ = 0;
     std::array<uint8_t, kLcdWidth * kLcdHeight> pattern_{};
 };

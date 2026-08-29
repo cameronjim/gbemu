@@ -14,6 +14,21 @@ inline constexpr uint32_t kGridFace = 0xFF101014u;
 inline constexpr uint32_t kGridLight = 0xFF1E1E26u;
 inline constexpr uint32_t kGridDark = 0xFF050508u;
 
+// rgb555 channel (5 bits) to 8 bits, replicating the high bits into the low ones;
+// matches tests/roms/harness.cpp's expand5 exactly so screenshots and gate ppms agree
+inline uint32_t expand5_to_8(uint16_t channel) {
+    return ((channel << 3) | (channel >> 2)) & 0xFFu;
+}
+
+// lives here, not main.cpp's anon namespace, so palette_test.cpp can exercise it directly.
+// raw conversion, no color correction; bit 15 is ignored.
+inline uint32_t rgb555_to_argb(uint16_t c) {
+    const uint32_t r = expand5_to_8(c & 0x1Fu);
+    const uint32_t g = expand5_to_8((c >> 5) & 0x1Fu);
+    const uint32_t b = expand5_to_8((c >> 10) & 0x1Fu);
+    return 0xFF000000u | (r << 16) | (g << 8) | b;
+}
+
 inline uint32_t scale_rgb(uint32_t c, uint32_t num, uint32_t den) {
     const uint32_t r = ((c >> 16) & 0xFF) * num / den;
     const uint32_t g = ((c >> 8) & 0xFF) * num / den;

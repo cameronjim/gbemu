@@ -16,6 +16,18 @@ std::vector<uint8_t> make_rom(uint8_t type = 0x00, uint8_t rom_size_byte = 0x00,
     return make_test_rom(type, rom_size_byte, file_size);
 }
 
+// full 16-byte title field so 0x143 is the only byte that can truncate it
+std::vector<uint8_t> make_long_title_rom(uint8_t cgb_flag) {
+    std::vector<uint8_t> rom = make_test_rom();
+    const std::string title = "ABCDEFGHIJKLMNOP";
+    for (size_t i = 0; i < title.size(); ++i) {
+        rom[0x0134 + i] = static_cast<uint8_t>(title[i]);
+    }
+    rom[0x0143] = cgb_flag;
+    rom[0x014D] = test_rom_checksum(rom);
+    return rom;
+}
+
 } // namespace
 
 TEST_CASE("valid_rom_only_header_parses") {
@@ -72,6 +84,38 @@ TEST_CASE("mbc_types_accepted_with_battery_flag") {
     REQUIRE(mbc3.has_value());
     REQUIRE(mbc3->type() == gb::CartType::Mbc3);
     REQUIRE(mbc3->has_battery());
+}
+
+TEST_CASE("cgb_flag_parsed_from_header_0x143") {
+    const std::optional<gb::Cartridge> dual = gb::Cartridge::parse(make_long_title_rom(0x80));
+    REQUIRE(dual.has_value());
+    REQUIRE(dual->cgb());
+
+    const std::optional<gb::Cartridge> only = gb::Cartridge::parse(make_long_title_rom(0xC0));
+    REQUIRE(only.has_value());
+    REQUIRE(only->cgb());
+
+    const std::optional<gb::Cartridge> dmg = gb::Cartridge::parse(make_long_title_rom(0x00));
+    REQUIRE(dmg.has_value());
+    REQUIRE(!dmg->cgb());
+}
+
+TEST_CASE("cgb_flag_byte_is_not_part_of_the_title") {
+    const std::optional<gb::Cartridge> cgb = gb::Cartridge::parse(make_long_title_rom(0x80));
+    REQUIRE(cgb.has_value());
+    REQUIRE(cgb->title() == "ABCDEFGHIJKLMNO");
+
+    // any other 0x143 value stays a title byte
+    const std::optional<gb::Cartridge> dmg = gb::Cartridge::parse(make_long_title_rom('P'));
+    REQUIRE(dmg.has_value());
+    REQUIRE(dmg->title() == "ABCDEFGHIJKLMNOP");
+}
+
+TEST_CASE("dmg_title_detection_unchanged") {
+    const std::optional<gb::Cartridge> cart = gb::Cartridge::parse(make_rom());
+    REQUIRE(cart.has_value());
+    REQUIRE(cart->title() == "TETRIS");
+    REQUIRE(!cart->cgb());
 }
 
 TEST_CASE("truncated_file_rejects") {

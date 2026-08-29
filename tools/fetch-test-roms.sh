@@ -25,6 +25,12 @@ if [ ! -f "$vendor/dmg-acid2.gb" ]; then
     echo "fetched dmg-acid2"
 fi
 
+if [ ! -f "$vendor/cgb-acid2.gbc" ]; then
+    curl -sfL "https://github.com/mattcurrie/cgb-acid2/releases/download/v1.1/cgb-acid2.gbc" \
+        -o "$vendor/cgb-acid2.gbc"
+    echo "fetched cgb-acid2"
+fi
+
 # the vendored tetris doubles as the demo rom
 if [ ! -f "$vendor/demo.gb" ]; then
     cp assets/roms/tetris.gb "$vendor/demo.gb"

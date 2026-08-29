@@ -1,7 +1,7 @@
 #include "blocks.h"
 
 #include "assets.h"
-#include "level_1_1.h"
+#include "level.h"
 #include "mario.h"
 #include "terrain.h"
 
@@ -14,12 +14,16 @@
 
 // which grid the state below belongs to; the two never react at the same time
 static uint8_t area;
+// the loaded sub-area's coin list, or an empty one while the main grid is up
+static const uint8_t* coin_col;
+static const uint8_t* coin_row_of;
+static uint8_t area_coins;
 
 // per compiled block, indexed by the generated reaction list
-static uint8_t state[LEVEL_1_1_BLOCK_COUNT];
-static uint8_t budget[LEVEL_1_1_BLOCK_COUNT];
-static uint8_t coin_taken[LEVEL_1_1_AREA0_COIN_COUNT];
-static uint8_t player_big;
+static uint8_t state[LEVEL_MAX_BLOCKS];
+static uint8_t budget[LEVEL_MAX_BLOCKS];
+static uint8_t coin_taken[LEVEL_MAX_COINS];
+uint8_t blocks_player_big;
 
 // only one cell bounces at a time, smb-style
 static int16_t bump_column;
@@ -44,7 +48,7 @@ static uint8_t coin_timer;
 static uint16_t coin_x;
 static int16_t coin_y;
 
-static uint16_t coin_count;
+static uint16_t coins_collected;
 static uint8_t items_taken;
 
 // oam writes are cheap but not free, and both slots sit empty for most of a level: parking them
@@ -56,18 +60,19 @@ static uint8_t coin_shown;
 // linear scan of the reaction list on each of those costs more than the frame has left. these row
 // tables answer "could anything here be overridden at all" in one indexed load, and only rows that
 // actually hold a block ever pay for the scan
-static uint8_t row_has_block[LEVEL_1_1_ROWS];
-static uint8_t row_has_hidden[LEVEL_1_1_ROWS];
-static uint8_t row_has_coin[LEVEL_1_1_ROWS];
+static uint8_t row_has_block[LEVEL_ROWS];
+static uint8_t row_has_hidden[LEVEL_ROWS];
+static uint8_t row_has_coin[LEVEL_ROWS];
 // nothing is overridden until something is bumped or collected, which skips the scan outright
 uint8_t blocks_override_count;
+uint8_t blocks_busy;
 uint8_t blocks_solid_edits;
 static uint8_t main_solid_edits;
 // and once something is, only the handful of cells actually altered are worth walking, not the
 // whole reaction list. the same reasoning covers the level's one or two hidden blocks
-static uint8_t altered[LEVEL_1_1_BLOCK_COUNT];
+static uint8_t altered[LEVEL_MAX_BLOCKS];
 static uint8_t altered_count;
-static uint8_t hidden_block[LEVEL_1_1_BLOCK_COUNT];
+static uint8_t hidden_block[LEVEL_MAX_BLOCKS];
 static uint8_t hidden_count;
 static uint8_t coins_taken;
 
@@ -92,12 +97,14 @@ static uint8_t lab;
 // the content the block actually pays out, which the lab rewrites for exactly one entry
 static uint8_t content_of(uint8_t index) {
 #if kEnemyLab
-    if (lab != 0U && level_1_1_block_kind[index] == kBlockListHidden) {
+    if (lab != 0U && level->block_kind[index] == kBlockListHidden) {
         return kContentMushroom;
     }
 #endif
-    return level_1_1_block_content[index];
+    return level->block_content[index];
 }
+
+static void publish_busy(void);
 
 static int16_t row_of(int16_t py) {
     return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
@@ -114,8 +121,8 @@ static int16_t find_block(int16_t column, int16_t row) {
     if (column < 0 || row < 0) {
         return -1;
     }
-    for (i = 0; i < LEVEL_1_1_BLOCK_COUNT; ++i) {
-        if (level_1_1_block_column[i] == (uint16_t)column && level_1_1_block_row[i] == (uint8_t)row) {
+    for (i = 0; i < level->block_count; ++i) {
+        if (level->block_column[i] == (uint16_t)column && level->block_row[i] == (uint8_t)row) {
             return (int16_t)i;
         }
     }
@@ -128,9 +135,8 @@ static int16_t find_coin(int16_t column, int16_t row) {
     if (column < 0 || row < 0) {
         return -1;
     }
-    for (i = 0; i < LEVEL_1_1_AREA0_COIN_COUNT; ++i) {
-        if (level_1_1_area0_coin_column[i] == (uint8_t)column &&
-            level_1_1_area0_coin_row[i] == (uint8_t)row) {
+    for (i = 0; i < area_coins; ++i) {
+        if (coin_col[i] == (uint8_t)column && coin_row_of[i] == (uint8_t)row) {
             return (int16_t)i;
         }
     }
@@ -153,7 +159,7 @@ static void pop_coin(int16_t column, int16_t row) {
     coin_y = (int16_t)(((int16_t)row << 4) - (int16_t)kBlockPx);
     coin_timer = 0;
     coin_active = 1;
-    ++coin_count;
+    ++coins_collected;
 }
 
 static void spawn_item(uint8_t content) {
@@ -164,7 +170,7 @@ static void spawn_item(uint8_t content) {
     } else {
         // smb picks at dispense time, not at bump time: a mushroom_fire block pays the flower only
         // if mario is already grown when it opens
-        item_kind = player_big != 0U ? kItemFlower : kItemMushroom;
+        item_kind = blocks_player_big != 0U ? kItemFlower : kItemMushroom;
     }
     item_phase = kItemRising;
     item_timer = 0;
@@ -175,7 +181,7 @@ static void spawn_item(uint8_t content) {
 }
 
 static void react(uint8_t index, int16_t column, int16_t row) {
-    const uint8_t kind = level_1_1_block_kind[index];
+    const uint8_t kind = level->block_kind[index];
     const uint8_t content = content_of(index);
     // a revealed hidden block is a used block from the moment it materializes
     uint8_t spend = (kind == kBlockListHidden) ? 1U : 0U;
@@ -211,45 +217,61 @@ static void react(uint8_t index, int16_t column, int16_t row) {
         }
     }
     start_bump(column, row);
+    publish_busy();
 }
 
 void blocks_load_level(void) {
     uint8_t i;
 
-    for (i = 0; i < LEVEL_1_1_ROWS; ++i) {
+    for (i = 0; i < LEVEL_ROWS; ++i) {
         row_has_block[i] = 0;
         row_has_hidden[i] = 0;
         row_has_coin[i] = 0;
     }
     hidden_count = 0;
     altered_count = 0;
-    for (i = 0; i < LEVEL_1_1_BLOCK_COUNT; ++i) {
+    for (i = 0; i < level->block_count; ++i) {
         state[i] = kBlockStateIdle;
         budget[i] = (uint8_t)kMulticoinBudget;
-        row_has_block[level_1_1_block_row[i]] = 1;
-        if (level_1_1_block_kind[i] == kBlockListHidden) {
-            row_has_hidden[level_1_1_block_row[i]] = 1;
+        row_has_block[level->block_row[i]] = 1;
+        if (level->block_kind[i] == kBlockListHidden) {
+            row_has_hidden[level->block_row[i]] = 1;
             hidden_block[hidden_count] = i;
             ++hidden_count;
         }
     }
-    for (i = 0; i < LEVEL_1_1_AREA0_COIN_COUNT; ++i) {
+    for (i = 0; i < LEVEL_MAX_COINS; ++i) {
         coin_taken[i] = 0;
-        row_has_coin[level_1_1_area0_coin_row[i]] = 1;
     }
+    area_coins = 0;
     blocks_override_count = 0;
     blocks_solid_edits = 0;
     main_solid_edits = 0;
     coins_taken = 0;
-    coin_count = 0;
+    coins_collected = 0;
     items_taken = 0;
-    player_big = 0;
+    blocks_player_big = 0;
 }
 
 void blocks_enter_area(uint8_t next_area) {
+    uint8_t i;
+
     // the per-block state arrays are per grid already, so a round trip through a pipe finds the
     // main level's spent blocks exactly as it left them; only the live slots are dropped
     area = next_area;
+    if (area == kAreaMain) {
+        area_coins = 0;
+    } else {
+        coin_col = level_sub->coin_column;
+        coin_row_of = level_sub->coin_row;
+        area_coins = level_sub->coin_count;
+        for (i = 0; i < LEVEL_ROWS; ++i) {
+            row_has_coin[i] = 0;
+        }
+        for (i = 0; i < area_coins; ++i) {
+            row_has_coin[coin_row_of[i]] = 1;
+        }
+    }
     // the count is per grid: coins taken in the room must not make the main level's streamer scan
     blocks_override_count = (area == kAreaMain) ? altered_count : coins_taken;
     blocks_solid_edits = (area == kAreaMain) ? main_solid_edits : 0U;
@@ -260,12 +282,13 @@ void blocks_enter_area(uint8_t next_area) {
     coin_active = 0;
     item_shown = 1;
     coin_shown = 1;
+    publish_busy();
 }
 
 uint8_t blocks_kind_override(int16_t column, int16_t row, uint8_t kind) {
     int16_t index;
 
-    if (blocks_override_count == 0U || row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
+    if (blocks_override_count == 0U || row < 0 || row >= (int16_t)LEVEL_ROWS) {
         return kind;
     }
     if (area == kAreaMain) {
@@ -277,7 +300,7 @@ uint8_t blocks_kind_override(int16_t column, int16_t row, uint8_t kind) {
         }
         for (i = 0; i < altered_count; ++i) {
             j = altered[i];
-            if (level_1_1_block_column[j] != (uint16_t)column || level_1_1_block_row[j] != (uint8_t)row) {
+            if (level->block_column[j] != (uint16_t)column || level->block_row[j] != (uint8_t)row) {
                 continue;
             }
             return state[j] == kBlockStateSpent ? kBlockSpent : kBlockEmpty;
@@ -302,17 +325,17 @@ void blocks_apply_column(int16_t column, uint8_t* rows) {
 
         for (i = 0; i < altered_count; ++i) {
             j = altered[i];
-            if (level_1_1_block_column[j] != (uint16_t)column) {
+            if (level->block_column[j] != (uint16_t)column) {
                 continue;
             }
-            rows[level_1_1_block_row[j]] =
+            rows[level->block_row[j]] =
                 state[j] == kBlockStateSpent ? (uint8_t)kBlockSpent : (uint8_t)kBlockEmpty;
         }
         return;
     }
-    for (i = 0; i < LEVEL_1_1_AREA0_COIN_COUNT; ++i) {
-        if (coin_taken[i] != 0U && level_1_1_area0_coin_column[i] == (uint8_t)column) {
-            rows[level_1_1_area0_coin_row[i]] = kBlockEmpty;
+    for (i = 0; i < area_coins; ++i) {
+        if (coin_taken[i] != 0U && coin_col[i] == (uint8_t)column) {
+            rows[coin_row_of[i]] = kBlockEmpty;
         }
     }
 }
@@ -321,14 +344,13 @@ uint8_t blocks_hidden_at(int16_t column, int16_t row) {
     uint8_t i;
     uint8_t j;
 
-    if (area != kAreaMain || row < 0 || row >= (int16_t)LEVEL_1_1_ROWS ||
-        row_has_hidden[(uint8_t)row] == 0U) {
+    if (area != kAreaMain || row < 0 || row >= (int16_t)LEVEL_ROWS || row_has_hidden[(uint8_t)row] == 0U) {
         return 0;
     }
     for (i = 0; i < hidden_count; ++i) {
         j = hidden_block[i];
-        if (state[j] == kBlockStateIdle && level_1_1_block_column[j] == (uint16_t)column &&
-            level_1_1_block_row[j] == (uint8_t)row) {
+        if (state[j] == kBlockStateIdle && level->block_column[j] == (uint16_t)column &&
+            level->block_row[j] == (uint8_t)row) {
             return 1;
         }
     }
@@ -345,8 +367,8 @@ void blocks_head_bump(int16_t column, int16_t row) {
     if (index < 0 || state[index] != kBlockStateIdle) {
         return;
     }
-    if (level_1_1_block_kind[index] == kBlockListBrick && level_1_1_block_content[index] == kContentNothing &&
-        player_big != 0U) {
+    if (level->block_kind[index] == kBlockListBrick && level->block_content[index] == kContentNothing &&
+        blocks_player_big != 0U) {
         // the break path: compiled, but only m7's grown mario ever reaches it
         state[index] = kBlockStateGone;
         altered[altered_count] = (uint8_t)index;
@@ -355,6 +377,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
         ++main_solid_edits;
         ++blocks_solid_edits;
         terrain_write_block(column, row);
+        blocks_busy = 1;
         return;
     }
     react((uint8_t)index, column, row);
@@ -467,22 +490,29 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py, uint8_t p
     // only the column he is in and its two neighbours can touch him, so the box math is skipped
     // for the rest of the room's coins
     column = (uint8_t)(player_px >> 4);
-    for (i = 0; i < LEVEL_1_1_AREA0_COIN_COUNT; ++i) {
-        if (coin_taken[i] != 0U || level_1_1_area0_coin_column[i] + 1U < column ||
-            level_1_1_area0_coin_column[i] > column + 1U) {
+    for (i = 0; i < area_coins; ++i) {
+        if (coin_taken[i] != 0U || coin_col[i] + 1U < column || coin_col[i] > column + 1U) {
             continue;
         }
-        cx = (uint16_t)((uint16_t)level_1_1_area0_coin_column[i] << 4);
-        cy = (int16_t)((int16_t)level_1_1_area0_coin_row[i] << 4);
+        cx = (uint16_t)((uint16_t)coin_col[i] << 4);
+        cy = (int16_t)((int16_t)coin_row_of[i] << 4);
         if (boxes_overlap(player_px, player_py, player_h, cx, cy, kBlockPx) == 0U) {
             continue;
         }
         coin_taken[i] = 1;
         ++coins_taken;
         ++blocks_override_count;
-        ++coin_count;
-        terrain_write_block((int16_t)level_1_1_area0_coin_column[i], (int16_t)level_1_1_area0_coin_row[i]);
+        ++coins_collected;
+        terrain_write_block((int16_t)coin_col[i], (int16_t)coin_row_of[i]);
     }
+}
+
+// everything blocks_update and blocks_draw could have to do this frame, worked out once
+static void publish_busy(void) {
+    blocks_busy = (uint8_t)((bump_timer != 0U || item_kind != kItemNone || coin_active != 0U ||
+                             item_shown != 0U || coin_shown != 0U || area != (uint8_t)kAreaMain)
+                                ? 1U
+                                : 0U);
 }
 
 uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x) {
@@ -504,6 +534,7 @@ uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, u
     }
     taken = item_update(player_px, player_py, player_h, cam_x);
     collect_world_coins(player_px, player_py, player_h);
+    publish_busy();
     return taken;
 }
 
@@ -568,15 +599,11 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y) {
 }
 
 uint16_t blocks_coins(void) {
-    return coin_count;
+    return coins_collected;
 }
 
 uint8_t blocks_items_taken(void) {
     return items_taken;
-}
-
-void blocks_set_player_big(uint8_t big) {
-    player_big = big;
 }
 
 void blocks_set_lab(uint8_t on) {

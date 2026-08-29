@@ -59,7 +59,13 @@
 #define kBlockCastle 11U
 #define kBlockSpent 12U
 #define kBlockCoin 13U
-#define kBlockKindCount 14U
+// m8a's four. a thin platform is solid only to feet coming down onto it, lava is scenery painted
+// over the death plane, and the bridge and axe are what a castle ends with
+#define kBlockThin 14U
+#define kBlockLava 15U
+#define kBlockBridge 16U
+#define kBlockAxe 17U
+#define kBlockKindCount 18U
 // what blocks_kind_override returns when the compiled grid still stands unaltered
 #define kBlockNoOverride 0xFFU
 
@@ -96,14 +102,21 @@
 #define kTileSpentTr 0xADU
 #define kTileSpentBl 0xAEU
 #define kTileSpentBr 0xAFU
-// pipe family 0xb0..0xb3 (0xb4-0xb7 reserved for a future spent/enterable variant)
+// pipe family 0xb0..0xb7; m8a spends the four the family had left on 1-3's thin platform deck and
+// on a castle's lava, which needs a surface tile and a fill tile like the ground does
 #define kTilePipeTl 0xB0U
 #define kTilePipeTr 0xB1U
 #define kTilePipeBodyL 0xB2U
 #define kTilePipeBodyR 0xB3U
-// flag/castle family 0xb8..0xbb
+#define kTileThin 0xB4U
+#define kTileThinUnder 0xB5U
+#define kTileLavaTop 0xB6U
+#define kTileLavaFill 0xB7U
+// flag/castle family 0xb8..0xbb, now full: the bridge deck and the axe take its last two
 #define kTileFlagPole 0xB8U
 #define kTileCastle 0xB9U
+#define kTileBridge 0xBAU
+#define kTileAxe 0xBBU
 // coins-in-world family 0xbc..0xbf: one 16x16 coin's four quadrants
 #define kTileCoinTl 0xBCU
 #define kTileCoinTr 0xBDU
@@ -154,6 +167,17 @@
 #define kTileFlowerFirst 0x80U
 #define kFlowerTileCount 4U
 
+// m8a's four new actors. the pinned 0xc0 enemy family is exactly full and the 0xd0 item family is
+// too, but the run between the flower and the terrain families still had 28 tiles nothing claimed.
+// every one of these is left-right symmetric, so each costs a single 8x16 pair and its right half
+// is the same tile drawn flipped
+#define kTileHazardFirst 0x84U
+#define kTilePiranha 0x84U
+#define kTileFlame 0x86U
+#define kTileLiftDeck 0x88U
+#define kTileBowser 0x8AU
+#define kHazardTileCount 8U // 0x84-0x8b
+
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
 // fireball as one 8x16 pair whose top tile is empty - the family is exactly full at 0xd0-0xdf
@@ -183,6 +207,11 @@
 #define kSpriteCoin 6U
 #define kSpriteFireFirst 7U
 #define kSpriteEnemyFirst 9U
+// m8a's three: a firebar's flames, the fake bowser, and up to two lift decks four sprites wide.
+// 19 + 8 + 2 + 8 = 37 of the 40 slots. the per-scanline worst case is documented at kFirebarSlots
+#define kSpriteFlameFirst 19U
+#define kSpriteBowser 27U
+#define kSpriteLiftFirst 29U
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
@@ -281,9 +310,12 @@
 #define kTileKoopaWalk1 0xCCU
 #define kEnemyTileCount 16U // 0xc0-0xcf
 
-// the compiled kinds, the contract with compile_level.py's ENEMY_KIND_MAP
+// the compiled kinds, the contract with compile_level.py's ENEMY_KIND_MAP. roster.json: the red
+// koopa turns at a ledge where the green one walks off, and the piranha lives in a pipe
 #define kEnemyGoomba 0U
 #define kEnemyKoopa 1U
+#define kEnemyKoopaRed 2U
+#define kEnemyPiranha 3U
 
 // a pool slot's state. the pool is kept packed, so kEnemyOff never sits in a live slot: it is the
 // value a slot is cleared to and the one the host twin starts a fresh slot at
@@ -292,6 +324,10 @@
 #define kEnemySquashed 2U
 #define kEnemyShellIdle 3U
 #define kEnemyShellMove 4U
+// a piranha never walks: it rises out of its pipe and sinks back, and roster.json says it refuses
+// to come up at all while the player is standing on or beside the cap
+#define kEnemyPlantHidden 5U
+#define kEnemyPlantUp 6U
 
 // the milestone doc's oam trap: five slots x 2 sprites plus mario's 2 is 12 on screen, but a
 // scanline crossing a row of 16x16 enemies pays 2 sprites for each of them, so four on one row is
@@ -319,6 +355,11 @@
 #define kEnemyGravitySubpx 24U
 #define kEnemyMaxFallPx 4
 #define kEnemyAnimFrames 8U
+// the piranha's cycle: a whole block up, a bite, a whole block back down, then a wait. the bible
+// times none of it, so all four counts are ours
+#define kPlantRisePx 16
+#define kPlantHoldFrames 60U
+#define kPlantCycleFrames (2U * kPlantRisePx + 2U * kPlantHoldFrames) // 152
 // must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
 // 60fps. no disassembly line for it was found in the bible, so the count is ours until one is
 #define kShellWakeFrames 600U
@@ -345,9 +386,65 @@
 // how far in front of his box centre a thrown ball starts
 #define kFireballLeadPx 6
 
-// the underground sub-area's palette set: the same tile families, tinted dark and blue
-#define kAreaMain 0U
-#define kAreaBonus 1U
+// which grid is loaded: the level's own, or one of its compiled sub-areas by index
+#define kAreaMain 0xFFU
+// an area's kind, the contract with compile_level.py's AREA_* constants
+#define kAreaKindBonus 0U
+#define kAreaKindWarp 1U
+
+// a level's own type, the contract with compile_level.py's TYPE_* constants; it picks the palette
+// set the streamer tints every tile family with
+#define kLevelTypeOverworld 0U
+#define kLevelTypeUnderground 1U
+#define kLevelTypeCastle 2U
+
+// the object list's kinds, the contract with compile_level.py's OBJ_* constants
+#define kObjPipe 0U
+#define kObjLiftH 1U
+#define kObjLiftV 2U
+#define kObjFirebar 3U
+#define kObjBowser 4U
+#define kObjAxe 5U
+
+// lifts (games/mario/src/hazards.c). physics.json platform_lift_speeds is must-measure: the
+// disassembly has a routine per lift type but the bible extracted no constant from any of them,
+// so 1 px a frame either way is ours, picked to read like smb's own unhurried decks
+#define kLiftSpeedPx 1
+#define kLiftSlots 2U
+#define kLiftBlocks 2U
+#define kLiftWidthPx (kLiftBlocks * kBlockPx) // 32
+#define kLiftDeckPx 8
+// compile_level.py packs a lift's travel into one byte: the low bits are its span in columns and
+// the top bit starts it at the far end running the other way
+#define kLiftSpanMask 0x3FU
+#define kLiftReverse 0x80U
+
+// firebars. physics.json firebar_rotation gives two raw rates (0x28 slow, 0x38 fast) and calls the
+// conversion to degrees/frame must-measure, and it never says which bar takes which rate. so every
+// bar here spins at the slow one, fed as a 1/256 sub-step into a 32-step circle: 6.4 frames a step,
+// 205 frames a revolution, which is about smb's own. must-measure
+#define kFirebarSpinRaw 0x28U
+#define kFirebarSteps 32U
+#define kFirebarSegments 6U
+#define kFirebarRadiusPx 8
+#define kFlamePx 8
+// two bars can be on screen at once, six flames each, but only eight flame sprites exist: the pool
+// draws the nearest bar's flames first. sprites are 8x16, so 8 px apart puts two of a vertical
+// bar's flames on any one scanline - plus mario's four and a lift's four, exactly the ten the
+// hardware draws per line
+#define kFirebarSlots 2U
+#define kFlameSlots 8U
+
+// the fake bowser. roster.json calls him "a Little Goomba in disguise" and gives no speed, so he
+// patrols at the goomba's own half a pixel a frame; his fire breath is m9's
+#define kBowserWidthPx 16
+#define kBowserHeightPx 16
+#define kBowserSpeedSubpx 8U
+
+// how far outside the view a lift, bar or bowser has to be before the game loop stops calling
+// into bank 5 for it at all. smb runs its objects only while they are near the screen too, and
+// on 1-2 that is the whole level bar the last forty columns
+#define kHazardMarginPx 64U
 
 // the m2 debug camera (no player, free d-pad scroll) still ships, entered with b from the title now
 // that select is the play camera's look-ahead. define this to 0 to drop the state from the rom
@@ -360,6 +457,13 @@
 // shell-chain and scanline-cap tests would have nothing to watch. define this to 0 to drop it
 #ifndef kEnemyLab
 #define kEnemyLab 1
+#endif
+
+// the title's level select: up and down step through world one before start begins it. without it
+// a test that wants 1-4 has to clear the three levels ahead of it first, which is minutes of
+// emulation for one probe. define this to 0 to drop it
+#ifndef kLevelSelect
+#define kLevelSelect 1
 #endif
 
 #endif

@@ -1,3 +1,8 @@
+// bank 0 was full again by m8a: the level table, the multi-level loader and the new collision
+// paths all live there, so the powerup chain moved out beside hazards.c. it is entered a handful
+// of times a frame, which is a handful of trampolines against a couple of hundred cycles
+#pragma bank 5
+
 #include "powerup.h"
 
 #include "enemies.h"
@@ -7,6 +12,10 @@
 
 #include <gb/gb.h>
 #include <stdint.h>
+
+uint8_t powerup_flags;
+uint8_t powerup_pose;
+uint8_t powerup_prop;
 
 static uint8_t power;
 // the bible's two windows, both already multiplied out of smb's 21-frame interval timer
@@ -39,6 +48,8 @@ static Fireball balls[kFireballSlots];
 static uint8_t live;
 static uint8_t shown;
 
+static void publish(void);
+
 static int16_t row_of(int16_t py) {
     return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
 }
@@ -50,12 +61,12 @@ static void begin_anim(uint8_t target, uint8_t from_big, uint8_t to_big) {
     anim_to_big = to_big;
 }
 
-void powerup_init(void) {
+void powerup_init(void) BANKED {
     lives = (uint8_t)kStartLives;
     powerup_reset();
 }
 
-void powerup_reset(void) {
+void powerup_reset(void) BANKED {
     power = kPowerSmall;
     star_timer = 0;
     injury_timer = 0;
@@ -69,42 +80,47 @@ void powerup_reset(void) {
     // not the parked marker: a respawn leaves the last life's balls in oam, so the first draw of
     // the new one has to write every slot off screen
     shown = (uint8_t)kFireballSlots;
+    publish();
 }
 
-uint8_t powerup_state(void) {
+uint8_t powerup_state(void) BANKED {
     return power;
 }
 
-uint8_t powerup_big(void) {
-    return power != kPowerSmall ? 1U : 0U;
-}
+// every read the game loop makes, worked out once here at the end of whatever changed the chain
+static void publish(void) {
+    const uint8_t big = power != kPowerSmall ? 1U : 0U;
 
-uint8_t powerup_star(void) {
-    return star_timer != 0U ? 1U : 0U;
-}
-
-uint8_t powerup_immune(void) {
-    return injury_timer != 0U ? 1U : 0U;
-}
-
-uint8_t powerup_frozen(void) {
-    return anim_timer != 0U ? 1U : 0U;
-}
-
-uint8_t powerup_pose_big(void) {
+    powerup_flags =
+        (uint8_t)((big != 0U ? kPowerFlagBig : 0U) | (star_timer != 0U ? kPowerFlagStar : 0U) |
+                  (injury_timer != 0U ? kPowerFlagImmune : 0U) | (anim_timer != 0U ? kPowerFlagFrozen : 0U) |
+                  (power == kPowerFire || star_timer != 0U || injury_timer != 0U || anim_timer != 0U ||
+                           live != 0U
+                       ? kPowerFlagBusy
+                       : 0U) |
+                  (live != 0U || shown != 0U ? kPowerFlagDrawn : 0U));
     if (anim_timer == 0U) {
-        return powerup_big();
+        powerup_pose = big;
+    } else {
+        powerup_pose = ((uint8_t)(anim_timer / kGrowFlipFrames) & 1U) != 0U ? anim_from_big : anim_to_big;
     }
-    return ((uint8_t)(anim_timer / kGrowFlipFrames) & 1U) != 0U ? anim_from_big : anim_to_big;
+    if (injury_timer != 0U && (phase & kBlinkMask) != 0U) {
+        powerup_prop = (uint8_t)kSpriteHidden;
+    } else if (star_timer != 0U && (phase & kStarFlashMask) != 0U) {
+        powerup_prop = (uint8_t)kPalStar;
+    } else {
+        powerup_prop = power == kPowerFire ? (uint8_t)kPalFire : (uint8_t)kPalMario;
+    }
 }
 
-uint8_t powerup_lives(void) {
+uint8_t powerup_lives(void) BANKED {
     return lives;
 }
 
-uint8_t powerup_collect(uint8_t item_kind) {
+uint8_t powerup_collect(uint8_t item_kind) BANKED {
     if (item_kind == kItemStar) {
         star_timer = (uint16_t)kStarFrames;
+        publish();
         return 0;
     }
     if (item_kind == kItemOneup) {
@@ -116,30 +132,29 @@ uint8_t powerup_collect(uint8_t item_kind) {
         // smb would grow a small mario instead, which the branch below still covers
         if (power != kPowerSmall) {
             power = kPowerFire;
+            publish();
             return 0;
         }
         begin_anim(kPowerFire, 0, 1);
+        publish();
         return 1;
     }
     if (item_kind != kItemMushroom || power != kPowerSmall) {
         return 0;
     }
     begin_anim(kPowerSuper, 0, 1);
+    publish();
     return 1;
 }
 
-uint8_t powerup_damage(void) {
+uint8_t powerup_damage(void) BANKED {
     if (star_timer != 0U || injury_timer != 0U || anim_timer != 0U) {
         return 0;
     }
-    if (power == kPowerFire) {
-        // roster.json reads smb1 as dropping fire straight to small; m7's chain keeps the step
-        power = kPowerSuper;
-        injury_timer = (uint8_t)kInjuryFrames;
-        return 0;
-    }
-    if (power == kPowerSuper) {
+    // roster.json, Mario (Fire): "reverts directly to Small Mario if hit (no cushioning step)"
+    if (power != kPowerSmall) {
         begin_anim(kPowerSmall, 1, 0);
+        publish();
         return 0;
     }
     return 1;
@@ -220,7 +235,7 @@ static uint8_t step_ball(Fireball* f, uint16_t cam_x) {
 }
 
 void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t facing_left,
-                    uint16_t cam_x) {
+                    uint16_t cam_x) BANKED {
     uint8_t i = 0;
 
     ++phase;
@@ -233,6 +248,7 @@ void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t
                 injury_timer = (uint8_t)kInjuryFrames;
             }
         }
+        publish();
         return;
     }
     if (star_timer != 0U) {
@@ -255,19 +271,10 @@ void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t
         }
         ++i;
     }
+    publish();
 }
 
-uint8_t powerup_sprite_prop(void) {
-    if (injury_timer != 0U && (phase & kBlinkMask) != 0U) {
-        return (uint8_t)kSpriteHidden;
-    }
-    if (star_timer != 0U && (phase & kStarFlashMask) != 0U) {
-        return (uint8_t)kPalStar;
-    }
-    return power == kPowerFire ? (uint8_t)kPalFire : (uint8_t)kPalMario;
-}
-
-void powerup_draw(uint16_t cam_x, uint8_t cam_y) {
+void powerup_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
     uint8_t i;
 
     if (live == 0U && shown == 0U) {

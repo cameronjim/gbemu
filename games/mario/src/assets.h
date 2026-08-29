@@ -16,9 +16,11 @@ void assets_load_bg_tiles(void) BANKED;
 // loads the eight cgb bg palettes the terrain streamer tags cells with (see kCamPal* in mario.h)
 void assets_load_bg_palettes(void) BANKED;
 
-// the same eight slots, darkened and blue-tinted for a pipe sub-area; bcpd is mode-locked on real
-// hardware, so both loaders run with the lcd off
+// the same eight slots, darkened and blue-tinted for a pipe sub-area or an underground level, and
+// drained to stone with a lava ramp for a castle; bcpd is mode-locked on real hardware, so every
+// one of these runs with the lcd off
 void assets_load_bg_palettes_underground(void) BANKED;
+void assets_load_bg_palettes_castle(void) BANKED;
 
 // loads small mario's six 16x16 frames at 0xe0 and super mario's 32 tiles at 0x60, then the warm
 // and fire cgb sprite palettes
@@ -34,6 +36,11 @@ void assets_load_item_palettes(void) BANKED;
 void assets_load_enemy_tiles(void) BANKED;
 void assets_load_enemy_palettes(void) BANKED;
 
+// m8a's piranha/flame/lift/bowser pairs at 0x84, and the castle re-tint that turns the koopa's
+// palette into the fake bowser's
+void assets_load_hazard_tiles(void) BANKED;
+void assets_load_enemy_palettes_castle(void) BANKED;
+
 // per block-kind tile ids, indexed by the kBlock* constants in mario.h; one entry per 2x2 corner.
 // the streamer reads these on every column it paints, so they are the one asset table bank 0 keeps
 extern const uint8_t kBlockTileTl[kBlockKindCount];
@@ -42,5 +49,12 @@ extern const uint8_t kBlockTileBl[kBlockKindCount];
 extern const uint8_t kBlockTileBr[kBlockKindCount];
 // cgb bg palette slot per block kind
 extern const uint8_t kBlockPalette[kBlockKindCount];
+
+// what a block kind is to a body standing on it: kFloorSolid, kFloorThin, or neither. m8a's four
+// new kinds turned terrain_solid_at's compare chain into six tests on a path the engine walks
+// twenty times a frame, so the answer is one indexed load again
+#define kFloorSolid 1U
+#define kFloorThin 2U
+extern const uint8_t kBlockFloor[kBlockKindCount];
 
 #endif

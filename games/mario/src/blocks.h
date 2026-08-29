@@ -23,6 +23,10 @@ void blocks_enter_area(uint8_t area);
 extern uint8_t blocks_override_count;
 extern uint8_t blocks_solid_edits;
 
+// 0 when no cell is bouncing, no item or coin is live and none is still parked in oam: the game
+// loop skips both the update and the draw on those frames, which is most of a level
+extern uint8_t blocks_busy;
+
 // the kind a cell renders and collides as: `kind` is what the compiled grid holds there
 uint8_t blocks_kind_override(int16_t column, int16_t row, uint8_t kind);
 
@@ -46,8 +50,9 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y);
 uint16_t blocks_coins(void);
 uint8_t blocks_items_taken(void);
 
-// grown mario breaks bricks instead of bouncing them, and a mushroom_fire block pays him a flower
-void blocks_set_player_big(uint8_t big);
+// grown mario breaks bricks instead of bouncing them, and a mushroom_fire block pays him a flower.
+// a plain ram byte, not a banked setter: the game loop writes it on every frame of play
+extern uint8_t blocks_player_big;
 
 // debug: the next blocks_load_level turns the compiled hidden block into a second mushroom_fire
 // dispenser, which is the only cell in 1-1 where a flower ends up somewhere a test can reach it.

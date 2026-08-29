@@ -2,7 +2,8 @@
 
 #include "assets.h"
 #include "blocks.h"
-#include "level_1_1.h"
+#include "hazards.h"
+#include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
 #include "terrain.h"
@@ -47,6 +48,19 @@ static uint8_t crouched;
 // the level-clear sequence's own little state machine, driven by player_clear_update
 static uint8_t clear_phase;
 static uint8_t clear_timer;
+// a castle has no pole to slide down, so its clear walks him off from the axe
+static uint8_t clear_axe;
+
+// the box top before this frame's vertical step: a thin platform is solid only to feet that
+// crossed its deck line, so the collision needs where they were as well as where they are
+static int16_t prev_y;
+// the lift deck he is standing on, or 0xff
+static uint8_t riding;
+
+// the tile and palette each of mario's four slots last carried; a walk frame lasts eight frames and
+// his palette changes twice a level, so most frames owe nothing but the two moves
+static uint8_t drawn_mario_tile[4];
+static uint8_t drawn_mario_prop[4];
 
 // the pipe transition: which way mario is travelling and how far he has gone
 static uint8_t pipe_phase;
@@ -293,6 +307,7 @@ static void collide_y(void) {
     const int16_t left_col = col_of(hit_left());
     const int16_t right_col = col_of(hit_right());
     const uint8_t height = foot_h();
+    uint8_t floor;
     int16_t row;
 
     on_ground = 0;
@@ -315,7 +330,14 @@ static void collide_y(void) {
         return;
     }
     row = row_of((int16_t)(y_pos + height - 1));
-    if (terrain_solid_at(left_col, row) != 0U || terrain_solid_at(right_col, row) != 0U) {
+    // one probe a side: a solid cell always stops him, and a thin platform - 1-3's tree top -
+    // stops only feet that crossed its deck line this frame, so a jump from under it passes through
+    floor = terrain_floor_at(left_col, row);
+    if ((floor & kFloorSolid) == 0U && right_col != left_col) {
+        floor = (uint8_t)(floor | terrain_floor_at(right_col, row));
+    }
+    if ((floor & kFloorSolid) != 0U ||
+        ((floor & kFloorThin) != 0U && (int16_t)(prev_y + height) <= (int16_t)(row << 4))) {
         y_pos = (int16_t)(((int16_t)(row << 4)) - height);
         y_speed = 0;
         y_accum = 0;
@@ -323,11 +345,42 @@ static void collide_y(void) {
         return;
     }
     // already resting exactly on a block top: the box clears the row below, so probe it directly
-    if ((y_pos & 15) == 0 && (terrain_solid_at(left_col, (int16_t)(row + 1)) != 0U ||
-                              terrain_solid_at(right_col, (int16_t)(row + 1)) != 0U)) {
+    if ((y_pos & 15) == 0 && (terrain_floor_at(left_col, (int16_t)(row + 1)) != 0U ||
+                              terrain_floor_at(right_col, (int16_t)(row + 1)) != 0U)) {
         y_speed = 0;
         y_accum = 0;
         on_ground = 1;
+    }
+}
+
+// the lift decks, probed after the terrain: the same crossed-the-deck-line rule a thin platform
+// uses, and the slot he lands on is the one that carries him next frame
+static void collide_lifts(void) {
+    const uint8_t height = foot_h();
+    const int16_t feet = (int16_t)(y_pos + height);
+    const int16_t was = (int16_t)(prev_y + height);
+    uint8_t i;
+
+    riding = 0xFF;
+    if (y_speed < 0) {
+        return;
+    }
+    for (i = 0; i < hazard_lift_count; ++i) {
+        const int16_t deck = hazard_lift_y[i];
+
+        if (feet < deck || was > deck) {
+            continue;
+        }
+        if ((uint16_t)(x_pos + kPlayerHitInsetPx + kPlayerHitWidthPx) <= hazard_lift_x[i] ||
+            (uint16_t)(hazard_lift_x[i] + kLiftWidthPx) <= (uint16_t)(x_pos + kPlayerHitInsetPx)) {
+            continue;
+        }
+        y_pos = (int16_t)(deck - height);
+        y_speed = 0;
+        y_accum = 0;
+        on_ground = 1;
+        riding = i;
+        return;
     }
 }
 
@@ -363,18 +416,17 @@ static void step_anim(void) {
 // the pole's cells are walk-through, so contact is a box overlap against the compiled shaft rather
 // than a terrain_solid_at hit
 static uint8_t touching_flag(void) {
-#if LEVEL_1_1_HAS_FLAG
-    if (col_of(hit_left()) > (int16_t)LEVEL_1_1_FLAG_COLUMN ||
-        col_of(hit_right()) < (int16_t)LEVEL_1_1_FLAG_COLUMN) {
+    if (level->has_flag == 0U) {
         return 0;
     }
-    return (row_of(head_y()) <= (int16_t)LEVEL_1_1_FLAG_BASE_ROW &&
-            row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)LEVEL_1_1_FLAG_TOP_ROW)
+    if (col_of(hit_left()) > (int16_t)level->flag_column ||
+        col_of(hit_right()) < (int16_t)level->flag_column) {
+        return 0;
+    }
+    return (row_of(head_y()) <= (int16_t)level->flag_base_row &&
+            row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)level->flag_top_row)
                ? 1U
                : 0U;
-#else
-    return 0;
-#endif
 }
 
 void player_place(uint16_t column, uint8_t surface_row) {
@@ -385,6 +437,9 @@ void player_place(uint16_t column, uint8_t surface_row) {
     y_pos = (int16_t)((int16_t)((int16_t)surface_row << 4) - (int16_t)foot_h());
     y_speed = 0;
     y_accum = 0;
+    prev_y = y_pos;
+    riding = 0xFF;
+    clear_axe = 0;
     jump_origin_y = y_pos;
     on_ground = 1;
     jump_tier = 0;
@@ -400,6 +455,13 @@ void player_place(uint16_t column, uint8_t surface_row) {
 }
 
 void player_init(void) {
+    uint8_t i;
+
+    for (i = 0; i < 4U; ++i) {
+        // never a real tile or property, so the first draw of a fresh level writes all four
+        drawn_mario_tile[i] = 0xFF;
+        drawn_mario_prop[i] = 0xFF;
+    }
     assets_load_sprite_tiles();
     assets_load_sprite_palettes();
     assets_load_item_tiles();
@@ -408,7 +470,7 @@ void player_init(void) {
 
     big = 0;
     crouched = 0;
-    player_place((uint16_t)LEVEL_1_1_START_COLUMN, (uint8_t)LEVEL_1_1_START_ROW);
+    player_place((uint16_t)level->start_column, (uint8_t)level->start_row);
     SHOW_SPRITES;
 }
 
@@ -447,6 +509,7 @@ void player_begin_pipe_down(void) {
     y_speed = 0;
     y_accum = 0;
     on_ground = 0;
+    riding = 0xFF;
     facing_left = 0;
     skidding = 0;
     anim_frame = kFrameIdle;
@@ -481,13 +544,27 @@ uint8_t player_pipe_update(void) {
 }
 
 uint8_t player_update(uint8_t keys) {
+    // the deck he was on has already moved this frame, so his carry is applied before anything
+    // else: the crossy insight, pixel for pixel rather than re-snapped afterwards
+    if (riding < hazard_lift_count) {
+        const int16_t carried = (int16_t)((int16_t)x_pos + hazard_lift_dx[riding]);
+
+        x_pos = (carried < 0) ? 0U : (uint16_t)carried;
+        y_pos = (int16_t)(y_pos + hazard_lift_dy[riding]);
+    }
     // crouching is a grounded pose only; must-measure whether smbd keeps it through a jump
     crouched = (big != 0U && on_ground != 0U && (keys & J_DOWN) != 0U) ? 1U : 0U;
     step_speed(keys);
     move_x();
     collide_x();
+    prev_y = y_pos;
     step_vertical(keys);
     collide_y();
+    if (hazard_lift_count != 0U) {
+        collide_lifts();
+    } else {
+        riding = 0xFF;
+    }
     step_anim();
     a_prev = (keys & J_A) != 0U ? 1U : 0U;
     // the whole body has to clear the level's bottom edge, so a pit fall really does go off screen
@@ -498,31 +575,37 @@ uint8_t player_update(uint8_t keys) {
     return touching_flag() != 0U ? kPlayerFlag : kPlayerAlive;
 }
 
-void player_begin_clear(void) {
-    x_pos = (uint16_t)((uint16_t)LEVEL_1_1_FLAG_COLUMN << 4);
+void player_begin_clear(uint8_t from) {
+    clear_axe = (from == (uint8_t)kClearFromAxe) ? 1U : 0U;
+    if (clear_axe == 0U) {
+        x_pos = (uint16_t)((uint16_t)level->flag_column << 4);
+    }
     stop_x();
     y_speed = 0;
     y_accum = 0;
     on_ground = 0;
     facing_left = 0;
     skidding = 0;
-    anim_frame = kFrameJump;
+    riding = 0xFF;
     walk_step = 0;
-    clear_phase = kClearSlide;
+    // a castle's clear has no pole to come down, so it starts at the walk-off the slide feeds into
+    anim_frame = clear_axe != 0U ? (uint8_t)kFrameWalk0 : (uint8_t)kFrameJump;
+    clear_phase = clear_axe != 0U ? (uint8_t)kClearWalk : (uint8_t)kClearSlide;
     clear_timer = 0;
 }
 
 // the pole's base: the row under the shaft's last cell is the ground mario's feet come to rest on
 static int16_t clear_base_y(void) {
-    return (int16_t)((int16_t)((int16_t)(LEVEL_1_1_FLAG_BASE_ROW + 1U) << 4) - (int16_t)foot_h());
+    return (int16_t)((int16_t)((int16_t)(level->flag_base_row + 1U) << 4) - (int16_t)foot_h());
 }
 
 // the column the walk-off ends at, kept inside the compiled level however short its tail is
 static uint16_t clear_walk_x(void) {
-    uint16_t column = (uint16_t)(LEVEL_1_1_FLAG_COLUMN + kClearWalkBlocks);
+    uint16_t column =
+        (uint16_t)((clear_axe != 0U ? level->axe_column : level->flag_column) + (uint16_t)kClearWalkBlocks);
 
-    if (column > (uint16_t)(LEVEL_1_1_LENGTH_COLUMNS - 1U)) {
-        column = (uint16_t)(LEVEL_1_1_LENGTH_COLUMNS - 1U);
+    if (column > (uint16_t)(level_columns - 1U)) {
+        column = (uint16_t)(level_columns - 1U);
     }
     return (uint16_t)(column << 4);
 }
@@ -589,10 +672,14 @@ static void draw_row(uint8_t slot, uint8_t tile, uint8_t prop, int16_t sx, int16
     const uint8_t left_tile = facing_left != 0U ? (uint8_t)(tile + 2U) : tile;
     const uint8_t right_tile = facing_left != 0U ? tile : (uint8_t)(tile + 2U);
 
-    set_sprite_tile(slot, left_tile);
-    set_sprite_tile((uint8_t)(slot + 1U), right_tile);
-    set_sprite_prop(slot, prop);
-    set_sprite_prop((uint8_t)(slot + 1U), prop);
+    if (drawn_mario_tile[slot] != left_tile || drawn_mario_prop[slot] != prop) {
+        drawn_mario_tile[slot] = left_tile;
+        drawn_mario_prop[slot] = prop;
+        set_sprite_tile(slot, left_tile);
+        set_sprite_tile((uint8_t)(slot + 1U), right_tile);
+        set_sprite_prop(slot, prop);
+        set_sprite_prop((uint8_t)(slot + 1U), prop);
+    }
     move_sprite(slot, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
     move_sprite((uint8_t)(slot + 1U), (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
 }
@@ -667,4 +754,8 @@ int16_t player_feet(void) {
 
 uint8_t player_box_height(void) {
     return (uint8_t)(foot_h() - (crouched != 0U ? kCrouchInsetPx : 0));
+}
+
+uint8_t player_riding(void) {
+    return riding;
 }

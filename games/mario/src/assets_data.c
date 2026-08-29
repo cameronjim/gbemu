@@ -107,13 +107,30 @@ static const uint8_t kCoinTiles[64] = {
     0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, // br
 };
 
+// m8a's four bg tiles, in pipe-family then flag-family order: the thin platform's plank and the
+// empty cell under it, then lava's crested surface and its fill
+static const uint8_t kThinLavaTiles[64] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xAA, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // deck
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // under
+    0x66, 0x99, 0xFF, 0x66, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, // crest
+    0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, // fill
+};
+
+// the bridge plank, then the axe head standing on its handle
+static const uint8_t kBridgeAxeTiles[32] = {
+    0xFF, 0xFF, 0xFF, 0x00, 0xDB, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x3C, 0x3C, 0x7E, 0x7E, 0x7E, 0x7E, 0x3C, 0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18,
+};
+
 void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileGroundTop, 3, kGroundTiles);
     set_bkg_data(kTileBrick, 1, kBrickTile);
     set_bkg_data(kTileQuestionTl, 4, kQuestionTiles);
     set_bkg_data(kTileSpentTl, 4, kSpentTiles);
     set_bkg_data(kTilePipeTl, 4, kPipeTiles);
+    set_bkg_data(kTileThin, 4, kThinLavaTiles);
     set_bkg_data(kTileFlagPole, 2, kFlagCastleTiles);
+    set_bkg_data(kTileBridge, 2, kBridgeAxeTiles);
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
 }
 
@@ -157,6 +174,27 @@ void assets_load_bg_palettes_underground(void) BANKED {
     set_bkg_palette(kCamPalNeutral, 1, neutral);
     set_bkg_palette(kCamPalSpent, 1, spent);
     set_bkg_palette(kCamPalCoin, 1, coin);
+}
+
+void assets_load_bg_palettes_castle(void) BANKED {
+    // the same eight slots again, drained to castle stone. lava takes the coin slot, which no
+    // castle grid paints a world coin with, so the one warm ramp on screen is the pit
+    palette_color_t sky[4] = {RGB(1, 1, 3), RGB(3, 3, 6), RGB(5, 5, 9), RGB(7, 7, 11)};
+    palette_color_t ground[4] = {RGB(1, 1, 3), RGB(17, 16, 15), RGB(12, 11, 11), RGB(21, 20, 19)};
+    palette_color_t brick[4] = {RGB(1, 1, 3), RGB(14, 13, 13), RGB(18, 17, 17), RGB(9, 9, 10)};
+    palette_color_t question[4] = {RGB(1, 1, 3), RGB(24, 18, 3), RGB(28, 22, 4), RGB(20, 14, 2)};
+    palette_color_t pipe[4] = {RGB(1, 1, 3), RGB(20, 20, 22), RGB(14, 14, 16), RGB(8, 8, 10)};
+    palette_color_t neutral[4] = {RGB(1, 1, 3), RGB(24, 24, 26), RGB(17, 17, 19), RGB(28, 28, 30)};
+    palette_color_t spent[4] = {RGB(1, 1, 3), RGB(9, 9, 10), RGB(7, 7, 8), RGB(5, 5, 6)};
+    palette_color_t lava[4] = {RGB(1, 1, 3), RGB(31, 24, 6), RGB(28, 9, 1), RGB(16, 3, 0)};
+    set_bkg_palette(kCamPalSky, 1, sky);
+    set_bkg_palette(kCamPalGround, 1, ground);
+    set_bkg_palette(kCamPalBrick, 1, brick);
+    set_bkg_palette(kCamPalQuestion, 1, question);
+    set_bkg_palette(kCamPalPipe, 1, pipe);
+    set_bkg_palette(kCamPalNeutral, 1, neutral);
+    set_bkg_palette(kCamPalSpent, 1, spent);
+    set_bkg_palette(kCamPalCoin, 1, lava);
 }
 
 void assets_load_sprite_palettes(void) BANKED {
@@ -377,6 +415,41 @@ void assets_load_item_tiles(void) BANKED {
     set_sprite_data(kTileFlowerFirst, kFlowerTileCount, kFlowerTiles);
 }
 
+// m8a's four actors, one 8x16 pair each: a piranha head over its stem, a firebar flame in the top
+// half of its pair, a lift plank in the top half of its own, and the fake bowser
+static const uint8_t kHazardTiles[128] = {
+    0x00, 0x00, 0x3C, 0x3C, 0x42, 0x7E, 0xA5, 0xDB,
+    0xA5, 0xDB, 0x42, 0x7E, 0x24, 0x3C, 0x18, 0x18, // piranha top
+    0x18, 0x18, 0x18, 0x18, 0x3C, 0x24, 0x3C, 0x24,
+    0x3C, 0x24, 0x3C, 0x24, 0x00, 0x00, 0x00, 0x00, // piranha bottom
+    0x18, 0x18, 0x3C, 0x24, 0x7E, 0x5A, 0x7E, 0x42,
+    0x7E, 0x42, 0x3C, 0x24, 0x18, 0x18, 0x00, 0x00, // flame, upper half of the pair
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // flame lower half, blank
+    0xFF, 0xFF, 0xFF, 0x00, 0xDB, 0xFF, 0xFF, 0x00,
+    0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // lift deck, upper half of the pair
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // lift lower half, blank
+    0x00, 0x00, 0x07, 0x07, 0x1F, 0x18, 0x3F, 0x20,
+    0x37, 0x28, 0x3F, 0x20, 0x7F, 0x40, 0x7F, 0x40, // fake bowser top
+    0x7F, 0x58, 0x7F, 0x40, 0x3F, 0x20, 0x3F, 0x30,
+    0x1F, 0x1F, 0x3B, 0x38, 0x33, 0x30, 0x00, 0x00, // fake bowser bottom
+};
+
 void assets_load_enemy_tiles(void) BANKED {
     set_sprite_data(kTileEnemyFirst, kEnemyTileCount, kEnemyTiles);
+}
+
+void assets_load_hazard_tiles(void) BANKED {
+    set_sprite_data(kTileHazardFirst, kHazardTileCount, kHazardTiles);
+}
+
+void assets_load_enemy_palettes_castle(void) BANKED {
+    // no koopa and no piranha stands in a castle, so the koopa slot is re-tinted for the fake
+    // bowser: roster.json calls the nes original grayish-blue with yellow hair. m9's real bowser
+    // gets art of his own
+    palette_color_t goomba[4] = {RGB(0, 0, 0), RGB(31, 28, 22), RGB(20, 11, 4), RGB(6, 3, 1)};
+    palette_color_t bowser[4] = {RGB(0, 0, 0), RGB(30, 28, 8), RGB(9, 14, 12), RGB(3, 5, 6)};
+    set_sprite_palette(kPalGoomba, 1, goomba);
+    set_sprite_palette(kPalKoopa, 1, bowser);
 }

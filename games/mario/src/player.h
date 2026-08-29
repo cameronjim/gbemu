@@ -8,6 +8,10 @@
 #define kPlayerFell 1U
 #define kPlayerFlag 2U
 
+// the clear sequence starts at the pole for a level with one and at the axe for a castle
+#define kClearFromFlag 0U
+#define kClearFromAxe 1U
+
 // the level-clear sequence's phases, in the order player_clear_update walks them
 #define kClearSlide 0U
 #define kClearHop 1U
@@ -38,8 +42,9 @@ uint8_t player_pipe_update(void);
 // one frame of smb physics from the held-button mask; returns one of the kPlayer* codes above
 uint8_t player_update(uint8_t keys);
 
-// snaps mario onto the flag pole and arms the clear sequence; call once on kPlayerFlag
-void player_begin_clear(void);
+// snaps mario onto the flag pole and arms the clear sequence; call once on kPlayerFlag. a castle
+// has no pole, so kClearFromAxe skips the slide and walks him off from where he stands
+void player_begin_clear(uint8_t from);
 
 // one frame of the clear sequence (slide, hop off, walk to the castle, hold); 1 when it is over
 uint8_t player_clear_update(void);
@@ -81,5 +86,9 @@ uint8_t player_box_height(void);
 // where his feet are in world px; the camera's default band is measured off this, not off the box
 // top, so growing to 16x32 leaves the view where it was
 int16_t player_feet(void);
+
+// the lift slot he is riding, or 0xff. the crossy insight: the deck carries him pixel for pixel,
+// applied before his own step so the two never disagree by a frame
+uint8_t player_riding(void);
 
 #endif

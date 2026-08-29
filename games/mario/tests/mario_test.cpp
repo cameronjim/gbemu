@@ -4607,8 +4607,8 @@ TEST_CASE("mario_side_contact_respawns") {
     replay(gameboy, walk.script, 0, walk.script.size());
     replay(gameboy, into, 0, into.size());
 
-    // m7 replaces this with the shrink chain; for now the touch costs him the level
-    run(gameboy, 90);
+    // m8b's death beat holds, leaps him and drops him through the floor before the level reloads
+    run(gameboy, 200);
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.top == kStandTop);
@@ -5182,12 +5182,13 @@ TEST_CASE("mario_star_invincibility") {
 
 namespace {
 
-// the title's level select, kLevelSelect in mario.h: down steps forward through world one before
-// start begins it, so a probe of 1-4 costs one boot instead of three cleared levels
+// the title's level select, kLevelSelect in mario.h: right steps forward through world one before
+// start begins it, so a probe of 1-4 costs one boot instead of three cleared levels. m8b moved it
+// off up/down, which the new-game/continue menu took over
 void enter_level(gb::Gameboy& gameboy, int level) {
     run(gameboy, kBootFrames);
     for (int i = 0; i < level; ++i) {
-        press(gameboy, gb::Button::Down, 2);
+        press(gameboy, gb::Button::Right, 2);
         run(gameboy, 2);
     }
     press(gameboy, gb::Button::Start, 2);
@@ -5750,4 +5751,461 @@ TEST_CASE("mario_warp_zone_teleports") {
     // and down the leftmost pipe: the data says 1-4, so the castle comes up
     press(gameboy, gb::Button::Down, 4);
     REQUIRE(wait_for_sky(gameboy, kSkyCastle, 300) >= 0);
+}
+
+// --- sub-milestone 8b: hud, lives, cards and the battery slot ----------------------------------
+
+namespace {
+
+// the hud's five digit sprites, at the tile ids and screen columns games/mario/src/mario.h pins
+constexpr uint8_t kTileDigitLo = 0x8C;
+constexpr uint8_t kTileDigitHi = 0x9F;
+constexpr int kHudRowY = 8;
+constexpr int kHudCoinX = 8;
+constexpr int kHudTimeX = 128;
+constexpr int kHudCoinDigits = 2;
+constexpr int kHudTimeDigits = 3;
+
+// the card rows title.c prints on, all measured off kTitleRow
+constexpr uint32_t kCardWorldRow = kTitleRow + 2;
+constexpr uint32_t kCardPauseScoreRow = kTitleRow + 4;
+constexpr uint32_t kCardLivesRow = kTitleRow + 6;
+constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
+constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
+constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
+// the menu entries the battery slot adds under the prompt
+constexpr uint32_t kMenuNewGameRow = kPromptRow + 2;
+constexpr uint32_t kMenuContinueRow = kPromptRow + 3;
+// gbdk's ibm font puts ascii '0' on tile 0x10
+constexpr uint8_t kFontDigitLo = 0x10;
+constexpr uint8_t kFontDigitHi = 0x19;
+// roster.json's per-tick time bonus, which the clear card converts the whole countdown at
+constexpr int kTimeBonus = kTimeBonusPoints;
+constexpr int kShortTimerTicks = 70;
+constexpr int kStartLives = 3;
+// how long a is held at the pole to clear its top row entirely, which is what misses the contact
+constexpr int kFlagClearHold = 12;
+constexpr int kTimerFramesPerTick = 24;
+// the kContent* contract again, for the one entry the earlier mirrors did not need
+constexpr uint8_t kContentOneup = 4;
+
+// the digit drawn in the 8 px sprite column starting at screen x, or -1 when none is
+int hud_digit(const gb::Gameboy& gameboy, int x0) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    for (int y = kHudRowY; y < kHudRowY + 8; ++y) {
+        for (int x = x0; x < x0 + 8; ++x) {
+            const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
+            if ((id & 0x100u) == 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(id);
+            if (tile >= kTileDigitLo && tile <= kTileDigitHi) {
+                return (tile - kTileDigitLo) / 2;
+            }
+        }
+    }
+    return -1;
+}
+
+int hud_number(const gb::Gameboy& gameboy, int x0, int digits) {
+    int value = 0;
+    for (int i = 0; i < digits; ++i) {
+        const int digit = hud_digit(gameboy, x0 + i * 8);
+        if (digit < 0) {
+            return -1;
+        }
+        value = value * 10 + digit;
+    }
+    return value;
+}
+
+int hud_coins(const gb::Gameboy& gameboy) {
+    return hud_number(gameboy, kHudCoinX, kHudCoinDigits);
+}
+
+int hud_time(const gb::Gameboy& gameboy) {
+    return hud_number(gameboy, kHudTimeX, kHudTimeDigits);
+}
+
+// the decimal number printed across one card row in the bg font, or -1 when the row holds no digits
+int card_number(const gb::Gameboy& gameboy, uint32_t row) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int value = -1;
+    for (uint32_t cx = 0; cx < 20; ++cx) {
+        const uint16_t id = ids[(row * 8 + 3) * gb::kLcdWidth + cx * 8 + 3];
+        if ((id & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(id);
+        if (tile < kFontDigitLo || tile > kFontDigitHi) {
+            continue;
+        }
+        value = (value < 0 ? 0 : value) * 10 + (tile - kFontDigitLo);
+    }
+    return value;
+}
+
+// a card is up whenever the backdrop is the title's own sky rather than a level's
+bool on_card(const gb::Gameboy& gameboy) {
+    return sky_color(gameboy) == kSkyTitle;
+}
+
+// the timer lab, kTimerLab in mario.h: a from the title starts the selected level with a countdown
+// short enough to watch run out. a real 400 is 9600 frames of idling for one probe
+void enter_timer_lab(gb::Gameboy& gameboy) {
+    run(gameboy, kBootFrames);
+    press(gameboy, gb::Button::A, 2);
+    for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, kLevelSettleFrames);
+}
+
+// the death beat drops mario clean off the level before it reloads, so a respawn is him going
+// away and coming back; waiting for the start cell alone would answer yes before he ever died
+int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
+    int i = 0;
+
+    for (; i < cap && mario_at(gameboy).found; ++i) {
+        gameboy.run_frame();
+    }
+    for (; i < cap; ++i) {
+        gameboy.run_frame();
+        if (at_start_cell(gameboy)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// pauses, reads the lives the card prints, and resumes. the card's lcd-off rewrite outruns a whole
+// host frame, and the rom only samples the pad at the top of its loop, so the resume press has to
+// wait for the burst to drain or the edge lands while nothing is reading
+constexpr int kCardSettleFrames = 60;
+
+int paused_lives(gb::Gameboy& gameboy) {
+    int lives = -1;
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && lives < 0; ++i) {
+        gameboy.run_frame();
+        lives = card_number(gameboy, kCardLivesRow);
+    }
+    run(gameboy, kCardSettleFrames);
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, 8);
+    return lives;
+}
+
+// the pole, taken two ways. 1-1's closing staircase climbs to one block short of the shaft, so
+// walking straight on lands the contact at the very top of it; the only lower contact the compiled
+// geometry allows is to jump clean over the pole - a long enough hold clears its top row, which is
+// what makes touching_flag miss - and walk back into it from the flat ground on the far side
+Route plan_flag_contact(bool low) {
+    const uint16_t pole = static_cast<uint16_t>(kHostLevels[kLevel11].flag_column * kBlockPx);
+    Route route = plan_route(static_cast<uint16_t>(pole - 2 * kBlockPx), false, 4000);
+    PlayerSim sim = route.end;
+    const int hold = low ? kFlagClearHold : 0;
+    bool past = false;
+
+    route.reached = false;
+    for (int i = 0; i < 300; ++i) {
+        const uint8_t in = static_cast<uint8_t>(kInRight | kInB | (i < hold ? kInA : 0));
+
+        route.script.push_back(in);
+        sim.step(in);
+        if (sim.at_flag()) {
+            route.reached = true;
+            return (route.end = sim, route);
+        }
+        if (sim.dead()) {
+            return (route.end = sim, route);
+        }
+        if (sim.on_ground != 0 &&
+            PlayerSim::col_of(sim.hit_left()) > static_cast<int16_t>(kHostLevels[kLevel11].flag_column)) {
+            past = true;
+            break;
+        }
+    }
+    if (!past) {
+        route.end = sim;
+        return route;
+    }
+    for (int i = 0; i < 300; ++i) {
+        route.script.push_back(kInLeft);
+        sim.step(kInLeft);
+        if (sim.at_flag()) {
+            route.reached = true;
+            break;
+        }
+        if (sim.dead()) {
+            break;
+        }
+    }
+    route.end = sim;
+    return route;
+}
+
+// plays a run to the pole and answers with the points it scored before the clear card's time
+// bonus: the card converts every remaining tick at kTimeBonus, so the bonus subtracts back out
+int base_score_after(gb::Gameboy& gameboy, const Route& route) {
+    int at_contact = -1;
+
+    replay(gameboy, route.script, 0, route.script.size());
+    for (int i = 0; i < 900 && !on_card(gameboy); ++i) {
+        const int now = hud_time(gameboy);
+
+        if (now >= 0) {
+            at_contact = now;
+        }
+        gameboy.run_frame();
+    }
+    REQUIRE(at_contact >= 0);
+    // the card converts eight ticks a frame, so a couple of hundred frames sees it out
+    for (int i = 0; i < 400 && card_number(gameboy, kCardClearTimeRow) != 0; ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(card_number(gameboy, kCardClearTimeRow) == 0);
+    return card_number(gameboy, kCardClearScoreRow) - at_contact * kTimeBonus;
+}
+
+} // namespace
+
+TEST_CASE("mario_hud_shows_coins_and_timer") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const LevelBlock* block = block_holding(kContentCoin, 9);
+    REQUIRE(block != nullptr);
+    const BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // the level's own countdown, straight out of the bible json through the compiler
+    REQUIRE(hud_coins(gameboy) == 0);
+    const int start = hud_time(gameboy);
+    REQUIRE(start > 0);
+    REQUIRE(start <= static_cast<int>(kHostLevels[kLevel11].timer));
+
+    // one tick every kTimerFramesPerTick frames; a whole ten of them, so a frame of scanout lag
+    // cannot pass for a missed tick
+    constexpr int kTicks = 10;
+    run(gameboy, kTimerFramesPerTick * kTicks);
+    const int later = hud_time(gameboy);
+    REQUIRE(later >= start - kTicks - 1);
+    REQUIRE(later <= start - kTicks + 1);
+
+    // and the question block's coin moves the counter
+    replay(gameboy, plan.script, 0, plan.script.size());
+    run(gameboy, 40);
+    REQUIRE(hud_coins(gameboy) == 1);
+    REQUIRE(hud_time(gameboy) < later);
+}
+
+TEST_CASE("mario_timer_death") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const LevelBlock* block = block_holding(kContentCoin, 9);
+    REQUIRE(block != nullptr);
+    const BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_timer_lab(gameboy);
+    REQUIRE(hud_time(gameboy) <= kShortTimerTicks);
+
+    // spend the block, so the reload has something to have put back
+    replay(gameboy, plan.script, 0, plan.script.size());
+    run(gameboy, 40);
+    REQUIRE(hud_coins(gameboy) == 1);
+
+    // idle out the rest of the countdown: the death beat runs and the level comes back
+    REQUIRE(wait_for_respawn(gameboy, kTimerFramesPerTick * kShortTimerTicks + 400) >= 0);
+    REQUIRE(hud_time(gameboy) <= kShortTimerTicks);
+    // one of the three lives is gone
+    REQUIRE(paused_lives(gameboy) == kStartLives - 1);
+
+    // and the block is lit again: bumping it a second time pays a second coin, which a spent one
+    // never would
+    replay(gameboy, plan.script, 0, plan.script.size());
+    run(gameboy, 40);
+    REQUIRE(hud_coins(gameboy) == 2);
+}
+
+TEST_CASE("mario_lives_and_game_over") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_timer_lab(gameboy);
+
+    // three deaths, each one idled out on the lab's short countdown
+    const int window = kTimerFramesPerTick * kShortTimerTicks + 400;
+    REQUIRE(wait_for_respawn(gameboy, window) >= 0);
+    REQUIRE(paused_lives(gameboy) == kStartLives - 1);
+    REQUIRE(wait_for_respawn(gameboy, window) >= 0);
+    REQUIRE(paused_lives(gameboy) == kStartLives - 2);
+
+    // the third takes the last life: a card, then the title
+    bool over = false;
+    for (int i = 0; i < window && !over; ++i) {
+        gameboy.run_frame();
+        // "GAME OVER" is nine glyphs where the title's own wordmark is six, so the span names it
+        over = on_card(gameboy) && glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) ==
+                                       std::pair<int, int>{5, 13};
+    }
+    REQUIRE(over);
+    REQUIRE(card_number(gameboy, kCardOverScoreRow) >= 0);
+
+    // and the card hands back to the title, whose wordmark is the six glyph span
+    bool titled = false;
+    for (int i = 0; i < 300 && !titled; ++i) {
+        gameboy.run_frame();
+        titled =
+            glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{7, 12};
+    }
+    REQUIRE(titled);
+}
+
+TEST_CASE("mario_oneup_grants_a_life") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // 1-1's only 1-up is the hidden block, which pays it out where he stands under it
+    const LevelBlock* block = hidden_block();
+    REQUIRE(block != nullptr);
+    REQUIRE(block->content == kContentOneup);
+    const BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    REQUIRE(paused_lives(gameboy) == kStartLives);
+
+    replay(gameboy, plan.script, 0, plan.script.size());
+    // the item rises a whole block and then walks off it, so he has to go after it
+    run(gameboy, 90);
+    gameboy.set_button(gb::Button::Right, true);
+    run(gameboy, 120);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 20);
+    REQUIRE(paused_lives(gameboy) == kStartLives + 1);
+}
+
+TEST_CASE("mario_pause_freezes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    gameboy.set_button(gb::Button::Right, true);
+    run(gameboy, 60);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 30);
+
+    const Mario before = mario_at(gameboy);
+    const int time_before = hud_time(gameboy);
+    REQUIRE(before.found);
+    REQUIRE(time_before > 0);
+
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 120 && !on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(on_card(gameboy));
+    // the card carries the lives and the level the in-level hud has no room for
+    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
+    REQUIRE(card_number(gameboy, kCardWorldRow) == 11);
+    REQUIRE(card_number(gameboy, kCardPauseScoreRow) >= 0);
+
+    // the world is frozen: right does nothing at all for as long as the card is up
+    gameboy.set_button(gb::Button::Right, true);
+    run(gameboy, 120);
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(!mario_at(gameboy).found);
+
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, 4);
+    const Mario after = mario_at(gameboy);
+    REQUIRE(after.found);
+    REQUIRE(after.left == before.left);
+    REQUIRE(after.top == before.top);
+    // and the countdown stood still while it was up
+    REQUIRE(hud_time(gameboy) == time_before);
+}
+
+TEST_CASE("mario_flag_scoring") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route high = plan_flag_contact(false);
+    const Route low = plan_flag_contact(true);
+    REQUIRE(high.reached);
+    REQUIRE(low.reached);
+    // the twin says the two really do touch the shaft in different bands
+    REQUIRE(high.end.y_pos < low.end.y_pos);
+
+    gb::Gameboy walker;
+    REQUIRE(walker.load_rom(rom));
+    enter_play(walker);
+    const int walked = base_score_after(walker, low);
+    REQUIRE(walked > 0);
+
+    gb::Gameboy jumper;
+    REQUIRE(jumper.load_rom(rom));
+    enter_play(jumper);
+    const int jumped = base_score_after(jumper, high);
+    REQUIRE(jumped > walked);
+}
+
+TEST_CASE("mario_save_and_continue") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+
+    gb::Gameboy first;
+    REQUIRE(first.load_rom(rom));
+    // a fresh cart has no progress, so the title is the one-line prompt
+    run(first, kBootFrames);
+    REQUIRE(glyph_span(first, kMenuContinueRow, kFontFirstTile + 1, kFontLastTile).first < 0);
+    press(first, gb::Button::Start, 2);
+    run(first, 64);
+    replay(first, route.script, 0, route.script.size());
+    // through the clear card and into 1-2, which is the level the slot records
+    REQUIRE(wait_for_sky(first, kSkyUnderground, 900) >= 0);
+
+    const std::vector<uint8_t> saved(first.external_ram().begin(), first.external_ram().end());
+    REQUIRE(saved[0] == 'M');
+    REQUIRE(saved[1] == 'A');
+    REQUIRE(saved[2] == 'R');
+    REQUIRE(saved[3] == '1');
+    REQUIRE(saved[4] == 1);
+
+    gb::Gameboy second;
+    REQUIRE(second.load_rom(rom));
+    const std::span<uint8_t> ram = second.external_ram();
+    REQUIRE(ram.size() == saved.size());
+    std::copy(saved.begin(), saved.end(), ram.begin());
+
+    run(second, kBootFrames);
+    // the slot puts both entries on the card
+    REQUIRE(glyph_span(second, kMenuNewGameRow, kFontFirstTile + 1, kFontLastTile).first >= 0);
+    REQUIRE(glyph_span(second, kMenuContinueRow, kFontFirstTile + 1, kFontLastTile).first >= 0);
+
+    // down moves onto CONTINUE, and start opens the level the slot saved rather than 1-1
+    press(second, gb::Button::Down, 2);
+    run(second, 8);
+    press(second, gb::Button::Start, 2);
+    for (int i = 0; i < 300 && !mario_at(second).found; ++i) {
+        second.run_frame();
+    }
+    run(second, kLevelSettleFrames);
+    REQUIRE(sky_color(second) == kSkyUnderground);
+    // a continue starts small with a fresh set of lives, per systems.md's english-build behaviour
+    REQUIRE(paused_lives(second) == kStartLives);
 }

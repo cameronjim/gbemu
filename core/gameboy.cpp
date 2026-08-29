@@ -8,7 +8,8 @@ namespace gb {
 
 namespace {
 constexpr std::array<uint8_t, 4> kStateMagic = {'G', 'B', 'S', 'T'};
-constexpr uint32_t kStateVersion = 1;
+// v2: banked vram/wram and the cgb bank registers; v1 blobs are rejected
+constexpr uint32_t kStateVersion = 2;
 } // namespace
 
 namespace {
@@ -23,7 +24,11 @@ bool Gameboy::load_rom(std::span<const uint8_t> bytes) {
         return false;
     }
     cart_ = std::move(cart);
+    cgb_mode_ = cart_->cgb();
     bus_.attach_mapper(cart_->mapper());
+    bus_.set_cgb_mode(cgb_mode_);
+    ppu_.set_cgb_mode(cgb_mode_);
+    cpu_.set_boot_state(cgb_mode_);
     return true;
 }
 

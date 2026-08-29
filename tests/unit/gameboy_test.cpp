@@ -157,3 +157,46 @@ TEST_CASE("load_rom_rejects_invalid_bytes") {
     REQUIRE(gameboy.cycles() == 0);
     REQUIRE(gameboy.framebuffer().size() == 23040u);
 }
+
+TEST_CASE("cgb_mode_follows_the_cart_header") {
+    gb::Gameboy dmg;
+    REQUIRE(dmg.load_rom(make_test_rom()));
+    REQUIRE(!dmg.cgb_mode());
+
+    gb::Gameboy dual;
+    REQUIRE(dual.load_rom(make_test_rom(0x00, 0x00, 0x8000, 0x80)));
+    REQUIRE(dual.cgb_mode());
+
+    gb::Gameboy only;
+    REQUIRE(only.load_rom(make_test_rom(0x00, 0x00, 0x8000, 0xC0)));
+    REQUIRE(only.cgb_mode());
+}
+
+TEST_CASE("boot_registers_match_the_machine_mode") {
+    gb::Gameboy dmg;
+    REQUIRE(dmg.load_rom(make_test_rom()));
+    const gb::CpuRegs& d = dmg.debug_regs();
+    REQUIRE(d.a == 0x01);
+    REQUIRE(d.f == 0xB0);
+    REQUIRE(d.b == 0x00);
+    REQUIRE(d.c == 0x13);
+    REQUIRE(d.d == 0x00);
+    REQUIRE(d.e == 0xD8);
+    REQUIRE(d.h == 0x01);
+    REQUIRE(d.l == 0x4D);
+
+    gb::Gameboy cgb;
+    REQUIRE(cgb.load_rom(make_test_rom(0x00, 0x00, 0x8000, 0xC0)));
+    const gb::CpuRegs& c = cgb.debug_regs();
+    // games detect a cgb by a == 0x11 at entry
+    REQUIRE(c.a == 0x11);
+    REQUIRE(c.f == 0x80);
+    REQUIRE(c.b == 0x00);
+    REQUIRE(c.c == 0x00);
+    REQUIRE(c.d == 0xFF);
+    REQUIRE(c.e == 0x56);
+    REQUIRE(c.h == 0x00);
+    REQUIRE(c.l == 0x0D);
+    REQUIRE(c.sp == 0xFFFE);
+    REQUIRE(c.pc == 0x0100);
+}

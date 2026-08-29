@@ -117,3 +117,72 @@ TEST_CASE("nonarchitectural_state_survives") {
     g2.save_state(b2);
     REQUIRE(b1 == b2);
 }
+
+namespace {
+
+// cgb cart that parks data in vram bank 1 and wram bank 3, then scrolls
+std::vector<uint8_t> cgb_scroll_rom() {
+    std::vector<uint8_t> rom = make_test_rom(0x00, 0x00, 0x8000, 0xC0);
+    const uint8_t code[] = {
+        0x3E, 0xFF,       // ld a, 0xff
+        0xEA, 0x10, 0x80, // ld (0x8010), a
+        0x3E, 0x01,       // ld a, 1
+        0xEA, 0x00, 0x98, // ld (0x9800), a
+        0x3E, 0x01,       // ld a, 1
+        0xE0, 0x4F,       // ldh (vbk), a
+        0x3E, 0xAA,       // ld a, 0xaa
+        0xEA, 0x00, 0x80, // ld (0x8000), a
+        0x3E, 0x03,       // ld a, 3
+        0xE0, 0x70,       // ldh (svbk), a
+        0x3E, 0x5A,       // ld a, 0x5a
+        0xEA, 0x00, 0xD0, // ld (0xd000), a
+        0x0C,             // loop: inc c
+        0x79,             // ld a, c
+        0xE0, 0x43,       // ldh (scx), a
+        0x18, 0xFA,       // jr loop
+    };
+    for (size_t i = 0; i < sizeof(code); ++i) {
+        rom[0x0100 + i] = code[i];
+    }
+    rom[0x014D] = test_rom_checksum(rom);
+    return rom;
+}
+
+} // namespace
+
+TEST_CASE("state_sections_size_the_banked_regions") {
+    REQUIRE(gb::Ppu::kStateSize == 16562u);
+    REQUIRE(gb::Bus::kStateSize == 32898u);
+}
+
+TEST_CASE("version_1_blobs_are_rejected") {
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(scroll_rom()));
+    run_frames(gameboy, 2);
+    std::vector<uint8_t> blob;
+    gameboy.save_state(blob);
+    REQUIRE(blob[4] == 2);
+    std::vector<uint8_t> v1 = blob;
+    v1[4] = 1;
+    REQUIRE(!gameboy.load_state(v1));
+    REQUIRE(gameboy.load_state(blob));
+}
+
+TEST_CASE("cgb_banked_state_roundtrips") {
+    gb::Gameboy g1;
+    REQUIRE(g1.load_rom(cgb_scroll_rom()));
+    REQUIRE(g1.cgb_mode());
+    run_frames(g1, 5);
+    std::vector<uint8_t> b1;
+    g1.save_state(b1);
+    gb::Gameboy g2;
+    REQUIRE(g2.load_rom(cgb_scroll_rom()));
+    REQUIRE(g2.load_state(b1));
+    std::vector<uint8_t> b2;
+    g2.save_state(b2);
+    // byte-identical re-save proves vram bank 1, wram bank 3, vbk and svbk all survived
+    REQUIRE(b1 == b2);
+    run_frames(g1, 3);
+    run_frames(g2, 3);
+    REQUIRE(fb_hash(g1) == fb_hash(g2));
+}

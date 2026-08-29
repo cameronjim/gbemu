@@ -5,6 +5,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
+#include "powerup.h"
 #include "terrain.h"
 
 #include <gb/cgb.h>
@@ -104,8 +105,9 @@ static void present(void) {
     terrain_set_scroll_x(camera_x());
     terrain_set_pan_y(camera_y());
     terrain_apply_scroll();
-    player_draw(camera_x(), camera_y());
+    player_draw(camera_x(), camera_y(), powerup_sprite_prop());
     blocks_draw(camera_x(), camera_y());
+    powerup_draw(camera_x(), camera_y());
     enemies_draw(camera_x(), camera_y());
     terrain_stream_window();
 }
@@ -115,12 +117,14 @@ static void present(void) {
 static void enter_play(void) {
     DISPLAY_OFF;
     current_area = kAreaMain;
+    powerup_reset();
     blocks_load_level();
+    blocks_set_player_big(0);
     blocks_enter_area(kAreaMain);
     terrain_init(kAreaMain);
     player_init();
     enemies_load_level();
-    camera_init(player_x(), player_y());
+    camera_init(player_x(), player_feet());
     present();
     SHOW_BKG;
     DISPLAY_ON;
@@ -135,7 +139,7 @@ static void enter_bonus_area(void) {
     enemies_enter_area(kAreaBonus);
     terrain_init(kAreaBonus);
     player_place((uint16_t)LEVEL_1_1_AREA0_START_COLUMN, (uint8_t)LEVEL_1_1_AREA0_START_ROW);
-    camera_init(player_x(), player_y());
+    camera_init(player_x(), player_feet());
     present();
     SHOW_BKG;
     DISPLAY_ON;
@@ -152,7 +156,7 @@ static void leave_bonus_area(void) {
     player_begin_pipe_up((uint16_t)LEVEL_1_1_AREA0_RETURN_COLUMN, (uint8_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW);
     // the camera is framed on where he ends up standing, not on the shaft he is still climbing out of
     camera_init((uint16_t)((uint16_t)LEVEL_1_1_AREA0_RETURN_COLUMN << 4),
-                (int16_t)(((int16_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW << 4) - kPlayerHeightPx));
+                (int16_t)((int16_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW << 4));
     present();
     SHOW_BKG;
     DISPLAY_ON;
@@ -195,9 +199,12 @@ void main(void) {
     uint8_t pressed = 0;
     uint8_t status = kPlayerAlive;
     uint8_t contact = kEnemyHitNone;
+    uint8_t taken = kItemNone;
+    uint8_t flags = 0;
 
     font_init();
     font_set(font_load(font_ibm));
+    powerup_init();
     enter_title();
 
     while (1) {
@@ -210,13 +217,16 @@ void main(void) {
         if (state == kStateTitle) {
             if ((pressed & J_START) != 0U) {
                 enemies_set_lab(0);
+                blocks_set_lab(0);
                 enter_play();
                 state = kStatePlay;
             }
 #if kEnemyLab
-            // the same level, seeded with the lab's denser roster; see kEnemyLab in mario.h
+            // the same level, seeded with the lab's denser roster and its second dispenser; see
+            // kEnemyLab in mario.h
             else if ((pressed & J_SELECT) != 0U) {
                 enemies_set_lab(1);
+                blocks_set_lab(1);
                 enter_play();
                 state = kStatePlay;
             }
@@ -231,6 +241,14 @@ void main(void) {
         }
 
         if (state == kStatePlay) {
+            // smb freezes the whole world for the grow and shrink animations, so the frame stops
+            // here: no physics, no camera, no blocks, no enemies, only the pose alternating
+            if (powerup_frozen() != 0U) {
+                powerup_update(keys, player_x(), player_y(), player_facing_left(), camera_x());
+                player_set_big(powerup_pose_big());
+                present();
+                continue;
+            }
             status = player_update(keys);
             if (status == kPlayerFell) {
                 enter_play();
@@ -262,21 +280,31 @@ void main(void) {
                 present();
                 continue;
             }
-            camera_update(player_x(), player_y(), player_on_ground(), player_standing(), keys);
-            blocks_update(player_x(), player_y(), camera_x());
+            camera_update(player_x(), player_feet(), player_on_ground(), player_standing(), keys);
+            taken = blocks_update(player_x(), player_box_top(), player_box_height(), camera_x());
+            if (taken != kItemNone && powerup_collect(taken) != 0U) {
+                present(); // the pickup froze the world; the next frame takes the branch above
+                continue;
+            }
             // the enemy pass runs last so it sees this frame's camera, and hands mario's reaction
             // back rather than reaching into him
-            contact =
-                enemies_update(player_x(), player_y(), player_y_speed(), player_on_ground(), camera_x());
-            if (contact == kEnemyHitDamage) {
-                // m7 replaces this with the shrink chain; for now damage is the pit fall's respawn
+            flags = (uint8_t)((player_on_ground() != 0U ? (uint8_t)kEnemyFlagGrounded : 0U) |
+                              (powerup_star() != 0U ? (uint8_t)kEnemyFlagStar : 0U) |
+                              (powerup_immune() != 0U ? (uint8_t)kEnemyFlagImmune : 0U));
+            contact = enemies_update(player_x(), player_box_top(), player_box_height(), player_y_speed(),
+                                     flags, camera_x());
+            if (contact == kEnemyHitDamage && powerup_damage() != 0U) {
+                // small mario has nothing left to lose; m8 turns this into lives and a death beat
                 enter_play();
                 continue;
             }
-            if (contact != kEnemyHitNone) {
+            if (contact > kEnemyHitDamage) {
                 player_stomp_bounce(contact == kEnemyHitShellStomp ? (int8_t)kEnemyShellBouncePx
                                                                    : (int8_t)kEnemyStompBouncePx);
             }
+            powerup_update(keys, player_x(), player_y(), player_facing_left(), camera_x());
+            player_set_big(powerup_pose_big());
+            blocks_set_player_big(powerup_big());
             present();
             continue;
         }
@@ -311,7 +339,7 @@ void main(void) {
                 continue;
             }
             // the sequence owns mario, so the camera tracks him as a supported-but-moving actor
-            camera_update(player_x(), player_y(), 1, 0, 0);
+            camera_update(player_x(), player_feet(), 1, 0, 0);
             present();
             continue;
         }

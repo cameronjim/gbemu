@@ -14,9 +14,10 @@ static uint8_t anchor;
 // is what keeps a jump from panning the camera (smbd's own auto behaviour is undocumented)
 static uint8_t band;
 
-// the window that leaves mario's feet kCamGroundOffsetPx above its bottom edge, clamped to the pan
-static uint8_t band_for(int16_t box_top) {
-    int16_t want = (int16_t)(box_top + kPlayerHeightPx + kCamGroundOffsetPx - (int16_t)kScreenHeightPx);
+// the window that leaves mario's feet kCamGroundOffsetPx above its bottom edge, clamped to the pan.
+// the feet rather than the box top, so growing to 16x32 does not jerk the view up half a block
+static uint8_t band_for(int16_t feet_y) {
+    int16_t want = (int16_t)(feet_y + kCamGroundOffsetPx - (int16_t)kScreenHeightPx);
 
     if (want < 0) {
         want = 0;
@@ -55,13 +56,13 @@ static void step_x(uint16_t mario_x) {
     cam_x = want;
 }
 
-static void step_y(int16_t box_top, uint8_t on_ground, uint8_t standing, uint8_t keys) {
+static void step_y(int16_t feet_y, uint8_t on_ground, uint8_t standing, uint8_t keys) {
     const uint8_t up = (keys & J_UP) != 0U ? 1U : 0U;
     const uint8_t down = (keys & J_DOWN) != 0U ? 1U : 0U;
     int16_t next = (int16_t)cam_y;
 
     if (on_ground != 0U) {
-        band = band_for(box_top);
+        band = band_for(feet_y);
     }
     if (standing != 0U) {
         // the manual pan: only a standing mario may move the view, and it stays where he left it
@@ -95,17 +96,17 @@ static void step_y(int16_t box_top, uint8_t on_ground, uint8_t standing, uint8_t
     cam_y = (uint8_t)next;
 }
 
-void camera_init(uint16_t mario_x, int16_t box_top) {
+void camera_init(uint16_t mario_x, int16_t feet_y) {
     anchor = (uint8_t)kCamFollowX;
-    band = band_for(box_top);
+    band = band_for(feet_y);
     cam_y = band;
     step_x(mario_x);
 }
 
-void camera_update(uint16_t mario_x, int16_t box_top, uint8_t on_ground, uint8_t standing, uint8_t keys) {
+void camera_update(uint16_t mario_x, int16_t feet_y, uint8_t on_ground, uint8_t standing, uint8_t keys) {
     step_anchor(keys);
     step_x(mario_x);
-    step_y(box_top, on_ground, standing, keys);
+    step_y(feet_y, on_ground, standing, keys);
 }
 
 uint16_t camera_x(void) {

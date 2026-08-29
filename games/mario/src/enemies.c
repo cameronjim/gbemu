@@ -378,14 +378,23 @@ static uint8_t stomp(Enemy* e) {
     return kEnemyHitStomp;
 }
 
-static uint8_t collide_player(uint16_t player_px, int16_t player_py, int8_t player_dy) {
+// a fireball or a star kill pays a flat per-kind figure and starts no chain. roster.json says the
+// star's consecutive-defeat scoring escalates but calls its smb1-era values must-verify, so the
+// escalation is left out rather than invented
+static void award_kill(uint8_t kind) {
+    points =
+        (uint16_t)(points + (kind == kEnemyKoopa ? (uint16_t)kKoopaKillPoints : (uint16_t)kGoombaKillPoints));
+}
+
+static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
+                              uint8_t flags) {
     const uint16_t left = (uint16_t)(player_px + kPlayerHitInsetPx);
     const uint16_t right = (uint16_t)(left + kPlayerHitWidthPx);
-    const int16_t feet = (int16_t)(player_py + kPlayerHeightPx);
+    const int16_t feet = (int16_t)(player_py + player_h);
     uint8_t hit = kEnemyHitNone;
-    uint8_t i;
+    uint8_t i = 0;
 
-    for (i = 0; i < live; ++i) {
+    while (i < live) {
         Enemy* e = &pool[i];
         uint16_t enemy_left;
         uint8_t from_above;
@@ -393,19 +402,29 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, int8_t play
 
         // a flattened goomba is scenery for the frames it has left
         if (e->state == kEnemySquashed) {
+            ++i;
             continue;
         }
         enemy_left = (uint16_t)(e->pos_x + kEnemyHitInsetPx);
         if (right <= enemy_left || (uint16_t)(enemy_left + kEnemyHitWidthPx) <= left) {
+            ++i;
             continue;
         }
         if (feet <= e->pos_y || (int16_t)(e->pos_y + kEnemyHeightPx) <= player_py) {
+            ++i;
             continue;
         }
         if (e->grace != 0U) {
+            ++i;
             continue;
         }
         from_above = (player_dy > 0 && feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
+        // the star takes anything it touches off the pool outright, stomp or not
+        if ((flags & kEnemyFlagStar) != 0U && from_above == 0U) {
+            award_kill(e->kind);
+            remove_at(i);
+            continue;
+        }
         if (e->state == kEnemyShellIdle) {
             // away from him: smb sends the shell out the side he touched it from
             e->dir =
@@ -421,6 +440,7 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, int8_t play
             if (from_above != 0U && hit < kEnemyHitShellStomp) {
                 hit = kEnemyHitShellStomp;
             }
+            ++i;
             continue;
         }
         if (from_above != 0U) {
@@ -428,11 +448,40 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, int8_t play
             if (code > hit) {
                 hit = code;
             }
+            ++i;
+            continue;
+        }
+        // the injury window swallows the touch entirely: neither of them is hurt by it
+        if ((flags & kEnemyFlagImmune) != 0U) {
+            ++i;
             continue;
         }
         return kEnemyHitDamage;
     }
     return hit;
+}
+
+uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED {
+    uint8_t i;
+
+    for (i = 0; i < live; ++i) {
+        Enemy* e = &pool[i];
+        const uint16_t enemy_left = (uint16_t)(e->pos_x + kEnemyHitInsetPx);
+
+        if (e->state == kEnemySquashed) {
+            continue;
+        }
+        if ((uint16_t)(px + kFireballPx) <= enemy_left || (uint16_t)(enemy_left + kEnemyHitWidthPx) <= px) {
+            continue;
+        }
+        if ((int16_t)(py + kFireballPx) <= e->pos_y || (int16_t)(e->pos_y + kEnemyHeightPx) <= py) {
+            continue;
+        }
+        award_kill(e->kind);
+        remove_at(i);
+        return 1;
+    }
+    return 0;
 }
 
 void enemies_set_lab(uint8_t on) BANKED {
@@ -484,8 +533,8 @@ void enemies_enter_area(uint8_t area) BANKED {
     enabled = (area == kAreaMain) ? 1U : 0U;
 }
 
-uint8_t enemies_update(uint16_t player_px, int16_t player_py, int8_t player_dy, uint8_t on_ground,
-                       uint16_t cam_x) BANKED {
+uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
+                       uint8_t flags, uint16_t cam_x) BANKED {
     uint8_t i;
 
     if (enabled == 0U) {
@@ -496,7 +545,7 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, int8_t player_dy, 
         return kEnemyHitNone;
     }
     // landing ends a stomp chain: the escalation only runs while he stays off the ground
-    if (on_ground != 0U) {
+    if ((flags & kEnemyFlagGrounded) != 0U) {
         stomp_chain = 0;
     }
     ++anim;
@@ -542,7 +591,8 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, int8_t player_dy, 
     if (live > 1U) {
         collide_enemies();
     }
-    i = (live != 0U) ? collide_player(player_px, player_py, player_dy) : (uint8_t)kEnemyHitNone;
+    i = (live != 0U) ? collide_player(player_px, player_py, player_h, player_dy, flags)
+                     : (uint8_t)kEnemyHitNone;
     despawn(cam_x);
     return i;
 }

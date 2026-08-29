@@ -24,9 +24,18 @@ void enemies_set_lab(uint8_t on) BANKED;
 // empties the pool and coming back leaves the cursor exactly where it was - smb never re-triggers
 void enemies_enter_area(uint8_t area) BANKED;
 
+// what mario's own state does to contact this frame, packed into one byte so the call stays cheap
+#define kEnemyFlagGrounded 0x01U
+#define kEnemyFlagStar 0x02U
+#define kEnemyFlagImmune 0x04U
+
 // one frame of spawning, motion, enemy-vs-enemy and enemy-vs-mario; returns a kEnemyHit* code
-uint8_t enemies_update(uint16_t player_px, int16_t player_py, int8_t player_dy, uint8_t on_ground,
-                       uint16_t cam_x) BANKED;
+uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
+                       uint8_t flags, uint16_t cam_x) BANKED;
+
+// an 8x8 fireball at (px, py): kills whatever it overlaps and pays the roster's flat per-kind
+// figure. 1 when it hit something, which is also the frame the ball itself is spent
+uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED;
 
 // writes each live enemy's two 8x16 sprites, or parks the ones that are gone or off screen
 void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED;

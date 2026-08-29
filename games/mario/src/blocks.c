@@ -71,8 +71,33 @@ static uint8_t hidden_block[LEVEL_1_1_BLOCK_COUNT];
 static uint8_t hidden_count;
 static uint8_t coins_taken;
 
-// kItem* indexes both the art block and the cgb sprite palette
-static const uint8_t kItemPalette[4] = {kPalMario, kPalMushroom, kPalStar, kPalOneup};
+// kItem* indexes both tables. the flower lives outside the 0xd0 family and has no palette slot of
+// its own, so it borrows the star's white/yellow set - see kPalFire in mario.h
+static const uint8_t kItemPalette[kItemKindCount] = {kPalMario, kPalMushroom, kPalStar, kPalOneup, kPalStar};
+static const uint8_t kItemTile[kItemKindCount] = {
+    kTileItemFirst,
+    kTileItemFirst,
+    kTileItemFirst + kItemTilesPerKind,
+    kTileItemFirst + 2U * kItemTilesPerKind,
+    kTileFlowerFirst,
+};
+
+#if kEnemyLab
+// the lab's second dispenser. 1-1 places its other mushroom_fire block at the top of a pyramid the
+// route planner cannot climb, and a flower resting on a block inside a run of them is unreachable:
+// the compiled hidden block is the level's one lone block with open sky all around it
+static uint8_t lab;
+#endif
+
+// the content the block actually pays out, which the lab rewrites for exactly one entry
+static uint8_t content_of(uint8_t index) {
+#if kEnemyLab
+    if (lab != 0U && level_1_1_block_kind[index] == kBlockListHidden) {
+        return kContentMushroom;
+    }
+#endif
+    return level_1_1_block_content[index];
+}
 
 static int16_t row_of(int16_t py) {
     return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
@@ -137,8 +162,9 @@ static void spawn_item(uint8_t content) {
     } else if (content == kContentOneup) {
         item_kind = kItemOneup;
     } else {
-        // mushroom_fire while mario is small is the mushroom; m7 gives big mario the flower instead
-        item_kind = kItemMushroom;
+        // smb picks at dispense time, not at bump time: a mushroom_fire block pays the flower only
+        // if mario is already grown when it opens
+        item_kind = player_big != 0U ? kItemFlower : kItemMushroom;
     }
     item_phase = kItemRising;
     item_timer = 0;
@@ -150,7 +176,7 @@ static void spawn_item(uint8_t content) {
 
 static void react(uint8_t index, int16_t column, int16_t row) {
     const uint8_t kind = level_1_1_block_kind[index];
-    const uint8_t content = level_1_1_block_content[index];
+    const uint8_t content = content_of(index);
     // a revealed hidden block is a used block from the moment it materializes
     uint8_t spend = (kind == kBlockListHidden) ? 1U : 0U;
 
@@ -389,16 +415,17 @@ static void item_fall(void) {
     item_grounded = 1;
 }
 
-static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint16_t bx, int16_t by, uint8_t width) {
+static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t ah, uint16_t bx, int16_t by, uint8_t width) {
     if (ax + kPlayerWidthPx <= bx || bx + width <= ax) {
         return 0;
     }
-    return (ay + kPlayerHeightPx > by && by + kPlayerHeightPx > ay) ? 1U : 0U;
+    return (ay + ah > by && by + kPlayerHeightPx > ay) ? 1U : 0U;
 }
 
-static void item_update(uint16_t player_px, int16_t player_py, uint16_t cam_x) {
+// the kItem* he picked up this frame, or kItemNone
+static uint8_t item_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x) {
     if (item_kind == kItemNone) {
-        return;
+        return kItemNone;
     }
     if (item_phase == kItemRising) {
         ++item_timer;
@@ -406,16 +433,18 @@ static void item_update(uint16_t player_px, int16_t player_py, uint16_t cam_x) {
         if (item_timer >= (uint8_t)(kItemRisePx * (int16_t)kItemRiseFramesPerPx)) {
             item_phase = kItemLoose;
         }
-    } else {
+    } else if (item_kind != kItemFlower) {
+        // roster.json: the flower is the one item that neither slides nor falls once it is out
         item_walk();
         item_fall();
     }
 
-    if (boxes_overlap(player_px, player_py, item_x, item_y, kPlayerWidthPx) != 0U) {
-        // collection counts the item and drops it; the effects themselves are m7
+    if (boxes_overlap(player_px, player_py, player_h, item_x, item_y, kPlayerWidthPx) != 0U) {
+        const uint8_t taken = item_kind;
+
         item_kind = kItemNone;
         ++items_taken;
-        return;
+        return taken;
     }
     // off either side of the view, or out the bottom of the level, and it is gone
     if (item_y > (int16_t)kLevelHeightPx ||
@@ -423,9 +452,10 @@ static void item_update(uint16_t player_px, int16_t player_py, uint16_t cam_x) {
         (int16_t)item_x > (int16_t)(cam_x + kScreenWidthPx + kItemDespawnMarginPx)) {
         item_kind = kItemNone;
     }
+    return kItemNone;
 }
 
-static void collect_world_coins(uint16_t player_px, int16_t player_py) {
+static void collect_world_coins(uint16_t player_px, int16_t player_py, uint8_t player_h) {
     uint8_t i;
     uint8_t column;
     uint16_t cx;
@@ -444,7 +474,7 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py) {
         }
         cx = (uint16_t)((uint16_t)level_1_1_area0_coin_column[i] << 4);
         cy = (int16_t)((int16_t)level_1_1_area0_coin_row[i] << 4);
-        if (boxes_overlap(player_px, player_py, cx, cy, kBlockPx) == 0U) {
+        if (boxes_overlap(player_px, player_py, player_h, cx, cy, kBlockPx) == 0U) {
             continue;
         }
         coin_taken[i] = 1;
@@ -455,7 +485,9 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py) {
     }
 }
 
-void blocks_update(uint16_t player_px, int16_t player_py, uint16_t cam_x) {
+uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x) {
+    uint8_t taken;
+
     if (bump_timer != 0U) {
         --bump_timer;
         if (bump_timer == 0U) {
@@ -470,8 +502,9 @@ void blocks_update(uint16_t player_px, int16_t player_py, uint16_t cam_x) {
             coin_active = 0;
         }
     }
-    item_update(player_px, player_py, cam_x);
-    collect_world_coins(player_px, player_py);
+    taken = item_update(player_px, player_py, player_h, cam_x);
+    collect_world_coins(player_px, player_py, player_h);
+    return taken;
 }
 
 static void hide(uint8_t slot) {
@@ -501,7 +534,7 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y) {
             }
         } else {
             item_shown = 1;
-            tile = (uint8_t)(kTileItemFirst + (uint8_t)((item_kind - 1U) * kItemTilesPerKind));
+            tile = kItemTile[item_kind];
             set_sprite_tile(kSpriteItemL, tile);
             set_sprite_tile(kSpriteItemR, (uint8_t)(tile + 2U));
             set_sprite_prop(kSpriteItemL, kItemPalette[item_kind]);
@@ -544,4 +577,12 @@ uint8_t blocks_items_taken(void) {
 
 void blocks_set_player_big(uint8_t big) {
     player_big = big;
+}
+
+void blocks_set_lab(uint8_t on) {
+#if kEnemyLab
+    lab = on;
+#else
+    (void)on;
+#endif
 }

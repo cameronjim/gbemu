@@ -216,8 +216,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/camera.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
                     ${GB_MARIO_LEVEL_C}
                     ${GB_MARIO_LEVEL_AREAS_C}
                     ${GB_MARIO_LEVEL_OBJECTS_C}
@@ -226,8 +228,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/camera.c games/mario/src/camera.h
                     games/mario/src/player.c games/mario/src/player.h
                     games/mario/src/blocks.c games/mario/src/blocks.h
+                    games/mario/src/powerup.c games/mario/src/powerup.h
                     games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
+                    games/mario/src/assets_data.c
                     ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
                     ${GB_MARIO_LEVEL_GRID_H} ${GB_MARIO_LEVEL_AREAS_C}
                     ${GB_MARIO_LEVEL_OBJECTS_C} ${GB_MARIO_PHYSICS_H}

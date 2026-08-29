@@ -35,8 +35,9 @@ uint8_t blocks_hidden_at(int16_t column, int16_t row);
 // a head bump from below landed on this cell: bounce it, and pay out whatever it holds
 void blocks_head_bump(int16_t column, int16_t row);
 
-// one frame of the bounce, the loose item and the coin pop, plus world-coin pickup in a sub-area
-void blocks_update(uint16_t player_px, int16_t player_py, uint16_t cam_x);
+// one frame of the bounce, the loose item and the coin pop, plus world-coin pickup in a sub-area.
+// returns the kItem* he picked up this frame, or kItemNone; the effects are powerup.c's business
+uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x);
 
 // writes the item and coin-pop sprites for this frame, or parks them off screen
 void blocks_draw(uint16_t cam_x, uint8_t cam_y);
@@ -45,7 +46,12 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y);
 uint16_t blocks_coins(void);
 uint8_t blocks_items_taken(void);
 
-// m7 flips this when mario grows; until then the brick-break path is compiled but never taken
+// grown mario breaks bricks instead of bouncing them, and a mushroom_fire block pays him a flower
 void blocks_set_player_big(uint8_t big);
+
+// debug: the next blocks_load_level turns the compiled hidden block into a second mushroom_fire
+// dispenser, which is the only cell in 1-1 where a flower ends up somewhere a test can reach it.
+// see kEnemyLab in mario.h; select from the title arms both this and the enemy lab
+void blocks_set_lab(uint8_t on);
 
 #endif

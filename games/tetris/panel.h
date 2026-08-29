@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 
-// loads the compact panel hud font (digits and letters) into vram; call once at boot
+// recolors stock font glyphs (digits and letters) onto the panel backdrop shade and stores the
+// copies at their own dedicated tile ids; call from enter_play, after the title's font_color
+// has run and with the lcd off (see main.c: kept out of boot so it never nudges the rng seed
+// timing, which is captured from the free-running frame counter before any start press)
 void panel_build_font(void);
 
 // draws the labels and zeroes score/level/lines; call after well_init with the lcd off

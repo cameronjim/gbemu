@@ -236,6 +236,11 @@ static void enter_play(uint8_t seed) {
     load_play_tiles();
     load_play_palettes();
     well_init();
+    // the title's own font_color call has already recolored the stock glyphs by the time any
+    // start press can reach here, so the panel's copies are always built from the right source.
+    // done here rather than at boot so it never perturbs the boot-to-first-press cycle count the
+    // rng seed below is timed against
+    panel_build_font();
     panel_init();
     pieces_seed(seed);
     SHOW_SPRITES;
@@ -339,7 +344,6 @@ void main(void) {
 
     font_init();
     font_set(font_load(font_ibm));
-    panel_build_font();
     set_bkg_data(kBorderTileId, 1, kBorderTile);
     SPRITES_8x8;
     SHOW_BKG;

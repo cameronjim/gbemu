@@ -76,12 +76,13 @@
 #define kNextBoxCols 4U
 #define kNextBoxRows 2U
 
-// a dedicated digit tile block, so tests read numbers off the bg directly
+// a dedicated digit tile block, so tests read numbers off the bg directly. these hold recolored
+// copies of the stock ibm font's own digit glyphs (see panel_build_font), not a separate font.
 #define kDigitTileId 0x80U
 #define kDigitCount 10U
-// compact panel hud font: thin 3x5 glyphs for c e i l n o r s t v x, parked right after the
-// digits. panel text reads as a small font on the panel's own dark chrome shade, never the
-// full-block ascii font used by the title and game-over card.
+// recolored copies of the stock font's c e i l n o r s t v x, parked right after the digits.
+// same letterforms as the title and game-over card, just sitting on the panel's dark chrome
+// shade instead of the font's own boxed background.
 #define kPanelLetterTileId 0x8AU
 #define kPanelLetterCount 11U
 

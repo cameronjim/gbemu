@@ -20,11 +20,4 @@ extern const palette_color_t kPiecePalettes[28];
 // well black, panel dark, wall slate, flash white
 extern const palette_color_t kChromePalette[4];
 
-// compact panel hud glyphs: a thin 3x5 stroke (index 3) on an index-1 background, the same shade
-// kBackdropTile paints, so under the chrome palette the cell reads through to the panel backdrop
-// instead of a solid highlight box. digits 0-9, in order.
-extern const uint8_t kPanelDigitTiles[10][16];
-// letters, in the exact order panel.c's glyph lookup string expects: "CEILNORSTVX"
-extern const uint8_t kPanelLetterTiles[11][16];
-
 #endif

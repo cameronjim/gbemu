@@ -12,6 +12,10 @@ static uint32_t drawn_score;
 static uint16_t lines;
 static uint8_t level;
 
+// letters this panel ever prints: score, level, lines, next. order matches the recolored
+// glyph block panel_build_font writes starting at kPanelLetterTileId
+static const char kPanelLetters[] = "CEILNORSTVX";
+
 static void draw_number(uint8_t col, uint8_t row, uint32_t value, uint8_t width) {
     uint8_t tiles[kScoreDigits];
     uint8_t i;
@@ -22,9 +26,6 @@ static void draw_number(uint8_t col, uint8_t row, uint32_t value, uint8_t width)
     }
     set_bkg_tiles(col, row, width, 1, tiles);
 }
-
-// letters this panel ever prints: score, level, lines, next. order matches kPanelLetterTiles
-static const char kPanelLetters[] = "CEILNORSTVX";
 
 static uint8_t panel_glyph_tile(char c) {
     uint8_t i;
@@ -37,7 +38,8 @@ static uint8_t panel_glyph_tile(char c) {
     return kPanelLetterTileId; // unreached: every panel label is drawn from kPanelLetters
 }
 
-// "SCORE", "LEVEL", "LINES", "NEXT" through the compact hud font, not the console/ascii font
+// "SCORE", "LEVEL", "LINES", "NEXT" through the panel's own glyph tiles (title letterforms
+// recolored onto the panel backdrop), not the console/ascii font's own boxed tile range
 static void draw_panel_text(uint8_t col, uint8_t row, const char* text) {
     uint8_t tiles[5]; // longest panel label ("SCORE"/"LEVEL"/"LINES") is 5 chars
     uint8_t n = 0;
@@ -49,14 +51,30 @@ static void draw_panel_text(uint8_t col, uint8_t row, const char* text) {
     set_bkg_tiles(col, row, n, 1, tiles);
 }
 
+// by the time any start press can reach here the title has already run font_color, so the stock
+// ibm font sits in vram as index0 background / index3 ink; swapping every background pixel to
+// index1 drops it straight onto the panel backdrop with no boxed cell, while the high plane (the
+// ink shape) is untouched so the letterform is pixel-identical to the title's own glyph
+static void copy_panel_glyph(uint8_t dst_tile, char c) {
+    uint8_t glyph[kTileBytes];
+    uint8_t src_tile = (uint8_t)(kFontFirstTile + (uint8_t)c - kFontFirstChar);
+    uint8_t row;
+
+    get_bkg_data(src_tile, 1, glyph);
+    for (row = 0; row < kTileBytes; row += 2U) {
+        glyph[row] = 0xFFU; // low plane byte; high plane (row+1) keeps the ink shape as-is
+    }
+    set_bkg_data(dst_tile, 1, glyph);
+}
+
 void panel_build_font(void) {
     uint8_t i;
 
     for (i = 0; i < kDigitCount; ++i) {
-        set_bkg_data((uint8_t)(kDigitTileId + i), 1, kPanelDigitTiles[i]);
+        copy_panel_glyph((uint8_t)(kDigitTileId + i), (char)('0' + i));
     }
     for (i = 0; i < kPanelLetterCount; ++i) {
-        set_bkg_data((uint8_t)(kPanelLetterTileId + i), 1, kPanelLetterTiles[i]);
+        copy_panel_glyph((uint8_t)(kPanelLetterTileId + i), kPanelLetters[i]);
     }
 }
 

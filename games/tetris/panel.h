@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-// clones the font's digit glyphs into the dedicated digit tile block; call once at boot
-void panel_build_digits(void);
+// loads the compact panel hud font (digits and letters) into vram; call once at boot
+void panel_build_font(void);
 
 // draws the labels and zeroes score/level/lines; call after well_init with the lcd off
 void panel_init(void);

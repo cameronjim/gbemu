@@ -58,21 +58,25 @@ constexpr int kTitleRow = 7;
 constexpr int kPromptRow = 10;
 constexpr int kBestRow = 12;
 
-// right panel geometry, mirrored from tetris.h. every value (and the next box) is right-aligned
-// to end at column 19; every label starts at column 15, a column right of the score value.
-constexpr int kPanelLabelCol = 15;
+// right panel geometry, mirrored from tetris.h. the panel is six cells, columns 14-19; every
+// label, value, and the next box centers within that span.
+constexpr int kScoreLabelCol = 14;
+constexpr int kScoreLabelRow = 1;
 constexpr int kScoreValueRow = 2;
 constexpr int kScoreValueCol = 14;
 constexpr int kScoreDigits = 6;
 constexpr int kLevelValueRow = 6;
-constexpr int kLevelValueCol = 18;
+constexpr int kLevelValueCol = 16;
 constexpr int kLevelDigits = 2;
 constexpr int kLinesValueRow = 10;
-constexpr int kLinesValueCol = 17;
+constexpr int kLinesValueCol = 15;
 constexpr int kLinesDigits = 3;
 constexpr uint8_t kDigitTileId = 0x80;
-constexpr int kNextBoxRow = 16;
-constexpr int kNextBoxCol = 16;
+// compact panel hud font's letter block, mirrored from tetris.h; order matches panel.c's lookup
+constexpr uint8_t kPanelLetterTileId = 0x8A;
+constexpr int kPanelLetterCount = 11;
+constexpr int kNextBoxRow = 15;
+constexpr int kNextBoxCol = 15;
 constexpr int kNextBoxCols = 4;
 constexpr int kNextBoxRows = 2;
 
@@ -590,6 +594,18 @@ constexpr uint8_t font_tile(char c) {
     return static_cast<uint8_t>(kFontFirstTile + static_cast<uint8_t>(c) - kFontFirstChar);
 }
 
+// mirrors panel.c's glyph lookup: the compact hud font only covers the panel's own labels
+uint8_t panel_letter_tile(char c) {
+    static constexpr char kPanelLetters[] = "CEILNORSTVX";
+    for (int i = 0; i < kPanelLetterCount; ++i) {
+        if (kPanelLetters[i] == c) {
+            return static_cast<uint8_t>(kPanelLetterTileId + i);
+        }
+    }
+    FAIL("letter not in the panel's compact hud font: " << c);
+    return 0;
+}
+
 bool row_has_tile(const gb::Gameboy& gameboy, int row, uint8_t tile) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     for (int y = row * 8; y < row * 8 + 8; ++y) {
@@ -1089,6 +1105,25 @@ TEST_CASE("the_panel_digits_start_at_zero") {
     REQUIRE(read_score(gameboy) == 0u);
     REQUIRE(read_level(gameboy) == 0u);
     REQUIRE(read_lines(gameboy) == 0u);
+}
+
+TEST_CASE("the_score_label_sits_centered_in_the_six_column_panel") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // "SCORE" is 5 wide in a 6-wide panel (14-19); centering with a left bias lands it at 14-18
+    static constexpr char kLabel[] = "SCORE";
+    for (int i = 0; kLabel[i] != '\0'; ++i) {
+        REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kScoreLabelCol + i, kScoreLabelRow)) ==
+                panel_letter_tile(kLabel[i]));
+    }
+    // column 19, the panel's last column, must be untouched: no compact-font glyph tile there
+    const uint16_t spare = tile_at(gameboy, kScoreLabelCol + 5, kScoreLabelRow);
+    REQUIRE((spare & 0x100u) == 0);
+    const uint8_t spare_tile = static_cast<uint8_t>(spare);
+    REQUIRE((spare_tile < kPanelLetterTileId || spare_tile >= kPanelLetterTileId + kPanelLetterCount));
 }
 
 TEST_CASE("a_line_clear_scores_the_classic_table_times_level_plus_one") {

@@ -1,12 +1,11 @@
 #include "panel.h"
 
+#include "assets.h"
 #include "pieces.h"
 #include "tetris.h"
 
 #include <gb/gb.h>
-#include <gbdk/console.h>
 #include <stdint.h>
-#include <stdio.h>
 
 static uint32_t score;
 static uint32_t drawn_score;
@@ -24,25 +23,48 @@ static void draw_number(uint8_t col, uint8_t row, uint32_t value, uint8_t width)
     set_bkg_tiles(col, row, width, 1, tiles);
 }
 
-void panel_build_digits(void) {
-    uint8_t glyph[kTileBytes];
-    uint8_t d;
+// letters this panel ever prints: score, level, lines, next. order matches kPanelLetterTiles
+static const char kPanelLetters[] = "CEILNORSTVX";
 
-    for (d = 0; d < kDigitCount; ++d) {
-        get_bkg_data((uint8_t)(kFontFirstTile + (uint8_t)('0' + d) - kFontFirstChar), 1, glyph);
-        set_bkg_data((uint8_t)(kDigitTileId + d), 1, glyph);
+static uint8_t panel_glyph_tile(char c) {
+    uint8_t i;
+
+    for (i = 0; i < kPanelLetterCount; ++i) {
+        if (kPanelLetters[i] == c) {
+            return (uint8_t)(kPanelLetterTileId + i);
+        }
+    }
+    return kPanelLetterTileId; // unreached: every panel label is drawn from kPanelLetters
+}
+
+// "SCORE", "LEVEL", "LINES", "NEXT" through the compact hud font, not the console/ascii font
+static void draw_panel_text(uint8_t col, uint8_t row, const char* text) {
+    uint8_t tiles[5]; // longest panel label ("SCORE"/"LEVEL"/"LINES") is 5 chars
+    uint8_t n = 0;
+
+    while (text[n] != '\0') {
+        tiles[n] = panel_glyph_tile(text[n]);
+        ++n;
+    }
+    set_bkg_tiles(col, row, n, 1, tiles);
+}
+
+void panel_build_font(void) {
+    uint8_t i;
+
+    for (i = 0; i < kDigitCount; ++i) {
+        set_bkg_data((uint8_t)(kDigitTileId + i), 1, kPanelDigitTiles[i]);
+    }
+    for (i = 0; i < kPanelLetterCount; ++i) {
+        set_bkg_data((uint8_t)(kPanelLetterTileId + i), 1, kPanelLetterTiles[i]);
     }
 }
 
 void panel_init(void) {
-    gotoxy(kPanelLabelCol, kScoreLabelRow);
-    printf("SCORE");
-    gotoxy(kPanelLabelCol, kLevelLabelRow);
-    printf("LEVEL");
-    gotoxy(kPanelLabelCol, kLinesLabelRow);
-    printf("LINES");
-    gotoxy(kPanelLabelCol, kNextLabelRow);
-    printf("NEXT");
+    draw_panel_text(kScoreLabelCol, kScoreLabelRow, "SCORE");
+    draw_panel_text(kLevelLabelCol, kLevelLabelRow, "LEVEL");
+    draw_panel_text(kLinesLabelCol, kLinesLabelRow, "LINES");
+    draw_panel_text(kNextLabelCol, kNextLabelRow, "NEXT");
 
     score = 0;
     lines = 0;

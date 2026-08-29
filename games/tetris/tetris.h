@@ -51,32 +51,39 @@
 #define kWallLeftCol 2U
 #define kWallRightCol 13U
 
-// right panel: score, level, lines, and the next-piece box. the 6-digit score is the width
-// constraint: columns 14-19 is exactly six cells, so its value has no room for air off the wall.
-// every value (and the next box) is right-aligned to end at column 19; every label starts one
-// column right of where the score value starts, at column 15, so the label rows keep their gap.
-#define kPanelLabelCol 15U
+// right panel: score, level, lines, and the next-piece box. the panel is exactly six cells,
+// columns 14-19, right of the wall at column 13. every label, value, and the next box centers
+// within that span (start = 14 + (6-width)/2, rounded down, so an odd leftover column goes left).
+#define kScoreLabelCol 14U // "SCORE" width 5 -> 14-18
 #define kScoreLabelRow 1U
 #define kScoreValueRow 2U
-#define kScoreValueCol 14U
+#define kScoreValueCol 14U // 6 digits, fills the whole span -> 14-19
 #define kScoreDigits 6U
+#define kLevelLabelCol 14U // "LEVEL" width 5 -> 14-18
 #define kLevelLabelRow 5U
 #define kLevelValueRow 6U
-#define kLevelValueCol 18U
+#define kLevelValueCol 16U // 2 digits, centered -> 16-17
 #define kLevelDigits 2U
+#define kLinesLabelCol 14U // "LINES" width 5 -> 14-18
 #define kLinesLabelRow 9U
 #define kLinesValueRow 10U
-#define kLinesValueCol 17U
+#define kLinesValueCol 15U // 3 digits, centered -> 15-17
 #define kLinesDigits 3U
+#define kNextLabelCol 15U // "NEXT" width 4 -> 15-18
 #define kNextLabelRow 13U
-#define kNextBoxRow 16U
-#define kNextBoxCol 16U
+#define kNextBoxRow 15U // one blank row (14) under the label
+#define kNextBoxCol 15U // 4 wide, centered -> 15-18
 #define kNextBoxCols 4U
 #define kNextBoxRows 2U
 
-// a dedicated digit tile block cloned from the font, so tests read numbers off the bg directly
+// a dedicated digit tile block, so tests read numbers off the bg directly
 #define kDigitTileId 0x80U
 #define kDigitCount 10U
+// compact panel hud font: thin 3x5 glyphs for c e i l n o r s t v x, parked right after the
+// digits. panel text reads as a small font on the panel's own dark chrome shade, never the
+// full-block ascii font used by the title and game-over card.
+#define kPanelLetterTileId 0x8AU
+#define kPanelLetterCount 11U
 
 // classic scoring: single/double/triple/tetris, each times (level + 1)
 #define kLineScoreTable {40U, 100U, 300U, 1200U}

@@ -339,7 +339,7 @@ void main(void) {
 
     font_init();
     font_set(font_load(font_ibm));
-    panel_build_digits();
+    panel_build_font();
     set_bkg_data(kBorderTileId, 1, kBorderTile);
     SPRITES_8x8;
     SHOW_BKG;

@@ -171,11 +171,15 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                 ${CMAKE_SOURCE_DIR}/games/tetris/piece.c
                 ${CMAKE_SOURCE_DIR}/games/tetris/pieces.c
                 ${CMAKE_SOURCE_DIR}/games/tetris/well.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/panel.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/save.c
                 ${CMAKE_SOURCE_DIR}/games/tetris/assets.c
         DEPENDS games/tetris/main.c games/tetris/tetris.h
                 games/tetris/piece.c games/tetris/piece.h
                 games/tetris/pieces.c games/tetris/pieces.h
                 games/tetris/well.c games/tetris/well.h
+                games/tetris/panel.c games/tetris/panel.h
+                games/tetris/save.c games/tetris/save.h
                 games/tetris/assets.c games/tetris/assets.h
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "building tetris.gb with gbdk lcc"

@@ -40,13 +40,64 @@
 // play: bg and sprite palette slots 0-6 are the piece identity, 7 is the chrome
 #define kPalChrome 7U
 
-// the well sits left of center; columns 13-19 are the panel, filled in milestone 24
+// title screen best score, under press start
+#define kBestRow 12U
+
+// the well sits left of center; columns 13-19 are the panel
 #define kWellCols 10U
 #define kWellRows 18U
 #define kWellOriginCol 2U
 #define kWellOriginRow 0U
 #define kWallLeftCol 1U
 #define kWallRightCol 12U
+
+// right panel: score, level, lines, and the next-piece box
+#define kPanelCol 13U
+#define kScoreLabelRow 1U
+#define kScoreValueRow 2U
+#define kScoreDigits 6U
+#define kLevelLabelRow 4U
+#define kLevelValueRow 5U
+#define kLevelDigits 2U
+#define kLinesLabelRow 7U
+#define kLinesValueRow 8U
+#define kLinesDigits 3U
+#define kNextLabelRow 10U
+#define kNextBoxRow 11U
+#define kNextBoxCols 4U
+#define kNextBoxRows 2U
+
+// a dedicated digit tile block cloned from the font, so tests read numbers off the bg directly
+#define kDigitTileId 0x80U
+#define kDigitCount 10U
+
+// classic scoring: single/double/triple/tetris, each times (level + 1)
+#define kLineScoreTable {40U, 100U, 300U, 1200U}
+#define kScoreCap 999999UL
+#define kLinesCap 999U
+
+// classic gb-style curve: frames per row by level, index 0..kLevelMax
+#define kGravityTable                                                                                        \
+    {53U, 49U, 45U, 41U, 37U, 33U, 28U, 22U, 17U, 11U, 10U, 9U, 9U, 8U, 8U, 7U, 7U, 6U, 6U, 5U, 5U}
+#define kLevelMax 20U
+
+// battery sram, mbc1 bank 0: 4 magic bytes then the u32 best score little endian
+#define kSramBase 0xA000U
+#define kSaveMagic0 'T'
+#define kSaveMagic1 'T'
+#define kSaveMagic2 'R'
+#define kSaveMagic3 'S'
+#define kSaveBestOffset 4U
+
+// game over popup: a fixed band over the well; the bg never scrolls so placement is static
+#define kPopupCol 0U
+#define kPopupTopRow 5U
+#define kPopupRows 7U
+#define kPopupOverRow 0U
+#define kPopupScoreRow 2U
+#define kPopupTopScoreRow 4U
+#define kPopupPromptRow 6U
+#define kPopupRowsPerFrame 2U
 
 #define kCellPx 8U
 // oam coords are offset by 8,16 from the screen
@@ -70,8 +121,6 @@
 #define kSpawnCol 3
 #define kSpawnRow 0
 
-// gb original level 0: one row every 53 frames
-#define kGravityFrames 53U
 // hold to repeat: an initial delay then a step every few frames
 #define kDasDelay 15U
 #define kDasRepeat 6U

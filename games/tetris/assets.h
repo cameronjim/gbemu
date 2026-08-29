@@ -6,8 +6,8 @@
 
 // one solid 8x8 tile at 0x60, every pixel index 3; the border strip's own cgb palette colours it
 extern const uint8_t kBorderTile[16];
-// every pixel index 0: the empty well cell, black under the chrome palette
-extern const uint8_t kBlankTile[16];
+// the empty well cell: a beveled grid square, light top/left edge, dark bottom/right, chrome palette
+extern const uint8_t kGridTile[16];
 // every pixel index 1: the panel backdrop either side of the well
 extern const uint8_t kBackdropTile[16];
 // every pixel index 2: the well walls

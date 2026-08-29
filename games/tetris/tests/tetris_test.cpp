@@ -45,6 +45,40 @@ constexpr uint8_t kLockTileFirst = 0x70;
 constexpr uint8_t kLockTileLast = 0x76;
 constexpr uint8_t kPieceSpriteTileId = 0xE0;
 
+// the ibm font's ascii range, mirrored from tetris.h, for reading printed text off the bg
+constexpr uint8_t kFontFirstChar = 0x20;
+constexpr uint8_t kFontFirstTile = 0x00;
+constexpr int kScreenCols = 20;
+
+// title screen rows, mirrored from tetris.h
+constexpr int kTitleRow = 7;
+constexpr int kPromptRow = 10;
+constexpr int kBestRow = 12;
+
+// right panel geometry, mirrored from tetris.h
+constexpr int kPanelCol = 13;
+constexpr int kScoreValueRow = 2;
+constexpr int kScoreDigits = 6;
+constexpr int kLevelValueRow = 5;
+constexpr int kLevelDigits = 2;
+constexpr int kLinesValueRow = 8;
+constexpr int kLinesDigits = 3;
+constexpr uint8_t kDigitTileId = 0x80;
+constexpr int kNextBoxRow = 11;
+constexpr int kNextBoxCols = 4;
+constexpr int kNextBoxRows = 2;
+
+// game over popup band, mirrored from tetris.h
+constexpr int kPopupTopRow = 5;
+constexpr int kPopupRows = 7;
+constexpr int kPopupOverRow = 0;
+constexpr int kPopupScoreRow = 2;
+constexpr int kPopupTopScoreRow = 4;
+constexpr int kPopupPromptRow = 6;
+
+// battery sram: 'T','T','R','S' then a u32 best score, little endian
+constexpr size_t kSaveBestOffset = 4;
+
 size_t count_lit_pixels(std::span<const uint8_t> fb) {
     size_t lit = 0;
     for (uint8_t shade : fb) {
@@ -461,6 +495,52 @@ PieceResult play_piece(gb::Gameboy& gameboy, int min_lines) {
     return drop_and_settle(gameboy, count_locked(read_grid(gameboy)));
 }
 
+// like drop_and_settle, but never touches down: gravity alone brings the piece home, so no
+// soft-drop points accrue. used where a test needs to predict the exact score of a clear.
+PieceResult settle_without_soft_drop(gb::Gameboy& gameboy, int locked_before) {
+    PieceResult result;
+    result.locked_before = locked_before;
+
+    for (int i = 0; i < 1200; ++i) {
+        gameboy.run_frame();
+        const Grid grid = read_grid(gameboy);
+        if (count_locked(grid) != locked_before || any_flash(grid)) {
+            break;
+        }
+    }
+    for (int i = 0; i < 8; ++i) {
+        gameboy.run_frame();
+        result.flash_rows = std::max(result.flash_rows, count_flash_rows(read_grid(gameboy)));
+    }
+    for (int i = 0; i < 300; ++i) {
+        const Grid grid = read_grid(gameboy);
+        if (!any_flash(grid) && !piece_cells(gameboy).empty()) {
+            break;
+        }
+        gameboy.run_frame();
+    }
+    result.locked_after = count_locked(read_grid(gameboy));
+    result.ok = true;
+    return result;
+}
+
+// plays one piece like play_piece, but settles it with gravity alone (see settle_without_soft_drop)
+PieceResult play_piece_no_soft_drop(gb::Gameboy& gameboy, int min_lines) {
+    PieceResult result;
+    if (!wait_for_piece(gameboy, 300)) {
+        return result;
+    }
+    const std::array<Shape, 4> shapes = probe_rotations(gameboy);
+    const Grid grid = occupancy(read_grid(gameboy));
+    const Choice choice = choose_placement(grid, shapes, min_lines);
+    if (choice.rot < 0) {
+        return result;
+    }
+    rotate_to(gameboy, shapes[choice.rot]);
+    steer_to(gameboy, choice.left);
+    return settle_without_soft_drop(gameboy, count_locked(read_grid(gameboy)));
+}
+
 // soft drops the piece where it stands, used to skip past a piece a test does not want
 void drop_in_place(gb::Gameboy& gameboy) {
     REQUIRE(wait_for_piece(gameboy, 300));
@@ -487,6 +567,99 @@ uint16_t cell_color(const gb::Gameboy& gameboy, int cx, int cy) {
     const int x = (kWellOriginCol + cx) * 8 + 4;
     const int y = (kWellOriginRow + cy) * 8 + 4;
     return gameboy.framebuffer_color()[pixel_index(x, y)];
+}
+
+// like cell_id/cell_color but against absolute screen tile coordinates, for the panel and popup
+uint16_t tile_at(const gb::Gameboy& gameboy, int col, int row) {
+    return gameboy.framebuffer_tiles()[pixel_index(col * 8 + 4, row * 8 + 4)];
+}
+
+uint16_t color_at(const gb::Gameboy& gameboy, int col, int row, int dx, int dy) {
+    return gameboy.framebuffer_color()[pixel_index(col * 8 + dx, row * 8 + dy)];
+}
+
+constexpr uint8_t font_tile(char c) {
+    return static_cast<uint8_t>(kFontFirstTile + static_cast<uint8_t>(c) - kFontFirstChar);
+}
+
+bool row_has_tile(const gb::Gameboy& gameboy, int row, uint8_t tile) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    for (int y = row * 8; y < row * 8 + 8; ++y) {
+        for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
+            const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
+            if ((id & 0x100u) == 0 && static_cast<uint8_t>(id) == tile) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// reads every dedicated digit tile (kDigitTileId + d) found in a row, left to right, as one number
+uint32_t read_panel_number(const gb::Gameboy& gameboy, int row, int width) {
+    uint32_t value = 0;
+    for (int col = 0; col < width; ++col) {
+        const uint16_t id = tile_at(gameboy, kPanelCol + col, row);
+        REQUIRE((id & 0x100u) == 0);
+        const uint8_t tile = static_cast<uint8_t>(id);
+        REQUIRE(tile >= kDigitTileId);
+        REQUIRE(tile < kDigitTileId + 10);
+        value = value * 10 + (tile - kDigitTileId);
+    }
+    return value;
+}
+
+uint32_t read_score(const gb::Gameboy& gameboy) {
+    return read_panel_number(gameboy, kScoreValueRow, kScoreDigits);
+}
+
+uint32_t read_level(const gb::Gameboy& gameboy) {
+    return read_panel_number(gameboy, kLevelValueRow, kLevelDigits);
+}
+
+uint32_t read_lines(const gb::Gameboy& gameboy) {
+    return read_panel_number(gameboy, kLinesValueRow, kLinesDigits);
+}
+
+// concatenates whatever plain font digit tiles sit in a row; used for the title/popup text lines
+uint32_t read_number_from_row(const gb::Gameboy& gameboy, int row) {
+    uint32_t value = 0;
+    bool any = false;
+    for (int col = 0; col < static_cast<int>(kScreenCols); ++col) {
+        const uint16_t id = tile_at(gameboy, col, row);
+        if ((id & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(id);
+        if (tile >= font_tile('0') && tile <= font_tile('9')) {
+            value = value * 10 + (tile - font_tile('0'));
+            any = true;
+        }
+    }
+    return any ? value : 0;
+}
+
+uint32_t sram_best(std::span<const uint8_t> ram) {
+    return static_cast<uint32_t>(ram[kSaveBestOffset]) |
+           (static_cast<uint32_t>(ram[kSaveBestOffset + 1]) << 8) |
+           (static_cast<uint32_t>(ram[kSaveBestOffset + 2]) << 16) |
+           (static_cast<uint32_t>(ram[kSaveBestOffset + 3]) << 24);
+}
+
+bool sram_has_magic(std::span<const uint8_t> ram) {
+    return ram.size() > kSaveBestOffset + 3 && ram[0] == 'T' && ram[1] == 'T' && ram[2] == 'R' &&
+           ram[3] == 'S';
+}
+
+// runs until the falling piece has descended `rows` well-rows, counting the frames it took
+int frames_to_fall_rows(gb::Gameboy& gameboy, int rows) {
+    const int start = piece_min_y(gameboy);
+    int frames = 0;
+    while (piece_min_y(gameboy) - start < rows && frames < 500) {
+        gameboy.run_frame();
+        ++frames;
+    }
+    return frames;
 }
 
 } // namespace
@@ -766,7 +939,7 @@ TEST_CASE("two_rows_can_clear_together") {
     REQUIRE(best >= 2);
 }
 
-TEST_CASE("a_blocked_spawn_ends_the_game_and_freezes_the_board") {
+TEST_CASE("a_blocked_spawn_ends_the_game_and_freezes_the_board_under_the_popup") {
     const std::vector<uint8_t> rom = read_tetris_rom();
 
     gb::Gameboy gameboy;
@@ -784,7 +957,14 @@ TEST_CASE("a_blocked_spawn_ends_the_game_and_freezes_the_board") {
 
     const Grid frozen = read_grid(gameboy);
     run(gameboy, 180);
-    REQUIRE(read_grid(gameboy) == frozen);
+    const Grid after = read_grid(gameboy);
+    // the game over card stages in over the middle rows; everything outside that band must hold
+    for (int y = 0; y < kWellRows; ++y) {
+        if (y >= kPopupTopRow && y < kPopupTopRow + kPopupRows) {
+            continue;
+        }
+        REQUIRE(after[static_cast<size_t>(y)] == frozen[static_cast<size_t>(y)]);
+    }
     REQUIRE(piece_cells(gameboy).empty());
 }
 
@@ -804,7 +984,13 @@ TEST_CASE("start_after_game_over_rebuilds_a_fresh_well") {
     REQUIRE(over);
     REQUIRE(count_locked(read_grid(gameboy)) > 0);
 
-    press(gameboy, gb::Button::Start, 2);
+    run(gameboy, 20);                     // let the popup finish staging before the dismissing press
+    press(gameboy, gb::Button::Start, 2); // over -> title, not straight back to play
+    run(gameboy, 20);                     // DISPLAY_OFF's own vblank wait plus the whole title repaint
+    REQUIRE(piece_cells(gameboy).empty());
+    REQUIRE(row_has_tile(gameboy, kTitleRow, font_tile('T')));
+
+    press(gameboy, gb::Button::Start, 2); // title -> play
     REQUIRE(wait_for_piece(gameboy, 120));
     REQUIRE(count_locked(read_grid(gameboy)) == 0);
     REQUIRE(piece_min_y(gameboy) <= 1);
@@ -844,4 +1030,325 @@ TEST_CASE("the_same_input_script_gives_the_same_board") {
     const std::span<const uint16_t> ca = first.framebuffer_color();
     const std::span<const uint16_t> cb = second.framebuffer_color();
     REQUIRE(std::equal(ca.begin(), ca.end(), cb.begin()));
+}
+
+TEST_CASE("the_panel_digits_start_at_zero") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    REQUIRE(read_score(gameboy) == 0u);
+    REQUIRE(read_level(gameboy) == 0u);
+    REQUIRE(read_lines(gameboy) == 0u);
+}
+
+TEST_CASE("a_line_clear_scores_the_classic_table_times_level_plus_one") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+    static constexpr uint32_t kLineScore[4] = {40, 100, 300, 1200};
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // no soft drop anywhere, so nothing but the line-clear bonus can land in the score; stop at
+    // the very first clear, of whatever size the solver happens to land, so level is still
+    // guaranteed 0 and the classic table value goes straight to the score unmultiplied
+    int cleared_n = 0;
+    for (int i = 0; i < 60 && cleared_n == 0; ++i) {
+        const PieceResult result = play_piece_no_soft_drop(gameboy, 1);
+        REQUIRE(result.ok);
+        cleared_n = result.flash_rows;
+    }
+    REQUIRE(cleared_n > 0);
+    REQUIRE(wait_for_piece(gameboy, 300));
+    REQUIRE(read_score(gameboy) == kLineScore[cleared_n - 1]);
+}
+
+TEST_CASE("clearing_ten_lines_advances_the_level_and_speeds_up_gravity") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    uint32_t total_lines = 0;
+    for (int i = 0; i < 200 && total_lines < 10u; ++i) {
+        const PieceResult result = play_piece(gameboy, 1);
+        if (!result.ok) {
+            break;
+        }
+        total_lines += static_cast<uint32_t>(result.flash_rows);
+    }
+    REQUIRE(total_lines >= 10u);
+    REQUIRE(wait_for_piece(gameboy, 300));
+    REQUIRE(read_lines(gameboy) == total_lines);
+    REQUIRE(read_level(gameboy) >= 1u);
+
+    // a fresh, unleveled well is the fair baseline for the gravity comparison below
+    gb::Gameboy baseline;
+    start_play(baseline, rom);
+
+    const int leveled_frames = frames_to_fall_rows(gameboy, 3);
+    const int baseline_frames = frames_to_fall_rows(baseline, 3);
+    REQUIRE(leveled_frames < baseline_frames);
+}
+
+TEST_CASE("the_next_box_shows_the_piece_that_spawns_after_the_current_one") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    std::vector<Cell> preview_cells;
+    for (int dy = 0; dy < kNextBoxRows; ++dy) {
+        for (int dx = 0; dx < kNextBoxCols; ++dx) {
+            const uint16_t id = tile_at(gameboy, kPanelCol + dx, kNextBoxRow + dy);
+            if ((id & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(id);
+            if (tile >= kLockTileFirst && tile <= kLockTileLast) {
+                preview_cells.emplace_back(dx, dy);
+            }
+        }
+    }
+    REQUIRE(preview_cells.size() == 4u);
+    const Shape preview_shape = normalize(preview_cells);
+    const uint16_t preview_color =
+        color_at(gameboy, kPanelCol + preview_cells[0].first, kNextBoxRow + preview_cells[0].second, 4, 4);
+
+    // drop whatever piece is currently falling; the queued preview must become the next spawn
+    drop_in_place(gameboy);
+    REQUIRE(wait_for_piece(gameboy, 300));
+
+    REQUIRE(piece_shape(gameboy) == preview_shape);
+    const Cell spawned = piece_cells(gameboy).front();
+    REQUIRE(cell_color(gameboy, spawned.first, spawned.second) == preview_color);
+}
+
+TEST_CASE("the_empty_well_wears_the_beveled_grid_not_a_flat_blank") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // clear a line so a repainted (not just freshly initialised) empty cell is on screen
+    bool cleared = false;
+    for (int i = 0; i < 60 && !cleared; ++i) {
+        const PieceResult result = play_piece(gameboy, 1);
+        REQUIRE(result.ok);
+        cleared = result.flash_rows > 0;
+    }
+    REQUIRE(cleared);
+    REQUIRE(wait_for_piece(gameboy, 300));
+
+    // the bottom row is empty again post-collapse; every cell there must be the grid tile
+    bool found_empty = false;
+    for (int x = 0; x < kWellCols; ++x) {
+        if (read_grid(gameboy)[static_cast<size_t>(kWellRows - 1)][static_cast<size_t>(x)] != 0) {
+            continue;
+        }
+        found_empty = true;
+        REQUIRE(static_cast<uint8_t>(cell_id(gameboy, x, kWellRows - 1)) == kWellEmptyTileId);
+        // a flat blank tile would shade every pixel the same; the bevel's left edge (light) and
+        // right edge (dark) must not, sampled off the top/bottom rows where both edges agree
+        const int px = (kWellOriginCol + x) * 8;
+        const int py = (kWellOriginRow + (kWellRows - 1)) * 8;
+        const uint16_t left_edge = gameboy.framebuffer_color()[pixel_index(px + 0, py + 3)];
+        const uint16_t right_edge = gameboy.framebuffer_color()[pixel_index(px + 7, py + 3)];
+        REQUIRE(left_edge != right_edge);
+    }
+    REQUIRE(found_empty);
+}
+
+TEST_CASE("the_title_screen_shows_top_zero_before_any_game") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+
+    REQUIRE(row_has_tile(gameboy, kBestRow, font_tile('T')));
+    REQUIRE(row_has_tile(gameboy, kBestRow, font_tile('O')));
+    REQUIRE(row_has_tile(gameboy, kBestRow, font_tile('P')));
+    REQUIRE(read_number_from_row(gameboy, kBestRow) == 0u);
+}
+
+TEST_CASE("pressing_start_at_game_over_goes_to_the_title_not_straight_to_play") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    bool over = false;
+    for (int i = 0; i < 40 && !over; ++i) {
+        REQUIRE(wait_for_piece(gameboy, 300));
+        steer_to(gameboy, 4);
+        drop_and_settle(gameboy, count_locked(read_grid(gameboy)));
+        over = piece_cells(gameboy).empty() && !any_flash(read_grid(gameboy));
+    }
+    REQUIRE(over);
+    run(gameboy, 20); // let the popup finish staging
+
+    press(gameboy, gb::Button::Start, 2);
+    run(gameboy, 20); // DISPLAY_OFF's own vblank wait plus the whole title repaint
+    REQUIRE(row_has_tile(gameboy, kTitleRow, font_tile('T')));
+    REQUIRE(piece_cells(gameboy).empty());
+    // a single press only dismisses the popup; a second one is needed to actually start play
+    REQUIRE_FALSE(wait_for_piece(gameboy, 5));
+}
+
+namespace {
+
+// drives at least one clear (so the round banks something), then stacks the well to end the
+// game. the stacking phase soft-drops and can incidentally clear more lines, so the score is
+// not predicted; it is read straight off the panel, whose score row survives under the popup
+// band untouched. returns 0 if no clear (or no game over) happened in time.
+uint32_t play_a_scoring_round_to_game_over(gb::Gameboy& gameboy) {
+    bool cleared = false;
+    for (int i = 0; i < 60 && !cleared; ++i) {
+        const PieceResult result = play_piece(gameboy, 1);
+        if (!result.ok) {
+            break;
+        }
+        cleared = result.flash_rows > 0;
+    }
+    if (!cleared) {
+        return 0;
+    }
+
+    bool over = false;
+    for (int i = 0; i < 60 && !over; ++i) {
+        if (!wait_for_piece(gameboy, 300)) {
+            break;
+        }
+        steer_to(gameboy, 4);
+        drop_and_settle(gameboy, count_locked(read_grid(gameboy)));
+        over = piece_cells(gameboy).empty() && !any_flash(read_grid(gameboy));
+    }
+    return over ? read_score(gameboy) : 0u;
+}
+
+} // namespace
+
+TEST_CASE("game_over_popup_shows_game_over_score_and_top") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+    const uint32_t expected = play_a_scoring_round_to_game_over(gameboy);
+    REQUIRE(expected > 0u);
+    run(gameboy, 20); // let the popup finish staging
+
+    REQUIRE(row_has_tile(gameboy, kPopupTopRow + kPopupOverRow, font_tile('G')));
+    REQUIRE(row_has_tile(gameboy, kPopupTopRow + kPopupOverRow, font_tile('O')));
+    REQUIRE(row_has_tile(gameboy, kPopupTopRow + kPopupScoreRow, font_tile('S')));
+    REQUIRE(read_number_from_row(gameboy, kPopupTopRow + kPopupScoreRow) == expected);
+    REQUIRE(row_has_tile(gameboy, kPopupTopRow + kPopupTopScoreRow, font_tile('T')));
+    REQUIRE(read_number_from_row(gameboy, kPopupTopRow + kPopupTopScoreRow) == expected);
+    REQUIRE(row_has_tile(gameboy, kPopupTopRow + kPopupPromptRow, font_tile('P')));
+}
+
+TEST_CASE("best_score_lands_in_sram_with_the_ttrs_magic") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+    const uint32_t expected = play_a_scoring_round_to_game_over(gameboy);
+    REQUIRE(expected > 0u);
+    run(gameboy, 20);
+
+    const std::span<uint8_t> ram = gameboy.external_ram();
+    REQUIRE(sram_has_magic(ram));
+    REQUIRE(sram_best(ram) == expected);
+}
+
+TEST_CASE("best_score_survives_reload_through_a_second_gameboy") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy first;
+    start_play(first, rom);
+    const uint32_t expected = play_a_scoring_round_to_game_over(first);
+    REQUIRE(expected > 0u);
+    run(first, 20);
+    const std::vector<uint8_t> saved(first.external_ram().begin(), first.external_ram().end());
+    REQUIRE(sram_best(saved) == expected);
+
+    gb::Gameboy second;
+    REQUIRE(second.load_rom(rom));
+    const std::span<uint8_t> ram = second.external_ram();
+    REQUIRE(ram.size() == saved.size());
+    std::copy(saved.begin(), saved.end(), ram.begin());
+
+    // a fresh boot must load the saved best rather than re-initialising it to zero
+    run(second, kBootFrames);
+    REQUIRE(sram_has_magic(second.external_ram()));
+    REQUIRE(sram_best(second.external_ram()) == expected);
+    REQUIRE(read_number_from_row(second, kBestRow) == expected);
+}
+
+TEST_CASE("best_score_is_unchanged_by_a_loss_and_updated_by_a_win") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // round one: bank a solid baseline, well clear of any plausible incidental noise below
+    for (int i = 0; i < 200 && read_score(gameboy) < 200u; ++i) {
+        if (!play_piece(gameboy, 1).ok) {
+            break;
+        }
+    }
+    const uint32_t first_best = play_a_scoring_round_to_game_over(gameboy);
+    REQUIRE(first_best >= 200u);
+    run(gameboy, 20);
+    REQUIRE(sram_best(gameboy.external_ram()) == first_best);
+
+    // round two: every piece rides gravity alone (no down input, so no soft-drop points) into
+    // the same narrow column; a full ten-wide row essentially never completes this way, so the
+    // round banks far less than round one and must not move the saved best
+    press(gameboy, gb::Button::Start, 2); // over -> title
+    run(gameboy, 20);                     // DISPLAY_OFF's own vblank wait plus the whole title repaint
+    press(gameboy, gb::Button::Start, 2); // title -> play
+    REQUIRE(wait_for_piece(gameboy, 120));
+    bool over = false;
+    for (int i = 0; i < 40 && !over; ++i) {
+        REQUIRE(wait_for_piece(gameboy, 1200));
+        steer_to(gameboy, 4);
+        const int before = count_locked(read_grid(gameboy));
+        for (int f = 0; f < 1200 && count_locked(read_grid(gameboy)) == before; ++f) {
+            gameboy.run_frame();
+        }
+        over = piece_cells(gameboy).empty() && !any_flash(read_grid(gameboy));
+    }
+    REQUIRE(over);
+    run(gameboy, 20);
+    REQUIRE(read_score(gameboy) < first_best);
+    REQUIRE(sram_best(gameboy.external_ram()) == first_best);
+
+    // round three: soft drop is fine now, since the goal is simply to beat round one
+    press(gameboy, gb::Button::Start, 2); // over -> title
+    run(gameboy, 20);                     // DISPLAY_OFF's own vblank wait plus the whole title repaint
+    press(gameboy, gb::Button::Start, 2); // title -> play
+    REQUIRE(wait_for_piece(gameboy, 120));
+    uint32_t live_score = 0;
+    for (int i = 0; i < 200 && live_score <= first_best; ++i) {
+        if (!play_piece(gameboy, 1).ok) {
+            break;
+        }
+        live_score = read_score(gameboy);
+    }
+    REQUIRE(live_score > first_best);
+
+    over = false;
+    for (int i = 0; i < 40 && !over; ++i) {
+        REQUIRE(wait_for_piece(gameboy, 300));
+        steer_to(gameboy, 4);
+        drop_and_settle(gameboy, count_locked(read_grid(gameboy)));
+        over = piece_cells(gameboy).empty() && !any_flash(read_grid(gameboy));
+    }
+    REQUIRE(over);
+    run(gameboy, 20);
+    const uint32_t third_best = read_score(gameboy);
+    REQUIRE(third_best > first_best);
+    REQUIRE(sram_best(gameboy.external_ram()) == third_best);
 }

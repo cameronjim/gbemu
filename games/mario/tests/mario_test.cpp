@@ -35,7 +35,7 @@ constexpr uint32_t kBootFrames = 120;
 
 // the rows main.c tints and prints to, per games/mario/src/mario.h
 constexpr uint32_t kTitleRow = 6;
-constexpr uint32_t kPromptRow = 10;
+constexpr uint32_t kPromptRow = 11;
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f; space (tile 0) is excluded so a
 // span only ever measures real glyphs

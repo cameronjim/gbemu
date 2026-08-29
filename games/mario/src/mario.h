@@ -6,7 +6,11 @@
 // the visible screen is 20x18 cells; text lines are centered across the 20
 #define kScreenCols 20U
 #define kTitleRow 6U
-#define kPromptRow 10U
+#define kPromptRow 11U
+// every card banner is a padding row, the text row, then another padding row, so the tinted band
+// reads as a band rather than exactly the glyph height. kPromptRow sits 5 rows below kTitleRow so
+// the two banners (each reaching one row above/below their text) still leave a 2-row sky gap
+#define kBannerRows 3U
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f
 #define kFontFirstChar 0x20U

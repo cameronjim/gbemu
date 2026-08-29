@@ -42,13 +42,17 @@ static void print_centered(uint8_t y, const char* text) {
     }
 }
 
-// tags a whole bg row with one cgb palette; vram bank 1 holds the attribute map
-static void paint_row_palette(uint8_t y, uint8_t palette) {
+// tags `rows` consecutive whole bg rows starting at y0 with one cgb palette; vram bank 1 holds the
+// attribute map. every banner uses this so the tinted band is never just the glyph height
+static void paint_band(uint8_t y0, uint8_t rows, uint8_t palette) {
     uint8_t x;
+    uint8_t r;
     for (x = 0; x < kScreenCols; ++x) {
         map_row[x] = palette;
     }
-    set_bkg_attributes(0, y, kScreenCols, 1, map_row);
+    for (r = 0; r < rows; ++r) {
+        set_bkg_attributes(0, (uint8_t)(y0 + r), kScreenCols, 1, map_row);
+    }
 }
 
 // three real cgb palettes: sky backdrop, warm wordmark, green accent
@@ -101,7 +105,9 @@ static void print_value(uint8_t y, const char* label, uint16_t value, uint8_t di
     }
 }
 
-// every card opens the same way: a blank sky map, the wordmark palette on its heading row
+// every card opens the same way: a blank sky map, the wordmark palette banded around its heading
+// row - one padding row above the text, one below, so there is banner-colored space around the
+// letters instead of a band exactly as tall as they are
 static void begin_card(uint8_t heading_row) {
     DISPLAY_OFF;
     HIDE_SPRITES;
@@ -109,7 +115,7 @@ static void begin_card(uint8_t heading_row) {
     SCY_REG = 0;
     load_palettes();
     clear_map();
-    paint_row_palette(heading_row, kPalWordmark);
+    paint_band((uint8_t)(heading_row - 1U), kBannerRows, kPalWordmark);
     font_color(kFontFore, kFontBack);
 }
 
@@ -121,14 +127,17 @@ static void end_card(void) {
 // the whole map is rewritten here, far more vram traffic than a vblank holds, so the lcd is off
 static void title_show(uint8_t has_continue, uint8_t entry) {
     begin_card(kTitleRow);
-    paint_row_palette(kPromptRow, kPalAccent);
     // "!" pads the wordmark to an even glyph span so it lands pixel-centered
     print_centered(kTitleRow, "MARIO!");
     if (has_continue == 0U) {
+        // one line, banded the same way every other banner is: a padding row above and below
+        paint_band((uint8_t)(kPromptRow - 1U), kBannerRows, kPalAccent);
         print_centered(kPromptRow, "SPACE TO START");
     } else {
-        // the prompt row keeps saying what start does; the two entries sit under it
+        // the prompt row keeps saying what start does, unbanded; the accent band wraps just the
+        // two menu entries under it plus a padding row above and below them
         print_centered(kPromptRow, "START TO BEGIN");
+        paint_band((uint8_t)(kPromptRow + 1U), (uint8_t)(kBannerRows + 1U), kPalAccent);
         print_centered((uint8_t)(kPromptRow + 2U),
                        entry == (uint8_t)kMenuNewGame ? ">NEW GAME" : " NEW GAME");
         print_centered((uint8_t)(kPromptRow + 3U),

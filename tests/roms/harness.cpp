@@ -38,24 +38,58 @@ uint64_t fnv1a(std::span<const uint8_t> bytes) {
     return hash;
 }
 
-// framebuffer channel: run a fixed frame count, hash the index buffer, dump a ppm on mismatch
-int run_framebuffer(gb::Gameboy& gameboy, const std::string& expect, uint64_t frames, const char* rom_path) {
-    for (uint64_t i = 0; i < frames; ++i) {
-        gameboy.run_frame();
+// rgb555 channel to 8 bits, replicating the high bits into the low ones
+char expand5(uint16_t channel) {
+    return static_cast<char>((channel << 3) | (channel >> 2));
+}
+
+// the hashed image: rgb555 little-endian pairs for a cgb cart, shade indices for a dmg one
+std::vector<uint8_t> scanout_bytes(const gb::Gameboy& gameboy) {
+    if (!gameboy.cgb_mode()) {
+        const std::span<const uint8_t> fb = gameboy.framebuffer();
+        return std::vector<uint8_t>(fb.begin(), fb.end());
     }
-    char got[17];
-    std::snprintf(got, sizeof(got), "%016llx", static_cast<unsigned long long>(fnv1a(gameboy.framebuffer())));
-    if (expect == got) {
-        std::printf("PASS %s\n", rom_path);
-        return 0;
+    std::vector<uint8_t> bytes;
+    bytes.reserve(gameboy.framebuffer_color().size() * 2);
+    for (uint16_t color : gameboy.framebuffer_color()) {
+        bytes.push_back(static_cast<uint8_t>(color & 0xFF));
+        bytes.push_back(static_cast<uint8_t>(color >> 8));
     }
-    std::ofstream ppm("framebuffer-mismatch.ppm", std::ios::binary);
+    return bytes;
+}
+
+void write_ppm(const gb::Gameboy& gameboy, const char* path) {
+    std::ofstream ppm(path, std::ios::binary);
     ppm << "P6\n160 144\n255\n";
+    if (gameboy.cgb_mode()) {
+        for (uint16_t color : gameboy.framebuffer_color()) {
+            const char px[3] = {expand5(static_cast<uint16_t>(color & 0x1F)),
+                                expand5(static_cast<uint16_t>((color >> 5) & 0x1F)),
+                                expand5(static_cast<uint16_t>((color >> 10) & 0x1F))};
+            ppm.write(px, 3);
+        }
+        return;
+    }
     for (uint8_t index : gameboy.framebuffer()) {
         const char v = static_cast<char>(255 - index * 85);
         const char px[3] = {v, v, v};
         ppm.write(px, 3);
     }
+}
+
+// framebuffer channel: run a fixed frame count, hash the scanout, dump a ppm on mismatch
+int run_framebuffer(gb::Gameboy& gameboy, const std::string& expect, uint64_t frames, const char* rom_path) {
+    for (uint64_t i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+    }
+    const std::vector<uint8_t> image = scanout_bytes(gameboy);
+    char got[17];
+    std::snprintf(got, sizeof(got), "%016llx", static_cast<unsigned long long>(fnv1a(image)));
+    if (expect == got) {
+        std::printf("PASS %s\n", rom_path);
+        return 0;
+    }
+    write_ppm(gameboy, "framebuffer-mismatch.ppm");
     std::fprintf(stderr, "FAIL %s\nexpected %s got %s, wrote framebuffer-mismatch.ppm\n", rom_path,
                  expect.c_str(), got);
     return 1;

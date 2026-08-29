@@ -1,0 +1,308 @@
+{
+  "_meta": {
+    "target": "from-scratch SMB Deluxe (GBC) recreation, physics ported from SMB1 (NES)",
+    "primary_source": "https://gist.github.com/1wErt3r/4048722",
+    "primary_source_note": "doppelganger's SMBDIS.ASM disassembly, fetched and grepped directly; line numbers refer to the raw blob (16351 lines) fetched 2026-08-28",
+    "framerate_assumed": "60 fps logical (NES NTSC 60Hz driving all frame-based constants below; GBC SMB Deluxe treated as the same logical 60fps -- actual hardware refresh differs slightly, ~59.7275Hz GB/GBC/GBA/SGB2 or ~61.17Hz SGB1, cosmetic only per unverified secondary source)",
+    "fixed_point": {
+      "horizontal": "signed byte, high nibble = whole pixels, low nibble = 1/16-pixel fraction (16 subpixels = 1 pixel). confirmed at smbdis.asm:7541-7556 (MoveObjectHorizontally).",
+      "vertical_speed": "Player_Y_Speed is a signed WHOLE-pixel integer added directly to position each frame (not nibble-split).",
+      "vertical_accel": "gravity/jump constants are added to a separate 1/256-pixel fractional accumulator (Player_Y_MoveForce); carry/borrow out of it changes Player_Y_Speed by +-1 whole pixel. confirmed at smbdis.asm:7704-7735 and 6014-6188.",
+      "friction_accel": "FrictionData bytes are added directly (unsigned magnitude) to Player_X_MoveForce (1/256-subpixel accumulator) each frame; carry changes Player_X_Speed by 1 subpixel (1/16 px). confirmed at smbdis.asm:6227-6266."
+    },
+    "confidence_levels": ["documented", "inferred", "must-measure"],
+    "see_also": "games/mario/research/physics.md for full citations, per-value source lines, and prose explanation"
+  },
+
+  "horizontal_movement": {
+    "max_speed": {
+      "units": "hex = raw signed byte (subpixels/frame, 16/px); px_per_frame = converted",
+      "source": "smbdis.asm:6026-6031 (MaxLeftXSpdData/MaxRightXSpdData)",
+      "confidence": "documented",
+      "running":      { "hex_right": "0x28", "hex_left": "0xD8", "subpixels_per_frame": 40, "px_per_frame": 2.5 },
+      "walking":      { "hex_right": "0x18", "hex_left": "0xE8", "subpixels_per_frame": 24, "px_per_frame": 1.5 },
+      "water":        { "hex_right": "0x10", "hex_left": "0xF0", "subpixels_per_frame": 16, "px_per_frame": 1.0 },
+      "pipe_intro":   { "hex_right": "0x0C", "hex_left": null,  "subpixels_per_frame": 12, "px_per_frame": 0.75, "note": "right value only found; used when GameEngineSubroutine==7 (player entrance)" }
+    },
+    "acceleration": {
+      "units": "hex = raw byte added per frame to 1/256-subpixel accumulator",
+      "source": "smbdis.asm:6033-6034 (FrictionData); index mapping inferred from control flow at smbdis.asm:6139-6188",
+      "confidence_value": "documented",
+      "confidence_index_mapping": "inferred",
+      "run_accel":       { "hex": "0xE4", "decimal": 228, "subpixels_per_frame2": 0.891, "px_per_frame2": 0.0557, "when": "on ground with B held + facing==moving dir, or RunningTimer already active, or airborne with |speed| >= 25 subpixels" },
+      "walk_accel":      { "hex": "0x98", "decimal": 152, "subpixels_per_frame2": 0.594, "px_per_frame2": 0.0371, "when": "default ground/air acceleration" },
+      "high_speed_accel":{ "hex": "0xD0", "decimal": 208, "subpixels_per_frame2": 0.8125,"px_per_frame2": 0.0508, "when": "RunningSpeed flag set OR |speed| >= 33 subpixels while not in the active-running case" },
+      "skid_multiplier": { "value": 2, "confidence": "documented", "source": "smbdis.asm:6183-6187 (ASL/ROL doubles whichever tier value above applies when PlayerFacingDir != Player_MovingDir)" },
+      "skid_instant_stop_threshold": { "hex": "0x0B", "decimal": 11, "subpixels_per_frame": 11, "px_per_frame": 0.6875, "note": "below this speed while reversing input, speed is force-zeroed instead of skidding", "source": "smbdis.asm:6213-6219", "confidence": "documented" }
+    },
+    "air_control": {
+      "can_accelerate_in_air": true,
+      "confidence": "documented",
+      "source": "smbdis.asm:6139-6167",
+      "note": "same FrictionData/ImposeFriction logic applies airborne; the only restriction is you cannot newly enter the 'run' (0xE4) accel tier via a fresh B-press while airborne -- tier selection in air is purely from current |speed|, so momentum from takeoff carries over but a new run-tier cannot be earned mid-air.",
+      "release_deceleration": "uses the same acceleration tables above (no separate release-only table); direction is determined by current speed sign when no L/R buttons held (smbdis.asm:6227-6234)"
+    }
+  },
+
+  "jump_and_gravity": {
+    "speed_tier_selection": {
+      "basis": "Player_XSpeedAbsolute (current horizontal speed magnitude, subpixels) checked at jump start",
+      "source": "smbdis.asm:6095-6107",
+      "confidence": "documented",
+      "tiers": [
+        { "index": 0, "subpixels_range": [0, 8],   "px_per_frame_range": [0, 0.5] },
+        { "index": 1, "subpixels_range": [9, 15],  "px_per_frame_range": [0.5625, 0.9375] },
+        { "index": 2, "subpixels_range": [16, 24], "px_per_frame_range": [1.0, 1.5] },
+        { "index": 3, "subpixels_range": [25, 27], "px_per_frame_range": [1.5625, 1.6875] },
+        { "index": 4, "subpixels_range": [28, null], "px_per_frame_range": [1.75, null] },
+        { "index": 5, "note": "swimming" },
+        { "index": 6, "note": "whirlpool" }
+      ]
+    },
+    "initial_vertical_velocity": {
+      "source": "smbdis.asm:6020-6021, 6122-6123 (PlayerYSpdData)",
+      "confidence": "documented",
+      "units": "px/frame, whole-pixel signed",
+      "by_tier": { "0": -4, "1": -4, "2": -4, "3": -5, "4": -5, "5_swim": -2, "6_whirlpool": -1 },
+      "hex_by_tier": { "0": "0xFC", "1": "0xFC", "2": "0xFC", "3": "0xFB", "4": "0xFB", "5_swim": "0xFE", "6_whirlpool": "0xFF" }
+    },
+    "gravity_rising": {
+      "source": "smbdis.asm:6014-6015 (JumpMForceData)",
+      "confidence": "documented",
+      "units": "px/frame^2 (raw value / 256, since Y_Speed is whole px)",
+      "by_tier": { "0": 0.00781, "1": 0.00781, "2": 0.00732, "3": 0.00977, "4": 0.00977, "5_swim": 0.00317, "6_whirlpool": 0.00098 },
+      "hex_by_tier": { "0": "0x20", "1": "0x20", "2": "0x1E", "3": "0x28", "4": "0x28", "5_swim": "0x0D", "6_whirlpool": "0x04" }
+    },
+    "gravity_falling": {
+      "source": "smbdis.asm:6017-6018 (FallMForceData)",
+      "confidence": "documented",
+      "units": "px/frame^2",
+      "by_tier": { "0": 0.02734, "1": 0.02734, "2": 0.02344, "3": 0.03516, "4": 0.03516, "5_swim": 0.00244, "6_whirlpool": 0.0022 },
+      "hex_by_tier": { "0": "0x70", "1": "0x70", "2": "0x60", "3": "0x90", "4": "0x90", "5_swim": "0x0A", "6_whirlpool": "0x09" }
+    },
+    "variable_jump_height_rule": {
+      "confidence": "documented",
+      "source": "smbdis.asm:5922-5936 (JumpSwimSub)",
+      "rule": "while Player_Y_Speed < 0 (still rising): if A held this frame AND previous frame, keep using gravity_rising for this frame. The instant A is released (after rising >= 1px from jump origin), gravity_falling is applied immediately, cutting the jump short. Once Player_Y_Speed >= 0, gravity_falling always applies. There is no separate third 'held' gravity constant -- 'held' = gravity_rising for as long as held+rising, everything else = gravity_falling.",
+      "min_rise_before_release_matters_px": 1
+    },
+    "max_fall_speed": {
+      "value_px_per_frame": 4,
+      "hex": "0x04",
+      "confidence": "documented",
+      "source": "smbdis.asm:7586-7595 (MovePlayerVertically)"
+    },
+    "swimming": {
+      "max_horizontal_speed_px_per_frame": 1.0,
+      "stroke_vertical_impulse_px_per_frame": -2,
+      "gravity_tier": 5,
+      "whirlpool_gravity_tier": 6,
+      "surface_clamp": {
+        "confidence": "documented",
+        "source": "smbdis.asm:5939-5943",
+        "trigger": "Player_Y_Position < 0x14",
+        "forced_vertical_force_hex": "0x18",
+        "note": "prevents swimming above the water surface line"
+      }
+    }
+  },
+
+  "interactions": {
+    "stomp_bounce": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11439-11513",
+      "normal_enemy_stomp_px_per_frame": -3,
+      "normal_enemy_stomp_hex": "0xFD",
+      "note_normal": "goomba, green/red koopa, cheep-cheep, hammer bro, lakitu, bloober",
+      "shell_or_demote_bounce_px_per_frame": -4,
+      "shell_or_demote_bounce_hex": "0xFC",
+      "note_shell": "demoting a paratroopa to koopa, or kicking/re-stomping a shell"
+    },
+    "shell_kick_speed": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11287-11288 (KickedShellXSpdData)",
+      "hex": ["0x30", "0xD0"],
+      "px_per_frame": 3.0
+    },
+    "demoted_koopa_walk_speed": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11290-11291 (DemotedKoopaXSpdData)",
+      "hex": ["0x08", "0xF8"],
+      "px_per_frame": 0.5
+    },
+    "fireball": {
+      "horizontal_speed_px_per_frame": 4.0,
+      "horizontal_speed_hex": ["0x40", "0xC0"],
+      "horizontal_source": "smbdis.asm:6324-6325",
+      "initial_vertical_speed_px_per_frame": 4,
+      "initial_vertical_note": "downward immediately at launch, no upward arc",
+      "vertical_source": "smbdis.asm:6350-6351",
+      "gravity_px_per_frame2": 0.3125,
+      "gravity_hex": "0x50",
+      "max_fall_speed_px_per_frame": 3,
+      "gravity_source": "smbdis.asm:6359-6364",
+      "confidence": "documented",
+      "bounce_height_on_landing": { "confidence": "must-measure", "note": "background-collision re-bounce code not traced in this pass" }
+    },
+    "star_invincibility_duration": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11248-11249 (StarInvincibleTimer=0x23) + interval-timer mechanism smbdis.asm:789-799,81",
+      "initial_value_hex": "0x23",
+      "initial_value_decimal": 35,
+      "tick_type": "interval timer (21 raw frames per tick)",
+      "total_frames": 735,
+      "total_seconds_at_60fps": 12.25
+    },
+    "post_damage_invulnerability_duration": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11409-11410 (InjuryTimer=0x08) + interval-timer mechanism",
+      "initial_value_hex": "0x08",
+      "initial_value_decimal": 8,
+      "tick_type": "interval timer (21 raw frames per tick)",
+      "total_frames": 168,
+      "total_seconds_at_60fps": 2.8
+    },
+    "flagpole_scoring": {
+      "confidence": "documented",
+      "source": "smbdis.asm:12150-12151 (FlagpoleYPosData), 6573-6577 (FlagpoleScoreMods/Digits), 12187-12192",
+      "bands": [
+        { "y_position_hex_max_exclusive": "0x22", "points": 5000 },
+        { "y_position_hex_max_exclusive": "0x50", "points": 2000 },
+        { "y_position_hex_max_exclusive": "0x68", "points": 800 },
+        { "y_position_hex_max_exclusive": "0x90", "points": 400 },
+        { "y_position_hex_max_exclusive": null,   "points": 100, "note": "0x90 and below (lowest contact)" }
+      ]
+    }
+  },
+
+  "enemy_movement": {
+    "goomba_koopa_walk_speed": {
+      "confidence": "documented",
+      "source": "smbdis.asm:8163-8172 (NormalXSpdData)",
+      "normal_px_per_frame": 0.5,
+      "normal_hex": ["0xF8", "0xF4"],
+      "hard_mode_px_per_frame": 0.75,
+      "hard_mode_note": "used when PrimaryHardMode flag set"
+    },
+    "red_koopa_edge_turning": {
+      "confidence": "documented",
+      "source": "smbdis.asm:12572-12577 (ChkForRedKoopa), 12592-12611 (DoEnemySideCheck)",
+      "mechanism": "red koopa in normal state skips the background-collision state transition that lets other enemies walk off a ledge, falling through to the direction-inversion check instead -- this is what makes it turn around at ledges while green koopas walk off"
+    },
+    "hammer_bro": {
+      "confidence": "documented",
+      "source": "smbdis.asm:8185-8196, 9204-9282",
+      "walk_hesitation_timer_frames": [128, 80],
+      "throw_interval_frames": [48, 28],
+      "throw_interval_note": "raw per-frame timer, not a 21-frame interval timer",
+      "jump_vertical_speed_px_per_frame": [-6, -3],
+      "jump_vertical_speed_note": "-3 used when hammer bro is in the upper half of the screen",
+      "jump_airtime_frames": [32, 55],
+      "shimmy_speed_px_per_frame": 0.25,
+      "shimmy_direction_flip_frames": 64
+    },
+    "lakitu": {
+      "confidence": "must-measure",
+      "source": "smbdis.asm:9968-10029, 8275-8306",
+      "mechanism": "LakituMoveSpeed is adaptively decremented toward zero based on horizontal distance to player (PlayerLakituDiff), not a fixed constant",
+      "reappear_check_interval_frames": 128,
+      "reappear_check_interval_hex": "0x80",
+      "reappear_checks_required": 7,
+      "reappear_approx_seconds": 14.9
+    },
+    "bullet_bill": {
+      "confidence": "documented",
+      "source": "smbdis.asm:6821-6822 (BulletBillXSpdData), 6834-6844",
+      "speed_px_per_frame": 1.5,
+      "hex": ["0x18", "0xE8"],
+      "fire_distance_threshold_px": 40
+    },
+    "cheep_cheep": {
+      "confidence": "documented_partial",
+      "jumping_cheep_cheep_initial_vertical_px_per_frame": -5,
+      "jumping_cheep_cheep_hex": "0xFB",
+      "jumping_source": "smbdis.asm:8439-8440",
+      "flying_cheep_cheep_horizontal_speed_table": { "confidence": "must-measure", "note": "FlyCCXSpeedData not extracted in this pass" },
+      "flying_cheep_cheep_bob": { "confidence": "must-measure", "note": "vertical bob driven by pseudorandom-difference lookup (PRandomSubtracter), not a clean sine formula; smbdis.asm:9922-9959" }
+    },
+    "firebar_rotation": {
+      "confidence": "documented_partial",
+      "source": "smbdis.asm:8369-8373 (FirebarSpinSpdData/DirData), 10639-10658 (FirebarSpin)",
+      "raw_speed_values_hex": ["0x28", "0x38", "0x28", "0x38", "0x28"],
+      "note": "two distinct raw rotation rates (0x28 slower, 0x38 faster) across the 5 firebar variants (4 short orientations + 1 long); conversion to degrees/frame not derived in this pass",
+      "degrees_per_frame": { "confidence": "must-measure" }
+    },
+    "platform_lift_speeds": {
+      "confidence": "must-measure",
+      "source": "smbdis.asm:8106-8121, 9605-9610, 10332-10347",
+      "note": "distinct routines exist for balance/vertical/large-lift/drop/horizontal platforms but per-type speed constants were not individually extracted"
+    }
+  },
+
+  "timers": {
+    "level_timer_tick_rate": {
+      "confidence": "documented",
+      "source": "smbdis.asm:6436-6468 (RunGameTimer/ResGTCtrl)",
+      "frames_per_tick": 24,
+      "seconds_per_tick_at_60fps": 0.4,
+      "note": "displayed timer digit decrements once every 24 raw frames -- SMB1 in-game seconds run 2.5x faster than real time"
+    },
+    "powerup_emergence": {
+      "confidence": "documented",
+      "source": "smbdis.asm:7181-7197 (GrowThePowerUp)",
+      "rise_px": 16,
+      "rise_rate": "1 px every 4 frames",
+      "total_rise_frames": 64,
+      "total_rise_seconds": 1.07,
+      "post_rise_horizontal_speed_px_per_frame": 1.0
+    },
+    "death_animation": {
+      "confidence": "must-measure",
+      "source": "smbdis.asm:5766-5770, 11427-11434",
+      "known_facts": {
+        "initial_vertical_pop_px_per_frame": -4,
+        "resume_gate_timer_control_hex": "0xF0"
+      },
+      "unknown": "starting value of TimerControl at moment of death (fixes total animation length) not located"
+    },
+    "pipe_transition": {
+      "confidence": "must-measure",
+      "note": "reuses pipe-intro horizontal speed cap (0.75 px/frame, see horizontal_movement.max_speed.pipe_intro) but specific frame-length constants not extracted"
+    }
+  },
+
+  "smbd_gbc_specific_notes": {
+    "disassembly_consulted": false,
+    "note": "this entire document is sourced from the NES SMB1 disassembly; no GBC SMB Deluxe disassembly was available/consulted",
+    "claims_found": [
+      {
+        "claim": "SMBD physics are 'somewhat tighter' than the NES original; example given is the wide gap in World 8-1 can be crossed without the coins above it in Deluxe but not in the original",
+        "confidence": "documented_secondary",
+        "source": "https://www.mariowiki.com/Super_Mario_Bros._Deluxe"
+      },
+      {
+        "claim": "SMBD uses a different engine with many glitches fixed (e.g. Minus World cannot be performed)",
+        "confidence": "documented_secondary",
+        "source": "https://www.mariowiki.com/Super_Mario_Bros._Deluxe"
+      },
+      {
+        "claim": "SMBD real hardware frame rate ~59.7275Hz (GB/GBC/GBA/GBP/SGB2) or ~61.17Hz (SGB1); claimed fastest version for speedrunning",
+        "confidence": "inferred_unverified",
+        "source": "https://www.speedrun.com/smb1/guides/v5oa1",
+        "note": "direct fetch of this page returned HTTP 403; content relayed only via search engine snippet, not independently re-verified"
+      }
+    ],
+    "recommendation": "treat ALL numeric physics constants above as must-measure against a real SMB Deluxe ROM before assuming NES-identical values, despite its 'faithful port' reputation"
+  },
+
+  "must_measure_summary": [
+    "fireball landing-bounce height/velocity",
+    "lakitu steady-state hover speed and follow distance",
+    "flying cheep-cheep horizontal speed table (FlyCCXSpeedData) and bob amplitude/period",
+    "jumping cheep-cheep gravity tier selection",
+    "firebar rotation rate in degrees/frame",
+    "platform/lift per-type speeds (balance, vertical, large lift, drop, horizontal)",
+    "exact total death-sequence and pipe-transition frame counts",
+    "any and all SMB Deluxe-specific numeric constants (this file is NES-sourced only)"
+  ]
+}

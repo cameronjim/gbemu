@@ -63,7 +63,12 @@ static void stream_column(int16_t block_col) {
     set_bkg_attributes(tile_col, 0, kTilesPerBlock, kBgRows, attr_buf);
 }
 
-// the ring holds [window_start, window_start + kRingBlocks); shifts one column at a time either way
+// the ring holds [window_start, window_start + kRingBlocks); shifts one column at a time either way.
+// vblank budget: the ring wraps every kRingBlocks columns, so the column that scrolls in on one edge
+// always reuses the slot the column falling off the other edge just vacated - one banked read plus
+// two 2x30 vram writes. the play camera moves at most mario's 2.5 px/frame plus the look-ahead
+// anchor's 2 px/frame, so a frame never crosses more than one 16 px block boundary and never streams
+// more than one column; only terrain_init()'s 16-column fill exceeds a vblank, and it runs lcd-off
 static int16_t clamp_window_start(int16_t desired) {
     int16_t max_start = (int16_t)LEVEL_1_1_LENGTH_COLUMNS - (int16_t)kRingBlocks;
     if (max_start < 0) {
@@ -81,10 +86,12 @@ static int16_t clamp_window_start(int16_t desired) {
 static void sync_window(uint16_t cam_block) {
     int16_t target = clamp_window_start((int16_t)cam_block - (int16_t)kWindowLeftMargin);
 
+    // scrolling forward streams the column arriving at the ring's right edge...
     while (window_start < target) {
         ++window_start;
         stream_column((int16_t)(window_start + (int16_t)kRingBlocks - 1));
     }
+    // ...and scrolling backward is its mirror: the column arriving at the left edge
     while (window_start > target) {
         --window_start;
         stream_column(window_start);
@@ -139,6 +146,10 @@ void terrain_set_pan_y(uint8_t y_px) {
 
 uint16_t terrain_camera_x(void) {
     return world_x;
+}
+
+uint16_t terrain_max_camera_x(void) {
+    return max_world_x;
 }
 
 uint8_t terrain_solid_at(int16_t column, int16_t row) {

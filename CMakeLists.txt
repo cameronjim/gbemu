@@ -171,15 +171,17 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         set(GB_MARIO_LEVEL_C ${GB_MARIO_GEN_DIR}/level_1_1.c)
         set(GB_MARIO_LEVEL_H ${GB_MARIO_GEN_DIR}/level_1_1.h)
         set(GB_MARIO_LEVEL_PROBES_H ${GB_MARIO_GEN_DIR}/level_1_1_probes.h)
+        set(GB_MARIO_LEVEL_GRID_H ${GB_MARIO_GEN_DIR}/level_1_1_grid.h)
         add_custom_command(
             OUTPUT ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
+                   ${GB_MARIO_LEVEL_GRID_H}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/compile_level.py
                     ${CMAKE_SOURCE_DIR}/games/mario/data/level-1-1.json ${GB_MARIO_GEN_DIR}
             DEPENDS games/mario/tools/compile_level.py games/mario/data/level-1-1.json
             COMMENT "compiling mario level 1-1 bible json to banked c data"
             VERBATIM)
         add_custom_target(mario_level DEPENDS ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H}
-                                               ${GB_MARIO_LEVEL_PROBES_H})
+                                               ${GB_MARIO_LEVEL_PROBES_H} ${GB_MARIO_LEVEL_GRID_H})
 
         # sub-milestone 3: the physics bible generates the one header both the rom and the host
         # golden tests read, so no constant is ever hand-transcribed twice
@@ -200,15 +202,17 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/camera.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${GB_MARIO_LEVEL_C}
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
                     games/mario/src/terrain.c games/mario/src/terrain.h
+                    games/mario/src/camera.c games/mario/src/camera.h
                     games/mario/src/player.c games/mario/src/player.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
-                    ${GB_MARIO_PHYSICS_H}
+                    ${GB_MARIO_LEVEL_GRID_H} ${GB_MARIO_PHYSICS_H}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "building mario.gbc with gbdk lcc"
             VERBATIM)

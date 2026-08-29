@@ -17,8 +17,13 @@ void terrain_pan_y(int8_t delta_px);
 // is left alone so the caller can write scx/oam first and pay the streaming cost last
 void terrain_set_scroll_x(uint16_t world_px);
 
-// brings the ring's streamed columns back in line with the camera; the frame's heaviest vram work
+// brings the ring's streamed columns back in line with the camera, in either scroll direction; the
+// frame's heaviest vram work
 void terrain_stream_window(void);
+
+// the largest camera left edge the level allows: level_length_px - screen_width, or 0 when the
+// level is narrower than the screen
+uint16_t terrain_max_camera_x(void);
 
 // parks scy directly; the play camera pins it while m4's manual pan is still unwritten
 void terrain_set_pan_y(uint8_t y_px);

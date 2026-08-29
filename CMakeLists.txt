@@ -158,6 +158,25 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
     target_link_libraries(crossy_tests PRIVATE gbcore Catch2::Catch2WithMain)
     add_dependencies(crossy_tests crossy)
     catch_discover_tests(crossy_tests)
+
+    # milestone 18: first cgb rom, cgb-only mbc5+ram+battery, 8 banks (128kb), 8kb sram
+    set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
+    add_custom_command(
+        OUTPUT ${GB_MARIO_ROM}
+        COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8 -o ${GB_MARIO_ROM}
+                ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
+        DEPENDS games/mario/src/main.c games/mario/src/mario.h
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "building mario.gbc with gbdk lcc"
+        VERBATIM)
+    add_custom_target(mario DEPENDS ${GB_MARIO_ROM})
+
+    add_executable(mario_tests games/mario/tests/mario_test.cpp)
+    target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
+    target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
+    target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
+    add_dependencies(mario_tests mario)
+    catch_discover_tests(mario_tests)
 else()
     message(WARNING "gbdk not found (set GBDK_HOME); skipping flappy/crossy rom targets")
 endif()

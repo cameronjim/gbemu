@@ -40,6 +40,8 @@
 #define kBirdOamYOffset 16U
 #define kBirdScreenX 40U
 #define kBirdSizePx 8U
+// the art leaves the tile's bottom row empty, so hits use the visible 7 rows
+#define kBirdHitPx 7U
 
 // world tile ids; the sky is the font's space glyph so it matches a cleared screen
 #define kSkyTileId 0x00U
@@ -102,7 +104,7 @@
 #define kFixedShift 8
 #define kBirdStartY 15360 // 60.0 px
 #define kBirdCeilingY 0   // 0.0 px
-#define kBirdFloorY 30720 // 120.0 px: bird bottom on the ground, and 8.8 y stays inside int16_t
+#define kBirdFloorY 30976 // 121.0 px: the visible bottom row rests on the ground line
 #define kGravityVy 36     // +0.14 px/frame^2
 #define kFlapVy (-563)    // -2.20 px/frame
 #define kTerminalVy 896   // +3.50 px/frame

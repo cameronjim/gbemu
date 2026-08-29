@@ -148,7 +148,7 @@ uint8_t world_kills(uint8_t bird_top_px) {
     uint8_t bird_bottom;
     uint8_t gtop;
 
-    bird_bottom = (uint8_t)(bird_top_px + kBirdSizePx);
+    bird_bottom = (uint8_t)(bird_top_px + kBirdHitPx);
     if (bird_bottom >= kGroundTopPx) {
         return 1U;
     }

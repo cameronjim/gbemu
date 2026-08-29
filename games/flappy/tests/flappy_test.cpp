@@ -694,7 +694,8 @@ TEST_CASE("bird_never_sinks_past_the_ground") {
             break;
         }
         REQUIRE(y >= 0);
-        REQUIRE(y + kBirdSizePx <= kGroundTopPx);
+        // the hitbox is the visible 7 rows, so the bird may rest one px deeper than its tile
+        REQUIRE(y + kBirdSizePx <= kGroundTopPx + 1);
     }
     // the ceiling still clamps, but the ground ends the run instead of holding the bird up
     REQUIRE(ended);

@@ -132,6 +132,9 @@ uint8_t Ppu::read_register(uint16_t addr) const {
         return cgb_ ? bg_palette_[bcps_ & 0x3F] : 0xFF;
     case kRegOcpd:
         return cgb_ ? obj_palette_[ocps_ & 0x3F] : 0xFF;
+    case kRegOpri:
+        // TODO cite: pandocs documents bit 0 only; unused bits read 1 like the other cgb regs
+        return cgb_ ? static_cast<uint8_t>(0xFE | opri_) : 0xFF;
     default:
         return 0xFF;
     }
@@ -209,6 +212,11 @@ void Ppu::write_register(uint16_t addr, uint8_t value) {
             ocps_ = advance_palette_index(ocps_);
         }
         break;
+    case kRegOpri:
+        if (cgb_) {
+            opri_ = static_cast<uint8_t>(value & 0x01);
+        }
+        break;
     default:
         break;
     }
@@ -238,6 +246,7 @@ void Ppu::save_state(StateWriter& w) const {
     w.bytes(obj_palette_);
     w.u8(bcps_);
     w.u8(ocps_);
+    w.u8(opri_);
 }
 
 void Ppu::load_state(StateReader& r) {
@@ -267,6 +276,9 @@ void Ppu::load_state(StateReader& r) {
     // bit 6 is unused; a tampered index is also masked at every use site
     bcps_ = static_cast<uint8_t>(r.u8() & 0xBF);
     ocps_ = static_cast<uint8_t>(r.u8() & 0xBF);
+    const uint8_t opri = static_cast<uint8_t>(r.u8() & 0x01);
+    // dmg has no opri; 0 is its only legal value
+    opri_ = cgb_ ? opri : 0;
 }
 
 void Ppu::render_scanline() {
@@ -282,7 +294,8 @@ void Ppu::render_scanline() {
     std::array<uint8_t, kLcdWidth> colors{};
     std::array<uint8_t, kLcdWidth> priority{};
     const ScanlineOut out{colors, ids, priority, rgb};
-    if ((lcdc_ & 0x01) != 0) {
+    // pandocs "bg-to-obj priority (cgb)": on cgb lcdc bit 0 is master priority, bg draws regardless
+    if (cgb_ || (lcdc_ & 0x01) != 0) {
         render_bg(out);
         if (render_window(out)) {
             ++window_line_;
@@ -293,8 +306,23 @@ void Ppu::render_scanline() {
         row[x] = cgb_ ? colors[x] : static_cast<uint8_t>((bgp_ >> (colors[x] * 2)) & 0x03);
     }
     if ((lcdc_ & 0x02) != 0) {
-        render_sprites(colors, std::span<uint8_t>(row, kLcdWidth), ids);
+        render_sprites(out, std::span<uint8_t>(row, kLcdWidth));
     }
+}
+
+bool Ppu::sprite_wins(uint8_t bg_color, uint8_t bg_priority, uint8_t attr) const {
+    if (!cgb_) {
+        return bg_color == 0 || (attr & 0x80) == 0;
+    }
+    // pandocs "bg-to-obj priority (cgb)": lcdc bit 0 clear puts objects above everything
+    if ((lcdc_ & 0x01) == 0) {
+        return true;
+    }
+    if (bg_color == 0) {
+        return true;
+    }
+    // either priority bit is enough to lift bg colors 1-3 above the object
+    return bg_priority == 0 && (attr & 0x80) == 0;
 }
 
 void Ppu::fetch_map_pixel(uint16_t map_base, uint8_t map_x, uint8_t map_y, uint32_t out_x,
@@ -351,8 +379,7 @@ bool Ppu::render_window(const ScanlineOut& out) const {
     return true;
 }
 
-void Ppu::render_sprites(std::span<const uint8_t> colors, std::span<uint8_t> row,
-                         std::span<uint16_t> ids) const {
+void Ppu::render_sprites(const ScanlineOut& out, std::span<uint8_t> row) const {
     const uint8_t height = (lcdc_ & 0x04) != 0 ? 16 : 8;
     const int line = static_cast<int>(ly_) + 16;
     // mode 2 selection: first 10 by oam order whose y-range covers the line
@@ -364,9 +391,11 @@ void Ppu::render_sprites(std::span<const uint8_t> colors, std::span<uint8_t> row
             selected[count++] = i;
         }
     }
-    // dmg priority: lower x wins, then earlier oam; draw lowest priority first
-    const auto draws_before = [this](uint8_t a, uint8_t b) {
-        if (oam_[a * 4 + 1] != oam_[b * 4 + 1]) {
+    // pandocs "obj priority mode": dmg and opri bit 0 rank by x first, cgb default by oam index alone
+    const bool x_priority = !cgb_ || (opri_ & 0x01) != 0;
+    // lower rank wins, so draw the losers first
+    const auto draws_before = [this, x_priority](uint8_t a, uint8_t b) {
+        if (x_priority && oam_[a * 4 + 1] != oam_[b * 4 + 1]) {
             return oam_[a * 4 + 1] > oam_[b * 4 + 1];
         }
         return a > b;
@@ -397,26 +426,32 @@ void Ppu::render_sprites(std::span<const uint8_t> colors, std::span<uint8_t> row
                 sprite_row = static_cast<uint8_t>(sprite_row - 8);
             }
         }
-        const uint8_t lo = vram0(tile * 16 + sprite_row * 2);
-        const uint8_t hi = vram0(tile * 16 + sprite_row * 2 + 1);
+        // pandocs "object attributes": cgb attribute bit 3 picks the tile's vram bank
+        const auto& bank = vram_[cgb_ && (attr & 0x08) != 0 ? 1 : 0];
+        const uint8_t lo = bank[tile * 16 + sprite_row * 2];
+        const uint8_t hi = bank[tile * 16 + sprite_row * 2 + 1];
+        // obp0/obp1 are inert on cgb; bits 0-2 index obj palette ram instead
         const uint8_t obp = (attr & 0x10) != 0 ? obp1_ : obp0_;
         for (uint8_t px = 0; px < 8; ++px) {
             const int x = sprite_x + px;
             if (x < 0 || x >= static_cast<int>(kLcdWidth)) {
                 continue;
             }
+            const uint32_t ux = static_cast<uint32_t>(x);
             const uint8_t bit = (attr & 0x20) != 0 ? px : static_cast<uint8_t>(7 - px);
             const uint8_t color = static_cast<uint8_t>((((hi >> bit) & 1) << 1) | ((lo >> bit) & 1));
             if (color == 0) {
                 // sprite color 0 is always transparent
                 continue;
             }
-            if ((attr & 0x80) != 0 && colors[static_cast<uint32_t>(x)] != 0) {
-                // bg-over-obj: nonzero bg colors stay on top
+            if (!sprite_wins(out.colors[ux], out.priority[ux], attr)) {
                 continue;
             }
-            row[static_cast<uint32_t>(x)] = static_cast<uint8_t>((obp >> (color * 2)) & 0x03);
-            ids[static_cast<uint32_t>(x)] = static_cast<uint16_t>(0x100 | tile);
+            row[ux] = cgb_ ? color : static_cast<uint8_t>((obp >> (color * 2)) & 0x03);
+            if (cgb_) {
+                out.rgb[ux] = obj_rgb(static_cast<uint8_t>(attr & 0x07), color);
+            }
+            out.ids[ux] = static_cast<uint16_t>(0x100 | tile);
         }
     }
 }

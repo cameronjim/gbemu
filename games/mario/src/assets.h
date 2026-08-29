@@ -10,8 +10,15 @@
 // enemy code: m7's super mario alone is 512 bytes of art and bank 0 was already full. nothing but
 // the loaders below reaches any of it, and each of them runs with the lcd off at a level load
 
-// loads every terrain tile into vram bank 0 at its pinned id
+// loads every terrain tile into vram bank 0 at its pinned id: the 0xa0-0xbf block plus the eight
+// ids past mario's last sprite frame
 void assets_load_bg_tiles(void) BANKED;
+
+// and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into
+// vram BANK 1 at 0x20-0x5a. those ids are the font's own glyphs in bank 0 and collide with nothing:
+// a cgb bg map attribute picks a tile's bank per cell, and every scenery kind's kBlockPalette entry
+// carries kCamAttrVram1. terrain_init calls this beside the loader above
+void assets_load_scenery_tiles(void) BANKED;
 
 // loads the eight cgb bg palettes the terrain streamer tags cells with (see kCamPal* in mario.h)
 void assets_load_bg_palettes(void) BANKED;
@@ -45,20 +52,28 @@ void assets_load_enemy_palettes_castle(void) BANKED;
 // no palette loader beside this one
 void assets_load_digit_tiles(void) BANKED;
 
+// stages the six per-kind tables below into ram. m18 took the block kinds from eighteen to
+// thirty-eight and six tables of that length is 228 bytes bank 0 does not have, so they ride in
+// the asset bank and are copied out at a level load - the same trade level.c makes for the level
+// table. terrain_init calls this before it streams a single column
+void assets_load_block_tables(void) BANKED;
+
 // per block-kind tile ids, indexed by the kBlock* constants in mario.h; one entry per 2x2 corner.
-// the streamer reads these on every column it paints, so they are the one asset table bank 0 keeps
-extern const uint8_t kBlockTileTl[kBlockKindCount];
-extern const uint8_t kBlockTileTr[kBlockKindCount];
-extern const uint8_t kBlockTileBl[kBlockKindCount];
-extern const uint8_t kBlockTileBr[kBlockKindCount];
-// cgb bg palette slot per block kind
-extern const uint8_t kBlockPalette[kBlockKindCount];
+// the streamer reads these on every column it paints, so they live in ram: a plain load, no bank
+// switch behind it. read-only in practice - only assets_load_block_tables writes them
+extern uint8_t kBlockTileTl[kBlockKindCount];
+extern uint8_t kBlockTileTr[kBlockKindCount];
+extern uint8_t kBlockTileBl[kBlockKindCount];
+extern uint8_t kBlockTileBr[kBlockKindCount];
+// the cgb bg map attribute byte per block kind: its palette slot, plus kCamAttrXFlip on the four
+// kinds that are another kind's mirror image
+extern uint8_t kBlockPalette[kBlockKindCount];
 
 // what a block kind is to a body standing on it: kFloorSolid, kFloorThin, or neither. m8a's four
 // new kinds turned terrain_solid_at's compare chain into six tests on a path the engine walks
 // twenty times a frame, so the answer is one indexed load again
 #define kFloorSolid 1U
 #define kFloorThin 2U
-extern const uint8_t kBlockFloor[kBlockKindCount];
+extern uint8_t kBlockFloor[kBlockKindCount];
 
 #endif

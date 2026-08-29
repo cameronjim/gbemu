@@ -10,142 +10,1035 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
-// low byte then high byte per row, leftmost pixel in bit 7; index = (hi bit, lo bit)
-// three tiles: ground top (grass edge over dirt), ground fill (dirt only), hard/stair (bordered stone)
-static const uint8_t kGroundTiles[48] = {
-    0xFF, 0xFF, // 33333333 grass edge
-    0xFF, 0xFF, // 33333333 grass edge
-    0xFF, 0x00, // 11111111 dirt
-    0xDD, 0x00, // 11011101
-    0xFF, 0x00, // 11111111
-    0xBB, 0x00, // 10111011
-    0xFF, 0x00, // 11111111
-    0xFF, 0x00, // 11111111
-    0xFF, 0x00, // 11111111 dirt (fill tile)
-    0xDD, 0x00, // 11011101
-    0xFF, 0x00, // 11111111
-    0xBB, 0x00, // 10111011
-    0xFF, 0x00, // 11111111
-    0xEE, 0x00, // 11101110
-    0xFF, 0x00, // 11111111
-    0x77, 0x00, // 01110111
-    0xFF, 0xFF, // 33333333 border (hard/stair tile)
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 border
+// ground: a 16x16 cobble pattern whose two courses are 6/8 and 8/6 wide, so the four
+// quadrants all differ and the block tiles seamlessly both ways. the top block is the same
+// rubble under two rows of grass, and shares the fill block's lower half (kGroundLowerTiles)
+static const uint8_t kGroundTiles[64] = {
+    // ground top left: grass edge with notches over rubble
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x83, 0x1E, // -..+++#-
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    0xFF, 0xFF, // ########
+    0xFF, 0x20, // --#-----
+    0x30, 0xEF, // ++#-++++
+    // ground top right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x01, 0xDF, // ++.++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0xFF, 0xFF, // ########
+    0xFF, 0x10, // ---#----
+    0x18, 0xF7, // +++#-+++
+    // rubble upper left
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    0xFF, 0xFF, // ########
+    0xFF, 0x20, // --#-----
+    0x30, 0xEF, // ++#-++++
+    // rubble upper right
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0xFF, 0xFF, // ########
+    0xFF, 0x10, // ---#----
+    0x18, 0xF7, // +++#-+++
 };
 
-// brick: mortar lines top and mid, fill between
-static const uint8_t kBrickTile[16] = {
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222
+// the rubble's lower half, which both ground blocks end on
+static const uint8_t kGroundLowerTiles[32] = {
+    // rubble lower left, shared by the top and fill blocks
+    0x30, 0xEF, // ++#-++++
+    0x30, 0xEF, // ++#-++++
+    0x30, 0xEF, // ++#-++++
+    0x30, 0xEF, // ++#-++++
+    0xFF, 0xFF, // ########
+    0xFF, 0x02, // ------#-
+    0x83, 0x7E, // -+++++#-
+    0x83, 0x7E, // -+++++#-
+    // rubble lower right
+    0x18, 0xF7, // +++#-+++
+    0x18, 0xF7, // +++#-+++
+    0x18, 0xF7, // +++#-+++
+    0x18, 0xF7, // +++#-+++
+    0xFF, 0xFF, // ########
+    0xFF, 0x01, // -------#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
 };
 
-// question block face: solid quadrant shading stands in for the "?" glyph this pass; a future art
-// pass can trace real glyph pixels once the block is interactive. tiles in id order: top-left
-// (dark outline), top-right (gold fill), bottom-left (gold fill), bottom-right (dark outline)
+// brick: two 8px courses in running bond, each a black mortar line, a tan top highlight and
+// a brown body. the courses' vertical seams sit 4px apart so the wall never reads as a grid
+static const uint8_t kBrickTiles[64] = {
+    // brick upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x02, // ------#-
+    0x02, 0xFF, // ++++++#+
+    0x02, 0xFF, // ++++++#+
+    0x02, 0xFF, // ++++++#+
+    0x02, 0xFF, // ++++++#+
+    0x02, 0xFF, // ++++++#+
+    0x02, 0xFF, // ++++++#+
+    // brick upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x01, // -------#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    // brick lower left
+    0xFF, 0xFF, // ########
+    0xFF, 0x20, // --#-----
+    0x20, 0xFF, // ++#+++++
+    0x20, 0xFF, // ++#+++++
+    0x20, 0xFF, // ++#+++++
+    0x20, 0xFF, // ++#+++++
+    0x20, 0xFF, // ++#+++++
+    0x20, 0xFF, // ++#+++++
+    // brick lower right
+    0xFF, 0xFF, // ########
+    0xFF, 0x10, // ---#----
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+};
+
+// question block: black outline, four corner rivets, a white serif ? and a 1px darker inner
+// edge down the right and along the bottom, which is what gives the face its bevel
 static const uint8_t kQuestionTiles[64] = {
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    // question upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x80, // #-------
+    0xFF, 0xB0, // #-##----
+    0xFF, 0xB0, // #-##----
+    0xF8, 0x87, // #----+++
+    0xF9, 0x86, // #----++-
+    0xF9, 0x86, // #----++-
+    0xFF, 0x80, // #-------
+    // question upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x03, // ------##
+    0xFF, 0x0F, // ----####
+    0xFF, 0x0F, // ----####
+    0x1F, 0xE3, // +++---##
+    0x9F, 0x63, // -++---##
+    0x9F, 0x63, // -++---##
+    0x9F, 0x63, // -++---##
+    // question lower left
+    0xFF, 0x80, // #-------
+    0xFE, 0x81, // #------+
+    0xFE, 0x81, // #------+
+    0xFF, 0x80, // #-------
+    0xFE, 0xB1, // #-##---+
+    0xFE, 0xB1, // #-##---+
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
+    // question lower right
+    0x3F, 0xC3, // ++----##
+    0x7F, 0x83, // +-----##
+    0x7F, 0x83, // +-----##
+    0xFF, 0x03, // ------##
+    0x7F, 0x8F, // +---####
+    0x7F, 0x8F, // +---####
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
+};
 
-// spent block: the same 2x2 footprint drained to a flat slab with a dark border, so a used block
-// reads as inert at a glance even before its dimmed palette lands
+// spent block: the same shell drained of its glyph, so a used block reads as inert
 static const uint8_t kSpentTiles[64] = {
-    0xFF, 0xFF, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, // tl
-    0xFF, 0xFF, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, // tr
-    0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0xFF, // bl
-    0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0xFF, // br
+    // spent upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x80, // #-------
+    0xFF, 0xB0, // #-##----
+    0xFF, 0xB0, // #-##----
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    // spent upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x03, // ------##
+    0xFF, 0x0F, // ----####
+    0xFF, 0x0F, // ----####
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    // spent lower left
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0xB0, // #-##----
+    0xFF, 0xB0, // #-##----
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
+    // spent lower right
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    0xFF, 0x03, // ------##
+    0xFF, 0x0F, // ----####
+    0xFF, 0x0F, // ----####
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
 };
 
-// pipe: dark rim cap over a two-tone body. tiles in id order: top-left cap (rim + dark fill),
-// top-right cap (rim + light fill), body-left (dark, no rim), body-right (light, no rim)
-static const uint8_t kPipeTiles[64] = {
-    0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00,
-    0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
-
-// flag pole: a thin vertical line down the tile's center, sky everywhere else
-// castle: stone block, same shape as hard but its own tile id per the family map
-static const uint8_t kFlagCastleTiles[32] = {
-    0x18, 0x18, // ...33... pole
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0xFF, 0xFF, // 33333333 border
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 border
+// hard/stair block: a beveled stone cube - tan top-left face, brown bevel down the right and
+// along the bottom, black outline with the four inner corners notched
+static const uint8_t kHardTiles[64] = {
+    // stone cube upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x80, // #-------
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    // stone cube upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x01, // -------#
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    // stone cube lower left
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
+    // stone cube lower right
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0xFF, 0xFF, // ########
+    0xFF, 0xFF, // ########
 };
 
-// world coin: a six-px-wide oval standing in the middle of an otherwise empty 16x16 cell, so the
-// cell's color 0 has to be the sky (see kCamPalCoin in assets_load_bg_palettes)
-static const uint8_t kCoinTiles[64] = {
-    0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, // tl
-    0x00, 0x00, 0x00, 0x00, 0xE0, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, // tr
-    0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x07, 0x07, 0x00, 0x00, 0x00, 0x00, // bl
-    0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, // br
+// pipe: a 32px lip over a 28px body inset 2px on each side. the shading runs in columns across
+// the whole width - a 4px light band near the left, dark green through the middle, then a 2px
+// checkered dither before the right outline - so the lip's middle 16px is one repeated tile
+static const uint8_t kPipeTiles[144] = {
+    // lip left, upper
+    0xFF, 0xFF, // ########
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    // lip middle, upper
+    0xFF, 0xFF, // ########
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // lip right, upper
+    0xFF, 0xFF, // ########
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    // lip left, lower
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xF8, 0x87, // #----+++
+    0xFF, 0xFF, // ########
+    // lip middle, lower
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0xFF, 0xFF, // ########
+    // lip right, lower
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0x05, 0xFB, // +++++-+#
+    0x09, 0xF7, // ++++-++#
+    0xFF, 0xFF, // ########
+    // body left edge
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    0x3E, 0x21, // ..#----+
+    // body middle
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // body right edge
+    0x24, 0xDC, // ++-++#..
+    0x14, 0xEC, // +++-+#..
+    0x24, 0xDC, // ++-++#..
+    0x14, 0xEC, // +++-+#..
+    0x24, 0xDC, // ++-++#..
+    0x14, 0xEC, // +++-+#..
+    0x24, 0xDC, // ++-++#..
+    0x14, 0xEC, // +++-+#..
 };
 
-// m8a's four bg tiles, in pipe-family then flag-family order: the thin platform's plank and the
-// empty cell under it, then lava's crested surface and its fill
-static const uint8_t kThinLavaTiles[64] = {
-    0xFF, 0xFF, 0xFF, 0xFF, 0xAA, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // deck
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // under
-    0x66, 0x99, 0xFF, 0x66, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, // crest
-    0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, // fill
+// the flag shaft, which is the only part of the flag inside the pinned terrain block
+static const uint8_t kFlagPoleTile[16] = {
+    // pole: two green pixels with a black shadow
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
 };
 
-// the bridge plank, then the axe head standing on its handle
+// the ball and the white pennant that hangs off the pole's left
+static const uint8_t kFlagHeadTiles[80] = {
+    // the ball that caps the pole, with the shaft running out of its bottom
+    0x00, 0x00, // ........
+    0x78, 0x78, // .####...
+    0xC4, 0xBC, // #-+++#..
+    0xC4, 0xBC, // #-+++#..
+    0x84, 0xFC, // #++++#..
+    0x84, 0xFC, // #++++#..
+    0x78, 0x78, // .####...
+    0x70, 0x10, // .--#....
+    // pennant upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x03, 0x03, // ......##
+    0x0F, 0x0C, // ....##--
+    0x3F, 0x30, // ..##----
+    // pennant upper right
+    0x00, 0x00, // ........
+    0x03, 0x03, // ......##
+    0x0F, 0x0D, // ....##-#
+    0x3F, 0x31, // ..##---#
+    0xFF, 0xC1, // ##-----#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    // pennant lower left
+    0x3F, 0x30, // ..##----
+    0x0F, 0x0C, // ....##--
+    0x03, 0x03, // ......##
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // pennant lower right
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0xC1, // ##-----#
+    0x3F, 0x31, // ..##---#
+    0x0F, 0x0D, // ....##-#
+    0x03, 0x03, // ......##
+    0x00, 0x00, // ........
+};
+
+// the castle, five kinds of block: plain wall, crenellation, an arched window, and the two
+// halves of the door. the wall tile repeats in all four corners of its block and the merlon
+// tile in both upper ones, so the two of them cost one tile each
+static const uint8_t kCastleTiles[224] = {
+    // wall: 4px courses of small brick
+    0xFF, 0xFF, // ########
+    0xFF, 0x11, // ---#---#
+    0x11, 0xFF, // +++#+++#
+    0x11, 0xFF, // +++#+++#
+    0xFF, 0xFF, // ########
+    0x44, 0xFF, // +#+++#++
+    0x44, 0xFF, // +#+++#++
+    0x44, 0xFF, // +#+++#++
+    // merlon: a tan-capped tooth with a sky gap beside it
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0xFC, 0x00, // ------..
+    0x10, 0xFC, // +++#++..
+    0x10, 0xFC, // +++#++..
+    0xFC, 0xFC, // ######..
+    0x40, 0xFC, // +#++++..
+    0x40, 0xFC, // +#++++..
+    // window upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x11, // ---#---#
+    0x17, 0xF8, // +++#+---
+    0x1F, 0xF3, // +++#--##
+    0xFF, 0xF7, // ####-###
+    0x4F, 0xF7, // +#++-###
+    0x4F, 0xF7, // +#++-###
+    0x4F, 0xF7, // +#++-###
+    // window upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x11, // ---#---#
+    0xF1, 0x1F, // ---#+++#
+    0xF1, 0xCF, // ##--+++#
+    0xFF, 0xEF, // ###-####
+    0xF4, 0xEF, // ###-+#++
+    0xF4, 0xEF, // ###-+#++
+    0xF4, 0xEF, // ###-+#++
+    // window lower left
+    0xFF, 0xF7, // ####-###
+    0xFF, 0x17, // ---#-###
+    0x1F, 0xF7, // +++#-###
+    0x1F, 0xF7, // +++#-###
+    0xFF, 0xF7, // ####-###
+    0x4F, 0xF0, // +#++----
+    0x44, 0xFF, // +#+++#++
+    0x44, 0xFF, // +#+++#++
+    // window lower right
+    0xFF, 0xEF, // ###-####
+    0xFF, 0xE1, // ###----#
+    0xF1, 0xEF, // ###-+++#
+    0xF1, 0xEF, // ###-+++#
+    0xFF, 0xEF, // ###-####
+    0xF4, 0x0F, // ----+#++
+    0x44, 0xFF, // +#+++#++
+    0x44, 0xFF, // +#+++#++
+    // door arch upper left
+    0xFF, 0xFF, // ########
+    0xFF, 0x11, // ---#---#
+    0x17, 0xF8, // +++#+---
+    0x1F, 0xF3, // +++#--##
+    0xFF, 0xE7, // ###--###
+    0x7F, 0xCF, // +#--####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    // door arch upper right
+    0xFF, 0xFF, // ########
+    0xFF, 0x11, // ---#---#
+    0xF1, 0x1F, // ---#+++#
+    0xF1, 0xCF, // ##--+++#
+    0xFF, 0xE7, // ###--###
+    0xFC, 0xF3, // ####--++
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    // door arch lower left
+    0xFF, 0xDF, // ##-#####
+    0xFF, 0x1F, // ---#####
+    0x3F, 0xDF, // ++-#####
+    0x3F, 0xDF, // ++-#####
+    0xFF, 0xDF, // ##-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    // door arch lower right
+    0xFF, 0xFB, // #####-##
+    0xFF, 0xF9, // #####--#
+    0xFD, 0xFB, // #####-+#
+    0xFD, 0xFB, // #####-+#
+    0xFF, 0xFB, // #####-##
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    // doorway upper left
+    0xFF, 0xDF, // ##-#####
+    0xFF, 0x1F, // ---#####
+    0x3F, 0xDF, // ++-#####
+    0x3F, 0xDF, // ++-#####
+    0xFF, 0xDF, // ##-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    // doorway upper right
+    0xFF, 0xFB, // #####-##
+    0xFF, 0xF9, // #####--#
+    0xFD, 0xFB, // #####-+#
+    0xFD, 0xFB, // #####-+#
+    0xFF, 0xFB, // #####-##
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    // doorway lower left
+    0xFF, 0xDF, // ##-#####
+    0xFF, 0x1F, // ---#####
+    0x3F, 0xDF, // ++-#####
+    0x3F, 0xDF, // ++-#####
+    0xFF, 0xDF, // ##-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    0x7F, 0xDF, // +#-#####
+    // doorway lower right
+    0xFF, 0xFB, // #####-##
+    0xFF, 0xF9, // #####--#
+    0xFD, 0xFB, // #####-+#
+    0xFD, 0xFB, // #####-+#
+    0xFF, 0xFB, // #####-##
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+    0xFC, 0xFB, // #####-++
+};
+
+// clouds, two block rows tall: a rounded left cap and a repeatable middle, each drawn as one
+// 16x32 mass with three bumps across its top, a black outline and a cloud-blue underside.
+// the right cap is the left one mirrored, which the block's own x-flip attribute pays for
+static const uint8_t kCloudTiles[256] = {
+    // cap upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x07, 0x07, // .....###
+    0x1F, 0x18, // ...##---
+    0x3F, 0x20, // ..#-----
+    0x7F, 0x40, // .#------
+    // cap upper right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x40, 0x40, // .#......
+    0xFC, 0xBC, // #-####..
+    0xFF, 0x03, // ------##
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // cap lower left
+    0x7F, 0x40, // .#------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFC, 0x83, // #-----++
+    0xFB, 0x84, // #----+--
+    0xFF, 0x80, // #-------
+    // cap lower right
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0x7F, 0x80, // +-------
+    0xFF, 0x00, // --------
+    // middle upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x0F, 0x0F, // ....####
+    0x3F, 0x30, // ..##----
+    0x7F, 0x40, // .#------
+    0xFF, 0x80, // #-------
+    0xFF, 0x00, // --------
+    // middle upper right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x80, 0x80, // #.......
+    0xF8, 0x78, // -####...
+    0xFE, 0x06, // -----##.
+    0xFF, 0x01, // -------#
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // middle lower left
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // middle lower right
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // cap bottom-row upper left
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xBF, 0xC0, // #+------
+    // cap bottom-row upper right
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // cap bottom-row lower left
+    0x5F, 0x60, // .#+-----
+    0x47, 0x78, // .#+++---
+    0x20, 0x3F, // ..#+++++
+    0x18, 0x1F, // ...##+++
+    0x07, 0x07, // .....###
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // cap bottom-row lower right
+    0xFF, 0x00, // --------
+    0xFC, 0x03, // ------++
+    0x40, 0xBF, // +-++++++
+    0x03, 0xFF, // ++++++##
+    0xBC, 0xFC, // #+####..
+    0x40, 0x40, // .#......
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // middle bottom-row upper left
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xF9, 0x06, // -----++-
+    0xF6, 0x09, // ----+--+
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // middle bottom-row upper right
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // middle bottom-row lower left
+    0x7F, 0x80, // +-------
+    0x3F, 0xC0, // ++------
+    0x8F, 0xF0, // #+++----
+    0x40, 0x7F, // .#++++++
+    0x30, 0x3F, // ..##++++
+    0x0F, 0x0F, // ....####
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // middle bottom-row lower right
+    0xFF, 0x00, // --------
+    0xFE, 0x01, // -------+
+    0xF8, 0x07, // -----+++
+    0x81, 0x7F, // -++++++#
+    0x06, 0xFE, // +++++##.
+    0x78, 0xF8, // +####...
+    0x80, 0x80, // #.......
+    0x00, 0x00, // ........
+};
+
+// background hills: a rounded summit, a 45-degree left slope and a speckled body. the right
+// slope is the left one mirrored by its block's x-flip attribute
+static const uint8_t kHillTiles[192] = {
+    // peak upper left
+    0x03, 0x03, // ......##
+    0x06, 0x05, // .....#-+
+    0x0C, 0x0B, // ....#-++
+    0x18, 0x17, // ...#-+++
+    0x18, 0x17, // ...#-+++
+    0x30, 0x2F, // ..#-++++
+    0x30, 0x2F, // ..#-++++
+    0x60, 0x5F, // .#-+++++
+    // peak upper right
+    0xC0, 0xC0, // ##......
+    0x20, 0xE0, // ++#.....
+    0x10, 0xF0, // +++#....
+    0x08, 0xF8, // ++++#...
+    0x08, 0xF8, // ++++#...
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x02, 0xFE, // ++++++#.
+    // peak lower left
+    0x60, 0x5F, // .#-+++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    0xC0, 0xBF, // #-++++++
+    // peak lower right
+    0x02, 0xFE, // ++++++#.
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    // left slope upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // left slope upper right
+    0x01, 0x01, // .......#
+    0x03, 0x02, // ......#-
+    0x06, 0x05, // .....#-+
+    0x0C, 0x0B, // ....#-++
+    0x18, 0x17, // ...#-+++
+    0x30, 0x2F, // ..#-++++
+    0x60, 0x5F, // .#-+++++
+    0xC0, 0xBF, // #-++++++
+    // left slope lower left
+    0x01, 0x01, // .......#
+    0x03, 0x02, // ......#-
+    0x06, 0x05, // .....#-+
+    0x0C, 0x0B, // ....#-++
+    0x18, 0x17, // ...#-+++
+    0x30, 0x2F, // ..#-++++
+    0x60, 0x5F, // .#-+++++
+    0xC0, 0xBF, // #-++++++
+    // left slope lower right
+    0x80, 0x7F, // -+++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // fill upper left
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x18, 0xFF, // +++##+++
+    0x18, 0xFF, // +++##+++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // fill upper right
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x30, 0xFF, // ++##++++
+    // fill lower left
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x03, 0xFF, // ++++++##
+    0x03, 0xFF, // ++++++##
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // fill lower right
+    0x30, 0xFF, // ++##++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+};
+
+// bushes, one block row tall and sitting straight on the grass: a rounded cap and a repeatable
+// middle, light green over a scalloped dark-green underside. the right cap is the cap mirrored
+static const uint8_t kBushTiles[128] = {
+    // bush cap upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x01, 0x01, // .......#
+    // bush cap upper right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // bush cap lower left
+    0x1F, 0x1E, // ...####-
+    0x3F, 0x20, // ..#-----
+    0x7F, 0x40, // .#------
+    0xFF, 0x80, // #-------
+    0xFE, 0x81, // #------+
+    0xE0, 0x9F, // #--+++++
+    0xC0, 0xBF, // #-++++++
+    0x80, 0x7F, // -+++++++
+    // bush cap lower right
+    0xF0, 0xF0, // ####....
+    0xF8, 0x08, // ----#...
+    0xFC, 0x04, // -----#..
+    0xFE, 0x02, // ------#.
+    0xFF, 0x01, // -------#
+    0x0F, 0xF0, // ++++----
+    0x07, 0xF8, // +++++---
+    0x03, 0xFC, // ++++++--
+    // bush middle upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // bush middle upper right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x80, 0x80, // #.......
+    // bush middle lower left
+    0x0F, 0x0F, // ....####
+    0x1F, 0x10, // ...#----
+    0x3F, 0x20, // ..#-----
+    0x7F, 0x40, // .#------
+    0xFF, 0x80, // #-------
+    0xF0, 0x0F, // ----++++
+    0xE0, 0x1F, // ---+++++
+    0xC0, 0x3F, // --++++++
+    // bush middle lower right
+    0xF8, 0x78, // -####...
+    0xFC, 0x04, // -----#..
+    0xFE, 0x02, // ------#.
+    0xFF, 0x01, // -------#
+    0x7F, 0x80, // +-------
+    0x07, 0xF8, // +++++---
+    0x03, 0xFC, // ++++++--
+    0x01, 0xFE, // +++++++-
+};
+
+// a block's four tiles all take one attribute byte, and the ball's block is scenery in vram
+// bank 1 - so the shaft under it and the sky beside it need bank-1 copies of their own
+static const uint8_t kScenPoleTiles[32] = {
+    // a second copy of the shaft, in vram bank 1
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    0x70, 0x10, // .--#....
+    // the empty cell beside the ball
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+};
+
+// 1-3's thin platform: a four-px plank with sky under it
+static const uint8_t kThinTiles[32] = {
+    // thin platform deck
+    0xFF, 0xFF, // ########
+    0xFF, 0x00, // --------
+    0x00, 0xFF, // ++++++++
+    0xFF, 0xFF, // ########
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // the empty cell under it
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+};
+
+// 1-4's lava, painted over the death plane
+static const uint8_t kLavaTiles[32] = {
+    // lava crest
+    0x66, 0x00, // .--..--.
+    0xFF, 0x00, // --------
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x22, 0xFF, // ++#+++#+
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    // lava fill
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x10, 0xFF, // +++#++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x08, 0xFF, // ++++#+++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+};
+
+// the castle's ending pair
 static const uint8_t kBridgeAxeTiles[32] = {
-    0xFF, 0xFF, 0xFF, 0x00, 0xDB, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x3C, 0x3C, 0x7E, 0x7E, 0x7E, 0x7E, 0x3C, 0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18,
+    // bridge plank
+    0xFF, 0xFF, // ########
+    0x00, 0xFF, // ++++++++
+    0x4A, 0xFF, // +#++#+#+
+    0x00, 0xFF, // ++++++++
+    0xFF, 0xFF, // ########
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // the axe on its handle
+    0x00, 0x00, // ........
+    0x3C, 0x3C, // ..####..
+    0x7E, 0x42, // .#----#.
+    0x7E, 0x42, // .#----#.
+    0x3C, 0x3C, // ..####..
+    0x00, 0x18, // ...++...
+    0x00, 0x18, // ...++...
+    0x00, 0x18, // ...++...
 };
 
+// a world coin: a six-px oval standing in an otherwise empty cell, so its palette's color 0
+// has to be the backdrop
+static const uint8_t kCoinTiles[64] = {
+    // coin upper left
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x03, 0x03, // ......##
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    // coin upper right
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0xC0, 0xC0, // ##......
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    // coin lower left
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    0x07, 0x04, // .....#--
+    0x03, 0x03, // ......##
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // coin lower right
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0xC0, 0xC0, // ##......
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+};
+
+// m18's art pass gives most blocks four distinct quadrants instead of one tile stamped four times,
+// which is 99 background tiles where the old placeholder art was 21. bank 0's tile space cannot
+// hold that beside the sprites, so the art is split: everything a level's terrain needs stays in
+// vram bank 0, at the pinned 0xa0-0xbf block and the eight ids past mario's last sprite frame, and
+// the scenery - the castle, the flag's head, and 1-1's clouds, hills and bushes - goes to vram
+// bank 1, which nothing else in the game has ever used for tiles. a cgb bg map attribute picks a
+// tile's bank per cell (kCamAttrVram1 in mario.h), so the two sets coexist with no id conflict at
+// all: the font keeps its own glyph range in bank 0 and never has to be reloaded
 void assets_load_bg_tiles(void) BANKED {
-    set_bkg_data(kTileGroundTop, 3, kGroundTiles);
-    set_bkg_data(kTileBrick, 1, kBrickTile);
+    set_bkg_data(kTileGroundTopL, 4, kGroundTiles);
+    set_bkg_data(kTileGroundFillBl, 2, kGroundLowerTiles);
+    set_bkg_data(kTileBrickTl, 4, kBrickTiles);
     set_bkg_data(kTileQuestionTl, 4, kQuestionTiles);
     set_bkg_data(kTileSpentTl, 4, kSpentTiles);
-    set_bkg_data(kTilePipeTl, 4, kPipeTiles);
-    set_bkg_data(kTileThin, 4, kThinLavaTiles);
-    set_bkg_data(kTileFlagPole, 2, kFlagCastleTiles);
+    set_bkg_data(kTileHardTl, 4, kHardTiles);
+    set_bkg_data(kTilePipeLipL, 9, kPipeTiles);
+    set_bkg_data(kTileThin, 2, kThinTiles);
+    set_bkg_data(kTileFlagPole, 1, kFlagPoleTile);
     set_bkg_data(kTileBridge, 2, kBridgeAxeTiles);
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
 }
 
+// the same call writes vram bank 1 with vbk pointing there, so the scenery lands beside the font
+// rather than on top of it. bcpd and vram are both mode-locked on real hardware and terrain_init
+// runs with the lcd off, which is where this is called from; vbk goes back before anything else
+// touches the map, because set_bkg_tiles would otherwise write tile numbers into the attribute map
+void assets_load_scenery_tiles(void) BANKED {
+    VBK_REG = VBK_BANK_1;
+    set_bkg_data(kTileLavaTop, 2, kLavaTiles);
+    set_bkg_data(kTileCastleWall, 14, kCastleTiles);
+    set_bkg_data(kTileFlagBall, 5, kFlagHeadTiles);
+    set_bkg_data(kTileCloudCapTl, 16, kCloudTiles);
+    set_bkg_data(kTileHillPeakTl, 12, kHillTiles);
+    set_bkg_data(kTileBushCapTl, 8, kBushTiles);
+    set_bkg_data(kTileScenPole, 2, kScenPoleTiles);
+    VBK_REG = VBK_BANK_0;
+}
+
+// the overworld's eight cgb bg palettes. every slot but the ground's keeps the sky in color 0,
+// because most of these tiles leave part of their cell empty and that empty part is the backdrop.
+// the ground's color 0 is the grass instead: its blocks cover their whole 16x16 cell, and the two
+// rows of grass along the top of a surface block are the one place it shows
 void assets_load_bg_palettes(void) BANKED {
-    palette_color_t sky[4] = {RGB(24, 28, 31), RGB(16, 20, 31), RGB(8, 12, 28), RGB(2, 4, 16)};
-    palette_color_t ground[4] = {RGB(4, 3, 2), RGB(16, 10, 5), RGB(12, 12, 10), RGB(22, 16, 8)};
-    palette_color_t brick[4] = {RGB(6, 3, 2), RGB(14, 6, 3), RGB(20, 8, 4), RGB(10, 4, 2)};
-    palette_color_t question[4] = {RGB(6, 4, 0), RGB(24, 18, 3), RGB(28, 22, 4), RGB(20, 14, 2)};
-    palette_color_t pipe[4] = {RGB(1, 4, 1), RGB(10, 28, 10), RGB(4, 20, 6), RGB(2, 10, 3)};
-    // the flag/castle family's color 0 is the sky, not a shade: the pole's own tile is mostly empty
-    // and its block's other half is a blank cell, so a gray backdrop would paint the shaft as a wall
-    palette_color_t neutral[4] = {RGB(24, 28, 31), RGB(22, 22, 22), RGB(16, 16, 16), RGB(28, 28, 28)};
-    palette_color_t spent[4] = {RGB(4, 3, 2), RGB(11, 9, 7), RGB(9, 8, 7), RGB(6, 5, 4)};
-    // the coin cell is mostly empty, so its color 0 is the sky for the same reason neutral's is
-    palette_color_t coin[4] = {RGB(24, 28, 31), RGB(31, 30, 18), RGB(30, 22, 4), RGB(14, 8, 0)};
+    palette_color_t sky[4] = {kSkyRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {RGB(2, 17, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {kSkyRgb, RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kSkyRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
+    palette_color_t pipe[4] = {kSkyRgb, RGB(14, 31, 6), RGB(2, 17, 0), RGB(0, 0, 0)};
+    palette_color_t neutral[4] = {kSkyRgb, RGB(31, 31, 31), RGB(31, 24, 19), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kSkyRgb, RGB(24, 15, 6), RGB(13, 6, 0), RGB(0, 0, 0)};
+    palette_color_t coin[4] = {kSkyRgb, RGB(31, 26, 7), RGB(31, 20, 8), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);
@@ -157,15 +1050,17 @@ void assets_load_bg_palettes(void) BANKED {
 }
 
 void assets_load_bg_palettes_underground(void) BANKED {
-    // same eight slots, same tile art: only the colors say the room is below ground
-    palette_color_t sky[4] = {RGB(0, 0, 6), RGB(0, 2, 10), RGB(1, 3, 13), RGB(2, 4, 16)};
-    palette_color_t ground[4] = {RGB(0, 0, 6), RGB(3, 8, 20), RGB(2, 6, 15), RGB(5, 12, 26)};
-    palette_color_t brick[4] = {RGB(0, 0, 6), RGB(3, 7, 18), RGB(4, 10, 24), RGB(2, 5, 13)};
-    palette_color_t question[4] = {RGB(0, 0, 6), RGB(18, 14, 4), RGB(22, 17, 5), RGB(14, 10, 2)};
-    palette_color_t pipe[4] = {RGB(0, 0, 6), RGB(5, 20, 18), RGB(2, 13, 12), RGB(1, 7, 7)};
-    palette_color_t neutral[4] = {RGB(0, 0, 6), RGB(12, 12, 18), RGB(8, 8, 14), RGB(16, 16, 22)};
-    palette_color_t spent[4] = {RGB(0, 0, 6), RGB(6, 7, 12), RGB(5, 6, 10), RGB(3, 4, 8)};
-    palette_color_t coin[4] = {RGB(0, 0, 6), RGB(31, 30, 18), RGB(30, 22, 4), RGB(14, 8, 0)};
+    // the same eight slots and the same art: only the colors say the room is below ground. the
+    // backdrop goes to a near-black navy, the masonry from brown to blue and the pipes to teal,
+    // and the two warm slots keep their gold so a coin still reads as one
+    palette_color_t sky[4] = {kUndergroundRgb, RGB(20, 24, 31), RGB(6, 14, 26), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {RGB(8, 14, 28), RGB(14, 20, 31), RGB(5, 9, 22), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {kUndergroundRgb, RGB(12, 18, 31), RGB(6, 10, 26), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kUndergroundRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
+    palette_color_t pipe[4] = {kUndergroundRgb, RGB(8, 31, 24), RGB(0, 20, 16), RGB(0, 0, 0)};
+    palette_color_t neutral[4] = {kUndergroundRgb, RGB(24, 26, 31), RGB(12, 18, 31), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kUndergroundRgb, RGB(8, 11, 20), RGB(4, 6, 14), RGB(0, 0, 0)};
+    palette_color_t coin[4] = {kUndergroundRgb, RGB(31, 26, 7), RGB(31, 20, 8), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);
@@ -179,14 +1074,14 @@ void assets_load_bg_palettes_underground(void) BANKED {
 void assets_load_bg_palettes_castle(void) BANKED {
     // the same eight slots again, drained to castle stone. lava takes the coin slot, which no
     // castle grid paints a world coin with, so the one warm ramp on screen is the pit
-    palette_color_t sky[4] = {RGB(1, 1, 3), RGB(3, 3, 6), RGB(5, 5, 9), RGB(7, 7, 11)};
-    palette_color_t ground[4] = {RGB(1, 1, 3), RGB(17, 16, 15), RGB(12, 11, 11), RGB(21, 20, 19)};
-    palette_color_t brick[4] = {RGB(1, 1, 3), RGB(14, 13, 13), RGB(18, 17, 17), RGB(9, 9, 10)};
-    palette_color_t question[4] = {RGB(1, 1, 3), RGB(24, 18, 3), RGB(28, 22, 4), RGB(20, 14, 2)};
-    palette_color_t pipe[4] = {RGB(1, 1, 3), RGB(20, 20, 22), RGB(14, 14, 16), RGB(8, 8, 10)};
-    palette_color_t neutral[4] = {RGB(1, 1, 3), RGB(24, 24, 26), RGB(17, 17, 19), RGB(28, 28, 30)};
-    palette_color_t spent[4] = {RGB(1, 1, 3), RGB(9, 9, 10), RGB(7, 7, 8), RGB(5, 5, 6)};
-    palette_color_t lava[4] = {RGB(1, 1, 3), RGB(31, 24, 6), RGB(28, 9, 1), RGB(16, 3, 0)};
+    palette_color_t sky[4] = {kCastleRgb, RGB(20, 20, 22), RGB(11, 11, 13), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {RGB(9, 9, 11), RGB(21, 20, 19), RGB(12, 11, 11), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {kCastleRgb, RGB(20, 19, 18), RGB(12, 11, 11), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kCastleRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
+    palette_color_t pipe[4] = {kCastleRgb, RGB(22, 22, 24), RGB(13, 13, 15), RGB(0, 0, 0)};
+    palette_color_t neutral[4] = {kCastleRgb, RGB(28, 28, 30), RGB(17, 17, 19), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kCastleRgb, RGB(9, 9, 10), RGB(6, 6, 7), RGB(0, 0, 0)};
+    palette_color_t lava[4] = {kCastleRgb, RGB(31, 24, 6), RGB(28, 9, 1), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);

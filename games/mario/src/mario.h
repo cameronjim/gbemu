@@ -69,7 +69,34 @@
 #define kBlockLava 15U
 #define kBlockBridge 16U
 #define kBlockAxe 17U
-#define kBlockKindCount 18U
+// m18's background pass. a surface ground block wears two rows of grass, so the rows under it are
+// their own kind; the castle stopped being one uniform slab and became five; the flag grew a ball
+// and a pennant; and the last twelve are pure scenery, painted only where the bible left sky
+#define kBlockGroundFill 18U
+#define kBlockCastleCrenel 19U
+#define kBlockCastleWindow 20U
+#define kBlockCastleDoorTop 21U
+#define kBlockCastleDoor 22U
+#define kBlockFlagBall 23U
+#define kBlockFlagCloth 24U
+// a cloud is two block rows: a rounded cap, a repeatable middle, and the cap again mirrored
+#define kBlockCloudTl 25U
+#define kBlockCloudT 26U
+#define kBlockCloudTr 27U
+#define kBlockCloudBl 28U
+#define kBlockCloudB 29U
+#define kBlockCloudBr 30U
+#define kBlockHillPeak 31U
+#define kBlockHillSlopeL 32U
+#define kBlockHillSlopeR 33U
+#define kBlockHillFill 34U
+#define kBlockBushL 35U
+#define kBlockBushM 36U
+#define kBlockBushR 37U
+#define kBlockKindCount 38U
+// the first purely decorative kind: everything from here up is non-solid and is only ever stamped
+// into a cell the compiled level left empty
+#define kBlockFirstDecor kBlockCloudTl
 // what blocks_kind_override returns when the compiled grid still stands unaltered
 #define kBlockNoOverride 0xFFU
 
@@ -88,15 +115,23 @@
 #define kContentMulticoin 5U
 #define kContentVine 6U
 
-// bg tile ids for the level; families pinned per claude-docs/milestones/18-smbd.md's test contract.
-// the exact per-tile map is recorded in games/mario/src/assets.h.
+// bg tile ids for the level. m18's art pass gives most blocks four distinct quadrants instead of
+// one tile stamped four times, which is 99 tiles rather than 21, so the background now lives in
+// three runs: the pinned 0xa0-0xbf block and the eight ids past mario's last sprite frame, both in
+// vram bank 0, and a scenery run in vram bank 1 (see assets_load_scenery_tiles).
 #define kTileSky kFontFirstTile // 0x00: the font's blank space glyph, same trick as flappy/crossy
-// ground family 0xa0..0xa3: hard/stair share the family's single stone tile
-#define kTileGroundTop 0xA0U
-#define kTileGroundFill 0xA1U
-#define kTileHard 0xA2U
-// brick family 0xa4..
-#define kTileBrick 0xA4U
+
+// --- the pinned terrain block, 0xa0-0xbf, exactly full -----------------------------------------
+// ground family 0xa0..0xa3: a surface block's grass-capped upper half, then the rubble's upper half
+#define kTileGroundTopL 0xA0U
+#define kTileGroundTopR 0xA1U
+#define kTileGroundFillTl 0xA2U
+#define kTileGroundFillTr 0xA3U
+// brick family 0xa4..0xa7: two courses in running bond
+#define kTileBrickTl 0xA4U
+#define kTileBrickTr 0xA5U
+#define kTileBrickBl 0xA6U
+#define kTileBrickBr 0xA7U
 // question family 0xa8..0xaf: the lit block's 2x2 face, then the spent block's
 #define kTileQuestionTl 0xA8U
 #define kTileQuestionTr 0xA9U
@@ -106,29 +141,108 @@
 #define kTileSpentTr 0xADU
 #define kTileSpentBl 0xAEU
 #define kTileSpentBr 0xAFU
-// pipe family 0xb0..0xb7; m8a spends the four the family had left on 1-3's thin platform deck and
-// on a castle's lava, which needs a surface tile and a fill tile like the ground does
-#define kTilePipeTl 0xB0U
-#define kTilePipeTr 0xB1U
-#define kTilePipeBodyL 0xB2U
-#define kTilePipeBodyR 0xB3U
-#define kTileThin 0xB4U
-#define kTileThinUnder 0xB5U
-#define kTileLavaTop 0xB6U
-#define kTileLavaFill 0xB7U
-// flag/castle family 0xb8..0xbb, now full: the bridge deck and the axe take its last two
-#define kTileFlagPole 0xB8U
-#define kTileCastle 0xB9U
+// pipe family 0xb0..0xb8. a pipe is 32px wide and its shading runs in columns across the whole of
+// it, so the lip is a left edge, a middle repeated twice and a right edge, top half then bottom
+#define kTilePipeLipL 0xB0U
+#define kTilePipeLipM 0xB1U
+#define kTilePipeLipR 0xB2U
+#define kTilePipeLipLb 0xB3U
+#define kTilePipeLipMb 0xB4U
+#define kTilePipeLipRb 0xB5U
+#define kTilePipeBodyL 0xB6U
+#define kTilePipeBodyM 0xB7U
+#define kTilePipeBodyR 0xB8U
+// the pole shaft, the bridge deck, the axe, and the world coin's four quadrants
+#define kTileFlagPole 0xB9U
 #define kTileBridge 0xBAU
 #define kTileAxe 0xBBU
-// coins-in-world family 0xbc..0xbf: one 16x16 coin's four quadrants
 #define kTileCoinTl 0xBCU
 #define kTileCoinTr 0xBDU
 #define kTileCoinBl 0xBEU
 #define kTileCoinBr 0xBFU
 
+// --- the eight ids past mario's frames, 0xf8-0xff, exactly full --------------------------------
+#define kTileGroundFillBl 0xF8U
+#define kTileGroundFillBr 0xF9U
+#define kTileHardTl 0xFAU
+#define kTileHardTr 0xFBU
+#define kTileHardBl 0xFCU
+#define kTileHardBr 0xFDU
+#define kTileThin 0xFEU
+#define kTileThinUnder 0xFFU
+
+// --- the scenery run, 0x20-0x5a, in VRAM BANK 1 -------------------------------------------------
+// these ids overlap the font's glyphs and half the sprite families, and collide with none of them:
+// a cgb bg map attribute picks a tile's vram bank per cell, so a block tagged kCamAttrVram1 reads
+// its four tiles out of bank 1, which nothing else in this game has ever stored a tile in. bank 0
+// keeps the font and the sprites exactly as they were
+#define kTileSceneryFirst 0x20U
+#define kTileLavaTop 0x20U
+#define kTileLavaFill 0x21U
+#define kTileCastleWall 0x22U
+#define kTileCastleCrenel 0x23U
+#define kTileCastleWindowTl 0x24U
+#define kTileCastleWindowTr 0x25U
+#define kTileCastleWindowBl 0x26U
+#define kTileCastleWindowBr 0x27U
+#define kTileCastleDoorTopTl 0x28U
+#define kTileCastleDoorTopTr 0x29U
+#define kTileCastleDoorTopBl 0x2AU
+#define kTileCastleDoorTopBr 0x2BU
+#define kTileCastleDoorTl 0x2CU
+#define kTileCastleDoorTr 0x2DU
+#define kTileCastleDoorBl 0x2EU
+#define kTileCastleDoorBr 0x2FU
+#define kTileFlagBall 0x30U
+#define kTileFlagClothTl 0x31U
+#define kTileFlagClothTr 0x32U
+#define kTileFlagClothBl 0x33U
+#define kTileFlagClothBr 0x34U
+// a cloud is one 16x32 mass split into two block rows: the cap's, then the middle's
+#define kTileCloudCapTl 0x35U
+#define kTileCloudCapTr 0x36U
+#define kTileCloudCapMl 0x37U
+#define kTileCloudCapMr 0x38U
+#define kTileCloudMidTl 0x39U
+#define kTileCloudMidTr 0x3AU
+#define kTileCloudMidMl 0x3BU
+#define kTileCloudMidMr 0x3CU
+#define kTileCloudCapBl 0x3DU
+#define kTileCloudCapBr 0x3EU
+#define kTileCloudCapFl 0x3FU
+#define kTileCloudCapFr 0x40U
+#define kTileCloudMidBl 0x41U
+#define kTileCloudMidBr 0x42U
+#define kTileCloudMidFl 0x43U
+#define kTileCloudMidFr 0x44U
+#define kTileHillPeakTl 0x45U
+#define kTileHillPeakTr 0x46U
+#define kTileHillPeakBl 0x47U
+#define kTileHillPeakBr 0x48U
+#define kTileHillSlopeTl 0x49U
+#define kTileHillSlopeTr 0x4AU
+#define kTileHillSlopeBl 0x4BU
+#define kTileHillSlopeBr 0x4CU
+#define kTileHillFillTl 0x4DU
+#define kTileHillFillTr 0x4EU
+#define kTileHillFillBl 0x4FU
+#define kTileHillFillBr 0x50U
+#define kTileBushCapTl 0x51U
+#define kTileBushCapTr 0x52U
+#define kTileBushCapBl 0x53U
+#define kTileBushCapBr 0x54U
+#define kTileBushMidTl 0x55U
+#define kTileBushMidTr 0x56U
+#define kTileBushMidBl 0x57U
+#define kTileBushMidBr 0x58U
+// a block's four tiles all take one attribute byte, so the pole ball's cell cannot mix a bank-1
+// tile with the bank-0 shaft beside it: it gets its own copies
+#define kTileScenPole 0x59U
+#define kTileScenBlank 0x5AU
+#define kTileSceneryLast 0x5AU
+
 // cgb bg palette slots for the terrain: one per pinned tile family, plus a neutral one for
-// flag/castle. all eight cgb bg palettes are spoken for now
+// bridge/axe/platform. all eight cgb bg palettes are spoken for
 #define kCamPalSky 0U
 #define kCamPalGround 1U
 #define kCamPalBrick 2U
@@ -137,6 +251,20 @@
 #define kCamPalNeutral 5U
 #define kCamPalSpent 6U
 #define kCamPalCoin 7U
+// a cgb bg map attribute's flip bits, or'd into a kBlockPalette entry. put_face tags all four of a
+// block's tiles with the one byte, so a mirrored block kind is the same four tiles with its left
+// and right columns swapped and this bit set - which is what lets one cloud cap, one hill slope
+// and one bush cap each serve both ends of the shape they cap
+#define kCamAttrXFlip 0x20U
+// and the bank bit, which is what puts a scenery block's tiles in vram bank 1
+#define kCamAttrVram1 0x08U
+
+// color 0 of each palette set's sky slot. it is the one color on screen in every level and in no
+// two of them the same, so it is also what the host tests read to name the palette set that is up.
+// only assets_data.c expands these; they live here so the three sets cannot drift apart
+#define kSkyRgb RGB(13, 17, 31)
+#define kUndergroundRgb RGB(1, 1, 6)
+#define kCastleRgb RGB(1, 1, 3)
 
 // sprite family 0xe0.. per the milestone's tile-id contract. small mario is 16x16 = two 8x16
 // sprites, so one animation frame costs four 8x8 tiles: left top/bottom then right top/bottom.

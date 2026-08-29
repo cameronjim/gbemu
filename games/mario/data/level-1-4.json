@@ -1,0 +1,63 @@
+{
+  "level": "1-4",
+  "type": "castle",
+  "timer": 300,
+  "length_columns": null,
+  "length_columns_confidence": "unknown",
+  "start": {"x": 0, "y": 6},
+  "terrain": [
+    {"kind": "stairs", "x0": 0, "x1": 10, "step_height": -4, "confidence": "sourced", "notes": "mariowiki: 'elevated area with stairs heading downwards, ending at a pit of lava'"},
+    {"kind": "gap", "x0": 10, "x1": 16, "confidence": "sourced", "notes": "lava pit at bottom of the opening stairs"},
+    {"kind": "ground", "x0": 16, "x1": 40, "confidence": "unknown", "notes": "platform surrounded by lava carrying the power-up ? block, exact extent not sourced"},
+    {"kind": "ground", "x0": 40, "x1": 70, "confidence": "unknown", "notes": "corridor of firebars on the ceiling"},
+    {"kind": "ground", "x0": 70, "x1": 100, "confidence": "sourced", "notes": "mariowiki: room with firebars on both ceiling and floor"},
+    {"kind": "ground", "x0": 100, "x1": 130, "confidence": "unknown", "notes": "larger empty space containing the hidden blocks (6 coins + yoshi egg per challenge mode), extent not sourced"},
+    {"kind": "ground", "x0": 130, "x1": 150, "confidence": "sourced", "notes": "bridge leading to the fake bowser encounter"}
+  ],
+  "blocks": [
+    {"x": 20, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: ? block containing a power-up, above a platform surrounded by lava, early in the level"},
+    {"x": 105, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced", "notes": "one of several hidden blocks 'right before fake Bowser' - mariowiki says 6 coins total across these hidden blocks, only representative entries placed"},
+    {"x": 107, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
+    {"x": 109, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
+    {"x": 111, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
+    {"x": 113, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
+    {"x": 115, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"}
+  ],
+  "enemies": [
+    {"x": 42, "y": 9, "kind": "firebar", "confidence": "sourced", "notes": "first of the ceiling firebar corridor (7 firebars total across the level per mariowiki)"},
+    {"x": 48, "y": 9, "kind": "firebar", "confidence": "approx"},
+    {"x": 54, "y": 9, "kind": "firebar", "confidence": "approx"},
+    {"x": 60, "y": 9, "kind": "firebar", "confidence": "approx"},
+    {"x": 72, "y": 9, "kind": "firebar", "confidence": "sourced", "notes": "ceiling firebar in the mixed ceiling+floor room"},
+    {"x": 78, "y": 13, "kind": "firebar", "confidence": "sourced", "notes": "floor firebar in the mixed ceiling+floor room"},
+    {"x": 90, "y": 9, "kind": "firebar", "confidence": "approx", "notes": "7th and last firebar, exact placement not individually sourced"},
+    {"x": 140, "y": 9, "kind": "lift_horizontal", "confidence": "sourced", "notes": "mariowiki: horizontally moving lift above the fake bowser bridge"},
+    {"x": 145, "y": 13, "kind": "bowser_fake", "confidence": "sourced", "notes": "mariowiki: 'a Little Goomba in disguise' on the bridge, not the real bowser"}
+  ],
+  "areas": [],
+  "castle_end": {"x": 150, "notes": "mariowiki: axe/bridge encounter with fake bowser; exact axe column not sourced"},
+  "flag": null,
+  "warps": [],
+  "smbd": {
+    "red_coins": [
+      {"x": 20, "y": 6, "notes": "above the ? block near the start", "confidence": "sourced"},
+      {"x": 50, "y": 6, "notes": "within the firebar hallway", "confidence": "sourced"},
+      {"x": 75, "y": 6, "notes": "one of two coins between firebars in the mixed room", "confidence": "sourced"},
+      {"x": 82, "y": 6, "notes": "second of two coins between firebars", "confidence": "sourced"},
+      {"x": 145, "y": 6, "notes": "above the fake bowser", "confidence": "sourced"}
+    ],
+    "yoshi_egg": {"x": 108, "y": 5, "notes": "mariowiki: 'top-middle Hidden Block in the larger empty space with the other Hidden Blocks' - i.e. among the 6-coin hidden block cluster before fake bowser", "confidence": "sourced"},
+    "medal_score": 13000,
+    "medal_score_jp": 12000
+  },
+  "smbd_deltas": "no smbd-specific terrain/block layout changes for 1-4 were found in the sources used, beyond the standard challenge-mode additions. castle levels in nes smb1 reuse a common tile/room template across worlds; whether smbd 1-4 specifically deviates from that template was not established by any source in this pass.",
+  "sources": [
+    "https://www.mariouniverse.com/maps-gbc-smbd/",
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-4.png",
+    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-4.png",
+    "https://themushroomkingdom.net/maps/smb/1-4",
+    "https://www.mariowiki.com/World_1-4_(Super_Mario_Bros.)",
+    "https://vgmaps.de/maps/view.php?m=5495"
+  ],
+  "confidence_notes": "all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images. firebar exact count (7) is sourced but only 2 of the 7 individual positions came with landmark context (the mixed ceiling+floor room); the rest are evenly-spaced guesses within the sourced 'corridor' description and should be treated as low-confidence until rom-verified. the axe/bridge exact column, castle length, and start y (castles commonly start Mario partway up a staircase rather than at ground level - used y=6 as a placeholder) are all unverified."
+}

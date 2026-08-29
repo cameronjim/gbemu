@@ -1,0 +1,108 @@
+{
+  "level": "1-2",
+  "type": "underground",
+  "timer": 400,
+  "length_columns": null,
+  "length_columns_confidence": "unknown",
+  "start": {"x": 0, "y": 13},
+  "terrain": [
+    {"kind": "pipe", "x": 0, "height": 3, "dest": null, "confidence": "sourced", "notes": "mariowiki: player enters by falling through a roof pipe"},
+    {"kind": "ground", "x0": 0, "x1": 30, "confidence": "unknown"},
+    {"kind": "ground", "x0": 30, "x1": 60, "confidence": "unknown", "notes": "block-tower / brick formation area, no landmark spacing sourced"},
+    {"kind": "gap", "x0": 95, "x1": 97, "confidence": "approx", "notes": "'a pit' between the mid-section power-up block and the 1-up platform"},
+    {"kind": "pipe", "x": 110, "height": 3, "dest": "bonus_room", "confidence": "sourced", "notes": "mariowiki: first of three piranha pipes, leads to bonus room with 27 coins + 10-coin block"},
+    {"kind": "pipe", "x": 118, "height": 3, "dest": null, "confidence": "sourced", "notes": "second piranha pipe"},
+    {"kind": "pipe", "x": 126, "height": 3, "dest": null, "confidence": "sourced", "notes": "third piranha pipe"},
+    {"kind": "gap", "x0": 140, "x1": 142, "confidence": "approx", "notes": "first of the 'two gaps with ground blocks and brick blocks between them' near the end"},
+    {"kind": "ground", "x0": 142, "x1": 148, "confidence": "approx"},
+    {"kind": "gap", "x0": 148, "x1": 150, "confidence": "approx"},
+    {"kind": "stairs", "x0": 155, "x1": 160, "step_height": 4, "confidence": "approx", "notes": "half-pyramid structure before the lifts"},
+    {"kind": "lift_platform", "x0": 165, "x1": 175, "confidence": "sourced", "notes": "mariowiki: rising/falling lifts, left descends, right ascends, platform between them"},
+    {"kind": "stairs", "x0": 185, "x1": 193, "step_height": 8, "confidence": "sourced", "notes": "mariowiki: 'a staircase made out of Hard Blocks that allows the player to jump on top of the flagpole'"}
+  ],
+  "blocks": [
+    {"x": 5, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: first of five ? blocks in the opening room, contains Super Mushroom or Fire Flower"},
+    {"x": 6, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
+    {"x": 7, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
+    {"x": 8, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
+    {"x": 9, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
+    {"x": 35, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "mariowiki: brick block tower area, ten coins"},
+    {"x": 45, "y": 9, "kind": "brick", "contents": "star", "confidence": "sourced", "notes": "mariowiki: one brick in the large brick-filled area contains a Starman"},
+    {"x": 90, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: brick block with a power-up before the pit/1-up platform section"},
+    {"x": 100, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "sourced", "notes": "mariowiki: 1-up hidden in a ceiling brick block, reached via block platform"},
+    {"x": 178, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: platform between the two lifts has a koopa troopa and a power-up brick block"}
+  ],
+  "enemies": [
+    {"x": 4, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "mariowiki: two little goombas in the opening room"},
+    {"x": 10, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 36, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "one goomba at the block-tower structure"},
+    {"x": 47, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "two koopa troopas 'lurk underneath' near the starman brick"},
+    {"x": 49, "y": 13, "kind": "koopa_green", "confidence": "sourced"},
+    {"x": 55, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "large brick-filled area: 1 koopa troopa + 5 goombas"},
+    {"x": 57, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 59, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 61, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 63, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 65, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 105, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "two goombas preceding the three-pipe section"},
+    {"x": 107, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 110, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in first pipe"},
+    {"x": 118, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in second pipe"},
+    {"x": 126, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in third pipe; mariowiki lists 4 piranha plants total in pipes for this level, 4th likely in the bonus-room exit pipe or overworld-exit pipe"},
+    {"x": 200, "y": 11, "kind": "piranha", "confidence": "approx", "notes": "4th piranha plant per mariowiki count; mariowiki notes the regular exit pipe leads to an overworld area containing a piranha plant"},
+    {"x": 158, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "half-pyramid structure before lifts has 2 goombas"},
+    {"x": 160, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": 178, "y": 13, "kind": "koopa_red", "confidence": "sourced", "notes": "1 red koopa troopa on the platform between the two lifts"}
+  ],
+  "areas": [
+    {
+      "id": "bonus-1",
+      "kind": "bonus_room",
+      "entry_x": 110,
+      "exit": "rightward exit pipe",
+      "terrain": [],
+      "blocks": [
+        {"x": 5, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "10-coin brick block in the bonus room"}
+      ],
+      "notes": "27 coins total in the room per mariowiki, individual coin layout not sourced"
+    },
+    {
+      "id": "warp-zone",
+      "kind": "warp_zone",
+      "entry_x": 175,
+      "exit": "n/a - overworld warp-zone room reached via the lift platforms through a hidden roof opening",
+      "terrain": [],
+      "blocks": [],
+      "notes": "mariowiki: reached by using the rising/falling lifts to access a hidden opening in the roof; contains 3 pipes side by side, left-to-right: World 2, World 3, World 4. Passing through the left wall of the room instead gives access to the Minus World (World -1). THIS IS NES SMB1 GEOMETRY - smbd is confirmed to change this room, see smbd_deltas."
+    }
+  ],
+  "flag": {"x": 193, "confidence": "unknown", "notes": "placed just after the sourced hard-block staircase; exact column not sourced"},
+  "warps": [
+    {"from_x": 175, "via": "warp_zone", "to_level": "2-1", "confidence": "sourced", "notes": "leftmost of 3 warp pipes in the nes warp zone room"},
+    {"from_x": 178, "via": "warp_zone", "to_level": "3-1", "confidence": "sourced", "notes": "middle pipe"},
+    {"from_x": 181, "via": "warp_zone", "to_level": "4-1", "confidence": "sourced", "notes": "rightmost pipe"},
+    {"from_x": 175, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "minus world - reached by clipping through the warp-zone room's left wall instead of taking a pipe (nes-only trick, needs rom verification for smbd/gbc behavior)"}
+  ],
+  "smbd": {
+    "red_coins": [
+      {"x": 9, "y": 9, "notes": "last ? block in the opening row", "confidence": "sourced"},
+      {"x": 35, "y": 5, "notes": "above the brick block formation near the start", "confidence": "sourced"},
+      {"x": 45, "y": 5, "notes": "on the large pillar with the 10-coin block", "confidence": "approx"},
+      {"x": 110, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
+      {"x": 155, "y": 9, "notes": "above the stone stairs before the lifts", "confidence": "sourced"}
+    ],
+    "yoshi_egg": {"x": 130, "y": 9, "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe", "confidence": "sourced"},
+    "medal_score": 38000,
+    "medal_score_jp": 26000
+  },
+  "smbd_deltas": "confirmed per mariowiki: smbd replaces the nes warp-zone room's 3-pipe world-select with a room containing brick blocks, three ? blocks, 22 coins, and a power-up brick block - i.e. smbd 1-2 likely has no functional warp zone / world skip in this spot, or it is relocated elsewhere (not found in sources used). the warp_zone area entry and warps[] array above describe the NES layout; do not assume they apply unmodified to smbd until verified against the rom. total coin count also differs: 68 coins (nes) vs 90 coins (smbd challenge mode) per mariowiki, implying additional coins were added somewhere in the smbd layout beyond just the warp-zone-room replacement.",
+  "sources": [
+    "https://www.mariouniverse.com/maps-gbc-smbd/",
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png",
+    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-2.png",
+    "https://themushroomkingdom.net/maps/smb/1-2",
+    "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)",
+    "https://vgmaps.de/maps/view.php?m=20519"
+  ],
+  "confidence_notes": "this is the densest and most important level (warp zone) per the task brief. all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images - the warp zone pipe ordering (world 2/3/4 left-to-right) IS sourced/confirmed text, but the exact tile column of the room itself is approximate. the smbd warp-zone replacement is the single most important must-verify item in this whole file: mariowiki confirms it changed but does not describe the replacement room's exact block layout or whether smbd 1-2 has ANY way to skip worlds. do not build warp logic for smbd off the nes warps[] array without rom verification."
+}

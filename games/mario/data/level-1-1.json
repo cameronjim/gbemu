@@ -1,0 +1,82 @@
+{
+  "level": "1-1",
+  "type": "overworld",
+  "timer": 400,
+  "length_columns": null,
+  "length_columns_confidence": "unknown",
+  "start": {"x": 0, "y": 13},
+  "terrain": [
+    {"kind": "ground", "x0": 0, "x1": 20, "confidence": "approx", "notes": "flat open path per mariowiki opening description"},
+    {"kind": "pipe", "x": 28, "height": 2, "dest": null, "confidence": "approx", "notes": "first of the 'three pipes' grouping, goombas between pipes"},
+    {"kind": "pipe", "x": 36, "height": 3, "dest": null, "confidence": "approx"},
+    {"kind": "pipe", "x": 44, "height": 4, "dest": "bonus_room", "confidence": "approx", "notes": "mariowiki: bonus area accessible via one of these pipes, 19 coins inside"},
+    {"kind": "gap", "x0": 68, "x1": 70, "confidence": "approx", "notes": "'a pit appears after these pipes' - first pit"},
+    {"kind": "gap", "x0": 86, "x1": 88, "confidence": "approx", "notes": "'followed by another pit further along' - second pit"},
+    {"kind": "ground", "x0": 90, "x1": 150, "confidence": "unknown", "notes": "mid-late level ground/hard-block pyramids, sequence only, no landmark spacing sourced"},
+    {"kind": "stairs", "x0": 150, "x1": 158, "step_height": 8, "confidence": "approx", "notes": "mariowiki: 'ending staircase for the level, and the flagpole'"}
+  ],
+  "blocks": [
+    {"x": 20, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx", "notes": "first block of the 6-block pyramid formation"},
+    {"x": 21, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: 'a Magic Mushroom inside the left block' of the opening pyramid"},
+    {"x": 22, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx"},
+    {"x": 23, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx"},
+    {"x": 22, "y": 5, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "top of the 6-block pyramid, remaining 2 blocks of formation"},
+    {"x": 23, "y": 5, "kind": "brick", "contents": "nothing", "confidence": "unknown"},
+    {"x": 48, "y": 9, "kind": "hidden", "contents": "oneup", "confidence": "sourced", "notes": "mariowiki: invisible block containing 1-up 'between the fourth pipe and the first pit' - position of the 4th pipe itself not independently sourced (only 3 pipes described in the grouping), flagged as an inconsistency between summarized passages"},
+    {"x": 74, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "mariowiki: brick giving 'ten coins' when hit repeatedly"},
+    {"x": 76, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx", "notes": "first of 'two subsequent bricks'"},
+    {"x": 77, "y": 9, "kind": "brick", "contents": "star", "confidence": "sourced", "notes": "mariowiki: 'the second one contains a Starman'"},
+    {"x": 95, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "base of the question-block pyramid/triangle"},
+    {"x": 96, "y": 7, "kind": "question", "contents": "coin", "confidence": "approx"},
+    {"x": 97, "y": 5, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: top block of the pyramid 'contains a Fire Flower (or a Magic Mushroom if Mario is small)'"},
+    {"x": 145, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx", "notes": "first of 'three bricks and a coin-holding ?' near the end"},
+    {"x": 146, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx"},
+    {"x": 147, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx"},
+    {"x": 148, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced", "notes": "mariowiki: 'a coin-holding ?' among the final four blocks"}
+  ],
+  "enemies": [
+    {"x": 22, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "first goomba pair, part of 16 total (see count_only entry)"},
+    {"x": 24, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 40, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "mariowiki: goombas between the grouped pipes"},
+    {"x": 42, "y": 13, "kind": "goomba", "confidence": "sourced"},
+    {"x": null, "y": null, "kind": "goomba", "confidence": "unknown", "notes": "count_only: 16 Little Goombas total per mariowiki; only 4 landmark instances individually placed above, remaining 12 unplaced"},
+    {"x": 130, "y": 13, "kind": "koopa_green", "confidence": "unknown", "notes": "mariowiki: 1 green Koopa Troopa present in the level, position not described - placeholder x"}
+  ],
+  "areas": [
+    {
+      "id": "bonus-1",
+      "kind": "bonus_room",
+      "entry_x": 44,
+      "exit": "same pipe, returns to overworld near entry",
+      "terrain": [],
+      "blocks": [
+        {"x": 0, "y": 9, "kind": "brick", "contents": "coin", "confidence": "sourced", "notes": "mariowiki: bonus area behind third pipe contains 19 coins total, individual block layout not sourced"}
+      ],
+      "notes": "19 coins total per mariowiki, arranged as coins in the open room, not confirmed to be one single multicoin block"
+    }
+  ],
+  "flag": {"x": 158, "confidence": "unknown", "notes": "placed just after the sourced closing staircase; no source gave an exact flagpole column"},
+  "warps": [],
+  "smbd": {
+    "red_coins": [
+      {"x": 20, "y": 9, "notes": "starting block row per mariowiki challenge-mode list", "confidence": "sourced"},
+      {"x": 74, "y": 9, "notes": "within the Ten-Coin brick block", "confidence": "sourced"},
+      {"x": 95, "y": 9, "notes": "a question block (pyramid base per mariowiki wording)", "confidence": "approx"},
+      {"x": 146, "y": 9, "notes": "atop bricks near the end", "confidence": "sourced"},
+      {"x": 148, "y": 9, "notes": "the final ? of the level", "confidence": "sourced"}
+    ],
+    "yoshi_egg": {"x": 21, "y": 9, "notes": "mariowiki: hidden block within the first set of pyramid-like steps", "confidence": "sourced"},
+    "medal_score": 32000,
+    "medal_score_jp": 26000
+  },
+  "smbd_deltas": "no smbd-specific terrain/block layout changes for 1-1 were found in the sources used; only the challenge-mode additions (red coins, yoshi egg, medal score) are confirmed smbd-specific content. treat the base terrain/blocks/enemies above as the nes smb1 layout carried into smbd unless a future rom-verification pass finds otherwise.",
+  "sources": [
+    "https://www.mariouniverse.com/maps-gbc-smbd/",
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-1.png",
+    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-1.png",
+    "https://themushroomkingdom.net/maps/smb/1-1",
+    "https://www.mariowiki.com/World_1-1_(Super_Mario_Bros.)",
+    "https://vgmaps.de/maps/view?m=5492"
+  ],
+  "confidence_notes": "block/enemy contents and challenge-mode facts are sourced from mariowiki.com text (fetched via an automated summarizer, not raw html - spot-check before treating as final). all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from the map images. the mariowiki passages disagree on pipe count in the opening area ('three pipes' vs. a later reference to a 'fourth pipe') - flagged inline on the 1-up block entry, needs resolving against the actual rom. length_columns and exact flagpole column are unknown - must-verify items for a rom-based pass."
+}

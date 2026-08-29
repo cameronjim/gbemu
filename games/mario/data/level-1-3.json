@@ -1,0 +1,73 @@
+{
+  "level": "1-3",
+  "type": "overworld",
+  "timer": 300,
+  "length_columns": null,
+  "length_columns_confidence": "unknown",
+  "start": {"x": 0, "y": 13},
+  "terrain": [
+    {"kind": "ground", "x0": 0, "x1": 10, "confidence": "sourced", "notes": "mariowiki: level begins with a small ground section"},
+    {"kind": "gap", "x0": 10, "x1": 12, "confidence": "approx"},
+    {"kind": "island", "x0": 12, "x1": 16, "y": 13, "confidence": "approx", "notes": "initial island leading to two more islands"},
+    {"kind": "gap", "x0": 16, "x1": 18, "confidence": "approx"},
+    {"kind": "island", "x0": 18, "x1": 22, "y": 13, "confidence": "sourced", "notes": "mariowiki: one of the pair, has a koopa troopa"},
+    {"kind": "gap", "x0": 22, "x1": 24, "confidence": "approx"},
+    {"kind": "island", "x0": 24, "x1": 28, "y": 13, "confidence": "sourced", "notes": "the other of the pair, has 3 coins"},
+    {"kind": "gap", "x0": 28, "x1": 30, "confidence": "approx"},
+    {"kind": "island", "x0": 30, "x1": 34, "y": 11, "confidence": "approx", "notes": "first of three stacked islands of varying height"},
+    {"kind": "island", "x0": 35, "x1": 39, "y": 9, "confidence": "approx"},
+    {"kind": "island", "x0": 40, "x1": 44, "y": 6, "confidence": "sourced", "notes": "mariowiki: tallest of the three stacked islands, has two goombas"},
+    {"kind": "gap", "x0": 44, "x1": 46, "confidence": "approx"},
+    {"kind": "island", "x0": 46, "x1": 50, "y": 9, "confidence": "sourced", "notes": "shorter island accessible from the tall island, followed by a platform"},
+    {"kind": "gap", "x0": 52, "x1": 54, "confidence": "approx"},
+    {"kind": "island", "x0": 54, "x1": 58, "y": 6, "confidence": "sourced", "notes": "tall island, 4 coins positioned above it, single ? block beneath it"},
+    {"kind": "gap", "x0": 58, "x1": 60, "confidence": "approx"},
+    {"kind": "island", "x0": 60, "x1": 63, "y": 13, "confidence": "approx", "notes": "first of 'two more islands' after the tall coin island"},
+    {"kind": "island", "x0": 64, "x1": 67, "y": 13, "confidence": "sourced", "notes": "has a koopa paratroopa above it, then another island with a goomba follows"},
+    {"kind": "island", "x0": 68, "x1": 71, "y": 13, "confidence": "sourced", "notes": "island with a goomba"},
+    {"kind": "lift_platform", "x0": 74, "x1": 82, "confidence": "sourced", "notes": "mariowiki: two horizontally moving lifts, coins above them"},
+    {"kind": "island", "x0": 86, "x1": 89, "y": 13, "confidence": "sourced", "notes": "small, medium-width island"},
+    {"kind": "island", "x0": 90, "x1": 96, "y": 13, "confidence": "sourced", "notes": "wide, tall island hosting a koopa troopa"},
+    {"kind": "island", "x0": 98, "x1": 101, "y": 13, "confidence": "sourced", "notes": "short island, 3 coins beneath a koopa paratroopa"},
+    {"kind": "island", "x0": 103, "x1": 106, "y": 13, "confidence": "approx", "notes": "first of 'two similar islands used to reach a platform'"},
+    {"kind": "island", "x0": 107, "x1": 110, "y": 13, "confidence": "approx"},
+    {"kind": "stairs", "x0": 112, "x1": 118, "step_height": 8, "confidence": "sourced", "notes": "mariowiki: final stone platform leading to the flagpole"}
+  ],
+  "blocks": [
+    {"x": 55, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: the only ? block in the whole stage, beneath the tall island with 4 coins, gives a power-up"}
+  ],
+  "enemies": [
+    {"x": 19, "y": 13, "kind": "koopa_red", "confidence": "sourced", "notes": "mariowiki: red koopa troopa on the first platform pair"},
+    {"x": 41, "y": 6, "kind": "goomba", "confidence": "sourced", "notes": "two goombas on the third (tallest) stacked island"},
+    {"x": 43, "y": 6, "kind": "goomba", "confidence": "sourced"},
+    {"x": 65, "y": 11, "kind": "koopa_para_red", "confidence": "sourced", "notes": "mid-level red koopa paratroopa"},
+    {"x": 69, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "third goomba, on the island after the paratroopa"},
+    {"x": 92, "y": 13, "kind": "koopa_red", "confidence": "sourced", "notes": "red koopa troopa on the wide/tall island"},
+    {"x": 99, "y": 11, "kind": "koopa_para_red", "confidence": "sourced", "notes": "later red koopa paratroopa, above the short 3-coin island"}
+  ],
+  "areas": [],
+  "flag": {"x": 118, "confidence": "unknown", "notes": "placed just after the sourced final stone platform; exact column not sourced"},
+  "warps": [],
+  "smbd": {
+    "red_coins": [
+      {"x": 19, "y": 13, "notes": "first platform, with the red koopa troopa", "confidence": "sourced"},
+      {"x": 74, "y": 13, "notes": "bottom of the first horizontally-moving lift", "confidence": "sourced"},
+      {"x": 79, "y": 9, "notes": "above the second moving lift", "confidence": "sourced"},
+      {"x": 99, "y": 9, "notes": "platform beneath the koopa paratroopa (later one)", "confidence": "sourced"},
+      {"x": 112, "y": 11, "notes": "bottom of the stone stairs before the level's end", "confidence": "sourced"}
+    ],
+    "yoshi_egg": {"x": 83, "y": 9, "notes": "mariowiki: hidden block above the platform immediately following the third moving lift - NOTE: base level text only describes 2 lifts, wiki's challenge-mode note references a 'third moving lift', inconsistency flagged for rom verification", "confidence": "approx"},
+    "medal_score": 24000,
+    "medal_score_jp": 19000
+  },
+  "smbd_deltas": "no smbd-specific terrain/block layout changes for 1-3 were found in the sources used, beyond the standard challenge-mode additions. the yoshi-egg note's reference to a 'third moving lift' does not match the base-level description of only two horizontally moving lifts - this needs resolving against the rom (possibly smbd adds a third lift, or the wiki source itself is imprecise).",
+  "sources": [
+    "https://www.mariouniverse.com/maps-gbc-smbd/",
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-3.png",
+    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-3.png",
+    "https://themushroomkingdom.net/maps/smb/1-3",
+    "https://www.mariowiki.com/World_1-3_(Super_Mario_Bros.)",
+    "https://vgmaps.de/maps/view.php?m=5494"
+  ],
+  "confidence_notes": "all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images. island y-heights are approximate relative guesses ('tallest', 'shorter', 'wide/tall') translated into row numbers, not sourced heights. the single ? block, coin count (23 total, 21 needed for a world-2-1 1-up bonus), and all enemy kinds/counts are sourced from mariowiki text. the yoshi-egg 'third lift' inconsistency is the main must-verify item for this level."
+}

@@ -1,0 +1,638 @@
+// the engine module that pays the banking cost: bank 0 is full of the rest of the engine, and
+// this one is entered twice a frame, so two trampolines is the whole price
+#pragma bank 4
+
+#include "enemies.h"
+
+#include "assets.h"
+#include "level_1_1.h"
+#include "mario.h"
+#include "physics_constants.h"
+#include "terrain.h"
+
+#include <gb/gb.h>
+#include <stdint.h>
+
+// one pool slot. exactly 16 bytes, so sdcc reaches a slot with a shift instead of a multiply, and
+// every routine below takes the pointer once rather than re-indexing per field - the same reason
+// blocks.c keeps its hot lookups in row tables
+typedef struct {
+    uint8_t state;
+    uint8_t kind;
+    int8_t dir;
+    uint8_t grounded;
+    uint8_t x_force;
+    uint8_t y_accum;
+    int8_t dy;
+    // the columns the last terrain probe answered for. a walker crosses one every 32 frames, so
+    // gating the wall and ledge probes on these leaves a quiet enemy costing pure arithmetic
+    uint8_t lead_col;
+    uint8_t foot_col;
+    // frames a shell ignores him for: the stomp that made it leaves him overlapping it for a few,
+    // and a kick would otherwise send it off and kill him with the same touch
+    uint8_t grace;
+    uint16_t timer;
+    uint16_t pos_x;
+    int16_t pos_y;
+} Enemy;
+
+static Enemy pool[kEnemySlots];
+
+// change-only oam, the rule blocks.c already follows: an unchanged slot writes no tile or property
+static uint8_t drawn_tile[kEnemySlots];
+static uint8_t drawn_prop[kEnemySlots];
+
+// the roster's own point tables, generated from games/mario/research/roster.json
+static const uint16_t kStompChain[kStompChainCount] = kStompChainInit;
+static const uint16_t kShellChain[kShellChainCount] = kShellChainInit;
+
+#if kEnemyLab
+// the lab roster, on the long flat run 1-1 keeps past its pits so the plain route planner can reach
+// it with nothing in the way: five on one row for the scanline cap, then a koopa with two goombas
+// downstream of it for the shell chain and the wake timer
+#define kLabCount 8U
+static const uint16_t kLabColumn[kLabCount] = {106, 108, 110, 112, 114, 126, 128, 130};
+static const uint8_t kLabRow[kLabCount] = {13, 13, 13, 13, 13, 13, 13, 13};
+static const uint8_t kLabKind[kLabCount] = {kEnemyGoomba, kEnemyGoomba, kEnemyGoomba, kEnemyGoomba,
+                                            kEnemyGoomba, kEnemyKoopa,  kEnemyGoomba, kEnemyGoomba};
+static uint8_t use_lab;
+#endif
+
+// the list the spawn cursor walks, sorted by column by compile_level.py
+static const uint16_t* roster_column;
+static const uint8_t* roster_row;
+static const uint8_t* roster_kind;
+static uint8_t roster_count;
+static uint8_t cursor;
+// a sub-area holds no enemies, so the pool sits idle rather than track a camera it has no list for
+static uint8_t enabled;
+
+// one shared walk phase, so every walker steps together and no slot carries its own counter
+static uint8_t anim;
+static uint16_t points;
+static uint8_t stomp_chain;
+static uint8_t shell_chain;
+
+// the idle fast path. every frame of this engine sits near the budget already, so a pool with
+// nothing in it has to cost near nothing or the loop misses a vsync. live counts the busy slots,
+// shown the drawn ones, and next_spawn_px is the cursor's own column so the check is one compare
+static uint8_t live;
+static uint8_t shown;
+static uint16_t next_spawn_px;
+
+static int16_t row_of(int16_t py) {
+    return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
+}
+
+// the leading edge's column: the side the enemy is walking into
+static uint8_t lead_of(const Enemy* e) {
+    return (uint8_t)((e->dir > 0 ? (uint16_t)(e->pos_x + kEnemyWidthPx - 1U) : e->pos_x) >> 4);
+}
+
+static uint8_t foot_of(const Enemy* e) {
+    return (uint8_t)((uint16_t)(e->pos_x + (kEnemyWidthPx / 2U)) >> 4);
+}
+
+static void award(const uint16_t* table, uint8_t count, uint8_t* chain) {
+    const uint8_t step = (*chain < count) ? *chain : (uint8_t)(count - 1U);
+
+    points = (uint16_t)(points + table[step]);
+    // roster.json ends both sequences in a 1-up; lives are m8's, so the last step just repeats
+    if (*chain < 0xFFU) {
+        ++(*chain);
+    }
+}
+
+// MoveObjectHorizontally, the same signed byte the player's speed uses: high nibble whole px, low
+// nibble sixteenths fed through a 1/256-px accumulator
+static void move_x(Enemy* e, int8_t speed) {
+    const uint8_t raw = (uint8_t)speed;
+    const uint16_t sum = (uint16_t)((uint16_t)e->x_force + (uint16_t)((uint16_t)(raw & 0x0FU) << 4));
+    int16_t whole = (int16_t)(raw >> 4);
+    int16_t next;
+
+    if (whole >= 8) {
+        whole = (int16_t)(whole - 16);
+    }
+    e->x_force = (uint8_t)sum;
+    next = (int16_t)((int16_t)e->pos_x + whole + (int16_t)(sum >> 8));
+    if (next < 0) {
+        next = 0;
+    }
+    e->pos_x = (uint16_t)next;
+}
+
+static void reverse(Enemy* e) {
+    e->dir = (int8_t)-e->dir;
+    e->x_force = 0;
+    e->lead_col = lead_of(e);
+}
+
+// the bible's walk speed is exactly half a pixel a frame, so the general nibble math above reduces
+// to one accumulator add and a conditional step - and a walker is what the pool is nearly always full of
+static void move_walk(Enemy* e) {
+    const uint16_t sum = (uint16_t)((uint16_t)e->x_force + 128U);
+
+    e->x_force = (uint8_t)sum;
+    if (e->dir > 0) {
+        e->pos_x = (uint16_t)(e->pos_x + (uint8_t)(sum >> 8));
+    } else if (sum <= 0xFFU && e->pos_x != 0U) {
+        --e->pos_x;
+    }
+}
+
+static void step_ground(Enemy* e, uint8_t speed) {
+    uint8_t lead;
+    uint8_t foot;
+
+    if (speed == (uint8_t)kEnemyWalkSubpx) {
+        move_walk(e);
+    } else {
+        move_x(e, e->dir > 0 ? (int8_t)speed : (int8_t)(-(int16_t)speed));
+    }
+    lead = lead_of(e);
+    if (lead != e->lead_col) {
+        if (terrain_solid_at((int16_t)lead, row_of(e->pos_y)) != 0U ||
+            terrain_solid_at((int16_t)lead, row_of((int16_t)(e->pos_y + kEnemyHeightPx - 1))) != 0U) {
+            // step back out of the cell that refused, so reversing cannot leave it inside the wall
+            e->pos_x = (e->dir > 0) ? (uint16_t)(((uint16_t)lead << 4) - kEnemyWidthPx)
+                                    : (uint16_t)((uint16_t)(lead + 1U) << 4);
+            reverse(e);
+        } else {
+            e->lead_col = lead;
+        }
+    }
+    if (e->grounded == 0U) {
+        return;
+    }
+    foot = foot_of(e);
+    if (foot == e->foot_col) {
+        return;
+    }
+    e->foot_col = foot;
+    // smb walks a goomba off a ledge instead of turning it, and the centre column leaving solid
+    // ground is the frame it goes over the edge
+    if (terrain_solid_at((int16_t)foot, row_of((int16_t)(e->pos_y + kEnemyHeightPx))) == 0U) {
+        e->grounded = 0;
+        e->dy = 0;
+        e->y_accum = 0;
+    }
+}
+
+static void step_fall(Enemy* e) {
+    const uint16_t sum = (uint16_t)((uint16_t)e->y_accum + (uint16_t)kEnemyGravitySubpx);
+    int16_t row;
+
+    e->y_accum = (uint8_t)sum;
+    if (sum > 0xFFU) {
+        e->dy = (int8_t)(e->dy + 1);
+        if (e->dy > kEnemyMaxFallPx) {
+            e->dy = kEnemyMaxFallPx;
+        }
+    }
+    e->pos_y = (int16_t)(e->pos_y + e->dy);
+    e->foot_col = foot_of(e);
+    row = row_of((int16_t)(e->pos_y + kEnemyHeightPx - 1));
+    if (terrain_solid_at((int16_t)e->foot_col, row) == 0U) {
+        return;
+    }
+    e->pos_y = (int16_t)(((int16_t)row << 4) - kEnemyHeightPx);
+    e->dy = 0;
+    e->y_accum = 0;
+    e->grounded = 1;
+}
+
+// the pool stays packed into [0, live), so every loop below runs only over the busy slots and an
+// empty pool costs nothing at all. taking a slot out moves the last one into the hole, which is why
+// the oam cache at that index has to be forced to redraw
+static void remove_at(uint8_t i) {
+    --live;
+    pool[i] = pool[live];
+    if (drawn_prop[i] != 0xFFU) {
+        drawn_prop[i] = 0xFEU; // never a real property, so the next draw rewrites tile and prop
+    }
+}
+
+static uint8_t row_load(uint8_t top_row) {
+    uint8_t i;
+    uint8_t n = 0;
+
+    for (i = 0; i < live; ++i) {
+        if ((uint8_t)(pool[i].pos_y >> 4) == top_row) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+// smb's object loader: an enemy comes in as its column reaches the screen's right edge, and the
+// cursor only ever advances, so scrolling back over ground already crossed never brings one back
+static void note_next_spawn(void) {
+    next_spawn_px =
+        (cursor < roster_count) ? (uint16_t)((uint16_t)roster_column[cursor] << 4) : (uint16_t)0xFFFFU;
+}
+
+static void spawn(uint16_t cam_x) {
+    while (cursor < roster_count) {
+        const uint16_t px = (uint16_t)((uint16_t)roster_column[cursor] << 4);
+        uint8_t top_row;
+        Enemy* e;
+
+        if (px > (uint16_t)(cam_x + kScreenWidthPx + kEnemySpawnMarginPx)) {
+            return;
+        }
+        // its turn came with the camera already past it, so it is forgotten rather than dropped in
+        if ((uint16_t)(px + kEnemyWidthPx + kEnemyDespawnMarginPx) < cam_x) {
+            ++cursor;
+            note_next_spawn();
+            continue;
+        }
+        // the roster names the surface row it stands on; its box top is the row above that
+        top_row = (uint8_t)(roster_row[cursor] - 1U);
+        if (row_load(top_row) >= kEnemyRowCap) {
+            return; // the scanline cap: it waits right here until a slot on its row frees
+        }
+        if (live >= kEnemySlots) {
+            return;
+        }
+        e = &pool[live];
+        ++live;
+        e->state = kEnemyWalk;
+        e->kind = roster_kind[cursor];
+        e->pos_x = px;
+        e->pos_y = (int16_t)((int16_t)top_row << 4);
+        e->dir = -1; // smb starts every walker off to the left
+        e->x_force = 0;
+        e->dy = 0;
+        e->y_accum = 0;
+        e->grounded = 1;
+        e->timer = 0;
+        e->grace = 0;
+        e->lead_col = lead_of(e);
+        e->foot_col = foot_of(e);
+        ++cursor;
+        note_next_spawn();
+    }
+}
+
+// off the left is smb's own forgetting; off the right is ours, so a shell that outruns the camera
+// cannot hold a pool slot for the rest of the level. the two bounds are worked out once, not per slot
+static void despawn(uint16_t cam_x) {
+    const uint16_t gone_left = (cam_x > (kEnemyWidthPx + kEnemyDespawnMarginPx))
+                                   ? (uint16_t)(cam_x - (kEnemyWidthPx + kEnemyDespawnMarginPx))
+                                   : 0U;
+    const uint16_t gone_right = (uint16_t)(cam_x + kScreenWidthPx + kEnemyDespawnMarginPx);
+    uint8_t i = 0;
+
+    while (i < live) {
+        const Enemy* e = &pool[i];
+
+        if (e->pos_x < gone_left || e->pos_x > gone_right || e->pos_y > (int16_t)kLevelHeightPx) {
+            remove_at(i);
+            continue;
+        }
+        ++i;
+    }
+}
+
+static uint8_t boxes_meet(const Enemy* a, const Enemy* b) {
+    if (a->pos_x + kEnemyWidthPx <= b->pos_x || b->pos_x + kEnemyWidthPx <= a->pos_x) {
+        return 0;
+    }
+    return (a->pos_y + kEnemyHeightPx > b->pos_y && b->pos_y + kEnemyHeightPx > a->pos_y) ? 1U : 0U;
+}
+
+// pure arithmetic over the live pairs only, no terrain probe, so this runs unconditionally
+static void collide_enemies(void) {
+    uint8_t i = 0;
+    uint8_t j;
+
+    while ((uint8_t)(i + 1U) < live) {
+        Enemy* a = &pool[i];
+        uint8_t died = 0;
+
+        if (a->state == kEnemySquashed) {
+            ++i;
+            continue;
+        }
+        j = (uint8_t)(i + 1U);
+        while (j < live) {
+            Enemy* b = &pool[j];
+            Enemy* left;
+            Enemy* right;
+
+            if (b->state == kEnemySquashed || boxes_meet(a, b) == 0U) {
+                ++j;
+                continue;
+            }
+            if (a->state == kEnemyShellMove && b->state != kEnemyShellMove) {
+                remove_at(j);
+                award(kShellChain, kShellChainCount, &shell_chain);
+                continue;
+            }
+            if (b->state == kEnemyShellMove && a->state != kEnemyShellMove) {
+                remove_at(i);
+                award(kShellChain, kShellChainCount, &shell_chain);
+                died = 1;
+                break;
+            }
+            // two walkers meeting turn each other around; the nudge stops them flipping again
+            left = (a->pos_x <= b->pos_x) ? a : b;
+            right = (left == a) ? b : a;
+            right->pos_x = (uint16_t)(left->pos_x + kEnemyWidthPx);
+            if (left->dir > 0) {
+                reverse(left);
+            }
+            if (right->dir < 0) {
+                reverse(right);
+            }
+            ++j;
+        }
+        // a killed slot now holds whichever enemy was moved into it, so it is walked again
+        if (died == 0U) {
+            ++i;
+        }
+    }
+}
+
+static uint8_t stomp(Enemy* e) {
+    if (e->state == kEnemyShellMove) {
+        // re-stomping a travelling shell stops it dead and starts its wake over
+        e->state = kEnemyShellIdle;
+        e->timer = kShellWakeFrames;
+        e->grace = kShellGraceFrames;
+        e->x_force = 0;
+        shell_chain = 0;
+        return kEnemyHitShellStomp;
+    }
+    award(kStompChain, kStompChainCount, &stomp_chain);
+    if (e->kind == kEnemyKoopa) {
+        e->state = kEnemyShellIdle;
+        e->timer = kShellWakeFrames;
+        e->grace = kShellGraceFrames;
+        e->x_force = 0;
+        return kEnemyHitStomp;
+    }
+    e->state = kEnemySquashed;
+    e->timer = kSquashFrames;
+    return kEnemyHitStomp;
+}
+
+static uint8_t collide_player(uint16_t player_px, int16_t player_py, int8_t player_dy) {
+    const uint16_t left = (uint16_t)(player_px + kPlayerHitInsetPx);
+    const uint16_t right = (uint16_t)(left + kPlayerHitWidthPx);
+    const int16_t feet = (int16_t)(player_py + kPlayerHeightPx);
+    uint8_t hit = kEnemyHitNone;
+    uint8_t i;
+
+    for (i = 0; i < live; ++i) {
+        Enemy* e = &pool[i];
+        uint16_t enemy_left;
+        uint8_t from_above;
+        uint8_t code;
+
+        // a flattened goomba is scenery for the frames it has left
+        if (e->state == kEnemySquashed) {
+            continue;
+        }
+        enemy_left = (uint16_t)(e->pos_x + kEnemyHitInsetPx);
+        if (right <= enemy_left || (uint16_t)(enemy_left + kEnemyHitWidthPx) <= left) {
+            continue;
+        }
+        if (feet <= e->pos_y || (int16_t)(e->pos_y + kEnemyHeightPx) <= player_py) {
+            continue;
+        }
+        if (e->grace != 0U) {
+            continue;
+        }
+        from_above = (player_dy > 0 && feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
+        if (e->state == kEnemyShellIdle) {
+            // away from him: smb sends the shell out the side he touched it from
+            e->dir =
+                ((uint16_t)(player_px + (kPlayerWidthPx / 2U)) < (uint16_t)(e->pos_x + (kEnemyWidthPx / 2U)))
+                    ? (int8_t)1
+                    : (int8_t)-1;
+            e->state = kEnemyShellMove;
+            e->grace = kShellGraceFrames;
+            e->x_force = 0;
+            e->lead_col = lead_of(e);
+            shell_chain = 0;
+            // landing on a resting shell kicks it and bounces him off; walking into one only kicks
+            if (from_above != 0U && hit < kEnemyHitShellStomp) {
+                hit = kEnemyHitShellStomp;
+            }
+            continue;
+        }
+        if (from_above != 0U) {
+            code = stomp(e);
+            if (code > hit) {
+                hit = code;
+            }
+            continue;
+        }
+        return kEnemyHitDamage;
+    }
+    return hit;
+}
+
+void enemies_set_lab(uint8_t on) BANKED {
+#if kEnemyLab
+    use_lab = on;
+#else
+    (void)on;
+#endif
+}
+
+void enemies_load_level(void) BANKED {
+    uint8_t i;
+
+    assets_load_enemy_tiles();
+    assets_load_enemy_palettes();
+
+    roster_column = level_1_1_enemy_column;
+    roster_row = level_1_1_enemy_row;
+    roster_kind = level_1_1_enemy_kind;
+    roster_count = (uint8_t)LEVEL_1_1_ENEMY_COUNT;
+#if kEnemyLab
+    if (use_lab != 0U) {
+        roster_column = kLabColumn;
+        roster_row = kLabRow;
+        roster_kind = kLabKind;
+        roster_count = (uint8_t)kLabCount;
+    }
+#endif
+
+    for (i = 0; i < kEnemySlots; ++i) {
+        // not the parked marker: a respawn leaves the last life's enemies sitting in oam, so the
+        // first draw of the new one has to write every slot off screen
+        drawn_prop[i] = 0xFE;
+        drawn_tile[i] = 0;
+    }
+    cursor = 0;
+    live = 0;
+    shown = kEnemySlots;
+    note_next_spawn();
+    anim = 0;
+    points = 0;
+    stomp_chain = 0;
+    shell_chain = 0;
+    enabled = 1;
+}
+
+void enemies_enter_area(uint8_t area) BANKED {
+    live = 0;
+    enabled = (area == kAreaMain) ? 1U : 0U;
+}
+
+uint8_t enemies_update(uint16_t player_px, int16_t player_py, int8_t player_dy, uint8_t on_ground,
+                       uint16_t cam_x) BANKED {
+    uint8_t i;
+
+    if (enabled == 0U) {
+        return kEnemyHitNone;
+    }
+    // the fast path: nothing alive and the next one still off screen costs one compare a frame
+    if (live == 0U && (uint16_t)(cam_x + kScreenWidthPx + kEnemySpawnMarginPx) < next_spawn_px) {
+        return kEnemyHitNone;
+    }
+    // landing ends a stomp chain: the escalation only runs while he stays off the ground
+    if (on_ground != 0U) {
+        stomp_chain = 0;
+    }
+    ++anim;
+    spawn(cam_x);
+
+    i = 0;
+    while (i < live) {
+        Enemy* e = &pool[i];
+
+        if (e->grace != 0U) {
+            --e->grace;
+        }
+        if (e->state == kEnemySquashed) {
+            --e->timer;
+            if (e->timer == 0U) {
+                remove_at(i);
+                continue;
+            }
+            ++i;
+            continue;
+        }
+        if (e->state == kEnemyShellIdle) {
+            --e->timer;
+            if (e->timer == 0U) {
+                // smb wakes an untouched shell back into its koopa, walking the way it last faced
+                e->state = kEnemyWalk;
+                e->lead_col = lead_of(e);
+            }
+            ++i;
+            continue;
+        }
+        if (e->state == kEnemyShellMove) {
+            step_ground(e, (uint8_t)kEnemyShellSubpx);
+        } else {
+            step_ground(e, (uint8_t)kEnemyWalkSubpx);
+        }
+        if (e->grounded == 0U) {
+            step_fall(e);
+        }
+        ++i;
+    }
+
+    if (live > 1U) {
+        collide_enemies();
+    }
+    i = (live != 0U) ? collide_player(player_px, player_py, player_dy) : (uint8_t)kEnemyHitNone;
+    despawn(cam_x);
+    return i;
+}
+
+void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
+    // the walk phase is one shared counter, so both walk frames are picked once a frame, not once
+    // a slot, and the loop below is left with a three-way pick
+    const uint8_t swap = (uint8_t)((anim & kEnemyAnimFrames) != 0U ? 1U : 0U);
+    const uint8_t goomba_tile = swap != 0U ? (uint8_t)kTileGoombaWalk1 : (uint8_t)kTileGoombaWalk0;
+    const uint8_t koopa_tile = swap != 0U ? (uint8_t)kTileKoopaWalk1 : (uint8_t)kTileKoopaWalk0;
+    uint8_t i;
+
+    // the same fast path: an empty pool with nothing left on screen writes no oam at all
+    if (live == 0U && shown == 0U) {
+        return;
+    }
+
+    for (i = 0; i < live; ++i) {
+        const Enemy* e = &pool[i];
+        const uint8_t oam = (uint8_t)(kSpriteEnemyFirst + (uint8_t)(i << 1));
+        const int16_t sx = (int16_t)((int16_t)e->pos_x - (int16_t)cam_x);
+        const int16_t sy = (int16_t)(e->pos_y - (int16_t)cam_y);
+        uint8_t tile;
+        uint8_t prop;
+        uint8_t left_tile;
+        uint8_t right_tile;
+        uint8_t right_prop;
+
+        if (sy <= -(int16_t)kEnemyHeightPx || sy >= (int16_t)kScreenHeightPx ||
+            sx <= -(int16_t)kEnemyWidthPx || sx >= (int16_t)kScreenWidthPx) {
+            if (drawn_prop[i] != 0xFFU) {
+                drawn_prop[i] = 0xFF;
+                --shown;
+                move_sprite(oam, 0, 0);
+                move_sprite((uint8_t)(oam + 1U), 0, 0);
+            }
+            continue;
+        }
+        if (e->state == kEnemySquashed) {
+            tile = kTileGoombaSquash;
+        } else if (e->state != kEnemyWalk) {
+            tile = kTileShell;
+        } else {
+            tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
+        }
+        prop = (tile < kTileShell) ? (uint8_t)kPalGoomba : (uint8_t)kPalKoopa;
+        if (tile < kTileKoopaWalk0) {
+            // a symmetric frame is one 8x16 pair; the right half is the same tile drawn flipped
+            left_tile = tile;
+            right_tile = tile;
+            right_prop = (uint8_t)(prop | (uint8_t)S_FLIPX);
+        } else {
+            // a facing frame carries both halves, and flipping swaps which side each draws on
+            if (e->dir < 0) {
+                prop = (uint8_t)(prop | (uint8_t)S_FLIPX);
+                left_tile = (uint8_t)(tile + 2U);
+                right_tile = tile;
+            } else {
+                left_tile = tile;
+                right_tile = (uint8_t)(tile + 2U);
+            }
+            right_prop = prop;
+        }
+        if (drawn_tile[i] != left_tile || drawn_prop[i] != prop) {
+            if (drawn_prop[i] == 0xFFU) {
+                ++shown;
+            }
+            drawn_tile[i] = left_tile;
+            drawn_prop[i] = prop;
+            set_sprite_tile(oam, left_tile);
+            set_sprite_tile((uint8_t)(oam + 1U), right_tile);
+            set_sprite_prop(oam, prop);
+            set_sprite_prop((uint8_t)(oam + 1U), right_prop);
+        }
+        move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+        move_sprite((uint8_t)(oam + 1U), (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+    }
+    // past the pool's live end: park whichever slots still show an enemy that has gone
+    for (; i < kEnemySlots; ++i) {
+        if (drawn_prop[i] != 0xFFU) {
+            const uint8_t oam = (uint8_t)(kSpriteEnemyFirst + (uint8_t)(i << 1));
+
+            drawn_prop[i] = 0xFF;
+            --shown;
+            move_sprite(oam, 0, 0);
+            move_sprite((uint8_t)(oam + 1U), 0, 0);
+        }
+    }
+}
+
+uint16_t enemies_points(void) BANKED {
+    return points;
+}

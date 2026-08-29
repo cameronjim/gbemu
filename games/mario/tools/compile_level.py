@@ -8,6 +8,7 @@ must be kept numerically identical by hand; nothing here reads mario.h.
 
 import json
 import os
+import re
 import sys
 
 BLOCK_EMPTY = 0
@@ -22,6 +23,8 @@ BLOCK_PIPE_BODY_R = 8
 BLOCK_STAIR = 9
 BLOCK_FLAG_POLE = 10
 BLOCK_CASTLE = 11
+BLOCK_SPENT = 12
+BLOCK_COIN = 13
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -36,11 +39,35 @@ KIND_NAMES = {
     BLOCK_STAIR: "STAIR",
     BLOCK_FLAG_POLE: "FLAG_POLE",
     BLOCK_CASTLE: "CASTLE",
+    BLOCK_SPENT: "SPENT",
+    BLOCK_COIN: "COIN",
+}
+
+# the reaction list's own kind numbering, a contract with games/mario/src/mario.h's kBlockList*.
+# it is separate from the render kinds above because a hidden block renders as sky until it is bumped
+LIST_QUESTION = 0
+LIST_BRICK = 1
+LIST_HIDDEN = 2
+
+LIST_KIND_MAP = {"question": LIST_QUESTION, "brick": LIST_BRICK, "hidden": LIST_HIDDEN}
+
+# blocks.contents -> the kContent* contract in games/mario/src/mario.h
+CONTENT_MAP = {
+    "nothing": 0,
+    "coin": 1,
+    "mushroom_fire": 2,
+    "star": 3,
+    "oneup": 4,
+    "multicoin": 5,
+    "vine": 6,
 }
 
 # schema.md: 15 block rows, ground surface at row 13, rows 13-14 are the solid ground blocks
 LEVEL_ROWS = 15
 GROUND_ROW = 13
+# each column is stored 16 bytes wide, one padding byte past the 15 real rows: sdcc turns a
+# power-of-two inner dimension into a shift, and the engine probes a cell six times a frame
+ROW_STRIDE = 16
 
 # blocks.kind -> our render kind; "hidden" has no art of its own until something reveals it, so it
 # renders as empty (per SCHEMA.md its contents still exist, physics/items are a later sub-milestone)
@@ -60,6 +87,17 @@ PAD_COLUMNS = 8
 # absent" wording), so the grid starts all-ground at row 13-14 and gaps carve it away
 FLAG_POLE_TOP_ROW = 4
 FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
+
+# sub-area layout. the bible gives 1-1's bonus room no terrain at all and places none of its coins:
+# only the total ("19 coins total per mariowiki") survives, in the area's notes prose. so the room is
+# laid out here from that count - a walkable row of coins over the default ground, an exit pipe past
+# them - and a rom-measure pass replaces the whole thing once the real room is transcribed
+AREA_COIN_ROW = GROUND_ROW - 1
+AREA_FIRST_COIN_COLUMN = 1
+AREA_EXIT_GAP_COLUMNS = 2
+AREA_EXIT_PIPE_HEIGHT = 2
+AREA_PAD_COLUMNS = 4
+AREA_BANK = 2
 
 
 def load_bible(path):
@@ -83,6 +121,10 @@ def feature_max_x(bible):
     if flag.get("x") is not None:
         max_x = max(max_x, flag["x"])
     return max_x
+
+
+def padded(col):
+    return list(col) + [BLOCK_EMPTY] * (ROW_STRIDE - LEVEL_ROWS)
 
 
 def new_grid(length_columns):
@@ -185,12 +227,88 @@ def compile_grid(bible):
     return grid, length_columns, probes, flag_col
 
 
+def compile_block_list(bible):
+    # the reaction list the rom scans on a head bump: every positioned question/brick/hidden block
+    # with its contents. hard blocks never react, so they stay out of it
+    out = []
+    for b in bible.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        kind = LIST_KIND_MAP.get(b["kind"])
+        if kind is None:
+            continue
+        out.append((b["x"], b["y"], kind, CONTENT_MAP.get(b.get("contents", "nothing"), 0)))
+    return out
+
+
+def find_pipe_entry(bible):
+    # the bible's enterable pipe: a terrain pipe with a dest, matched to the area it leads into by
+    # entry_x first and by the area's kind second. returns (column, top_row, area_index) or None
+    areas = bible.get("areas", [])
+    for t in bible.get("terrain", []):
+        if t["kind"] != "pipe" or not t.get("dest"):
+            continue
+        for index, area in enumerate(areas):
+            if area.get("entry_x") == t["x"] or area.get("kind") == t["dest"]:
+                return (t["x"], GROUND_ROW - t["height"], index)
+    return None
+
+
+def area_coin_count(area):
+    # the count is prose-only in the bible ("19 coins total per mariowiki"), so it is read out of the
+    # notes rather than duplicated here; a placed-coin json would make this a plain len()
+    match = re.search(r"(\d+)\s+coins", area.get("notes", "") or "")
+    if match:
+        return int(match.group(1))
+    return sum(1 for b in area.get("blocks", []) if b.get("contents") == "coin")
+
+
+def compile_area(area):
+    coins = area_coin_count(area)
+    exit_column = AREA_FIRST_COIN_COLUMN + coins + AREA_EXIT_GAP_COLUMNS
+    length_columns = exit_column + 2 + AREA_PAD_COLUMNS
+    grid = new_grid(length_columns)
+    probes = []
+    coin_cells = []
+
+    for i in range(coins):
+        column = AREA_FIRST_COIN_COLUMN + i
+        grid[column][AREA_COIN_ROW] = BLOCK_COIN
+        coin_cells.append((column, AREA_COIN_ROW))
+    apply_pipe(grid, exit_column, AREA_EXIT_PIPE_HEIGHT)
+
+    # the area's own bible blocks render, but only its coins are collectible this pass
+    for b in area.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        apply_block(grid, b["x"], b["y"], b["kind"])
+        probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    exit_top_row = GROUND_ROW - AREA_EXIT_PIPE_HEIGHT
+    probes.append((0, GROUND_ROW, BLOCK_GROUND))
+    if coin_cells:
+        probes.append((coin_cells[0][0], AREA_COIN_ROW, BLOCK_COIN))
+        probes.append((coin_cells[-1][0], AREA_COIN_ROW, BLOCK_COIN))
+    probes.append((exit_column, exit_top_row, BLOCK_PIPE_TL))
+    probes.append((exit_column + 1, exit_top_row, BLOCK_PIPE_TR))
+
+    return {
+        "grid": grid,
+        "columns": length_columns,
+        "coins": coin_cells,
+        "exit_column": exit_column,
+        "exit_top_row": exit_top_row,
+        "probes": probes,
+    }
+
+
 def slug_for(level_id):
     return "level_" + level_id.replace("-", "_")
 
 
-def write_header(out_dir, slug, length_columns, start, flag_col, source_path):
+def write_header(out_dir, slug, length_columns, start, flag_col, source_path, blocks, entry, areas):
     guard = slug.upper() + "_H"
+    upper = slug.upper()
     path = os.path.join(out_dir, slug + ".h")
     with open(path, "w", encoding="utf-8") as f:
         f.write("#ifndef %s\n" % guard)
@@ -198,6 +316,8 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path):
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("\n#include <stdint.h>\n\n")
         f.write("#define %s_ROWS %dU\n" % (slug.upper(), LEVEL_ROWS))
+        f.write("// stored stride: one padding byte past the last row keeps a cell index a shift\n")
+        f.write("#define %s_ROW_STRIDE %dU\n" % (slug.upper(), ROW_STRIDE))
         f.write("// the bible's start cell: the column and the ground row the player stands on top of\n")
         f.write("#define %s_START_COLUMN %dU\n" % (slug.upper(), start[0]))
         f.write("#define %s_START_ROW %dU\n" % (slug.upper(), start[1]))
@@ -216,10 +336,102 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path):
         f.write("#define %s_FLAG_TOP_ROW %dU\n" % (slug.upper(), FLAG_POLE_TOP_ROW))
         f.write("#define %s_FLAG_BASE_ROW %dU\n\n" % (slug.upper(), FLAG_POLE_BOTTOM_ROW))
         f.write(
-            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROWS];\n\n"
+            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE];\n\n"
             % (slug, slug.upper(), slug.upper())
         )
+
+        f.write("// the head-bump reaction list: every positioned question/brick/hidden block and what\n")
+        f.write("// it holds. kinds are the kBlockList* contract, contents the kContent* one\n")
+        f.write("#define %s_BLOCK_COUNT %dU\n" % (upper, len(blocks)))
+        f.write("extern const uint16_t %s_block_column[%s_BLOCK_COUNT];\n" % (slug, upper))
+        f.write("extern const uint8_t %s_block_row[%s_BLOCK_COUNT];\n" % (slug, upper))
+        f.write("extern const uint8_t %s_block_kind[%s_BLOCK_COUNT];\n" % (slug, upper))
+        f.write("extern const uint8_t %s_block_content[%s_BLOCK_COUNT];\n\n" % (slug, upper))
+
+        f.write("// the bible's enterable pipe and the sub-area it leads into\n")
+        f.write("#define %s_HAS_PIPE_ENTRY %dU\n" % (upper, 0 if entry is None else 1))
+        f.write("#define %s_PIPE_ENTRY_COLUMN %dU\n" % (upper, 0 if entry is None else entry[0]))
+        f.write("#define %s_PIPE_ENTRY_TOP_ROW %dU\n" % (upper, 0 if entry is None else entry[1]))
+        f.write("#define %s_AREA_COUNT %dU\n\n" % (upper, len(areas)))
+
+        for index, area in enumerate(areas):
+            name = "%s_AREA%d" % (upper, index)
+            f.write("// sub-area %d: its own banked grid, entered from the pipe above and exited at\n" % index)
+            f.write("// the room's own pipe, which returns to the linked main-area column\n")
+            f.write("#define %s_COLUMNS %dU\n" % (name, area["columns"]))
+            f.write("#define %s_BANK %dU\n" % (name, AREA_BANK))
+            f.write("#define %s_START_COLUMN 0U\n" % name)
+            f.write("#define %s_START_ROW %dU\n" % (name, GROUND_ROW))
+            f.write("#define %s_EXIT_COLUMN %dU\n" % (name, area["exit_column"]))
+            f.write("#define %s_EXIT_TOP_ROW %dU\n" % (name, area["exit_top_row"]))
+            f.write("#define %s_RETURN_COLUMN %dU\n" % (name, area["return_column"]))
+            f.write("#define %s_RETURN_TOP_ROW %dU\n" % (name, area["return_top_row"]))
+            f.write("#define %s_COIN_COUNT %dU\n" % (name, len(area["coins"])))
+            f.write(
+                "extern const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE];\n"
+                % (slug, index, name, upper)
+            )
+            f.write("extern const uint8_t %s_area%d_coin_column[%s_COIN_COUNT];\n" % (slug, index, name))
+            f.write("extern const uint8_t %s_area%d_coin_row[%s_COIN_COUNT];\n\n" % (slug, index, name))
+
         f.write("#endif\n")
+
+
+def write_objects(out_dir, slug, blocks, areas, source_path):
+    # the reaction/coin lists are tens of bytes and are scanned every frame, so they stay in bank 0
+    # where no bank switch stands between the engine and a solidity probe
+    upper = slug.upper()
+    path = os.path.join(out_dir, slug + "_objects.c")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
+        f.write('\n#include "%s.h"\n\n' % slug)
+        f.write(
+            "const uint16_t %s_block_column[%s_BLOCK_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(b[0]) for b in blocks))
+        )
+        f.write(
+            "const uint8_t %s_block_row[%s_BLOCK_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(b[1]) for b in blocks))
+        )
+        f.write(
+            "const uint8_t %s_block_kind[%s_BLOCK_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(b[2]) for b in blocks))
+        )
+        f.write(
+            "const uint8_t %s_block_content[%s_BLOCK_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(b[3]) for b in blocks))
+        )
+        for index, area in enumerate(areas):
+            name = "%s_AREA%d" % (upper, index)
+            f.write(
+                "const uint8_t %s_area%d_coin_column[%s_COIN_COUNT] = {%s};\n"
+                % (slug, index, name, ", ".join(str(c[0]) for c in area["coins"]))
+            )
+            f.write(
+                "const uint8_t %s_area%d_coin_row[%s_COIN_COUNT] = {%s};\n"
+                % (slug, index, name, ", ".join(str(c[1]) for c in area["coins"]))
+            )
+
+
+def write_areas(out_dir, slug, areas, source_path):
+    upper = slug.upper()
+    path = os.path.join(out_dir, slug + "_areas.c")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
+        f.write("// one column-major block grid per sub-area, banked away from the main level's own\n")
+        f.write("#pragma bank %d\n\n" % AREA_BANK)
+        f.write('#include "%s.h"\n\n' % slug)
+        for index, area in enumerate(areas):
+            name = "%s_AREA%d" % (upper, index)
+            f.write(
+                "const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE] = {\n"
+                % (slug, index, name, upper)
+            )
+            for col in area["grid"]:
+                names = "/".join(KIND_NAMES[v] for v in col if v != BLOCK_EMPTY)
+                comment = (" // %s" % names) if names else ""
+                f.write("    {%s},%s\n" % (", ".join(str(v) for v in padded(col)), comment))
+            f.write("};\n\n")
 
 
 def write_source(out_dir, slug, grid, source_path):
@@ -230,18 +442,18 @@ def write_source(out_dir, slug, grid, source_path):
         f.write("#pragma bank 1\n\n")
         f.write('#include "%s.h"\n\n' % slug)
         f.write(
-            "const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROWS] = {\n"
+            "const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE] = {\n"
             % (slug, slug.upper(), slug.upper())
         )
         for col in grid:
-            row_bytes = ", ".join(str(v) for v in col)
+            row_bytes = ", ".join(str(v) for v in padded(col))
             names = "/".join(KIND_NAMES[v] for v in col if v != BLOCK_EMPTY)
             comment = (" // %s" % names) if names else ""
             f.write("    {%s},%s\n" % (row_bytes, comment))
         f.write("};\n")
 
 
-def write_grid(out_dir, slug, grid, source_path):
+def write_grid(out_dir, slug, grid, source_path, blocks, areas):
     # the same grid the rom reads out of its banked copy, as a host constant: the traversal tests
     # plan routes against it instead of re-deriving the level from the bible json
     path = os.path.join(out_dir, slug + "_grid.h")
@@ -258,10 +470,32 @@ def write_grid(out_dir, slug, grid, source_path):
         for col in grid:
             f.write("    {%s},\n" % ", ".join(str(v) for v in col))
         f.write("};\n\n")
+
+        # the host twin needs the reaction list too: a hidden block is sky in the grid above and only
+        # this list says a bump would materialize one there
+        f.write("struct LevelBlock {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t content;\n};\n\n")
+        f.write("inline constexpr LevelBlock k%sBlocks[] = {\n" % camel)
+        for column, row, kind, content in blocks:
+            f.write("    {%d, %d, %d, %d},\n" % (column, row, kind, content))
+        f.write("};\n\n")
+        f.write(
+            "inline constexpr uint16_t k%sBlockCount = sizeof(k%sBlocks) / sizeof(k%sBlocks[0]);\n\n"
+            % (camel, camel, camel)
+        )
+
+        for index, area in enumerate(areas):
+            f.write(
+                "inline constexpr uint8_t k%sArea%dGrid[%d][%d] = {\n"
+                % (camel, index, area["columns"], LEVEL_ROWS)
+            )
+            for col in area["grid"]:
+                f.write("    {%s},\n" % ", ".join(str(v) for v in col))
+            f.write("};\n\n")
         f.write("#endif\n")
 
 
-def write_probes(out_dir, slug, probes, source_path):
+def write_probes(out_dir, slug, probes, source_path, areas):
     path = os.path.join(out_dir, slug + "_probes.h")
     guard = slug.upper() + "_PROBES_H"
     with open(path, "w", encoding="utf-8") as f:
@@ -282,6 +516,16 @@ def write_probes(out_dir, slug, probes, source_path):
             "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
             % (to_camel(slug), to_camel(slug), to_camel(slug))
         )
+        for index, area in enumerate(areas):
+            camel = "%sArea%d" % (to_camel(slug), index)
+            f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % camel)
+            for column, row, kind in area["probes"]:
+                f.write("    {%d, %d, %d}, // %s\n" % (column, row, kind, KIND_NAMES[kind]))
+            f.write("};\n\n")
+            f.write(
+                "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
+                % (camel, camel, camel)
+            )
         f.write("#endif\n")
 
 
@@ -301,15 +545,28 @@ def main():
     slug = slug_for(bible["level"])
     grid, length_columns, probes, flag_col = compile_grid(bible)
     start = (bible["start"]["x"], bible["start"]["y"])
+    blocks = compile_block_list(bible)
+    entry = find_pipe_entry(bible)
 
-    write_header(out_dir, slug, length_columns, start, flag_col, in_path)
+    areas = []
+    for area in bible.get("areas", []):
+        compiled = compile_area(area)
+        # the bible's exit prose for 1-1 is "same pipe, returns to overworld near entry", so the
+        # return column is the entry pipe's own; a bible that names another column overrides it here
+        compiled["return_column"] = area.get("entry_x", 0 if entry is None else entry[0])
+        compiled["return_top_row"] = 0 if entry is None else entry[1]
+        areas.append(compiled)
+
+    write_header(out_dir, slug, length_columns, start, flag_col, in_path, blocks, entry, areas)
     write_source(out_dir, slug, grid, in_path)
-    write_grid(out_dir, slug, grid, in_path)
-    write_probes(out_dir, slug, probes, in_path)
+    write_objects(out_dir, slug, blocks, areas, in_path)
+    write_areas(out_dir, slug, areas, in_path)
+    write_grid(out_dir, slug, grid, in_path, blocks, areas)
+    write_probes(out_dir, slug, probes, in_path, areas)
 
     print(
-        "compiled %s: %d columns, %d probes, flag column %s -> %s"
-        % (bible["level"], length_columns, len(probes), flag_col, out_dir)
+        "compiled %s: %d columns, %d probes, %d blocks, %d areas, flag column %s -> %s"
+        % (bible["level"], length_columns, len(probes), len(blocks), len(areas), flag_col, out_dir)
     )
     return 0
 

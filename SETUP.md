@@ -138,9 +138,10 @@ the other game). The finished rom lands at `build/flappy.gb` (or
 
 ## 6. Optional
 
-Tetris: swap the piece editor's spin-direction glyphs for a plain check
-mark and X:
+Tetris: the copy in the repo already has its piece-editor glyphs patched.
+If you ever start from a stock Adjustris download instead, this swaps its
+spin-direction glyphs for a plain check mark and X:
 
 ```
-python tools/patch_spin_icons.py dist/tetris.gb
+python tools/patch_spin_icons.py path/to/rom.gb
 ```

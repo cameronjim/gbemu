@@ -152,7 +152,6 @@ try {
         } else {
             Write-Step "copying assets/roms/tetris.gb into dist"
             Copy-Item -Path (Join-Path $RepoRoot "assets\roms\tetris.gb") -Destination $tetrisDest -Force
-            Write-Host "note: run 'python tools/patch_spin_icons.py `"$tetrisDest`"' to swap the piece-editor glyphs (optional, not run by this script)" -ForegroundColor Yellow
         }
     } else {
         Write-Step "skipping tetris.gb (-NoTetris)"

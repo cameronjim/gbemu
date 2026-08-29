@@ -1,7 +1,9 @@
 #include "blocks.h"
 #include "camera.h"
+#include "enemies.h"
 #include "level_1_1.h"
 #include "mario.h"
+#include "physics_constants.h"
 #include "player.h"
 #include "terrain.h"
 
@@ -28,9 +30,15 @@ static uint8_t text_len(const char* text) {
     return n;
 }
 
+// putchar, not printf: the format parser costs bank 0 about 1.3kb that two fixed strings do not
+// need, and bank 0 is where all the engine but enemies.c lives
 static void print_centered(uint8_t y, const char* text) {
+    uint8_t i;
+
     gotoxy((uint8_t)((kScreenCols - text_len(text)) / 2U), y);
-    printf("%s", text);
+    for (i = 0; text[i] != '\0'; ++i) {
+        putchar(text[i]);
+    }
 }
 
 // tags a whole bg row with one cgb palette; vram bank 1 holds the attribute map
@@ -98,6 +106,7 @@ static void present(void) {
     terrain_apply_scroll();
     player_draw(camera_x(), camera_y());
     blocks_draw(camera_x(), camera_y());
+    enemies_draw(camera_x(), camera_y());
     terrain_stream_window();
 }
 
@@ -110,6 +119,7 @@ static void enter_play(void) {
     blocks_enter_area(kAreaMain);
     terrain_init(kAreaMain);
     player_init();
+    enemies_load_level();
     camera_init(player_x(), player_y());
     present();
     SHOW_BKG;
@@ -122,6 +132,7 @@ static void enter_bonus_area(void) {
     DISPLAY_OFF;
     current_area = kAreaBonus;
     blocks_enter_area(kAreaBonus);
+    enemies_enter_area(kAreaBonus);
     terrain_init(kAreaBonus);
     player_place((uint16_t)LEVEL_1_1_AREA0_START_COLUMN, (uint8_t)LEVEL_1_1_AREA0_START_ROW);
     camera_init(player_x(), player_y());
@@ -136,6 +147,7 @@ static void leave_bonus_area(void) {
     DISPLAY_OFF;
     current_area = kAreaMain;
     blocks_enter_area(kAreaMain);
+    enemies_enter_area(kAreaMain);
     terrain_init(kAreaMain);
     player_begin_pipe_up((uint16_t)LEVEL_1_1_AREA0_RETURN_COLUMN, (uint8_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW);
     // the camera is framed on where he ends up standing, not on the shaft he is still climbing out of
@@ -182,6 +194,7 @@ void main(void) {
     uint8_t prev = 0;
     uint8_t pressed = 0;
     uint8_t status = kPlayerAlive;
+    uint8_t contact = kEnemyHitNone;
 
     font_init();
     font_set(font_load(font_ibm));
@@ -196,9 +209,18 @@ void main(void) {
 
         if (state == kStateTitle) {
             if ((pressed & J_START) != 0U) {
+                enemies_set_lab(0);
                 enter_play();
                 state = kStatePlay;
             }
+#if kEnemyLab
+            // the same level, seeded with the lab's denser roster; see kEnemyLab in mario.h
+            else if ((pressed & J_SELECT) != 0U) {
+                enemies_set_lab(1);
+                enter_play();
+                state = kStatePlay;
+            }
+#endif
 #if kDebugCamera
             else if ((pressed & J_B) != 0U) {
                 enter_camera();
@@ -242,6 +264,19 @@ void main(void) {
             }
             camera_update(player_x(), player_y(), player_on_ground(), player_standing(), keys);
             blocks_update(player_x(), player_y(), camera_x());
+            // the enemy pass runs last so it sees this frame's camera, and hands mario's reaction
+            // back rather than reaching into him
+            contact =
+                enemies_update(player_x(), player_y(), player_y_speed(), player_on_ground(), camera_x());
+            if (contact == kEnemyHitDamage) {
+                // m7 replaces this with the shrink chain; for now damage is the pit fall's respawn
+                enter_play();
+                continue;
+            }
+            if (contact != kEnemyHitNone) {
+                player_stomp_bounce(contact == kEnemyHitShellStomp ? (int8_t)kEnemyShellBouncePx
+                                                                   : (int8_t)kEnemyStompBouncePx);
+            }
             present();
             continue;
         }

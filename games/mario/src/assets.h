@@ -34,6 +34,11 @@ extern const uint8_t kItemTiles[224];
 // left-top, left-bottom, right-top, right-bottom so one 8x16 sprite pair covers a frame
 extern const uint8_t kMarioTiles[384];
 
+// sixteen tiles at 0xc0: the goomba's two walk frames and its squashed one, then the shell, all
+// left-right symmetric so each is a single 8x16 pair the right sprite redraws flipped; then the
+// koopa's two walk frames, which face and so carry both halves the way mario's frames do
+extern const uint8_t kEnemyTiles[256];
+
 // loads every terrain tile above into vram bank 0 at its pinned id
 void assets_load_bg_tiles(void);
 
@@ -51,6 +56,10 @@ void assets_load_sprite_palettes(void);
 // loads the item frames at 0xd0 and one cgb sprite palette per item kind
 void assets_load_item_tiles(void);
 void assets_load_item_palettes(void);
+
+// loads the enemy frames at 0xc0 and the goomba/koopa cgb sprite palettes
+void assets_load_enemy_tiles(void);
+void assets_load_enemy_palettes(void);
 
 // per block-kind tile ids, indexed by the kBlock* constants in mario.h; one entry per 2x2 corner
 extern const uint8_t kBlockTileTl[kBlockKindCount];

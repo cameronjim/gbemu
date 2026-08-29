@@ -556,6 +556,20 @@ int16_t player_y(void) {
     return y_pos;
 }
 
+int8_t player_y_speed(void) {
+    return y_speed;
+}
+
+// the same launch a jump takes, only the speed comes from the bible's stomp table instead of the
+// tier's own impulse; the tier still follows his horizontal speed, so the hold rule works off it
+void player_stomp_bounce(int8_t speed) {
+    y_speed = speed;
+    y_accum = 0;
+    jump_origin_y = y_pos;
+    jump_tier = tier_for(abs_speed());
+    on_ground = 0;
+}
+
 uint8_t player_on_ground(void) {
     return on_ground;
 }

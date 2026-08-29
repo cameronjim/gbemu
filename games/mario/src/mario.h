@@ -149,19 +149,22 @@
 #define kItemStar 2U
 #define kItemOneup 3U
 
-// oam slots and the cgb sprite palettes. worst case on screen is mario 2 + one item 2 + one coin
-// pop 1 = 5 sprites, and mario and an item never share more than two of them on a scanline, so the
-// hardware's 10-per-line limit is never approached
+// oam slots and the cgb sprite palettes. mario 2 + one item 2 + one coin pop 1 + five enemies x 2
+// is 15 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteItemL 2U
 #define kSpriteItemR 3U
 #define kSpriteCoin 4U
+#define kSpriteEnemyFirst 5U
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
 #define kPalOneup 3U
 #define kPalCoin 4U
+// slots 5 and 6 are the enemies'; 7 stays free for m7's fire mario
+#define kPalGoomba 5U
+#define kPalKoopa 6U
 
 // gbdk's move_sprite takes oam coordinates; the visible screen starts at (8, 16)
 #define kOamXOffset 8U
@@ -232,6 +235,63 @@
 #define kPipeStepPx 1
 #define kPipeTravelPx 16
 
+// enemies (games/mario/src/enemies.c). sprite family 0xc0.. per the milestone's tile-id contract,
+// and the whole 16-tile family is spent: a goomba and a shell are left-right symmetric, so their
+// frames cost one 8x16 pair each and the right half is the same tile drawn flipped; the koopa
+// faces, so its two walk frames carry both halves the way mario's frames do
+#define kTileEnemyFirst 0xC0U
+#define kTileGoombaWalk0 0xC0U
+#define kTileGoombaWalk1 0xC2U
+#define kTileGoombaSquash 0xC4U
+#define kTileShell 0xC6U
+#define kTileKoopaWalk0 0xC8U
+#define kTileKoopaWalk1 0xCCU
+#define kEnemyTileCount 16U // 0xc0-0xcf
+
+// the compiled kinds, the contract with compile_level.py's ENEMY_KIND_MAP
+#define kEnemyGoomba 0U
+#define kEnemyKoopa 1U
+
+// a pool slot's state. the pool is kept packed, so kEnemyOff never sits in a live slot: it is the
+// value a slot is cleared to and the one the host twin starts a fresh slot at
+#define kEnemyOff 0U
+#define kEnemyWalk 1U
+#define kEnemySquashed 2U
+#define kEnemyShellIdle 3U
+#define kEnemyShellMove 4U
+
+// the milestone doc's oam trap: five slots x 2 sprites plus mario's 2 is 12 on screen, but a
+// scanline crossing a row of 16x16 enemies pays 2 sprites for each of them, so four on one row is
+// 8 plus mario's 2 = 10 exactly, the hardware's per-line ceiling. the spawner refuses a fifth
+// same-row activation and leaves that enemy pending until a slot on the row frees
+#define kEnemySlots 5U
+#define kEnemyRowCap 4U
+
+#define kEnemyWidthPx 16
+#define kEnemyHeightPx 16
+// the same 2 px shoulder inset the player's hitbox keeps, so neither dies on a pixel of overlap
+#define kEnemyHitInsetPx 2
+#define kEnemyHitWidthPx (kEnemyWidthPx - 2 * kEnemyHitInsetPx) // 12
+// feet above this line inside the enemy's box make the contact a stomp instead of damage
+#define kEnemyStompLinePx (kEnemyHeightPx / 2) // 8
+
+// smb's object loader brings an enemy in as its column reaches the screen's right edge, and forgets
+// it for good once it has scrolled this far past the left one - the cursor only ever advances, so
+// walking back over ground already crossed never brings one of them back
+#define kEnemySpawnMarginPx 0
+#define kEnemyDespawnMarginPx 32
+
+// our own cadences: the bible times neither the flattened goomba nor the enemy fall rate
+#define kSquashFrames 30U
+#define kEnemyGravitySubpx 24U
+#define kEnemyMaxFallPx 4
+#define kEnemyAnimFrames 8U
+// must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
+// 60fps. no disassembly line for it was found in the bible, so the count is ours until one is
+#define kShellWakeFrames 600U
+// and the frames a freshly kicked shell cannot hurt the player, so the kick itself is not a death
+#define kShellGraceFrames 8U
+
 // the underground sub-area's palette set: the same tile families, tinted dark and blue
 #define kAreaMain 0U
 #define kAreaBonus 1U
@@ -240,6 +300,13 @@
 // that select is the play camera's look-ahead. define this to 0 to drop the state from the rom
 #ifndef kDebugCamera
 #define kDebugCamera 1
+#endif
+
+// the enemy lab: select from the title starts 1-1 with a denser roster than the bible places
+// anywhere in it - 1-1's one koopa stands alone and no row of it ever holds four enemies, so the
+// shell-chain and scanline-cap tests would have nothing to watch. define this to 0 to drop it
+#ifndef kEnemyLab
+#define kEnemyLab 1
 #endif
 
 #endif

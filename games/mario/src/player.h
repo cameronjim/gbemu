@@ -53,6 +53,12 @@ uint16_t player_x(void);
 // the sprite box's top edge in world px; the camera's default band is measured off it
 int16_t player_y(void);
 
+// his whole-px vertical speed this frame; the enemy pass reads it to tell a stomp from a side hit
+int8_t player_y_speed(void);
+
+// kicks him back up off whatever he just stomped, the bible's own bounce velocity
+void player_stomp_bounce(int8_t speed);
+
 // 1 while mario is resting on a surface, which is what lets the camera resample its default band
 uint8_t player_on_ground(void);
 

@@ -2,7 +2,7 @@
 
 #include "assets.h"
 #include "blocks.h"
-#include "level_1_1.h"
+#include "level.h"
 #include "mario.h"
 
 #include <gb/gb.h>
@@ -14,42 +14,15 @@ static uint8_t world_y;
 static uint16_t max_world_x;
 // leftmost block column currently streamed into the ring; the ring always holds kRingBlocks of them
 static int16_t window_start;
-// which compiled grid the ring is streaming: the main level or a pipe sub-area
-static uint8_t area;
-// its column count, held in ram so the per-probe bounds check is a load and not a branch
-static uint16_t columns;
-
 // one block-column's worth of tiles (2 tile columns x kBgRows), expanded from the banked level data
 static uint8_t tile_buf[kTilesPerBlock * kBgRows];
 static uint8_t attr_buf[kTilesPerBlock * kBgRows];
 
-// the grid being played, unpacked out of its rom bank once at load time. the engine probes solidity
-// six to eight times a frame and streams a column every 16 px, and a bank switch on each of those
-// was costing the heavy frames their whole margin; a ram copy makes every probe a plain indexed
-// load and leaves the rom bank alone, which is also what lets enemies.c run banked
-static uint8_t grid[LEVEL_1_1_LENGTH_COLUMNS][LEVEL_1_1_ROW_STRIDE];
-
-// the only bank switch left in the module, and it runs with the lcd off beside terrain_init's fill
-static void load_grid(void) {
-    const uint8_t* src;
-    uint16_t c;
-    uint8_t r;
-
-    SWITCH_ROM_MBC5(area == kAreaMain ? LEVEL_1_1_BANK : LEVEL_1_1_AREA0_BANK);
-    for (c = 0; c < columns; ++c) {
-        src = (area == kAreaMain) ? level_1_1_blocks[c] : level_1_1_area0_blocks[c];
-        for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
-            grid[c][r] = src[r];
-        }
-    }
-    SWITCH_ROM_MBC5(0);
-}
-
 static void read_grid_column(uint16_t block_col, uint8_t* out) {
     uint8_t r;
 
-    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
-        out[r] = grid[block_col][r];
+    for (r = 0; r < LEVEL_ROWS; ++r) {
+        out[r] = level_grid[block_col][r];
     }
 }
 
@@ -62,13 +35,13 @@ static void read_block_column(uint16_t block_col, uint8_t* out) {
 }
 
 static uint8_t grid_cell(uint16_t block_col, uint8_t row) {
-    return grid[block_col][row];
+    return level_grid[block_col][row];
 }
 
 // the kinds each ring slot currently paints. a column scrolling in reuses the slot the column
 // kRingBlocks back just left, and across 1-1's long flat stretches those two hold exactly the same
 // kinds, so the 2x30 tile and attribute writes are skipped outright and the frame stays in budget
-static uint8_t ring_kinds[kRingBlocks][LEVEL_1_1_ROWS];
+static uint8_t ring_kinds[kRingBlocks][LEVEL_ROWS];
 
 static uint8_t ring_slot(int16_t column) {
     return (uint8_t)((uint16_t)column & (kRingBlocks - 1U));
@@ -81,7 +54,7 @@ static void ring_forget(int16_t column) {
     uint8_t* cached = ring_kinds[ring_slot(column)];
     uint8_t r;
 
-    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+    for (r = 0; r < LEVEL_ROWS; ++r) {
         cached[r] = 0xFFU;
     }
 }
@@ -100,30 +73,41 @@ static uint8_t ring_tile_col(int16_t column) {
 // that streams it can pay: the engine was against its budget before the enemies arrived. two things
 // bring it down. the streamer repaints only the span of rows that actually differ from what the
 // ring slot already holds - across 1-1's flat stretches that is nothing at all and most of the rest
-// is a block or two - and whatever is left goes out a quarter at a time, one quarter a frame. the
-// column being streamed sits 13 blocks right of the camera's left edge, nearly three screen widths
-// of slack, so it always finishes long before it can be seen
-#define kOwedSteps 4U
+// is a block or two - and whatever is left goes out a slice at a time, one slice a frame. the
+// column being streamed is the ring's own last slot, two blocks past the right edge of the view,
+// so the whole debt has to be paid inside the four or five frames it takes him to run those 32 px:
+// spreading it wider let a column's palette attributes arrive after its tiles were already on screen
+#define kOwedSlices 2U
+#define kOwedSteps (2U * kOwedSlices)
 static int16_t owed_col = -1;
 static uint8_t owed_step;
-// the changed span, in bg tile rows: where it starts and how many rows it covers
+// the changed span, in bg tile rows: where it starts, how many rows it covers, how many of those
+// the current half has already written, and how many go out per frame
 static uint8_t owed_row;
 static uint8_t owed_rows;
+static uint8_t owed_done;
+static uint8_t owed_slice;
 
 static void owed_advance(void) {
-    const uint8_t first = (uint8_t)(owed_rows >> 1);
-    const uint8_t half = (uint8_t)(owed_step & 1U);
-    const uint8_t rows = half != 0U ? (uint8_t)(owed_rows - first) : first;
+    uint8_t rows;
 
+    if (owed_step == kOwedSlices) {
+        owed_done = 0; // the tile half is finished; the attribute half starts over
+    }
+    rows = (uint8_t)(owed_rows - owed_done);
+    if (rows > owed_slice) {
+        rows = owed_slice;
+    }
     if (rows != 0U) {
-        const uint8_t row = (uint8_t)(owed_row + (half != 0U ? first : 0U));
-        const uint16_t offset = (uint16_t)(half != 0U ? first : 0U) * kTilesPerBlock;
+        const uint8_t row = (uint8_t)(owed_row + owed_done);
+        const uint16_t offset = (uint16_t)owed_done * kTilesPerBlock;
 
-        if (owed_step < 2U) {
+        if (owed_step < kOwedSlices) {
             set_bkg_tiles(ring_tile_col(owed_col), row, kTilesPerBlock, rows, tile_buf + offset);
         } else {
             set_bkg_attributes(ring_tile_col(owed_col), row, kTilesPerBlock, rows, attr_buf + offset);
         }
+        owed_done = (uint8_t)(owed_done + rows);
     }
     ++owed_step;
     if (owed_step >= kOwedSteps) {
@@ -157,7 +141,7 @@ static void put_face(int16_t column, uint8_t tile_row, uint8_t kind) {
 // expands one banked block column into its 2x2-per-block tile/attribute pair and writes the ring slot;
 // out of level bounds is left as whatever the ring already holds (sky, by the init fill below)
 static void stream_column(int16_t block_col) {
-    uint8_t rows[LEVEL_1_1_ROWS];
+    uint8_t rows[LEVEL_ROWS];
     uint8_t r;
     uint8_t kind;
     uint8_t pal;
@@ -167,14 +151,14 @@ static void stream_column(int16_t block_col) {
     uint8_t* tp;
     uint8_t* ap;
 
-    if (block_col < 0 || block_col >= (int16_t)columns) {
+    if (block_col < 0 || block_col >= (int16_t)level_columns) {
         return;
     }
 
     read_block_column((uint16_t)block_col, rows);
 
     cached = ring_kinds[ring_slot(block_col)];
-    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+    for (r = 0; r < LEVEL_ROWS; ++r) {
         if (cached[r] != rows[r]) {
             if (lo == 0xFFU) {
                 lo = r;
@@ -206,10 +190,12 @@ static void stream_column(int16_t block_col) {
         *ap++ = pal;
     }
 
-    // this frame pays only the first quarter; the next three quiet ones pay the rest
+    // this frame pays only the first slice; the next quiet ones pay the rest
     owed_col = block_col;
     owed_row = (uint8_t)(lo * kTilesPerBlock);
     owed_rows = (uint8_t)((uint8_t)(hi - lo + 1U) * kTilesPerBlock);
+    owed_done = 0;
+    owed_slice = (uint8_t)((owed_rows + (kOwedSlices - 1U)) / kOwedSlices);
     owed_step = 0;
     owed_advance();
 }
@@ -221,7 +207,7 @@ static void stream_column(int16_t block_col) {
 // anchor's 2 px/frame, so a frame never crosses more than one 16 px block boundary and never streams
 // more than one column; only terrain_init()'s 16-column fill exceeds a vblank, and it runs lcd-off
 static int16_t clamp_window_start(int16_t desired) {
-    int16_t max_start = (int16_t)columns - (int16_t)kRingBlocks;
+    int16_t max_start = (int16_t)level_columns - (int16_t)kRingBlocks;
     if (max_start < 0) {
         max_start = 0;
     }
@@ -252,25 +238,27 @@ static void sync_window(uint16_t cam_block) {
 void terrain_init(uint8_t next_area) {
     uint16_t level_px;
     int16_t i;
+    uint8_t set_palettes;
 
-    area = next_area;
-    columns = (area == kAreaMain) ? (uint16_t)LEVEL_1_1_LENGTH_COLUMNS : (uint16_t)LEVEL_1_1_AREA0_COLUMNS;
-    load_grid();
+    level_load(next_area);
     for (i = 0; i < (int16_t)kRingBlocks; ++i) {
         ring_kinds[i][0] = 0xFFU;
     }
     assets_load_bg_tiles();
-    if (area == kAreaMain) {
-        assets_load_bg_palettes();
-    } else {
+    set_palettes = level_palette_set();
+    if (set_palettes == (uint8_t)kLevelTypeUnderground) {
         assets_load_bg_palettes_underground();
+    } else if (set_palettes == (uint8_t)kLevelTypeCastle) {
+        assets_load_bg_palettes_castle();
+    } else {
+        assets_load_bg_palettes();
     }
 
     world_x = 0;
     world_y = 0;
     window_start = 0;
 
-    level_px = (uint16_t)(columns * kBlockPx);
+    level_px = (uint16_t)(level_columns * kBlockPx);
     max_world_x = (level_px > kScreenWidthPx) ? (uint16_t)(level_px - kScreenWidthPx) : 0U;
 
     for (i = 0; i < (int16_t)kRingBlocks; ++i) {
@@ -324,20 +312,22 @@ uint16_t terrain_max_camera_x(void) {
 uint8_t terrain_kind_at(int16_t column, int16_t row) {
     uint8_t kind;
 
-    if (column < 0 || column >= (int16_t)columns || row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
+    if (column < 0 || column >= (int16_t)level_columns || row < 0 || row >= (int16_t)LEVEL_ROWS) {
         return kBlockEmpty;
     }
     kind = grid_cell((uint16_t)column, (uint8_t)row);
     return blocks_override_count == 0U ? kind : blocks_kind_override(column, row, kind);
 }
 
-uint8_t terrain_solid_at(int16_t column, int16_t row) {
+// kFloorSolid, kFloorThin, or 0. one indexed load per probe, which is what keeps the six-way
+// kind test m8a's new blocks would otherwise need off a path walked twenty times a frame
+uint8_t terrain_floor_at(int16_t column, int16_t row) {
     uint8_t kind;
 
-    if (column < 0 || column >= (int16_t)columns) {
-        return 1; // the level's ends are walls, smb-style
+    if (column < 0 || column >= (int16_t)level_columns) {
+        return kFloorSolid; // the level's ends are walls, smb-style
     }
-    if (row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
+    if (row < 0 || row >= (int16_t)LEVEL_ROWS) {
         return 0;
     }
     kind = grid_cell((uint16_t)column, (uint8_t)row);
@@ -345,12 +335,39 @@ uint8_t terrain_solid_at(int16_t column, int16_t row) {
     if (blocks_solid_edits != 0U) {
         kind = blocks_kind_override(column, row, kind);
     }
-    // sky, the flag pole and a world coin are the only cells the player passes through
-    return (kind != kBlockEmpty && kind != kBlockFlagPole && kind != kBlockCoin) ? 1U : 0U;
+    return kBlockFloor[kind];
+}
+
+// the same probe again rather than a wrapper around terrain_floor_at: this one is called about
+// twenty times a frame and the engine has no room for the extra call level
+uint8_t terrain_solid_at(int16_t column, int16_t row) {
+    uint8_t kind;
+
+    if (column < 0 || column >= (int16_t)level_columns) {
+        return 1;
+    }
+    if (row < 0 || row >= (int16_t)LEVEL_ROWS) {
+        return 0;
+    }
+    kind = grid_cell((uint16_t)column, (uint8_t)row);
+    if (blocks_solid_edits != 0U) {
+        kind = blocks_kind_override(column, row, kind);
+    }
+    return (uint8_t)(kBlockFloor[kind] & kFloorSolid);
+}
+
+// the bridge the axe drops: the cells go to sky in the ram grid, and whichever of them the ring
+// still holds is repainted. anything standing on them is now standing on the death plane
+void terrain_clear_cell(int16_t column, int16_t row) {
+    if (column < 0 || column >= (int16_t)level_columns || row < 0 || row >= (int16_t)LEVEL_ROWS) {
+        return;
+    }
+    level_grid[column][row] = kBlockEmpty;
+    terrain_write_block(column, row);
 }
 
 void terrain_write_block(int16_t column, int16_t row) {
-    if (column_in_ring(column) == 0U || row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
+    if (column_in_ring(column) == 0U || row < 0 || row >= (int16_t)LEVEL_ROWS) {
         return;
     }
     // a whole-column attribute write would paint over the face this is about to place

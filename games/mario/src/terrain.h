@@ -39,9 +39,16 @@ uint8_t terrain_kind_at(int16_t column, int16_t row);
 // of its rows does not (open sky above, the death pit below)
 uint8_t terrain_solid_at(int16_t column, int16_t row);
 
+// what the cell is to a body standing on it: kFloorSolid, kFloorThin (1-3's tree tops, which stop
+// only feet that crossed the deck line this frame), or 0. one grid probe, one table load
+uint8_t terrain_floor_at(int16_t column, int16_t row);
+
 // repaints one block cell from its current kind; the ring slot is left alone when the column has
 // scrolled out of the streamed window
 void terrain_write_block(int16_t column, int16_t row);
+
+// turns a cell to sky in the ram grid and repaints it: the axe dropping 1-4's bridge
+void terrain_clear_cell(int16_t column, int16_t row);
 
 // draws the cell one tile row higher for the head-bump bounce, and puts it back again. the bounce
 // borrows the cell above, so it is skipped unless that cell is empty sky

@@ -5,7 +5,7 @@
 #include "enemies.h"
 
 #include "assets.h"
-#include "level_1_1.h"
+#include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
 #include "terrain.h"
@@ -38,9 +38,13 @@ typedef struct {
 
 static Enemy pool[kEnemySlots];
 
-// change-only oam, the rule blocks.c already follows: an unchanged slot writes no tile or property
+// change-only oam, the rule blocks.c already follows: an unchanged slot writes no tile or property,
+// and a walker crossing half a pixel a frame only actually moves on every other one, so its two
+// move_sprite calls are skipped on the frames between
 static uint8_t drawn_tile[kEnemySlots];
 static uint8_t drawn_prop[kEnemySlots];
+static uint8_t drawn_x[kEnemySlots];
+static uint8_t drawn_y[kEnemySlots];
 
 // the roster's own point tables, generated from games/mario/research/roster.json
 static const uint16_t kStompChain[kStompChainCount] = kStompChainInit;
@@ -172,10 +176,56 @@ static void step_ground(Enemy* e, uint8_t speed) {
     e->foot_col = foot;
     // smb walks a goomba off a ledge instead of turning it, and the centre column leaving solid
     // ground is the frame it goes over the edge
-    if (terrain_solid_at((int16_t)foot, row_of((int16_t)(e->pos_y + kEnemyHeightPx))) == 0U) {
-        e->grounded = 0;
-        e->dy = 0;
-        e->y_accum = 0;
+    if (terrain_floor_at((int16_t)foot, row_of((int16_t)(e->pos_y + kEnemyHeightPx))) != 0U) {
+        return;
+    }
+    // physics.json red_koopa_edge_turning: the red koopa skips the state change that lets the
+    // others walk off and falls through to the direction flip instead
+    if (e->kind == kEnemyKoopaRed && e->state == kEnemyWalk) {
+        e->pos_x = (e->dir > 0) ? (uint16_t)(((uint16_t)foot << 4) - (kEnemyWidthPx / 2U))
+                                : (uint16_t)(((uint16_t)(foot + 1U) << 4) - (kEnemyWidthPx / 2U));
+        e->foot_col = foot_of(e);
+        reverse(e);
+        return;
+    }
+    e->grounded = 0;
+    e->dy = 0;
+    e->y_accum = 0;
+}
+
+// roster.json: the plant rises out of its pipe, bites, sinks, and will not come up at all while
+// the player is standing on or beside the cap. the whole cycle is one counter, so the host twin
+// mirrors it exactly. the frame counts are ours - the bible times neither the bite nor the wait
+static void step_plant(Enemy* e, uint16_t player_px) {
+    // a plant never moves sideways, so pos_x is its pipe and foot_col is the cap row it climbs out of
+    const uint16_t base = e->pos_x;
+    const int16_t floor_y = (int16_t)((int16_t)e->foot_col << 4);
+
+    if (e->timer == 0U) {
+        // adjacent is the pipe's own two columns plus one either side
+        const uint16_t left = (base > (uint16_t)kBlockPx) ? (uint16_t)(base - kBlockPx) : 0U;
+
+        if ((uint16_t)(player_px + kPlayerWidthPx) > left &&
+            player_px < (uint16_t)(base + 3U * (uint16_t)kBlockPx)) {
+            return;
+        }
+    }
+    ++e->timer;
+    if (e->timer >= (uint16_t)kPlantCycleFrames) {
+        e->timer = 0;
+    }
+    if (e->timer < (uint16_t)kPlantRisePx) {
+        e->pos_y = (int16_t)(floor_y - (int16_t)e->timer);
+        e->state = kEnemyPlantUp;
+    } else if (e->timer < (uint16_t)(kPlantRisePx + kPlantHoldFrames)) {
+        e->pos_y = (int16_t)(floor_y - kPlantRisePx);
+        e->state = kEnemyPlantUp;
+    } else if (e->timer < (uint16_t)(2U * kPlantRisePx + kPlantHoldFrames)) {
+        e->pos_y = (int16_t)(floor_y - (int16_t)(2U * kPlantRisePx + kPlantHoldFrames - (uint16_t)e->timer));
+        e->state = kEnemyPlantUp;
+    } else {
+        e->pos_y = floor_y;
+        e->state = kEnemyPlantHidden;
     }
 }
 
@@ -211,6 +261,7 @@ static void remove_at(uint8_t i) {
     if (drawn_prop[i] != 0xFFU) {
         drawn_prop[i] = 0xFEU; // never a real property, so the next draw rewrites tile and prop
     }
+    drawn_x[i] = 0xFF;
 }
 
 static uint8_t row_load(uint8_t top_row) {
@@ -270,6 +321,12 @@ static void spawn(uint16_t cam_x) {
         e->grace = 0;
         e->lead_col = lead_of(e);
         e->foot_col = foot_of(e);
+        if (e->kind == kEnemyPiranha) {
+            // the plant starts hidden inside its pipe: foot_col carries the cap row it rises out of
+            e->state = kEnemyPlantHidden;
+            e->foot_col = roster_row[cursor];
+            e->pos_y = (int16_t)((int16_t)e->foot_col << 4);
+        }
         ++cursor;
         note_next_spawn();
     }
@@ -311,7 +368,7 @@ static void collide_enemies(void) {
         Enemy* a = &pool[i];
         uint8_t died = 0;
 
-        if (a->state == kEnemySquashed) {
+        if (a->state == kEnemySquashed || a->kind == kEnemyPiranha) {
             ++i;
             continue;
         }
@@ -321,7 +378,7 @@ static void collide_enemies(void) {
             Enemy* left;
             Enemy* right;
 
-            if (b->state == kEnemySquashed || boxes_meet(a, b) == 0U) {
+            if (b->state == kEnemySquashed || b->kind == kEnemyPiranha || boxes_meet(a, b) == 0U) {
                 ++j;
                 continue;
             }
@@ -366,7 +423,7 @@ static uint8_t stomp(Enemy* e) {
         return kEnemyHitShellStomp;
     }
     award(kStompChain, kStompChainCount, &stomp_chain);
-    if (e->kind == kEnemyKoopa) {
+    if (e->kind == kEnemyKoopa || e->kind == kEnemyKoopaRed) {
         e->state = kEnemyShellIdle;
         e->timer = kShellWakeFrames;
         e->grace = kShellGraceFrames;
@@ -382,8 +439,8 @@ static uint8_t stomp(Enemy* e) {
 // star's consecutive-defeat scoring escalates but calls its smb1-era values must-verify, so the
 // escalation is left out rather than invented
 static void award_kill(uint8_t kind) {
-    points =
-        (uint16_t)(points + (kind == kEnemyKoopa ? (uint16_t)kKoopaKillPoints : (uint16_t)kGoombaKillPoints));
+    points = (uint16_t)(points +
+                        (kind == kEnemyGoomba ? (uint16_t)kGoombaKillPoints : (uint16_t)kKoopaKillPoints));
 }
 
 static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
@@ -420,10 +477,18 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
         }
         from_above = (player_dy > 0 && feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
         // the star takes anything it touches off the pool outright, stomp or not
-        if ((flags & kEnemyFlagStar) != 0U && from_above == 0U) {
+        if ((flags & kEnemyFlagStar) != 0U && (from_above == 0U || e->kind == kEnemyPiranha)) {
             award_kill(e->kind);
             remove_at(i);
             continue;
+        }
+        // roster.json: a piranha plant cannot be stomped, only burned or run into
+        if (e->kind == kEnemyPiranha) {
+            if ((flags & kEnemyFlagImmune) != 0U) {
+                ++i;
+                continue;
+            }
+            return kEnemyHitDamage;
         }
         if (e->state == kEnemyShellIdle) {
             // away from him: smb sends the shell out the side he touched it from
@@ -496,12 +561,16 @@ void enemies_load_level(void) BANKED {
     uint8_t i;
 
     assets_load_enemy_tiles();
-    assets_load_enemy_palettes();
+    if (level->type == (uint8_t)kLevelTypeCastle) {
+        assets_load_enemy_palettes_castle();
+    } else {
+        assets_load_enemy_palettes();
+    }
 
-    roster_column = level_1_1_enemy_column;
-    roster_row = level_1_1_enemy_row;
-    roster_kind = level_1_1_enemy_kind;
-    roster_count = (uint8_t)LEVEL_1_1_ENEMY_COUNT;
+    roster_column = level->enemy_column;
+    roster_row = level->enemy_row;
+    roster_kind = level->enemy_kind;
+    roster_count = level->enemy_count;
 #if kEnemyLab
     if (use_lab != 0U) {
         roster_column = kLabColumn;
@@ -516,6 +585,7 @@ void enemies_load_level(void) BANKED {
         // first draw of the new one has to write every slot off screen
         drawn_prop[i] = 0xFE;
         drawn_tile[i] = 0;
+        drawn_x[i] = 0xFF;
     }
     cursor = 0;
     live = 0;
@@ -557,6 +627,11 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
 
         if (e->grace != 0U) {
             --e->grace;
+        }
+        if (e->kind == kEnemyPiranha) {
+            step_plant(e, player_px);
+            ++i;
+            continue;
         }
         if (e->state == kEnemySquashed) {
             --e->timer;
@@ -631,15 +706,18 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             }
             continue;
         }
-        if (e->state == kEnemySquashed) {
+        if (e->kind == kEnemyPiranha) {
+            // the plant is left-right symmetric, so it is one 8x16 pair like the goomba's
+            tile = kTilePiranha;
+        } else if (e->state == kEnemySquashed) {
             tile = kTileGoombaSquash;
         } else if (e->state != kEnemyWalk) {
             tile = kTileShell;
         } else {
             tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
         }
-        prop = (tile < kTileShell) ? (uint8_t)kPalGoomba : (uint8_t)kPalKoopa;
-        if (tile < kTileKoopaWalk0) {
+        prop = (tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa : (uint8_t)kPalGoomba;
+        if (tile == kTilePiranha || tile < kTileKoopaWalk0) {
             // a symmetric frame is one 8x16 pair; the right half is the same tile drawn flipped
             left_tile = tile;
             right_tile = tile;
@@ -659,6 +737,7 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         if (drawn_tile[i] != left_tile || drawn_prop[i] != prop) {
             if (drawn_prop[i] == 0xFFU) {
                 ++shown;
+                drawn_x[i] = 0xFF;
             }
             drawn_tile[i] = left_tile;
             drawn_prop[i] = prop;
@@ -667,8 +746,17 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             set_sprite_prop(oam, prop);
             set_sprite_prop((uint8_t)(oam + 1U), right_prop);
         }
-        move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-        move_sprite((uint8_t)(oam + 1U), (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+        {
+            const uint8_t px = (uint8_t)(sx + kOamXOffset);
+            const uint8_t py = (uint8_t)(sy + kOamYOffset);
+
+            if (drawn_x[i] != px || drawn_y[i] != py) {
+                drawn_x[i] = px;
+                drawn_y[i] = py;
+                move_sprite(oam, px, py);
+                move_sprite((uint8_t)(oam + 1U), (uint8_t)(px + 8U), py);
+            }
+        }
     }
     // past the pool's live end: park whichever slots still show an enemy that has gone
     for (; i < kEnemySlots; ++i) {

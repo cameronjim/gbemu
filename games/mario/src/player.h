@@ -14,8 +14,26 @@
 #define kClearWalk 2U
 #define kClearHold 3U
 
-// loads small mario's art/palette and parks him standing on the bible's start cell
+// which way a pipe transition is carrying him
+#define kPipeDown 0U
+#define kPipeUp 1U
+
+// loads small mario's and the items' art/palettes and parks him on the bible's start cell
 void player_init(void);
+
+// drops him standing on top of the given surface row, the way the level start does; the sub-area
+// spawn and any future respawn share it
+void player_place(uint16_t column, uint8_t surface_row);
+
+// 1 while he stands squarely on top of the two-column pipe whose cap is at (column, top_row)
+uint8_t player_over_pipe(uint16_t column, uint8_t top_row);
+
+// arms the sink-into-a-pipe animation from where he stands, or the rise-out-of-one at a given cap
+void player_begin_pipe_down(void);
+void player_begin_pipe_up(uint16_t column, uint8_t top_row);
+
+// one frame of whichever pipe animation is armed; 1 when it is over
+uint8_t player_pipe_update(void);
 
 // one frame of smb physics from the held-button mask; returns one of the kPlayer* codes above
 uint8_t player_update(uint8_t keys);

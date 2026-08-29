@@ -1,6 +1,7 @@
 #include "player.h"
 
 #include "assets.h"
+#include "blocks.h"
 #include "level_1_1.h"
 #include "mario.h"
 #include "physics_constants.h"
@@ -41,6 +42,12 @@ static uint8_t walk_step;
 // the level-clear sequence's own little state machine, driven by player_clear_update
 static uint8_t clear_phase;
 static uint8_t clear_timer;
+
+// the pipe transition: which way mario is travelling and how far he has gone
+static uint8_t pipe_phase;
+static uint8_t pipe_travel;
+// while he is inside a pipe his sprites draw behind the bg, which is what hides him in it
+static uint8_t behind_bg;
 
 // the hitbox spans [x_pos + inset, x_pos + inset + width - 1]; the sprite still spans the full 16
 static uint16_t hit_left(void) {
@@ -261,8 +268,17 @@ static void collide_y(void) {
 
     on_ground = 0;
     if (y_speed < 0) {
+        uint8_t left_hit;
+        uint8_t right_hit;
+
         row = row_of(y_pos);
-        if (terrain_solid_at(left_col, row) != 0U || terrain_solid_at(right_col, row) != 0U) {
+        // a hidden block is absent from the grid until a rising head finds it, so it is probed here
+        // as well as through terrain_solid_at; materializing it is what stops the rise
+        left_hit = (terrain_solid_at(left_col, row) != 0U || blocks_hidden_at(left_col, row) != 0U) ? 1U : 0U;
+        right_hit =
+            (terrain_solid_at(right_col, row) != 0U || blocks_hidden_at(right_col, row) != 0U) ? 1U : 0U;
+        if (left_hit != 0U || right_hit != 0U) {
+            blocks_head_bump(left_hit != 0U ? left_col : right_col, row);
             y_pos = (int16_t)((row + 1) << 4);
             y_speed = 0;
             y_accum = 0;
@@ -328,19 +344,13 @@ static uint8_t touching_flag(void) {
 #endif
 }
 
-void player_init(void) {
-    assets_load_sprite_tiles();
-    assets_load_sprite_palettes();
-    SPRITES_8x16;
-
-    x_speed = 0;
-    x_accum = 0;
-    x_force = 0;
-    x_pos = (uint16_t)((uint16_t)LEVEL_1_1_START_COLUMN << 4);
+void player_place(uint16_t column, uint8_t surface_row) {
+    x_pos = (uint16_t)(column << 4);
+    stop_x();
+    // the surface row is the ground the feet rest on top of, the bible's own start convention
+    y_pos = (int16_t)((int16_t)((int16_t)surface_row << 4) - kPlayerHeightPx);
     y_speed = 0;
     y_accum = 0;
-    // the bible's start row is the ground surface, so mario's feet rest on top of it
-    y_pos = (int16_t)((int16_t)((int16_t)LEVEL_1_1_START_ROW << 4) - kPlayerHeightPx);
     jump_origin_y = y_pos;
     on_ground = 1;
     jump_tier = 0;
@@ -350,9 +360,70 @@ void player_init(void) {
     anim_frame = kFrameIdle;
     anim_accum = 0;
     walk_step = 0;
+    behind_bg = 0;
     clear_phase = kClearSlide;
     clear_timer = 0;
+}
+
+void player_init(void) {
+    assets_load_sprite_tiles();
+    assets_load_sprite_palettes();
+    assets_load_item_tiles();
+    assets_load_item_palettes();
+    SPRITES_8x16;
+
+    player_place((uint16_t)LEVEL_1_1_START_COLUMN, (uint8_t)LEVEL_1_1_START_ROW);
     SHOW_SPRITES;
+}
+
+uint8_t player_over_pipe(uint16_t column, uint8_t top_row) {
+    if (on_ground == 0U) {
+        return 0;
+    }
+    if (row_of((int16_t)(y_pos + kPlayerHeightPx)) != (int16_t)top_row) {
+        return 0;
+    }
+    // his feet only have to be on the cap: nothing else stands at that row beside a pipe, so an
+    // overlap with its two columns already means he is on top of it and nowhere else
+    return (col_of(hit_left()) <= (int16_t)(column + 1U) && col_of(hit_right()) >= (int16_t)column) ? 1U : 0U;
+}
+
+void player_begin_pipe_down(void) {
+    stop_x();
+    y_speed = 0;
+    y_accum = 0;
+    on_ground = 0;
+    facing_left = 0;
+    skidding = 0;
+    anim_frame = kFrameIdle;
+    pipe_phase = kPipeDown;
+    pipe_travel = 0;
+    behind_bg = 1;
+}
+
+void player_begin_pipe_up(uint16_t column, uint8_t top_row) {
+    // a full reset first: the jump tier and the a-held edge he carried into the pipe must not
+    // survive the trip, or his first jump out of it answers to the room he just left
+    player_place(column, top_row);
+    // he starts a full body height down the shaft and rises out of it
+    y_pos = (int16_t)(y_pos + kPipeTravelPx);
+    on_ground = 0;
+    pipe_phase = kPipeUp;
+    pipe_travel = 0;
+    behind_bg = 1;
+}
+
+uint8_t player_pipe_update(void) {
+    y_pos = (int16_t)(y_pos + (pipe_phase == kPipeDown ? kPipeStepPx : -kPipeStepPx));
+    pipe_travel = (uint8_t)(pipe_travel + kPipeStepPx);
+    if (pipe_travel < (uint8_t)kPipeTravelPx) {
+        return 0;
+    }
+    if (pipe_phase == kPipeUp) {
+        on_ground = 1;
+        behind_bg = 0;
+    }
+    return 1;
 }
 
 uint8_t player_update(uint8_t keys) {
@@ -460,7 +531,8 @@ void player_draw(uint16_t cam_x, uint8_t cam_y) {
     const int16_t sy = (int16_t)(y_pos - (int16_t)cam_y);
     const uint8_t left_tile = (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame));
     const uint8_t right_tile = (uint8_t)(left_tile + 2U);
-    const uint8_t prop = facing_left != 0U ? (uint8_t)S_FLIPX : 0U;
+    const uint8_t prop =
+        (uint8_t)((facing_left != 0U ? (uint8_t)S_FLIPX : 0U) | (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
 
     if (sy <= -(int16_t)kPlayerHeightPx || sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx ||
         sx >= (int16_t)kScreenWidthPx) {

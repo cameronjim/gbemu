@@ -53,6 +53,15 @@ const uint8_t kQuestionTiles[64] = {
     0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+// spent block: the same 2x2 footprint drained to a flat slab with a dark border, so a used block
+// reads as inert at a glance even before its dimmed palette lands
+const uint8_t kSpentTiles[64] = {
+    0xFF, 0xFF, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, // tl
+    0xFF, 0xFF, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, // tr
+    0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0x80, 0xFF, 0xFF, // bl
+    0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0x01, 0xFF, 0xFF, // br
+};
+
 // pipe: dark rim cap over a two-tone body. tiles in id order: top-left cap (rim + dark fill),
 // top-right cap (rim + light fill), body-left (dark, no rim), body-right (light, no rim)
 const uint8_t kPipeTiles[64] = {0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00,
@@ -80,6 +89,48 @@ const uint8_t kFlagCastleTiles[32] = {
     0x00, 0xFF, // 22222222
     0x00, 0xFF, // 22222222
     0xFF, 0xFF, // 33333333 border
+};
+
+// world coin: a six-px-wide oval standing in the middle of an otherwise empty 16x16 cell, so the
+// cell's color 0 has to be the sky (see kCamPalCoin in assets_load_bg_palettes)
+const uint8_t kCoinTiles[64] = {
+    0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, // tl
+    0x00, 0x00, 0x00, 0x00, 0xE0, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, // tr
+    0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x07, 0x07, 0x00, 0x00, 0x00, 0x00, // bl
+    0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, // br
+};
+
+// the items. colors: 1 spots/shine, 2 the body, 3 the outline; color 0 is sprite transparency.
+// mushroom and 1-up share a silhouette and differ only by palette, exactly as smb's own do
+const uint8_t kItemTiles[224] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x3F,
+    0x30, 0x4F, 0x30, 0x4F, 0x00, 0xFF, 0x00, 0xFF, // mushroom l top
+    0xFF, 0xFF, 0x0F, 0x00, 0x0F, 0x00, 0x0F, 0x00,
+    0x0F, 0x00, 0x0F, 0x00, 0x0F, 0x00, 0x00, 0x00, // mushroom l bot
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0xFC,
+    0x0C, 0xF2, 0x0C, 0xF2, 0x00, 0xFF, 0x00, 0xFF, // mushroom r top
+    0xFF, 0xFF, 0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00,
+    0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00, 0x00, 0x00, // mushroom r bot
+    0x00, 0x00, 0x00, 0x03, 0x00, 0x07, 0x00, 0x0F,
+    0x00, 0xFF, 0x00, 0x7F, 0x00, 0x3F, 0x00, 0x3F, // star l top
+    0x00, 0x3F, 0x00, 0x1F, 0x00, 0x1E, 0x00, 0x1C,
+    0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // star l bot
+    0x00, 0x00, 0x00, 0xC0, 0x00, 0xE0, 0x00, 0xF0,
+    0x00, 0xFF, 0x00, 0xFE, 0x00, 0xFC, 0x00, 0xFC, // star r top
+    0x00, 0xFC, 0x00, 0xF8, 0x00, 0x78, 0x00, 0x38,
+    0x00, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // star r bot
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x3F,
+    0x30, 0x4F, 0x30, 0x4F, 0x00, 0xFF, 0x00, 0xFF, // oneup l top
+    0xFF, 0xFF, 0x0F, 0x00, 0x0F, 0x00, 0x0F, 0x00,
+    0x0F, 0x00, 0x0F, 0x00, 0x0F, 0x00, 0x00, 0x00, // oneup l bot
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0xFC,
+    0x0C, 0xF2, 0x0C, 0xF2, 0x00, 0xFF, 0x00, 0xFF, // oneup r top
+    0xFF, 0xFF, 0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00,
+    0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00, 0x00, 0x00, // oneup r bot
+    0x00, 0x00, 0x3C, 0x3C, 0x00, 0x3C, 0x00, 0x3C,
+    0x00, 0x3C, 0x00, 0x3C, 0x00, 0x3C, 0x00, 0x3C, // coin pop top
+    0x00, 0x3C, 0x00, 0x3C, 0x00, 0x3C, 0x00, 0x3C,
+    0x00, 0x3C, 0x3C, 0x3C, 0x00, 0x00, 0x00, 0x00, // coin pop bot
 };
 
 // small mario, drawn as two 8x16 sprites. colors: 1 skin, 2 red cap/shirt, 3 dark overalls and
@@ -140,8 +191,10 @@ void assets_load_bg_tiles(void) {
     set_bkg_data(kTileGroundTop, 3, kGroundTiles);
     set_bkg_data(kTileBrick, 1, kBrickTile);
     set_bkg_data(kTileQuestionTl, 4, kQuestionTiles);
+    set_bkg_data(kTileSpentTl, 4, kSpentTiles);
     set_bkg_data(kTilePipeTl, 4, kPipeTiles);
     set_bkg_data(kTileFlagPole, 2, kFlagCastleTiles);
+    set_bkg_data(kTileCoinTl, 4, kCoinTiles);
 }
 
 void assets_load_bg_palettes(void) {
@@ -153,12 +206,37 @@ void assets_load_bg_palettes(void) {
     // the flag/castle family's color 0 is the sky, not a shade: the pole's own tile is mostly empty
     // and its block's other half is a blank cell, so a gray backdrop would paint the shaft as a wall
     palette_color_t neutral[4] = {RGB(24, 28, 31), RGB(22, 22, 22), RGB(16, 16, 16), RGB(28, 28, 28)};
+    palette_color_t spent[4] = {RGB(4, 3, 2), RGB(11, 9, 7), RGB(9, 8, 7), RGB(6, 5, 4)};
+    // the coin cell is mostly empty, so its color 0 is the sky for the same reason neutral's is
+    palette_color_t coin[4] = {RGB(24, 28, 31), RGB(31, 30, 18), RGB(30, 22, 4), RGB(14, 8, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);
     set_bkg_palette(kCamPalQuestion, 1, question);
     set_bkg_palette(kCamPalPipe, 1, pipe);
     set_bkg_palette(kCamPalNeutral, 1, neutral);
+    set_bkg_palette(kCamPalSpent, 1, spent);
+    set_bkg_palette(kCamPalCoin, 1, coin);
+}
+
+void assets_load_bg_palettes_underground(void) {
+    // same eight slots, same tile art: only the colors say the room is below ground
+    palette_color_t sky[4] = {RGB(0, 0, 6), RGB(0, 2, 10), RGB(1, 3, 13), RGB(2, 4, 16)};
+    palette_color_t ground[4] = {RGB(0, 0, 6), RGB(3, 8, 20), RGB(2, 6, 15), RGB(5, 12, 26)};
+    palette_color_t brick[4] = {RGB(0, 0, 6), RGB(3, 7, 18), RGB(4, 10, 24), RGB(2, 5, 13)};
+    palette_color_t question[4] = {RGB(0, 0, 6), RGB(18, 14, 4), RGB(22, 17, 5), RGB(14, 10, 2)};
+    palette_color_t pipe[4] = {RGB(0, 0, 6), RGB(5, 20, 18), RGB(2, 13, 12), RGB(1, 7, 7)};
+    palette_color_t neutral[4] = {RGB(0, 0, 6), RGB(12, 12, 18), RGB(8, 8, 14), RGB(16, 16, 22)};
+    palette_color_t spent[4] = {RGB(0, 0, 6), RGB(6, 7, 12), RGB(5, 6, 10), RGB(3, 4, 8)};
+    palette_color_t coin[4] = {RGB(0, 0, 6), RGB(31, 30, 18), RGB(30, 22, 4), RGB(14, 8, 0)};
+    set_bkg_palette(kCamPalSky, 1, sky);
+    set_bkg_palette(kCamPalGround, 1, ground);
+    set_bkg_palette(kCamPalBrick, 1, brick);
+    set_bkg_palette(kCamPalQuestion, 1, question);
+    set_bkg_palette(kCamPalPipe, 1, pipe);
+    set_bkg_palette(kCamPalNeutral, 1, neutral);
+    set_bkg_palette(kCamPalSpent, 1, spent);
+    set_bkg_palette(kCamPalCoin, 1, coin);
 }
 
 void assets_load_sprite_tiles(void) {
@@ -171,24 +249,40 @@ void assets_load_sprite_palettes(void) {
     set_sprite_palette(kPalMario, 1, mario);
 }
 
+void assets_load_item_tiles(void) {
+    set_sprite_data(kTileItemFirst, kItemTileCount, kItemTiles);
+}
+
+void assets_load_item_palettes(void) {
+    palette_color_t mushroom[4] = {RGB(0, 0, 0), RGB(31, 31, 28), RGB(28, 6, 4), RGB(8, 2, 2)};
+    palette_color_t star[4] = {RGB(0, 0, 0), RGB(31, 31, 24), RGB(31, 26, 4), RGB(12, 8, 0)};
+    // roster.json: smbd modernises the 1-up to a green cap, which is what this palette paints
+    palette_color_t oneup[4] = {RGB(0, 0, 0), RGB(31, 31, 28), RGB(6, 26, 8), RGB(2, 10, 4)};
+    palette_color_t coin[4] = {RGB(0, 0, 0), RGB(31, 30, 16), RGB(30, 22, 4), RGB(14, 8, 0)};
+    set_sprite_palette(kPalMushroom, 1, mushroom);
+    set_sprite_palette(kPalStar, 1, star);
+    set_sprite_palette(kPalOneup, 1, oneup);
+    set_sprite_palette(kPalCoin, 1, coin);
+}
+
 // index = kBlock* from mario.h; empty and the two pipe-body kinds fill all four corners alike
 const uint8_t kBlockTileTl[kBlockKindCount] = {
-    kTileSky,    kTileGroundTop, kTileBrick,     kTileQuestionTl, kTileHard,     kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL, kTilePipeBodyR, kTileHard,       kTileFlagPole, kTileCastle,
+    kTileSky,       kTileGroundTop, kTileBrick, kTileQuestionTl, kTileHard,   kTilePipeTl,  kTilePipeTr,
+    kTilePipeBodyL, kTilePipeBodyR, kTileHard,  kTileFlagPole,   kTileCastle, kTileSpentTl, kTileCoinTl,
 };
 const uint8_t kBlockTileTr[kBlockKindCount] = {
-    kTileSky,    kTileGroundTop, kTileBrick,     kTileQuestionTr, kTileHard, kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL, kTilePipeBodyR, kTileHard,       kTileSky,  kTileCastle,
+    kTileSky,       kTileGroundTop, kTileBrick, kTileQuestionTr, kTileHard,   kTilePipeTl,  kTilePipeTr,
+    kTilePipeBodyL, kTilePipeBodyR, kTileHard,  kTileSky,        kTileCastle, kTileSpentTr, kTileCoinTr,
 };
 const uint8_t kBlockTileBl[kBlockKindCount] = {
-    kTileSky,    kTileGroundFill, kTileBrick,     kTileQuestionBl, kTileHard,     kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL,  kTilePipeBodyR, kTileHard,       kTileFlagPole, kTileCastle,
+    kTileSky,       kTileGroundFill, kTileBrick, kTileQuestionBl, kTileHard,   kTilePipeTl,  kTilePipeTr,
+    kTilePipeBodyL, kTilePipeBodyR,  kTileHard,  kTileFlagPole,   kTileCastle, kTileSpentBl, kTileCoinBl,
 };
 const uint8_t kBlockTileBr[kBlockKindCount] = {
-    kTileSky,    kTileGroundFill, kTileBrick,     kTileQuestionBr, kTileHard, kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL,  kTilePipeBodyR, kTileHard,       kTileSky,  kTileCastle,
+    kTileSky,       kTileGroundFill, kTileBrick, kTileQuestionBr, kTileHard,   kTilePipeTl,  kTilePipeTr,
+    kTilePipeBodyL, kTilePipeBodyR,  kTileHard,  kTileSky,        kTileCastle, kTileSpentBr, kTileCoinBr,
 };
 const uint8_t kBlockPalette[kBlockKindCount] = {
-    kCamPalSky,  kCamPalGround, kCamPalBrick, kCamPalQuestion, kCamPalGround,  kCamPalPipe,
-    kCamPalPipe, kCamPalPipe,   kCamPalPipe,  kCamPalGround,   kCamPalNeutral, kCamPalNeutral,
+    kCamPalSky,  kCamPalGround, kCamPalBrick,  kCamPalQuestion, kCamPalGround,  kCamPalPipe,  kCamPalPipe,
+    kCamPalPipe, kCamPalPipe,   kCamPalGround, kCamPalNeutral,  kCamPalNeutral, kCamPalSpent, kCamPalCoin,
 };

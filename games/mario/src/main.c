@@ -1,4 +1,6 @@
+#include "blocks.h"
 #include "camera.h"
+#include "level_1_1.h"
 #include "mario.h"
 #include "player.h"
 #include "terrain.h"
@@ -10,7 +12,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
-enum GameState { kStateTitle, kStatePlay, kStateClear, kStateCamera };
+enum GameState { kStateTitle, kStatePlay, kStateClear, kStateCamera, kStatePipeDown, kStatePipeUp };
+
+// the grid mario is playing in; a pipe swaps it and rebuilds the whole ring with the lcd off
+static uint8_t current_area;
 
 // one bg map row's worth of tile ids or vram bank 1 attribute bytes, reused row by row
 static uint8_t map_row[kRingTileCols];
@@ -92,6 +97,7 @@ static void present(void) {
     terrain_set_pan_y(camera_y());
     terrain_apply_scroll();
     player_draw(camera_x(), camera_y());
+    blocks_draw(camera_x(), camera_y());
     terrain_stream_window();
 }
 
@@ -99,9 +105,42 @@ static void present(void) {
 // than one vblank holds, so both do it with the lcd off
 static void enter_play(void) {
     DISPLAY_OFF;
-    terrain_init();
+    current_area = kAreaMain;
+    blocks_load_level();
+    blocks_enter_area(kAreaMain);
+    terrain_init(kAreaMain);
     player_init();
     camera_init(player_x(), player_y());
+    present();
+    SHOW_BKG;
+    DISPLAY_ON;
+}
+
+// a pipe swaps the whole grid, its palettes and the ring, so it pays the same lcd-off rebuild the
+// level load does rather than trying to stream a new area in through vblank
+static void enter_bonus_area(void) {
+    DISPLAY_OFF;
+    current_area = kAreaBonus;
+    blocks_enter_area(kAreaBonus);
+    terrain_init(kAreaBonus);
+    player_place((uint16_t)LEVEL_1_1_AREA0_START_COLUMN, (uint8_t)LEVEL_1_1_AREA0_START_ROW);
+    camera_init(player_x(), player_y());
+    present();
+    SHOW_BKG;
+    DISPLAY_ON;
+}
+
+// and the way back: the main level reloads with its spent blocks intact and mario rises out of the
+// pipe the bible's link names
+static void leave_bonus_area(void) {
+    DISPLAY_OFF;
+    current_area = kAreaMain;
+    blocks_enter_area(kAreaMain);
+    terrain_init(kAreaMain);
+    player_begin_pipe_up((uint16_t)LEVEL_1_1_AREA0_RETURN_COLUMN, (uint8_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW);
+    // the camera is framed on where he ends up standing, not on the shaft he is still climbing out of
+    camera_init((uint16_t)((uint16_t)LEVEL_1_1_AREA0_RETURN_COLUMN << 4),
+                (int16_t)(((int16_t)LEVEL_1_1_AREA0_RETURN_TOP_ROW << 4) - kPlayerHeightPx));
     present();
     SHOW_BKG;
     DISPLAY_ON;
@@ -112,7 +151,10 @@ static void enter_play(void) {
 static void enter_camera(void) {
     DISPLAY_OFF;
     HIDE_SPRITES;
-    terrain_init();
+    current_area = kAreaMain;
+    blocks_load_level();
+    blocks_enter_area(kAreaMain);
+    terrain_init(kAreaMain);
     SHOW_BKG;
     DISPLAY_ON;
 }
@@ -175,8 +217,53 @@ void main(void) {
             if (status == kPlayerFlag) {
                 player_begin_clear();
                 state = kStateClear;
-            } else {
-                camera_update(player_x(), player_y(), player_on_ground(), player_standing(), keys);
+                present();
+                continue;
+            }
+            // pipes are edge triggered, so holding the same d-pad direction still pans the camera
+            if (current_area == kAreaMain) {
+#if LEVEL_1_1_HAS_PIPE_ENTRY
+                if ((pressed & J_DOWN) != 0U &&
+                    player_over_pipe((uint16_t)LEVEL_1_1_PIPE_ENTRY_COLUMN,
+                                     (uint8_t)LEVEL_1_1_PIPE_ENTRY_TOP_ROW) != 0U) {
+                    player_begin_pipe_down();
+                    state = kStatePipeDown;
+                    present();
+                    continue;
+                }
+#endif
+            } else if ((pressed & J_UP) != 0U &&
+                       player_over_pipe((uint16_t)LEVEL_1_1_AREA0_EXIT_COLUMN,
+                                        (uint8_t)LEVEL_1_1_AREA0_EXIT_TOP_ROW) != 0U) {
+                player_begin_pipe_down();
+                state = kStatePipeDown;
+                present();
+                continue;
+            }
+            camera_update(player_x(), player_y(), player_on_ground(), player_standing(), keys);
+            blocks_update(player_x(), player_y(), camera_x());
+            present();
+            continue;
+        }
+
+        if (state == kStatePipeDown) {
+            if (player_pipe_update() != 0U) {
+                if (current_area == kAreaMain) {
+                    enter_bonus_area();
+                    state = kStatePlay;
+                } else {
+                    leave_bonus_area();
+                    state = kStatePipeUp;
+                }
+                continue;
+            }
+            present();
+            continue;
+        }
+
+        if (state == kStatePipeUp) {
+            if (player_pipe_update() != 0U) {
+                state = kStatePlay;
             }
             present();
             continue;

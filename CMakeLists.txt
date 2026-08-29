@@ -162,6 +162,27 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
     add_dependencies(crossy_tests crossy)
     catch_discover_tests(crossy_tests)
 
+    # milestone 22: first-party cgb tetris skeleton, cgb-only mbc1+ram+battery, 32kb rom
+    set(GB_TETRIS_ROM ${CMAKE_BINARY_DIR}/tetris.gb)
+    add_custom_command(
+        OUTPUT ${GB_TETRIS_ROM}
+        COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x03 -Wm-ya1 -Wm-ynTETRIS -o ${GB_TETRIS_ROM}
+                ${CMAKE_SOURCE_DIR}/games/tetris/main.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/assets.c
+        DEPENDS games/tetris/main.c games/tetris/tetris.h
+                games/tetris/assets.c games/tetris/assets.h
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "building tetris.gb with gbdk lcc"
+        VERBATIM)
+    add_custom_target(tetris DEPENDS ${GB_TETRIS_ROM})
+
+    add_executable(tetris_tests games/tetris/tests/tetris_test.cpp)
+    target_compile_options(tetris_tests PRIVATE ${GB_WARNING_FLAGS})
+    target_compile_definitions(tetris_tests PRIVATE TETRIS_ROM_PATH="${GB_TETRIS_ROM}")
+    target_link_libraries(tetris_tests PRIVATE gbcore Catch2::Catch2WithMain)
+    add_dependencies(tetris_tests tetris)
+    catch_discover_tests(tetris_tests)
+
     # milestone 18: first cgb rom, cgb-only mbc5+ram+battery, 8 banks (128kb), 8kb sram
     # sub-milestone 2: the level bible compiles to banked c data ahead of the gbdk build
     if(NOT Python3_FOUND)

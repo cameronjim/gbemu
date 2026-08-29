@@ -125,6 +125,35 @@ constexpr uint8_t kBlockFlagPole = 10;
 constexpr uint8_t kBlockCastle = 11;
 constexpr uint8_t kBlockSpent = 12;
 constexpr uint8_t kBlockCoin = 13;
+constexpr uint8_t kBlockThin = 14;
+constexpr uint8_t kBlockLava = 15;
+constexpr uint8_t kBlockBridge = 16;
+constexpr uint8_t kBlockAxe = 17;
+// m18's background pass: the rows under a grass-capped surface block, the castle's five kinds,
+// the flag's head, and the twelve scenery kinds
+constexpr uint8_t kBlockGroundFill = 18;
+constexpr uint8_t kBlockCastleCrenel = 19;
+constexpr uint8_t kBlockCastleWindow = 20;
+constexpr uint8_t kBlockCastleDoorTop = 21;
+constexpr uint8_t kBlockCastleDoor = 22;
+constexpr uint8_t kBlockFlagBall = 23;
+constexpr uint8_t kBlockFlagCloth = 24;
+constexpr uint8_t kBlockCloudTl = 25;
+constexpr uint8_t kBlockCloudT = 26;
+constexpr uint8_t kBlockCloudTr = 27;
+constexpr uint8_t kBlockCloudBl = 28;
+constexpr uint8_t kBlockCloudB = 29;
+constexpr uint8_t kBlockCloudBr = 30;
+constexpr uint8_t kBlockHillPeak = 31;
+constexpr uint8_t kBlockHillSlopeL = 32;
+constexpr uint8_t kBlockHillSlopeR = 33;
+constexpr uint8_t kBlockHillFill = 34;
+constexpr uint8_t kBlockBushL = 35;
+constexpr uint8_t kBlockBushM = 36;
+constexpr uint8_t kBlockBushR = 37;
+constexpr uint8_t kBlockKindCount = 38;
+// the first purely decorative kind; everything from here up is non-solid scenery
+constexpr uint8_t kBlockFirstDecor = kBlockCloudTl;
 
 // sub-milestone 5's own mirrors: the reaction list's kinds, the contents enum, and the two tile
 // families the spent block and the world coin take inside the pinned 0xa8/0xbc blocks
@@ -223,15 +252,21 @@ uint8_t block_tile(const gb::Gameboy& gameboy, uint16_t column, uint8_t row, uin
 }
 
 // pinned bg tile family ranges per claude-docs/milestones/18-smbd.md's test/tile-id contract and
-// the id map recorded in games/mario/src/assets.h
+// the id map recorded in games/mario/src/mario.h. m18's art pass gave most blocks four distinct
+// quadrants, so the background outgrew the 0xa0-0xbf block and now also uses the eight ids past
+// mario's last sprite frame plus a scenery run borrowed from the font's glyph range. every entry
+// here names the family of the block's TOP-LEFT tile, which is the one block_tile() samples
 bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     switch (kind) {
     case kBlockEmpty:
         return tile == 0x00;
     case kBlockGround:
+        return tile >= 0xA0 && tile <= 0xA1;
+    case kBlockGroundFill:
+        return tile >= 0xA2 && tile <= 0xA3;
     case kBlockHard:
     case kBlockStair:
-        return tile >= 0xA0 && tile <= 0xA3;
+        return tile >= 0xFA && tile <= 0xFD;
     case kBlockBrick:
         return tile >= 0xA4 && tile <= 0xA7;
     case kBlockQuestion:
@@ -240,10 +275,53 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockPipeTr:
     case kBlockPipeBodyL:
     case kBlockPipeBodyR:
-        return tile >= 0xB0 && tile <= 0xB7;
+        return tile >= 0xB0 && tile <= 0xB8;
     case kBlockFlagPole:
+        return tile == 0xB9;
+    case kBlockFlagBall:
+        return tile == 0x30;
+    case kBlockFlagCloth:
+        return tile >= 0x31 && tile <= 0x34;
     case kBlockCastle:
-        return tile >= 0xB8 && tile <= 0xBB;
+        return tile == 0x22;
+    case kBlockCastleCrenel:
+        return tile == 0x23;
+    case kBlockCastleWindow:
+        return tile >= 0x24 && tile <= 0x27;
+    case kBlockCastleDoorTop:
+        return tile >= 0x28 && tile <= 0x2B;
+    case kBlockCastleDoor:
+        return tile >= 0x2C && tile <= 0x2F;
+    case kBlockThin:
+        return tile == 0xFE;
+    case kBlockLava:
+        return tile == 0x20;
+    case kBlockBridge:
+        return tile == 0xBA;
+    case kBlockAxe:
+        return tile == 0xBB;
+    case kBlockCloudTl:
+    case kBlockCloudTr:
+        return tile >= 0x35 && tile <= 0x36;
+    case kBlockCloudT:
+        return tile >= 0x39 && tile <= 0x3A;
+    case kBlockCloudBl:
+    case kBlockCloudBr:
+        return tile >= 0x3D && tile <= 0x3E;
+    case kBlockCloudB:
+        return tile >= 0x41 && tile <= 0x42;
+    case kBlockHillPeak:
+        return tile >= 0x45 && tile <= 0x46;
+    case kBlockHillSlopeL:
+    case kBlockHillSlopeR:
+        return tile >= 0x49 && tile <= 0x4A;
+    case kBlockHillFill:
+        return tile >= 0x4D && tile <= 0x4E;
+    case kBlockBushL:
+    case kBlockBushR:
+        return tile >= 0x51 && tile <= 0x52;
+    case kBlockBushM:
+        return tile >= 0x55 && tile <= 0x56;
     case kBlockSpent:
         return tile >= kTileSpentLo && tile <= kTileSpentHi;
     case kBlockCoin:
@@ -253,10 +331,10 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     }
 }
 
-// every family a terrain cell may legitimately render as: sky/ground/brick/question/hard/pipe/
-// flag/castle share the 0xa0-0xbf block, and the font glyphs cover sky's reused space tile
+// every family a terrain cell may legitimately render as: the pinned 0xa0-0xbf block, the eight
+// ids past mario's frames, and the scenery run inside what is otherwise the font's own range
 bool is_known_terrain_family(uint8_t tile) {
-    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF);
+    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF) || tile >= 0xF8;
 }
 
 // --- sub-milestone 3: the player ---------------------------------------------------------------
@@ -373,20 +451,22 @@ bool mario_wears(const gb::Gameboy& gameboy, int rgb555) {
     return false;
 }
 
-// row 3 of the ground-top tile carries one dark speck every 4 px (see kGroundTiles in assets.c),
-// so this scanline's first color-0 ground pixel gives the camera's position mod 4
+// a surface ground block is two tiles wide - its left half is 0xa0, its right half 0xa1 - so the
+// screen x where a left half follows a right one repeats every 16 px and is pinned to where the
+// camera sits inside a block. m18's art pass replaced the 4px speck this used to read, and 16 is a
+// stronger anchor than 4 was: no step comes close to being ambiguous at that period
 constexpr int kGroundPhaseRow = 13 * kBlockPx + 3 - kPlayScy;
+constexpr int kGroundPhasePeriod = 16;
 
 int ground_phase(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    const std::span<const uint8_t> fb = gameboy.framebuffer();
-    for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
+    for (int x = 1; x < static_cast<int>(gb::kLcdWidth); ++x) {
         const size_t i = static_cast<size_t>(kGroundPhaseRow) * gb::kLcdWidth + static_cast<size_t>(x);
-        if ((ids[i] & 0x100u) != 0) {
+        if ((ids[i] & 0x100u) != 0 || (ids[i - 1] & 0x100u) != 0) {
             continue;
         }
-        if (static_cast<uint8_t>(ids[i]) == 0xA0 && fb[i] == 0) {
-            return x % 4;
+        if (static_cast<uint8_t>(ids[i]) == 0xA0 && static_cast<uint8_t>(ids[i - 1]) == 0xA1) {
+            return x % kGroundPhasePeriod;
         }
     }
     return -1;
@@ -407,7 +487,7 @@ struct WorldTracker {
 
     int step(const gb::Gameboy& gameboy, const Mario& m) {
         const int next = ground_phase(gameboy);
-        const int cam = ((phase - next) % 4 + 4) % 4;
+        const int cam = ((phase - next) % kGroundPhasePeriod + kGroundPhasePeriod) % kGroundPhasePeriod;
         const int moved = cam + (m.left - screen);
         phase = next;
         screen = m.left;
@@ -571,19 +651,19 @@ constexpr uint8_t kInLeft = 0x08;
 
 constexpr int kLevelRows = kHostLevelRows;
 
-// m8a's four new block kinds and the floor table assets.c indexes with them, mirrored the same way
-// every other kBlock* above is
-constexpr uint8_t kBlockThin = 14;
-constexpr uint8_t kBlockLava = 15;
-constexpr uint8_t kBlockBridge = 16;
-constexpr uint8_t kBlockAxe = 17;
+// the floor table assets.c indexes with the kBlock* constants above, mirrored the same way they
+// are. everything from m18's castle kinds up is scenery: mario walks straight through all of it
 constexpr uint8_t kFloorSolid = 1;
 constexpr uint8_t kFloorThin = 2;
 
-constexpr uint8_t kBlockFloorTable[] = {
+constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, 0,           kFloorSolid,
+    kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
     kFloorSolid, 0,           kFloorThin,  0,           kFloorSolid, 0,
+    kFloorSolid, 0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,
+    0,           0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -2784,8 +2864,8 @@ int family_color(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
 
 // color 0 of each palette set's sky, straight out of assets_data.c. no two are close, and the
 // backdrop is on screen in every level, so this one probe names the level type the rom loaded
-constexpr int kSkyOverworld = 24 | (28 << 5) | (31 << 10);
-constexpr int kSkyUnderground = 0 | (0 << 5) | (6 << 10);
+constexpr int kSkyOverworld = 13 | (17 << 5) | (31 << 10);
+constexpr int kSkyUnderground = 1 | (1 << 5) | (6 << 10);
 constexpr int kSkyCastle = 1 | (1 << 5) | (3 << 10);
 constexpr int kSkyTitle = 20 | (24 << 5) | (31 << 10);
 
@@ -3434,6 +3514,106 @@ TEST_CASE("mario_compiler_probes_match_the_rendered_level") {
     }
 }
 
+// --- sub-milestone 18b: the background scenery -------------------------------------------------
+
+TEST_CASE("mario_scenery_lands_where_the_bible_puts_it") {
+    // the compiler stamps 1-1's hills, bushes and clouds into cells the level left as sky, and only
+    // into those: nothing in the grid that carries scenery may be solid, and nothing solid may have
+    // been displaced by it. rows are the other half of the contract - SCHEMA.md pins a hill or a
+    // bush to the row the grass grows out of and a cloud to a row of its own well above the ground
+    const HostLevel& lv = kHostLevels[kLevel11];
+    int hills = 0;
+    int bushes = 0;
+    int clouds = 0;
+
+    for (int column = 0; column < lv.columns; ++column) {
+        for (int row = 0; row < kLevelRows; ++row) {
+            const uint8_t kind = lv.grid[column][row];
+
+            if (kind < kBlockFirstDecor) {
+                continue;
+            }
+            REQUIRE(kBlockFloorTable[kind] == 0);
+            REQUIRE(!solid_at(lv, column, row));
+            if (kind >= kBlockHillPeak && kind <= kBlockHillFill) {
+                ++hills;
+                REQUIRE(row >= 10);
+                REQUIRE(row <= 12);
+            } else if (kind >= kBlockBushL) {
+                ++bushes;
+                REQUIRE(row == 12);
+            } else {
+                ++clouds;
+                REQUIRE(row <= 8);
+            }
+        }
+    }
+    // the bible places eleven hills, eleven bushes and nineteen clouds; whatever the compiled
+    // length clips off the far end, most of each kind has to have landed
+    REQUIRE(hills >= 30);
+    REQUIRE(bushes >= 15);
+    REQUIRE(clouds >= 40);
+
+    // and a bush standing on the grass leaves the ground under it exactly as it was: solid at 13,
+    // open at 12 and 11, which is what lets him walk straight through the bush he is standing in
+    int bush_column = -1;
+    for (int column = 0; column < lv.columns && bush_column < 0; ++column) {
+        if (lv.grid[column][12] == kBlockBushM) {
+            bush_column = column;
+        }
+    }
+    REQUIRE(bush_column > 0);
+    REQUIRE(solid_at(lv, bush_column, 13));
+    REQUIRE(!solid_at(lv, bush_column, 12));
+    REQUIRE(!solid_at(lv, bush_column, 11));
+}
+
+TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const HostLevel& lv = kHostLevels[kLevel11];
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy);
+
+    // one column of each scenery kind the grid actually placed, painted where the grid says
+    Camera camera;
+    std::set<uint8_t> seen;
+    for (int column = 0; column < lv.columns; ++column) {
+        for (int row = 0; row < kLevelRows; ++row) {
+            const uint8_t kind = lv.grid[column][row];
+
+            if (kind < kBlockFirstDecor || seen.count(kind) != 0) {
+                continue;
+            }
+            seen.insert(kind);
+            camera.goto_xy(gameboy, scx_for_column(static_cast<uint16_t>(column)),
+                           scy_for_row(static_cast<uint8_t>(row)));
+            const uint8_t tile = block_tile(gameboy, static_cast<uint16_t>(column),
+                                            static_cast<uint8_t>(row), camera.x, camera.y);
+            REQUIRE(tile_in_kind_family(tile, kind));
+        }
+    }
+    // all thirteen: six cloud kinds (a cap, a middle and a mirrored cap on each of its two rows),
+    // four hill and three bush
+    REQUIRE(seen.size() == 13u);
+
+    // he starts inside the big hill the bible puts at column 0 and stands on the ground through it
+    gb::Gameboy play;
+    REQUIRE(play.load_rom(rom));
+    enter_play(play);
+    const Mario before = mario_at(play);
+    REQUIRE(before.found);
+    REQUIRE(lv.grid[1][12] >= kBlockFirstDecor);
+    press(play, gb::Button::Right, 40);
+    run(play, 20);
+    const Mario after = mario_at(play);
+    REQUIRE(after.found);
+    // he moved, and he is still resting on the same ground row rather than on a hill
+    REQUIRE(after.left > before.left);
+    REQUIRE(after.top == before.top);
+}
+
 TEST_CASE("mario_terrain_streams_without_garbage") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -3484,8 +3664,9 @@ TEST_CASE("mario_scy_pans_within_range") {
 
     // panning all the way down scrolls the pole's high row above the window, out of view
     camera.goto_xy(gameboy, camera.x, kScyMax);
+    // row 14 is under the surface block, so it is the plain rubble kind rather than the grassed one
     const uint8_t bottom_tile = block_tile(gameboy, flag_probe->column, 14, camera.x, camera.y);
-    REQUIRE(tile_in_kind_family(bottom_tile, kBlockGround));
+    REQUIRE(tile_in_kind_family(bottom_tile, kBlockGroundFill));
 
     // holding down well past the max cannot push scy outside the level's 240px height
     press(gameboy, gb::Button::Down, 40);
@@ -6010,6 +6191,11 @@ int base_score_after(gb::Gameboy& gameboy, const Route& route) {
         gameboy.run_frame();
     }
     REQUIRE(card_number(gameboy, kCardClearTimeRow) == 0);
+    // the card rewrites its time line and its score line in the same vblank, but the frame that
+    // spends the last of the countdown can land the two either side of a scanline, and then the
+    // clock reads zero one frame before the score it paid for shows up. so the score is read a
+    // few frames after the countdown is out rather than on the frame it first reads zero
+    run(gameboy, 4);
     return card_number(gameboy, kCardClearScoreRow) - at_contact * kTimeBonus;
 }
 
@@ -6180,6 +6366,57 @@ TEST_CASE("mario_pause_freezes") {
     REQUIRE(after.top == before.top);
     // and the countdown stood still while it was up
     REQUIRE(hud_time(gameboy) == time_before);
+}
+
+TEST_CASE("mario_pause_restores_the_scenery") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // the opening screen carries a cloud and the first big hill
+    const auto count_family = [&](uint8_t lo, uint8_t hi) {
+        const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+        int n = 0;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if ((ids[i] & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(ids[i]);
+            if (tile >= lo && tile <= hi) {
+                ++n;
+            }
+        }
+        return n;
+    };
+    const int clouds = count_family(0x35, 0x44);
+    const int hills = count_family(0x45, 0x50);
+    REQUIRE(clouds > 200);
+    REQUIRE(hills > 200);
+
+    // the card wipes the bg map and prints glyphs whose tile ids are the very ones the scenery
+    // uses - 0x35 is both the cloud cap's top-left and the letter U. that they can share the ids
+    // is the point: the glyphs live in vram bank 0 and the scenery in bank 1, so the card printing
+    // is proof the font was never overwritten
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, kCardSettleFrames);
+    REQUIRE(on_card(gameboy));
+    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
+    REQUIRE(card_number(gameboy, kCardWorldRow) == 11);
+
+    // and resuming puts the level back: terrain_init reloads the scenery tiles into vram bank 1
+    // and refills the ring, so the same cloud and the same hill are painted exactly as they were
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, 8);
+    REQUIRE(count_family(0x35, 0x44) == clouds);
+    REQUIRE(count_family(0x45, 0x50) == hills);
 }
 
 TEST_CASE("mario_flag_scoring") {

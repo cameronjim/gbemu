@@ -151,7 +151,7 @@ std::vector<uint8_t> cgb_scroll_rom() {
 } // namespace
 
 TEST_CASE("state_sections_size_the_banked_regions") {
-    REQUIRE(gb::Ppu::kStateSize == 16692u);
+    REQUIRE(gb::Ppu::kStateSize == 16693u);
     REQUIRE(gb::Bus::kStateSize == 32898u);
 }
 

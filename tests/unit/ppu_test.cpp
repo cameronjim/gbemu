@@ -66,6 +66,12 @@ struct Rig {
         ppu.write_register(gb::kRegBcps, index);
         return ppu.read_register(gb::kRegBcpd);
     }
+    // one obj palette entry through ocps/ocpd, low byte first
+    void set_obj_color(uint8_t palette, uint8_t index, uint16_t rgb) {
+        ppu.write_register(gb::kRegOcps, static_cast<uint8_t>(0x80 | (palette * 8 + index * 2)));
+        ppu.write_register(gb::kRegOcpd, static_cast<uint8_t>(rgb & 0xFF));
+        ppu.write_register(gb::kRegOcpd, static_cast<uint8_t>(rgb >> 8));
+    }
     // cgb mode with bg on and unsigned tile addressing
     void cgb_bg_setup() {
         ppu.set_cgb_mode(true);
@@ -78,6 +84,13 @@ struct Rig {
         ppu.write_register(gb::kRegBgp, 0xE4);
         ppu.write_register(gb::kRegObp0, 0xE4);
         ppu.write_register(gb::kRegObp1, 0xE4);
+    }
+    // cgb mode with sprites and master priority on; obp0 is deliberately non-identity
+    void cgb_sprite_setup() {
+        ppu.set_cgb_mode(true);
+        ppu.write_register(gb::kRegLcdc, 0x93);
+        ppu.write_register(gb::kRegObp0, 0x0C);
+        ppu.write_register(gb::kRegObp1, 0x0C);
     }
 };
 
@@ -571,6 +584,7 @@ TEST_CASE("palette_ram_survives_a_savestate_roundtrip") {
     rig.set_bg_color(2, 3, 0x1234);
     rig.ppu.write_register(gb::kRegOcps, 0x80);
     rig.ppu.write_register(gb::kRegOcpd, 0x9A);
+    rig.ppu.write_register(gb::kRegOpri, 0x01);
     std::vector<uint8_t> blob;
     gb::StateWriter w(blob);
     rig.ppu.save_state(w);
@@ -587,6 +601,7 @@ TEST_CASE("palette_ram_survives_a_savestate_roundtrip") {
     REQUIRE(back.read_bg_palette(2 * 8 + 3 * 2 + 1) == 0x12);
     back.ppu.write_register(gb::kRegOcps, 0x00);
     REQUIRE(back.ppu.read_register(gb::kRegOcpd) == 0x9A);
+    REQUIRE(back.ppu.read_register(gb::kRegOpri) == 0xFF);
 }
 
 TEST_CASE("state_load_masks_a_tampered_palette_index") {
@@ -597,9 +612,9 @@ TEST_CASE("state_load_masks_a_tampered_palette_index") {
     std::vector<uint8_t> blob;
     gb::StateWriter w(blob);
     rig.ppu.save_state(w);
-    // bcps and ocps are the last two bytes of the section
-    blob[blob.size() - 2] = 0x7F;
-    blob[blob.size() - 1] = 0xFF;
+    // bcps, ocps and opri are the last three bytes of the section
+    blob[blob.size() - 3] = 0x7F;
+    blob[blob.size() - 2] = 0xFF;
 
     Rig back;
     back.ppu.set_cgb_mode(true);
@@ -634,4 +649,178 @@ TEST_CASE("dmg_state_load_ignores_a_tampered_vbk") {
     back.ppu.load_state(r2);
     REQUIRE(back.ppu.vram_bank() == 1);
     REQUIRE(back.ppu.read_vram(0x0000) == 0x22);
+}
+
+TEST_CASE("cgb_obj_palette_selects_the_rgb555_color") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    // palette 4 color 1 = r5 g10 b20; palette 6 color 1 has bit 15 set and must lose it
+    rig.set_obj_color(4, 1, 0x5145);
+    rig.set_obj_color(6, 1, 0xFFFF);
+    rig.set_oam(0, 16, 8, 1, 0x04);
+    rig.set_oam(1, 16, 16, 1, 0x06);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer_color()[0] == 0x5145);
+    REQUIRE(rig.ppu.framebuffer_color()[8] == 0x7FFF);
+    // the shade buffer keeps the raw 2-bit index; obp0 is inert on cgb
+    REQUIRE(rig.ppu.framebuffer()[0] == 1);
+    REQUIRE(rig.ppu.tile_ids()[0] == 0x0101);
+}
+
+TEST_CASE("cgb_obj_attribute_bit_3_fetches_bank_1_tile_data") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    // same tile index, data only in bank 1
+    rig.set_tile_row(0x0010, 0, 0x00, 0x00);
+    rig.set_tile_row_bank1(0x0010, 0, 0xFF, 0xFF);
+    rig.set_obj_color(0, 3, 0x001F);
+    rig.set_oam(0, 16, 8, 1, 0x00);
+    rig.set_oam(1, 16, 16, 1, 0x08);
+    rig.render_line0();
+    // the bank 0 copy is blank, so that sprite is fully transparent
+    REQUIRE(rig.ppu.framebuffer()[0] == 0);
+    REQUIRE(rig.ppu.framebuffer()[8] == 3);
+    REQUIRE(rig.ppu.framebuffer_color()[8] == 0x001F);
+}
+
+TEST_CASE("cgb_master_priority_off_puts_objects_over_everything") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    // lcdc bit 0 clear: master priority off
+    rig.ppu.write_register(gb::kRegLcdc, 0x92);
+    rig.ppu.write_vram(0x1800, 2);
+    rig.ppu.write_vram(0x1801, 2);
+    rig.set_tile_row(0x0020, 0, 0xFF, 0xFF);
+    rig.set_bg_attr(0x1800, 0x80);
+    rig.set_bg_attr(0x1801, 0x80);
+    rig.set_bg_color(0, 3, 0x001F);
+    rig.set_obj_color(0, 1, 0x03E0);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    // both priority bits set; neither matters with master priority off
+    rig.set_oam(0, 16, 8, 1, 0x80);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer_color()[0] == 0x03E0);
+    // the bg still renders where no object covers it
+    REQUIRE(rig.ppu.framebuffer_color()[8] == 0x001F);
+    REQUIRE(rig.ppu.framebuffer()[8] == 3);
+}
+
+TEST_CASE("cgb_bg_attribute_priority_bit_beats_the_object") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    // map cell 0 is a solid color 2 tile, map cell 1 keeps the blank tile 0
+    rig.ppu.write_vram(0x1800, 2);
+    rig.set_tile_row(0x0020, 0, 0x00, 0xFF);
+    rig.set_bg_attr(0x1800, 0x80);
+    rig.set_bg_attr(0x1801, 0x80);
+    rig.set_bg_color(0, 2, 0x001F);
+    rig.set_obj_color(0, 1, 0x03E0);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    // oam priority bit clear: the bg attribute alone decides
+    rig.set_oam(0, 16, 8, 1, 0x00);
+    rig.set_oam(1, 16, 16, 1, 0x00);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer_color()[0] == 0x001F);
+    REQUIRE(rig.ppu.framebuffer()[0] == 2);
+    // bg color 0 under the priority bit still lets the object through
+    REQUIRE(rig.ppu.framebuffer_color()[8] == 0x03E0);
+}
+
+TEST_CASE("cgb_oam_bg_over_obj_bit_beats_the_object") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    rig.ppu.write_vram(0x1800, 2);
+    rig.set_tile_row(0x0020, 0, 0x00, 0xFF);
+    rig.set_bg_color(0, 2, 0x001F);
+    rig.set_obj_color(0, 1, 0x03E0);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    // bg attributes carry no priority bit, so only the oam bit is left
+    rig.set_oam(0, 16, 8, 1, 0x80);
+    rig.set_oam(1, 16, 16, 1, 0x80);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer_color()[0] == 0x001F);
+    REQUIRE(rig.ppu.framebuffer_color()[8] == 0x03E0);
+}
+
+TEST_CASE("cgb_lcdc_bit0_clear_still_renders_the_bg") {
+    Rig rig;
+    rig.ppu.set_cgb_mode(true);
+    // bit 0 blanks the bg on dmg, but on cgb it only demotes it below objects
+    rig.ppu.write_register(gb::kRegLcdc, 0x90);
+    rig.ppu.write_vram(0x1800, 1);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    rig.set_bg_color(0, 1, 0x001F);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer()[0] == 1);
+    REQUIRE(rig.ppu.framebuffer_color()[0] == 0x001F);
+}
+
+TEST_CASE("dmg_lcdc_bit0_clear_blanks_the_bg") {
+    Rig rig;
+    rig.ppu.write_register(gb::kRegLcdc, 0x90);
+    rig.ppu.write_register(gb::kRegBgp, 0xE4);
+    rig.ppu.write_vram(0x1800, 1);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer()[0] == 0);
+}
+
+TEST_CASE("opri_selects_x_order_over_oam_index_order") {
+    Rig rig;
+    rig.cgb_sprite_setup();
+    REQUIRE(rig.ppu.read_register(gb::kRegOpri) == 0xFE);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    rig.set_obj_color(1, 1, 0x001F);
+    rig.set_obj_color(2, 1, 0x03E0);
+    // oam 0 sits to the right of oam 1, so the two orderings disagree on the overlap
+    rig.set_oam(0, 16, 12, 1, 0x01);
+    rig.set_oam(1, 16, 8, 1, 0x02);
+    rig.render_line0();
+    // cgb boots to oam-index order: the earlier entry wins
+    REQUIRE(rig.ppu.framebuffer_color()[5] == 0x001F);
+
+    Rig flip;
+    flip.cgb_sprite_setup();
+    flip.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    flip.set_obj_color(1, 1, 0x001F);
+    flip.set_obj_color(2, 1, 0x03E0);
+    flip.set_oam(0, 16, 12, 1, 0x01);
+    flip.set_oam(1, 16, 8, 1, 0x02);
+    // only bit 0 is decoded
+    flip.ppu.write_register(gb::kRegOpri, 0xFF);
+    REQUIRE(flip.ppu.read_register(gb::kRegOpri) == 0xFF);
+    flip.render_line0();
+    // opri bit 0 restores the dmg x order: the lower x wins
+    REQUIRE(flip.ppu.framebuffer_color()[5] == 0x03E0);
+}
+
+TEST_CASE("opri_is_dead_in_dmg_mode") {
+    Rig rig;
+    rig.sprite_setup();
+    REQUIRE(rig.ppu.read_register(gb::kRegOpri) == 0xFF);
+    // the write is dropped, so dmg keeps ranking by x
+    rig.ppu.write_register(gb::kRegOpri, 0x00);
+    REQUIRE(rig.ppu.read_register(gb::kRegOpri) == 0xFF);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    rig.set_tile_row(0x0020, 0, 0xFF, 0xFF);
+    rig.set_oam(0, 16, 12, 2, 0x00);
+    rig.set_oam(1, 16, 8, 1, 0x00);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer()[5] == 1);
+}
+
+TEST_CASE("dmg_sprites_ignore_the_cgb_attribute_bits") {
+    Rig rig;
+    // dmg has no vbk, so stage bank 1 through cgb mode and run the scanline as dmg
+    rig.ppu.set_cgb_mode(true);
+    rig.set_tile_row_bank1(0x0010, 0, 0xFF, 0xFF);
+    rig.ppu.set_cgb_mode(false);
+    rig.sprite_setup();
+    rig.ppu.write_register(gb::kRegObp0, 0x0C);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0x00);
+    // attr bits 0-3 are cgb-only: the bank stays 0 and obp0 still maps the shade
+    rig.set_oam(0, 16, 8, 1, 0x0F);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer()[0] == 3);
 }

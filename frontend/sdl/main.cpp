@@ -194,6 +194,16 @@ bool write_ppm(const gb::Gameboy& gameboy, Look look, uint16_t block_mask, uint1
         return false;
     }
     out << "P6\n" << gb::kLcdWidth << " " << gb::kLcdHeight << "\n255\n";
+    if (gameboy.cgb_mode()) {
+        for (uint16_t color : gameboy.framebuffer_color()) {
+            const uint32_t argb = rgb555_to_argb(color);
+            const char px[3] = {static_cast<char>(argb >> 16), static_cast<char>(argb >> 8),
+                                static_cast<char>(argb)};
+            out.write(px, 3);
+        }
+        std::printf("wrote %s\n", path);
+        return true;
+    }
     const std::span<const uint8_t> fb = gameboy.framebuffer();
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
@@ -394,6 +404,18 @@ void harvest_styles(App& app, std::span<const uint8_t> rom) {
     }
 }
 
+// picks the frontend's dmg look and harvests tetris styles; a cgb cart renders
+// straight from framebuffer_color, so it gets neither, no matter what its title is
+void configure_look(App& app, const gb::Gameboy& gameboy, std::span<const uint8_t> bytes) {
+    if (gameboy.cgb_mode()) {
+        app.look = Look::Plain;
+        app.have_styles = false;
+        return;
+    }
+    app.look = detect_look(bytes);
+    harvest_styles(app, bytes);
+}
+
 // which tile slots at the given vram base currently hold a block style;
 // 0x800 is the bg block bank, 0x000 the falling piece's sprite mirror
 uint16_t style_mask(const App& app, size_t base) {
@@ -531,8 +553,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void wasm_load_rom(const uint8_t* data, int len)
         return;
     }
     g_app.gameboy = std::move(next);
-    g_app.look = detect_look(bytes);
-    harvest_styles(g_app, bytes);
+    configure_look(g_app, *g_app.gameboy, bytes);
     std::printf("rom loaded\n");
 }
 #endif
@@ -574,8 +595,7 @@ int main_impl(int argc, char* argv[]) {
             std::fprintf(stderr, "load_rom failed\n");
             return 1;
         }
-        app.look = detect_look(bytes);
-        harvest_styles(app, bytes);
+        configure_look(app, *app.gameboy, bytes);
         load_battery_ram(*app.gameboy, opt.rom_path);
         if (opt.dump_ppm_path != nullptr) {
             return dump_framebuffer_ppm(app, opt.frames, opt.dump_ppm_path);
@@ -848,14 +868,21 @@ void main_loop_step(void* arg) {
         } else {
             gameboy.run_frame();
         }
-        const std::span<const uint8_t> fb = gameboy.framebuffer();
-        const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-        const uint16_t block_mask = style_mask(app, 0x800);
-        const uint16_t sprite_mask = style_mask(app, 0x000);
-        for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
-            for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
-                const size_t i = y * gb::kLcdWidth + x;
-                app.pixels[i] = shade_pixel(app.look, ids[i], fb[i], x, y, block_mask, sprite_mask);
+        if (gameboy.cgb_mode()) {
+            const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+            for (size_t i = 0; i < colors.size(); ++i) {
+                app.pixels[i] = rgb555_to_argb(colors[i]);
+            }
+        } else {
+            const std::span<const uint8_t> fb = gameboy.framebuffer();
+            const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+            const uint16_t block_mask = style_mask(app, 0x800);
+            const uint16_t sprite_mask = style_mask(app, 0x000);
+            for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
+                for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
+                    const size_t i = y * gb::kLcdWidth + x;
+                    app.pixels[i] = shade_pixel(app.look, ids[i], fb[i], x, y, block_mask, sprite_mask);
+                }
             }
         }
 

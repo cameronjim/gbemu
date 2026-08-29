@@ -1,5 +1,7 @@
 #include "ppu.hpp"
 
+#include <algorithm>
+
 namespace gb {
 
 namespace {
@@ -13,6 +15,14 @@ constexpr uint8_t kStatHBlankEnable = 0x08;
 constexpr uint8_t kStatVBlankEnable = 0x10;
 constexpr uint8_t kStatOamEnable = 0x20;
 constexpr uint8_t kStatLycEnable = 0x40;
+
+// pandocs: only data writes auto-increment, and the index wraps inside the 64 bytes
+uint8_t advance_palette_index(uint8_t spec) {
+    if ((spec & 0x80) == 0) {
+        return spec;
+    }
+    return static_cast<uint8_t>(0x80 | ((spec + 1) & 0x3F));
+}
 } // namespace
 
 PpuMode Ppu::compute_mode() const {
@@ -112,6 +122,16 @@ uint8_t Ppu::read_register(uint16_t addr) const {
     case kRegVbk:
         // pandocs: vbk reads back with the unused bits set
         return cgb_ ? static_cast<uint8_t>(0xFE | vram_bank_) : 0xFF;
+    case kRegBcps:
+        // bit 6 is unused and reads 1
+        return cgb_ ? static_cast<uint8_t>(0x40 | bcps_) : 0xFF;
+    case kRegOcps:
+        return cgb_ ? static_cast<uint8_t>(0x40 | ocps_) : 0xFF;
+    case kRegBcpd:
+        // v1: no mode 3 access gating, palette reads always see the addressed byte
+        return cgb_ ? bg_palette_[bcps_ & 0x3F] : 0xFF;
+    case kRegOcpd:
+        return cgb_ ? obj_palette_[ocps_ & 0x3F] : 0xFF;
     default:
         return 0xFF;
     }
@@ -166,6 +186,29 @@ void Ppu::write_register(uint16_t addr, uint8_t value) {
             vram_bank_ = static_cast<uint8_t>(value & 0x01);
         }
         break;
+    case kRegBcps:
+        if (cgb_) {
+            bcps_ = static_cast<uint8_t>(value & 0xBF);
+        }
+        break;
+    case kRegOcps:
+        if (cgb_) {
+            ocps_ = static_cast<uint8_t>(value & 0xBF);
+        }
+        break;
+    case kRegBcpd:
+        // v1: no mode 3 access gating, palette writes always land
+        if (cgb_) {
+            bg_palette_[bcps_ & 0x3F] = value;
+            bcps_ = advance_palette_index(bcps_);
+        }
+        break;
+    case kRegOcpd:
+        if (cgb_) {
+            obj_palette_[ocps_ & 0x3F] = value;
+            ocps_ = advance_palette_index(ocps_);
+        }
+        break;
     default:
         break;
     }
@@ -191,6 +234,10 @@ void Ppu::save_state(StateWriter& w) const {
     w.u8(stat_enables_);
     w.u8(vram_bank_);
     w.u8(static_cast<uint8_t>(mode_));
+    w.bytes(bg_palette_);
+    w.bytes(obj_palette_);
+    w.u8(bcps_);
+    w.u8(ocps_);
 }
 
 void Ppu::load_state(StateReader& r) {
@@ -215,78 +262,91 @@ void Ppu::load_state(StateReader& r) {
     // dmg has no vbk; bank 0 is its only legal value
     vram_bank_ = cgb_ ? vram_bank : 0;
     mode_ = static_cast<PpuMode>(r.u8() & 0x03);
+    r.bytes(bg_palette_);
+    r.bytes(obj_palette_);
+    // bit 6 is unused; a tampered index is also masked at every use site
+    bcps_ = static_cast<uint8_t>(r.u8() & 0xBF);
+    ocps_ = static_cast<uint8_t>(r.u8() & 0xBF);
 }
 
 void Ppu::render_scanline() {
-    uint8_t* row = &framebuffer_[static_cast<uint32_t>(ly_) * kLcdWidth];
-    std::span<uint16_t> ids(&tile_ids_[static_cast<uint32_t>(ly_) * kLcdWidth], kLcdWidth);
-    for (uint16_t& id : ids) {
-        id = 0;
+    const uint32_t line = static_cast<uint32_t>(ly_) * kLcdWidth;
+    uint8_t* row = &framebuffer_[line];
+    std::span<uint16_t> ids(&tile_ids_[line], kLcdWidth);
+    std::span<uint16_t> rgb(&framebuffer_color_[line], kLcdWidth);
+    for (uint32_t x = 0; x < kLcdWidth; ++x) {
+        ids[x] = 0;
+        rgb[x] = 0;
     }
     // raw 2-bit bg/window colors kept for sprite priority decisions
     std::array<uint8_t, kLcdWidth> colors{};
+    std::array<uint8_t, kLcdWidth> priority{};
+    const ScanlineOut out{colors, ids, priority, rgb};
     if ((lcdc_ & 0x01) != 0) {
-        render_bg(colors, ids);
-        if (render_window(colors, ids)) {
+        render_bg(out);
+        if (render_window(out)) {
             ++window_line_;
         }
     }
     for (uint32_t x = 0; x < kLcdWidth; ++x) {
-        row[x] = static_cast<uint8_t>((bgp_ >> (colors[x] * 2)) & 0x03);
+        // bgp is inert on cgb, so the shade buffer keeps the raw index there
+        row[x] = cgb_ ? colors[x] : static_cast<uint8_t>((bgp_ >> (colors[x] * 2)) & 0x03);
     }
     if ((lcdc_ & 0x02) != 0) {
         render_sprites(colors, std::span<uint8_t>(row, kLcdWidth), ids);
     }
 }
 
-void Ppu::render_bg(std::span<uint8_t> colors, std::span<uint16_t> ids) const {
+void Ppu::fetch_map_pixel(uint16_t map_base, uint8_t map_x, uint8_t map_y, uint32_t out_x,
+                          const ScanlineOut& out) const {
+    const uint16_t map_addr = static_cast<uint16_t>(map_base + (map_y / 8) * 32 + (map_x / 8));
+    const uint8_t tile = vram0(map_addr);
+    // pandocs "bg map attributes (cgb)": vram bank 1 mirrors the map with attribute bytes
+    const uint8_t attr = cgb_ ? vram_[1][map_addr] : 0;
+    uint8_t row_in_tile = map_y & 7;
+    if ((attr & 0x40) != 0) {
+        row_in_tile = static_cast<uint8_t>(7 - row_in_tile);
+    }
+    uint16_t tile_addr;
+    if ((lcdc_ & 0x10) != 0) {
+        tile_addr = static_cast<uint16_t>(tile * 16);
+    } else {
+        // lcdc bit 4 clear: signed indexing from 0x9000
+        tile_addr = static_cast<uint16_t>(0x1000 + static_cast<int8_t>(tile) * 16);
+    }
+    const auto& bank = vram_[(attr & 0x08) != 0 ? 1 : 0];
+    const uint8_t lo = bank[tile_addr + row_in_tile * 2];
+    const uint8_t hi = bank[tile_addr + row_in_tile * 2 + 1];
+    uint8_t px = map_x & 7;
+    if ((attr & 0x20) != 0) {
+        px = static_cast<uint8_t>(7 - px);
+    }
+    // bit 7 is the leftmost pixel
+    const uint8_t shift = static_cast<uint8_t>(7 - px);
+    out.colors[out_x] = static_cast<uint8_t>((((hi >> shift) & 1) << 1) | ((lo >> shift) & 1));
+    out.ids[out_x] = tile;
+    out.priority[out_x] = static_cast<uint8_t>((attr >> 7) & 1);
+    out.rgb[out_x] = bg_rgb(static_cast<uint8_t>(attr & 0x07), out.colors[out_x]);
+}
+
+void Ppu::render_bg(const ScanlineOut& out) const {
     const uint16_t map_base = (lcdc_ & 0x08) != 0 ? 0x1C00 : 0x1800;
-    const bool unsigned_mode = (lcdc_ & 0x10) != 0;
     const uint8_t bgy = static_cast<uint8_t>(scy_ + ly_);
-    const uint8_t row_in_tile = bgy & 7;
     for (uint32_t x = 0; x < kLcdWidth; ++x) {
-        const uint8_t bgx = static_cast<uint8_t>(scx_ + x);
-        const uint8_t tile = vram0(map_base + (bgy / 8) * 32 + (bgx / 8));
-        uint16_t tile_addr;
-        if (unsigned_mode) {
-            tile_addr = static_cast<uint16_t>(tile * 16);
-        } else {
-            // lcdc bit 4 clear: signed indexing from 0x9000
-            tile_addr = static_cast<uint16_t>(0x1000 + static_cast<int8_t>(tile) * 16);
-        }
-        const uint8_t lo = vram0(tile_addr + row_in_tile * 2);
-        const uint8_t hi = vram0(tile_addr + row_in_tile * 2 + 1);
-        // bit 7 is the leftmost pixel
-        const uint8_t px = bgx & 7;
-        colors[x] = static_cast<uint8_t>((((hi >> (7 - px)) & 1) << 1) | ((lo >> (7 - px)) & 1));
-        ids[x] = tile;
+        fetch_map_pixel(map_base, static_cast<uint8_t>(scx_ + x), bgy, x, out);
     }
 }
 
-bool Ppu::render_window(std::span<uint8_t> colors, std::span<uint16_t> ids) const {
+bool Ppu::render_window(const ScanlineOut& out) const {
     if ((lcdc_ & 0x20) == 0 || ly_ < wy_ || wx_ > 166) {
         return false;
     }
     const uint16_t map_base = (lcdc_ & 0x40) != 0 ? 0x1C00 : 0x1800;
-    const bool unsigned_mode = (lcdc_ & 0x10) != 0;
-    const uint8_t row_in_tile = window_line_ & 7;
     // wx has a fixed -7 offset
     const int start_x = static_cast<int>(wx_) - 7;
     for (int x = std::max(0, start_x); x < static_cast<int>(kLcdWidth); ++x) {
-        const uint32_t wx_pixel = static_cast<uint32_t>(x - start_x);
-        const uint8_t tile = vram0(map_base + (window_line_ / 8) * 32 + (wx_pixel / 8));
-        uint16_t tile_addr;
-        if (unsigned_mode) {
-            tile_addr = static_cast<uint16_t>(tile * 16);
-        } else {
-            tile_addr = static_cast<uint16_t>(0x1000 + static_cast<int8_t>(tile) * 16);
-        }
-        const uint8_t lo = vram0(tile_addr + row_in_tile * 2);
-        const uint8_t hi = vram0(tile_addr + row_in_tile * 2 + 1);
-        const uint8_t px = wx_pixel & 7;
-        colors[static_cast<uint32_t>(x)] =
-            static_cast<uint8_t>((((hi >> (7 - px)) & 1) << 1) | ((lo >> (7 - px)) & 1));
-        ids[static_cast<uint32_t>(x)] = tile;
+        const uint8_t wx_pixel = static_cast<uint8_t>(x - start_x);
+        fetch_map_pixel(map_base, wx_pixel, window_line_, static_cast<uint32_t>(x), out);
     }
     return true;
 }

@@ -131,6 +131,10 @@ uint8_t Bus::read_io(uint16_t addr) {
     case kRegWy:
     case kRegWx:
     case kRegVbk:
+    case kRegBcps:
+    case kRegBcpd:
+    case kRegOcps:
+    case kRegOcpd:
         return ppu_.read_register(addr);
     case kRegIf:
         // upper 3 bits read as 1
@@ -188,6 +192,10 @@ void Bus::write_io(uint16_t addr, uint8_t value) {
     case kRegWy:
     case kRegWx:
     case kRegVbk:
+    case kRegBcps:
+    case kRegBcpd:
+    case kRegOcps:
+    case kRegOcpd:
         ppu_.write_register(addr, value);
         break;
     case kRegSvbk:

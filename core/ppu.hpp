@@ -25,9 +25,15 @@ inline constexpr uint16_t kRegObp1 = 0xFF49;
 inline constexpr uint16_t kRegWy = 0xFF4A;
 inline constexpr uint16_t kRegWx = 0xFF4B;
 inline constexpr uint16_t kRegVbk = 0xFF4F;
+inline constexpr uint16_t kRegBcps = 0xFF68;
+inline constexpr uint16_t kRegBcpd = 0xFF69;
+inline constexpr uint16_t kRegOcps = 0xFF6A;
+inline constexpr uint16_t kRegOcpd = 0xFF6B;
 
 inline constexpr size_t kVramBankSize = 0x2000;
 inline constexpr size_t kVramBanks = 2;
+// 8 palettes of 4 colors, two bytes each
+inline constexpr size_t kPaletteRamSize = 64;
 
 enum class PpuMode : uint8_t { HBlank = 0, VBlank = 1, OamScan = 2, Drawing = 3 };
 
@@ -63,6 +69,10 @@ public:
     std::span<const uint8_t> framebuffer() const {
         return framebuffer_;
     }
+    // rgb555 bg/window output; filled in cgb mode only, contents undefined in dmg mode
+    std::span<const uint16_t> framebuffer_color() const {
+        return framebuffer_color_;
+    }
     // per-pixel source: low byte tile index, bit 8 set for sprite pixels
     std::span<const uint16_t> tile_ids() const {
         return tile_ids_;
@@ -85,22 +95,39 @@ public:
         return frames_;
     }
 
-    static constexpr size_t kStateSize = kVramBanks * kVramBankSize + 0xA0 + 4 + 14;
+    static constexpr size_t kStateSize = kVramBanks * kVramBankSize + 0xA0 + 4 + 14 + 2 * kPaletteRamSize + 2;
     void save_state(StateWriter& w) const;
     void load_state(StateReader& r);
 
 private:
-    // rendering ignores vbk for now: bank 1 bytes are stored, never fetched
+    // per-scanline render targets, shared by the bg and window fetch
+    struct ScanlineOut {
+        // raw 2-bit color index, kept for sprite priority decisions
+        std::span<uint8_t> colors;
+        std::span<uint16_t> ids;
+        // cgb bg attribute bit 7 per pixel; milestone 19 sprite priority is its only consumer
+        std::span<uint8_t> priority;
+        std::span<uint16_t> rgb;
+    };
+
+    // sprites still fetch bank 0 only; cgb sprite banking lands in milestone 19
     uint8_t vram0(uint32_t offset) const {
         return vram_[0][offset];
+    }
+    // pandocs "lcd color palettes (cgb)": 8 bytes per palette, low byte first, r 0-4, g 5-9, b 10-14
+    uint16_t bg_rgb(uint8_t palette, uint8_t index) const {
+        const size_t off = (static_cast<size_t>(palette) * 4 + index) * 2;
+        return static_cast<uint16_t>((bg_palette_[off] | (bg_palette_[off + 1] << 8)) & 0x7FFF);
     }
 
     PpuMode compute_mode() const;
     void enter_mode(PpuMode mode);
     void compare_lyc();
     void render_scanline();
-    void render_bg(std::span<uint8_t> colors, std::span<uint16_t> ids) const;
-    bool render_window(std::span<uint8_t> colors, std::span<uint16_t> ids) const;
+    void fetch_map_pixel(uint16_t map_base, uint8_t map_x, uint8_t map_y, uint32_t out_x,
+                         const ScanlineOut& out) const;
+    void render_bg(const ScanlineOut& out) const;
+    bool render_window(const ScanlineOut& out) const;
     void render_sprites(std::span<const uint8_t> colors, std::span<uint8_t> row,
                         std::span<uint16_t> ids) const;
 
@@ -108,7 +135,10 @@ private:
     std::array<std::array<uint8_t, kVramBankSize>, kVramBanks> vram_{};
     std::array<uint8_t, 0xA0> oam_{};
     std::array<uint8_t, kLcdWidth * kLcdHeight> framebuffer_{};
+    std::array<uint16_t, kLcdWidth * kLcdHeight> framebuffer_color_{};
     std::array<uint16_t, kLcdWidth * kLcdHeight> tile_ids_{};
+    std::array<uint8_t, kPaletteRamSize> bg_palette_{};
+    std::array<uint8_t, kPaletteRamSize> obj_palette_{};
     uint32_t dot_ = 0;
     // presentation metadata only, deliberately not serialized
     uint64_t frames_ = 0;
@@ -128,8 +158,11 @@ private:
     uint8_t window_line_ = 0;
     // writable stat bits 3-6 only
     uint8_t stat_enables_ = 0;
-    // cpu-visible vram bank; rendering still reads bank 0 only
+    // cpu-visible vram bank; sprites still read bank 0 only
     uint8_t vram_bank_ = 0;
+    // raw spec bytes: index in bits 0-5, auto-increment in bit 7; bit 6 is unused
+    uint8_t bcps_ = 0;
+    uint8_t ocps_ = 0;
     bool cgb_ = false;
     PpuMode mode_ = PpuMode::OamScan;
 };

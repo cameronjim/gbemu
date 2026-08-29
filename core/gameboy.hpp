@@ -40,6 +40,10 @@ public:
     bool cgb_mode() const {
         return cgb_mode_;
     }
+    // rgb555 bg/window output; filled in cgb mode only, contents undefined in dmg mode
+    std::span<const uint16_t> framebuffer_color() const {
+        return ppu_.framebuffer_color();
+    }
     // per-pixel tile source for frontend colorization
     std::span<const uint16_t> framebuffer_tiles() const {
         return ppu_.tile_ids();

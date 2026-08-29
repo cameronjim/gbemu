@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """compiles a games/mario/data/*.json level bible into banked c terrain data plus a host-test
-probe header. run as: compile_level.py <bible.json> <out_dir>
+probe header. run as: compile_level.py <bible.json> <out_dir> [--bank N] [--area-bank M]
 
 the block-kind numbers below are a contract with games/mario/src/mario.h's kBlock* defines and
 must be kept numerically identical by hand; nothing here reads mario.h.
@@ -25,6 +25,12 @@ BLOCK_FLAG_POLE = 10
 BLOCK_CASTLE = 11
 BLOCK_SPENT = 12
 BLOCK_COIN = 13
+# sub-milestone 8a's four: a thin platform is solid to feet coming down onto it and to nothing
+# else, lava is scenery over the death plane, and the bridge/axe are 1-4's ending
+BLOCK_THIN = 14
+BLOCK_LAVA = 15
+BLOCK_BRIDGE = 16
+BLOCK_AXE = 17
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -41,6 +47,10 @@ KIND_NAMES = {
     BLOCK_CASTLE: "CASTLE",
     BLOCK_SPENT: "SPENT",
     BLOCK_COIN: "COIN",
+    BLOCK_THIN: "THIN",
+    BLOCK_LAVA: "LAVA",
+    BLOCK_BRIDGE: "BRIDGE",
+    BLOCK_AXE: "AXE",
 }
 
 # the reaction list's own kind numbering, a contract with games/mario/src/mario.h's kBlockList*.
@@ -62,9 +72,45 @@ CONTENT_MAP = {
     "vine": 6,
 }
 
-# enemies.kind -> the kEnemy* contract in games/mario/src/mario.h. only the two walkers this
-# sub-milestone implements are mapped; an unmapped kind is left out of the spawn list entirely
-ENEMY_KIND_MAP = {"goomba": 0, "koopa_green": 1}
+# enemies.kind -> the kEnemy* contract in games/mario/src/mario.h. a kind with no number here is
+# left out of the spawn list entirely rather than guessed at
+ENEMY_KIND_MAP = {
+    "goomba": 0,
+    "koopa_green": 1,
+    "koopa_red": 2,
+    # roster.json: a paratroopa stomps down into a plain koopa. the wings are m9's, so the bible's
+    # red paratroopas compile to red koopas at the same cell and fall to whatever is under them
+    "koopa_para_red": 2,
+    "piranha": 3,
+}
+
+# the object list's kinds, the contract with games/mario/src/mario.h's kObj* defines
+OBJ_PIPE = 0
+OBJ_LIFT_H = 1
+OBJ_LIFT_V = 2
+OBJ_FIREBAR = 3
+OBJ_BOWSER = 4
+OBJ_AXE = 5
+
+OBJ_NAMES = {
+    OBJ_PIPE: "PIPE",
+    OBJ_LIFT_H: "LIFT_H",
+    OBJ_LIFT_V: "LIFT_V",
+    OBJ_FIREBAR: "FIREBAR",
+    OBJ_BOWSER: "BOWSER",
+    OBJ_AXE: "AXE",
+}
+
+# level types, the contract with games/mario/src/mario.h's kLevelType*
+TYPE_OVERWORLD = 0
+TYPE_UNDERGROUND = 1
+TYPE_CASTLE = 2
+TYPE_MAP = {"overworld": TYPE_OVERWORLD, "underground": TYPE_UNDERGROUND, "castle": TYPE_CASTLE}
+
+# area kinds, the contract with games/mario/src/mario.h's kArea* defines
+AREA_BONUS = 0
+AREA_WARP = 1
+AREA_KIND_MAP = {"bonus_room": AREA_BONUS, "underground": AREA_BONUS, "warp_zone": AREA_WARP}
 
 # schema.md: 15 block rows, ground surface at row 13, rows 13-14 are the solid ground blocks
 LEVEL_ROWS = 15
@@ -74,7 +120,7 @@ GROUND_ROW = 13
 ROW_STRIDE = 16
 
 # blocks.kind -> our render kind; "hidden" has no art of its own until something reveals it, so it
-# renders as empty (per SCHEMA.md its contents still exist, physics/items are a later sub-milestone)
+# renders as empty (per SCHEMA.md its contents still exist)
 BLOCK_KIND_MAP = {
     "question": BLOCK_QUESTION,
     "brick": BLOCK_BRICK,
@@ -86,11 +132,39 @@ BLOCK_KIND_MAP = {
 # a rom-measure pass replaces the bible's approx/unknown positions (see SCHEMA.md)
 PAD_COLUMNS = 8
 
-# the bible's terrain list only calls out pits explicitly; ground is the implied default surface
-# everywhere else (see SCHEMA.md's "a pit/gap is a run of columns where the ground terrain is
-# absent" wording), so the grid starts all-ground at row 13-14 and gaps carve it away
 FLAG_POLE_TOP_ROW = 4
 FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
+
+# an underground level gets a two-row roof the bible never describes: SCHEMA.md's grid has rows
+# above the playfield and mariowiki calls 1-2 an enclosed cave, but no source places the ceiling.
+# compiler-invented, must-verify
+CEILING_ROWS = 2
+
+# a firebar's pivot is a hard block; the roster calls the short bar "about 6 fireball segments"
+FIREBAR_SEGMENTS = 6
+
+# lift geometry. roster.json gives the lift no size and physics.json's per-type speeds are
+# must-measure, so both the 2-block deck and the travel spans below are ours
+LIFT_BLOCKS = 2
+LIFT_MIN_SPAN = 4
+LIFT_SPAN_MASK = 0x3F
+# the second lift of a pair starts at the far end of the same track and runs the other way, so one
+# of them is always somewhere a rider can reach
+LIFT_REVERSE = 0x80
+# a horizontal lift's deck rides one row above the surface it bridges, which is a hop up onto it
+HORIZONTAL_LIFT_ROW = GROUND_ROW - 1
+# a vertical pair runs between these rows; the bible only says "left descends, right ascends"
+VERTICAL_LIFT_TOP_ROW = 3
+VERTICAL_LIFT_SPAN = 8
+
+# a castle lava pit wider than this many columns is spanned by a horizontal lift rather than left
+# as a jump: the bible's castle gap extents are "sourced" only as prose, so a pit it happens to
+# place beyond mario's running jump would make the level impossible. compiler rule, must-verify
+CASTLE_LIFT_GAP = 5
+
+# the bridge that ends a castle: the last sourced ground run becomes bridge over lava, and the two
+# columns past it carry the axe on solid ground
+BRIDGE_TAIL_COLUMNS = 2
 
 # sub-area layout. the bible gives 1-1's bonus room no terrain at all and places none of its coins:
 # only the total ("19 coins total per mariowiki") survives, in the area's notes prose. so the room is
@@ -101,7 +175,13 @@ AREA_FIRST_COIN_COLUMN = 1
 AREA_EXIT_GAP_COLUMNS = 2
 AREA_EXIT_PIPE_HEIGHT = 2
 AREA_PAD_COLUMNS = 4
-AREA_BANK = 2
+# the warp room's three pipes stand this far apart, starting this far in
+AREA_WARP_FIRST_COLUMN = 3
+AREA_WARP_SPACING = 4
+AREA_WARP_PIPE_HEIGHT = 2
+
+DEFAULT_BANK = 1
+DEFAULT_AREA_BANK = 7
 
 
 def load_bible(path):
@@ -112,12 +192,10 @@ def load_bible(path):
 def feature_max_x(bible):
     max_x = 0
     for t in bible.get("terrain", []):
-        if t["kind"] in ("ground", "gap"):
+        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
-        elif t["kind"] == "stairs":
-            max_x = max(max_x, t["x1"])
     for b in bible.get("blocks", []):
         if b.get("x") is not None:
             max_x = max(max_x, b["x"])
@@ -127,6 +205,9 @@ def feature_max_x(bible):
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
         max_x = max(max_x, flag["x"])
+    castle = bible.get("castle_end") or {}
+    if castle.get("x") is not None:
+        max_x = max(max_x, castle["x"])
     return max_x
 
 
@@ -134,24 +215,45 @@ def padded(col):
     return list(col) + [BLOCK_EMPTY] * (ROW_STRIDE - LEVEL_ROWS)
 
 
-def new_grid(length_columns):
+def new_grid(length_columns, base_ground=True):
     # column-major: grid[col] is one column's 15 row bytes, row 0 at the top
     grid = []
     for _ in range(length_columns):
         col = [BLOCK_EMPTY] * LEVEL_ROWS
-        col[GROUND_ROW] = BLOCK_GROUND
-        col[GROUND_ROW + 1] = BLOCK_GROUND
+        if base_ground:
+            col[GROUND_ROW] = BLOCK_GROUND
+            col[GROUND_ROW + 1] = BLOCK_GROUND
         grid.append(col)
     return grid
 
 
-def apply_gap(grid, x0, x1):
+def clamp_span(grid, x0, x1):
+    return max(0, x0), min(len(grid) - 1, x1)
+
+
+def apply_gap(grid, x0, x1, fill=BLOCK_EMPTY):
+    x0, x1 = clamp_span(grid, x0, x1)
     for x in range(x0, x1 + 1):
-        grid[x][GROUND_ROW] = BLOCK_EMPTY
-        grid[x][GROUND_ROW + 1] = BLOCK_EMPTY
+        grid[x][GROUND_ROW] = fill
+        grid[x][GROUND_ROW + 1] = fill
+
+
+def apply_ground(grid, x0, x1):
+    x0, x1 = clamp_span(grid, x0, x1)
+    for x in range(x0, x1 + 1):
+        grid[x][GROUND_ROW] = BLOCK_GROUND
+        grid[x][GROUND_ROW + 1] = BLOCK_GROUND
+
+
+def apply_ceiling(grid):
+    for col in grid:
+        for row in range(CEILING_ROWS):
+            col[row] = BLOCK_GROUND
 
 
 def apply_pipe(grid, x, height):
+    if x + 1 >= len(grid):
+        return
     top_row = GROUND_ROW - height
     grid[x][top_row] = BLOCK_PIPE_TL
     grid[x + 1][top_row] = BLOCK_PIPE_TR
@@ -161,14 +263,41 @@ def apply_pipe(grid, x, height):
 
 
 def apply_stairs(grid, x0, x1, step_height):
+    # a positive step_height climbs one row per column up to its cap; a negative one is the bible's
+    # descending castle opening, which starts |step_height| rows up and walks back down to the floor
+    x0, x1 = clamp_span(grid, x0, x1)
+    span = max(1, x1 - x0)
     for col in range(x0, x1 + 1):
-        step = min(col - x0 + 1, step_height)
+        if step_height >= 0:
+            step = min(col - x0 + 1, step_height)
+        else:
+            top = -step_height
+            step = top - (top * (col - x0)) // span
         for row in range(GROUND_ROW - step, GROUND_ROW):
             grid[col][row] = BLOCK_STAIR
 
 
+def apply_elevation(grid, x0, x1, y):
+    x0, x1 = clamp_span(grid, x0, x1)
+    for col in range(x0, x1 + 1):
+        for row in range(y, GROUND_ROW + 2):
+            grid[col][row] = BLOCK_GROUND
+
+
+def apply_island(grid, x0, x1, y):
+    # SCHEMA.md's island: a surface at row y over the death plane. at the ground row it is plain
+    # ground; above it, it is the athletic level's thin tree/mushroom platform
+    x0, x1 = clamp_span(grid, x0, x1)
+    if y >= GROUND_ROW:
+        apply_ground(grid, x0, x1)
+        return
+    for col in range(x0, x1 + 1):
+        grid[col][y] = BLOCK_THIN
+
+
 def apply_block(grid, x, y, kind):
-    grid[x][y] = BLOCK_KIND_MAP.get(kind, BLOCK_EMPTY)
+    if 0 <= x < len(grid):
+        grid[x][y] = BLOCK_KIND_MAP.get(kind, BLOCK_EMPTY)
 
 
 def apply_flag(grid, x):
@@ -188,37 +317,166 @@ def apply_flag(grid, x):
     return None
 
 
-def compile_grid(bible):
-    length_columns = feature_max_x(bible) + 1 + PAD_COLUMNS
-    grid = new_grid(length_columns)
-    probes = []
+def surface_row(grid, column, first_row=0):
+    # the topmost solid row of a column, which is the row a body standing there rests on top of.
+    # first_row skips an underground level's roof, which is solid but is nobody's floor
+    if column < 0 or column >= len(grid):
+        return GROUND_ROW
+    for row in range(first_row, LEVEL_ROWS):
+        if grid[column][row] not in (BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_COIN, BLOCK_AXE):
+            return row
+    return GROUND_ROW
 
+
+def entry_pipe_x(bible, level_type):
+    # 1-2's opening pipe is the roof the player falls through, and its column is the start cell. the
+    # entry cutscene is m8b's; until then he walks in, so that pipe is not compiled at all
+    if level_type != TYPE_UNDERGROUND:
+        return None
+    start_x = bible.get("start", {}).get("x")
     for t in bible.get("terrain", []):
+        if t["kind"] == "pipe" and t["x"] == start_x:
+            return start_x
+    return None
+
+
+def lift_span(x0, x1):
+    return min(LIFT_SPAN_MASK, max(LIFT_MIN_SPAN, x1 - x0 - LIFT_BLOCKS))
+
+
+def fit_lift(grid, obj):
+    # a horizontal lift standing over open air rides all the way to the first column that has a
+    # floor again, so its deck ends flush with the lip a rider steps off onto. a lift the bible
+    # places over solid ground is decoration and keeps the span it was given
+    column, row, kind, param = obj
+    if kind != OBJ_LIFT_H or column >= len(grid):
+        return obj
+    if grid[column][GROUND_ROW] not in (BLOCK_EMPTY, BLOCK_LAVA):
+        return obj
+    edge = column
+    while edge < len(grid) and grid[edge][GROUND_ROW] in (BLOCK_EMPTY, BLOCK_LAVA):
+        edge += 1
+    span = min(LIFT_SPAN_MASK, max(1, edge - LIFT_BLOCKS - column))
+    return (column, row, kind, (param & LIFT_REVERSE) | span)
+
+
+def compile_grid(bible, level_type):
+    terrain = bible.get("terrain", [])
+    has_islands = any(t["kind"] == "island" for t in terrain)
+    length_columns = feature_max_x(bible) + 1 + PAD_COLUMNS
+    # an athletic level is islands over open air: only the runs the bible names are solid, so the
+    # default ground is dropped and everything the level does not place is a pit
+    grid = new_grid(length_columns, base_ground=not has_islands)
+    probes = []
+    objects = []
+    skip_pipe = entry_pipe_x(bible, level_type)
+    gap_fill = BLOCK_LAVA if level_type == TYPE_CASTLE else BLOCK_EMPTY
+    ground_runs = []
+
+    first_row = CEILING_ROWS if level_type == TYPE_UNDERGROUND else 0
+    if level_type == TYPE_UNDERGROUND:
+        apply_ceiling(grid)
+        probes.append((0, 0, BLOCK_GROUND))
+        probes.append((length_columns - 1, CEILING_ROWS - 1, BLOCK_GROUND))
+
+    for t in terrain:
         if t["kind"] == "ground":
+            apply_ground(grid, t["x0"], t["x1"])
+            ground_runs.append((t["x0"], t["x1"]))
             probes.append((t["x0"], GROUND_ROW, BLOCK_GROUND))
             probes.append((t["x1"], GROUND_ROW, BLOCK_GROUND))
         elif t["kind"] == "gap":
-            apply_gap(grid, t["x0"], t["x1"])
-            probes.append((t["x0"], GROUND_ROW, BLOCK_EMPTY))
-            probes.append((t["x1"], GROUND_ROW, BLOCK_EMPTY))
+            apply_gap(grid, t["x0"], t["x1"], gap_fill)
+            probes.append((t["x0"], GROUND_ROW, gap_fill))
+            probes.append((t["x1"], GROUND_ROW, gap_fill))
+            if level_type == TYPE_CASTLE and t["x1"] - t["x0"] >= CASTLE_LIFT_GAP:
+                objects.append((t["x0"] + 1, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, lift_span(t["x0"], t["x1"])))
         elif t["kind"] == "pipe":
+            if t["x"] == skip_pipe:
+                continue
             apply_pipe(grid, t["x"], t["height"])
             top_row = GROUND_ROW - t["height"]
             probes.append((t["x"], top_row, BLOCK_PIPE_TL))
             probes.append((t["x"] + 1, top_row, BLOCK_PIPE_TR))
         elif t["kind"] == "stairs":
+            # the bible calls a level's closing staircase its "final stone platform": on an island
+            # level, where nothing is solid unless the bible places it, the staircase and the run
+            # out to the flag are the ground the pole and the walk-off need
+            if has_islands:
+                apply_ground(grid, t["x0"], length_columns - 1)
             apply_stairs(grid, t["x0"], t["x1"], t["step_height"])
-            probes.append((t["x0"], GROUND_ROW - 1, BLOCK_STAIR))
-            last_step = min(t["x1"] - t["x0"] + 1, t["step_height"])
-            probes.append((t["x1"], GROUND_ROW - last_step, BLOCK_STAIR))
-        # elevation/lift_platform/island: not present in level-1-1.json; a future level's compile
-        # pass adds handling here when the bible actually places one
+            if t["step_height"] >= 0:
+                probes.append((t["x0"], GROUND_ROW - 1, BLOCK_STAIR))
+                last_step = min(t["x1"] - t["x0"] + 1, t["step_height"])
+                probes.append((t["x1"], GROUND_ROW - last_step, BLOCK_STAIR))
+            else:
+                probes.append((t["x0"], GROUND_ROW + t["step_height"], BLOCK_STAIR))
+        elif t["kind"] == "elevation":
+            apply_elevation(grid, t["x0"], t["x1"], t["y"])
+            probes.append((t["x0"], t["y"], BLOCK_GROUND))
+        elif t["kind"] == "island":
+            apply_island(grid, t["x0"], t["x1"], t["y"])
+            kind = BLOCK_GROUND if t["y"] >= GROUND_ROW else BLOCK_THIN
+            row = GROUND_ROW if t["y"] >= GROUND_ROW else t["y"]
+            probes.append((t["x0"], row, kind))
+            probes.append((t["x1"], row, kind))
+        elif t["kind"] == "lift_platform":
+            # the bible's 1-2 run is a pair of vertical lifts ("left descends, right ascends"), its
+            # 1-3 run a pair of horizontal ones. the ground under a horizontal pair is carved away,
+            # because riding across is the whole point; a vertical pair keeps whatever is under it
+            span = lift_span(t["x0"], t["x1"])
+            if level_type == TYPE_UNDERGROUND:
+                objects.append((t["x0"], VERTICAL_LIFT_TOP_ROW, OBJ_LIFT_V,
+                                VERTICAL_LIFT_SPAN | LIFT_REVERSE))
+                objects.append((t["x1"] - LIFT_BLOCKS, VERTICAL_LIFT_TOP_ROW, OBJ_LIFT_V,
+                                VERTICAL_LIFT_SPAN))
+            else:
+                # the track is the carved pit itself, so a lift at either extent leaves a hop-sized
+                # gap to the island beside it rather than a jump the bible never promised
+                gx0 = t["x0"] - 1
+                gx1 = t["x1"] + 1
+                apply_gap(grid, gx0, gx1, gap_fill)
+                span = min(LIFT_SPAN_MASK, max(LIFT_MIN_SPAN, gx1 - LIFT_BLOCKS + 1 - gx0))
+                objects.append((gx0, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, span))
+                objects.append((gx0, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, span | LIFT_REVERSE))
 
     for b in bible.get("blocks", []):
         if b.get("x") is None or b.get("y") is None:
             continue
         apply_block(grid, b["x"], b["y"], b["kind"])
         probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    bridge = None
+    axe_column = None
+    if level_type == TYPE_CASTLE and ground_runs:
+        bridge, axe_column = apply_bridge(grid, ground_runs[-1])
+        probes.append((bridge[0], GROUND_ROW, BLOCK_BRIDGE))
+        probes.append((bridge[1], GROUND_ROW, BLOCK_BRIDGE))
+        probes.append((axe_column, GROUND_ROW - 1, BLOCK_AXE))
+        objects.append((axe_column, GROUND_ROW - 1, OBJ_AXE, 0))
+
+    for e in bible.get("enemies", []):
+        if e.get("x") is None or e.get("y") is None:
+            continue
+        if e["kind"] == "firebar":
+            row = min(e["y"], GROUND_ROW - 1)
+            grid[e["x"]][row] = BLOCK_HARD
+            probes.append((e["x"], row, BLOCK_HARD))
+            objects.append((e["x"], row, OBJ_FIREBAR, FIREBAR_SEGMENTS))
+        elif e["kind"] == "bowser_fake":
+            # the bible puts him on the bridge; the patrol is the bridge's own last stretch, so he
+            # stands between the player and the axe exactly as the source describes
+            span = max(2, (bridge[1] - bridge[0]) // 2) if bridge is not None else 4
+            column = (bridge[1] - span) if bridge is not None else e["x"]
+            objects.append((column, surface_row(grid, column, first_row) - 1, OBJ_BOWSER, span))
+        elif e["kind"] == "lift_horizontal":
+            objects.append((e["x"], e["y"], OBJ_LIFT_H, LIFT_MIN_SPAN))
+        elif e["kind"] == "lift_vertical":
+            objects.append((e["x"], e["y"], OBJ_LIFT_V, LIFT_MIN_SPAN))
+
+    # a horizontal lift only earns its keep if its deck actually reaches the far lip of the pit it
+    # spans, and the pit's real width is only known once every terrain run has been laid down
+    objects = [fit_lift(grid, o) for o in objects]
 
     flag_col = None
     flag = bible.get("flag") or {}
@@ -228,10 +486,29 @@ def compile_grid(bible):
         probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE))
         probes.append((flag_col, FLAG_POLE_BOTTOM_ROW, BLOCK_FLAG_POLE))
 
-    # level-1-1.json has no castle_end: per the milestone's instructions, an unpositioned kind is
-    # left out rather than invented; BLOCK_CASTLE still exists in the enum/art for levels that do
+    return {
+        "grid": grid,
+        "columns": length_columns,
+        "probes": probes,
+        "flag_column": flag_col,
+        "objects": objects,
+        "bridge": bridge,
+        "axe_column": axe_column,
+    }
 
-    return grid, length_columns, probes, flag_col
+
+def apply_bridge(grid, run):
+    # the castle's ending: the bible's last ground run carries the bridge, lava runs under it, and
+    # the two columns past it stay solid so the axe has something to stand on
+    x0, x1 = run
+    x0, x1 = clamp_span(grid, x0, x1)
+    end = max(x0, x1 - BRIDGE_TAIL_COLUMNS)
+    for col in range(x0, end):
+        grid[col][GROUND_ROW] = BLOCK_BRIDGE
+        grid[col][GROUND_ROW + 1] = BLOCK_LAVA
+    axe_column = end
+    grid[axe_column][GROUND_ROW - 1] = BLOCK_AXE
+    return (x0, end - 1), axe_column
 
 
 def compile_block_list(bible):
@@ -248,7 +525,7 @@ def compile_block_list(bible):
     return out
 
 
-def compile_enemy_list(bible):
+def compile_enemy_list(bible, grid, first_row):
     # the spawn list the rom walks with a single advancing cursor, so it must be sorted by column:
     # the engine only ever compares the cursor's own entry against the camera's right edge. the
     # bible's count_only entries carry no position and are dropped rather than invented
@@ -259,22 +536,40 @@ def compile_enemy_list(bible):
         kind = ENEMY_KIND_MAP.get(e["kind"])
         if kind is None:
             continue
-        out.append((e["x"], e["y"], kind))
+        row = e["y"]
+        if e["kind"] == "piranha":
+            # the plant lives in a pipe: the roster's rise/sink runs out of the cap it sits on
+            row = surface_row(grid, e["x"], first_row)
+        out.append((e["x"], row, kind))
     out.sort(key=lambda entry: entry[0])
     return out
 
 
-def find_pipe_entry(bible):
-    # the bible's enterable pipe: a terrain pipe with a dest, matched to the area it leads into by
-    # entry_x first and by the area's kind second. returns (column, top_row, area_index) or None
-    areas = bible.get("areas", [])
+def find_pipe_entries(bible, areas):
+    # every terrain pipe the bible gives a dest, matched to the area it leads into by entry_x first
+    # and by the area's kind second, plus any area whose entry_x names a column with no such pipe
+    out = []
+    claimed = set()
     for t in bible.get("terrain", []):
         if t["kind"] != "pipe" or not t.get("dest"):
             continue
         for index, area in enumerate(areas):
+            if index in claimed:
+                continue
             if area.get("entry_x") == t["x"] or area.get("kind") == t["dest"]:
-                return (t["x"], GROUND_ROW - t["height"], index)
-    return None
+                out.append((t["x"], GROUND_ROW - t["height"], index))
+                claimed.add(index)
+                break
+    for index, area in enumerate(areas):
+        if index in claimed or area.get("entry_x") is None:
+            continue
+        # the bible's warp-zone room is reached "via the lift platforms through a hidden roof
+        # opening" and smbd is confirmed to have changed the room entirely, so the entry is
+        # compiled as a plain ground pipe at the bible's entry_x. must-verify against the rom
+        out.append((area["entry_x"], GROUND_ROW - AREA_EXIT_PIPE_HEIGHT, index))
+        claimed.add(index)
+    out.sort(key=lambda entry: entry[0])
+    return out
 
 
 def area_coin_count(area):
@@ -286,7 +581,21 @@ def area_coin_count(area):
     return sum(1 for b in area.get("blocks", []) if b.get("contents") == "coin")
 
 
-def compile_area(area):
+def warp_target(to_level, level_ids):
+    # the bible's warp targets are worlds 2-4, which do not exist yet, and the minus world is a
+    # clipping trick rather than a pipe. anything we cannot name clamps to the last level we have
+    if to_level in level_ids:
+        return level_ids.index(to_level)
+    if re.match(r"^\d+-\d+$", to_level or ""):
+        return len(level_ids) - 1
+    return None
+
+
+def compile_area(area, bible, level_ids):
+    kind = AREA_KIND_MAP.get(area.get("kind"), AREA_BONUS)
+    if kind == AREA_WARP:
+        return compile_warp_area(area, bible, level_ids)
+
     coins = area_coin_count(area)
     exit_column = AREA_FIRST_COIN_COLUMN + coins + AREA_EXIT_GAP_COLUMNS
     length_columns = exit_column + 2 + AREA_PAD_COLUMNS
@@ -316,11 +625,51 @@ def compile_area(area):
     probes.append((exit_column + 1, exit_top_row, BLOCK_PIPE_TR))
 
     return {
+        "kind": kind,
         "grid": grid,
         "columns": length_columns,
         "coins": coin_cells,
+        "warps": [],
         "exit_column": exit_column,
         "exit_top_row": exit_top_row,
+        "probes": probes,
+    }
+
+
+def compile_warp_area(area, bible, level_ids):
+    # the room the bible describes as three pipes side by side, one per destination world. the
+    # ordering (left to right) is the sourced part; the room's own geometry is not
+    warps = []
+    for w in bible.get("warps", []):
+        if w.get("via") != "warp_zone":
+            continue
+        target = warp_target(w.get("to_level"), level_ids)
+        if target is None:
+            continue
+        warps.append(target)
+    warps = warps[:3]
+
+    length_columns = AREA_WARP_FIRST_COLUMN + max(1, len(warps)) * AREA_WARP_SPACING + AREA_PAD_COLUMNS
+    grid = new_grid(length_columns)
+    probes = [(0, GROUND_ROW, BLOCK_GROUND)]
+    cells = []
+    for i, target in enumerate(warps):
+        column = AREA_WARP_FIRST_COLUMN + i * AREA_WARP_SPACING
+        apply_pipe(grid, column, AREA_WARP_PIPE_HEIGHT)
+        probes.append((column, GROUND_ROW - AREA_WARP_PIPE_HEIGHT, BLOCK_PIPE_TL))
+        cells.append((column, target))
+
+    # the room has no exit pipe of its own: the three warps are the way out. the exit fields still
+    # carry the last pipe so a player who takes none of them is not stranded
+    exit_column = cells[-1][0] if cells else 0
+    return {
+        "kind": AREA_WARP,
+        "grid": grid,
+        "columns": length_columns,
+        "coins": [],
+        "warps": cells,
+        "exit_column": exit_column,
+        "exit_top_row": GROUND_ROW - AREA_WARP_PIPE_HEIGHT,
         "probes": probes,
     }
 
@@ -329,8 +678,11 @@ def slug_for(level_id):
     return "level_" + level_id.replace("-", "_")
 
 
-def write_header(out_dir, slug, length_columns, start, flag_col, source_path, blocks, enemies, entry,
-                 areas):
+def to_camel(slug):
+    return "".join(part.capitalize() for part in slug.split("_"))
+
+
+def write_header(out_dir, slug, level, source_path):
     guard = slug.upper() + "_H"
     upper = slug.upper()
     path = os.path.join(out_dir, slug + ".h")
@@ -339,58 +691,73 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path, bl
         f.write("#define %s\n" % guard)
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("\n#include <stdint.h>\n\n")
-        f.write("#define %s_ROWS %dU\n" % (slug.upper(), LEVEL_ROWS))
+        f.write("#define %s_ROWS %dU\n" % (upper, LEVEL_ROWS))
         f.write("// stored stride: one padding byte past the last row keeps a cell index a shift\n")
-        f.write("#define %s_ROW_STRIDE %dU\n" % (slug.upper(), ROW_STRIDE))
-        f.write("// the bible's start cell: the column and the ground row the player stands on top of\n")
-        f.write("#define %s_START_COLUMN %dU\n" % (slug.upper(), start[0]))
-        f.write("#define %s_START_ROW %dU\n" % (slug.upper(), start[1]))
+        f.write("#define %s_ROW_STRIDE %dU\n" % (upper, ROW_STRIDE))
+        f.write("// the level's own kLevelType* value, which picks its palette set\n")
+        f.write("#define %s_TYPE %dU\n" % (upper, level["type"]))
+        f.write("// the bible's start column, and the surface row the compiled grid actually put\n")
+        f.write("// there - castles start partway up a staircase the bible only guessed the row of\n")
+        f.write("#define %s_START_COLUMN %dU\n" % (upper, level["start_column"]))
+        f.write("#define %s_START_ROW %dU\n" % (upper, level["start_row"]))
         f.write(
             "// provisional: last positioned bible feature plus %d columns of padding; a rom-measure\n"
             % PAD_COLUMNS
         )
         f.write("// pass will replace this once length_columns is sourced instead of derived\n")
-        f.write("#define %s_LENGTH_COLUMNS %dU\n" % (slug.upper(), length_columns))
-        f.write("// the rom bank the level compiles into; terrain.c switches into it to read a column\n")
-        f.write("#define %s_BANK 1U\n" % slug.upper())
+        f.write("#define %s_LENGTH_COLUMNS %dU\n" % (upper, level["columns"]))
+        f.write("// the rom bank the level compiles into; level.c switches into it to unpack the grid\n")
+        f.write("#define %s_BANK %dU\n" % (upper, level["bank"]))
         f.write("// the flag pole shaft: its column and the top/bottom rows apply_flag() filled. the\n")
         f.write("// pole's own cells are walk-through, so the engine tests contact against these\n")
-        f.write("#define %s_HAS_FLAG %dU\n" % (slug.upper(), 0 if flag_col is None else 1))
-        f.write("#define %s_FLAG_COLUMN %dU\n" % (slug.upper(), flag_col or 0))
-        f.write("#define %s_FLAG_TOP_ROW %dU\n" % (slug.upper(), FLAG_POLE_TOP_ROW))
-        f.write("#define %s_FLAG_BASE_ROW %dU\n\n" % (slug.upper(), FLAG_POLE_BOTTOM_ROW))
+        f.write("#define %s_HAS_FLAG %dU\n" % (upper, 0 if level["flag_column"] is None else 1))
+        f.write("#define %s_FLAG_COLUMN %dU\n" % (upper, level["flag_column"] or 0))
+        f.write("#define %s_FLAG_TOP_ROW %dU\n" % (upper, FLAG_POLE_TOP_ROW))
+        f.write("#define %s_FLAG_BASE_ROW %dU\n" % (upper, FLAG_POLE_BOTTOM_ROW))
+        f.write("// a castle ends at the axe instead: touching it drops the bridge span below\n")
+        bridge = level["bridge"] or (0, 0)
+        f.write("#define %s_HAS_AXE %dU\n" % (upper, 0 if level["axe_column"] is None else 1))
+        f.write("#define %s_AXE_COLUMN %dU\n" % (upper, level["axe_column"] or 0))
+        f.write("#define %s_AXE_ROW %dU\n" % (upper, GROUND_ROW - 1))
+        f.write("#define %s_BRIDGE_X0 %dU\n" % (upper, bridge[0]))
+        f.write("#define %s_BRIDGE_X1 %dU\n" % (upper, bridge[1]))
+        f.write("#define %s_BRIDGE_ROW %dU\n\n" % (upper, GROUND_ROW))
         f.write(
-            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE];\n\n"
-            % (slug, slug.upper(), slug.upper())
+            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE];\n\n" % (slug, upper, upper)
         )
 
         f.write("// the head-bump reaction list: every positioned question/brick/hidden block and what\n")
         f.write("// it holds. kinds are the kBlockList* contract, contents the kContent* one\n")
-        f.write("#define %s_BLOCK_COUNT %dU\n" % (upper, len(blocks)))
-        f.write("extern const uint16_t %s_block_column[%s_BLOCK_COUNT];\n" % (slug, upper))
-        f.write("extern const uint8_t %s_block_row[%s_BLOCK_COUNT];\n" % (slug, upper))
-        f.write("extern const uint8_t %s_block_kind[%s_BLOCK_COUNT];\n" % (slug, upper))
-        f.write("extern const uint8_t %s_block_content[%s_BLOCK_COUNT];\n\n" % (slug, upper))
+        f.write("#define %s_BLOCK_COUNT %dU\n" % (upper, len(level["blocks"])))
+        # unsized declarations: a bible that places none of something still needs an object to
+        # point at, and write_objects pads an empty list with one entry the count never reaches
+        f.write("extern const uint16_t %s_block_column[];\n" % slug)
+        f.write("extern const uint8_t %s_block_row[];\n" % slug)
+        f.write("extern const uint8_t %s_block_kind[];\n" % slug)
+        f.write("extern const uint8_t %s_block_content[];\n\n" % slug)
 
         f.write("// the position-triggered enemy spawn list, sorted by column so one cursor walks it.\n")
         f.write("// row is the surface row the enemy stands on top of, the start cell's own convention\n")
-        f.write("#define %s_ENEMY_COUNT %dU\n" % (upper, len(enemies)))
-        f.write("extern const uint16_t %s_enemy_column[%s_ENEMY_COUNT];\n" % (slug, upper))
-        f.write("extern const uint8_t %s_enemy_row[%s_ENEMY_COUNT];\n" % (slug, upper))
-        f.write("extern const uint8_t %s_enemy_kind[%s_ENEMY_COUNT];\n\n" % (slug, upper))
+        f.write("#define %s_ENEMY_COUNT %dU\n" % (upper, len(level["enemies"])))
+        f.write("extern const uint16_t %s_enemy_column[];\n" % slug)
+        f.write("extern const uint8_t %s_enemy_row[];\n" % slug)
+        f.write("extern const uint8_t %s_enemy_kind[];\n\n" % slug)
 
-        f.write("// the bible's enterable pipe and the sub-area it leads into\n")
-        f.write("#define %s_HAS_PIPE_ENTRY %dU\n" % (upper, 0 if entry is None else 1))
-        f.write("#define %s_PIPE_ENTRY_COLUMN %dU\n" % (upper, 0 if entry is None else entry[0]))
-        f.write("#define %s_PIPE_ENTRY_TOP_ROW %dU\n" % (upper, 0 if entry is None else entry[1]))
-        f.write("#define %s_AREA_COUNT %dU\n\n" % (upper, len(areas)))
+        f.write("// the object list: pipes, lifts, firebars, the fake bowser and the axe, all kept in\n")
+        f.write("// one array because every one of them is a column, a row, a kObj* kind and a span\n")
+        f.write("#define %s_OBJECT_COUNT %dU\n" % (upper, len(level["objects"])))
+        f.write("extern const uint16_t %s_object_column[];\n" % slug)
+        f.write("extern const uint8_t %s_object_row[];\n" % slug)
+        f.write("extern const uint8_t %s_object_kind[];\n" % slug)
+        f.write("extern const uint8_t %s_object_param[];\n\n" % slug)
 
-        for index, area in enumerate(areas):
+        f.write("#define %s_AREA_COUNT %dU\n\n" % (upper, len(level["areas"])))
+        for index, area in enumerate(level["areas"]):
             name = "%s_AREA%d" % (upper, index)
-            f.write("// sub-area %d: its own banked grid, entered from the pipe above and exited at\n" % index)
-            f.write("// the room's own pipe, which returns to the linked main-area column\n")
+            f.write("// sub-area %d: its own banked grid, entered from a pipe in the object list\n" % index)
+            f.write("#define %s_KIND %dU\n" % (name, area["kind"]))
             f.write("#define %s_COLUMNS %dU\n" % (name, area["columns"]))
-            f.write("#define %s_BANK %dU\n" % (name, AREA_BANK))
+            f.write("#define %s_BANK %dU\n" % (name, level["area_bank"]))
             f.write("#define %s_START_COLUMN 0U\n" % name)
             f.write("#define %s_START_ROW %dU\n" % (name, GROUND_ROW))
             f.write("#define %s_EXIT_COLUMN %dU\n" % (name, area["exit_column"]))
@@ -398,73 +765,69 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path, bl
             f.write("#define %s_RETURN_COLUMN %dU\n" % (name, area["return_column"]))
             f.write("#define %s_RETURN_TOP_ROW %dU\n" % (name, area["return_top_row"]))
             f.write("#define %s_COIN_COUNT %dU\n" % (name, len(area["coins"])))
+            f.write("#define %s_WARP_COUNT %dU\n" % (name, len(area["warps"])))
             f.write(
                 "extern const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE];\n"
                 % (slug, index, name, upper)
             )
-            f.write("extern const uint8_t %s_area%d_coin_column[%s_COIN_COUNT];\n" % (slug, index, name))
-            f.write("extern const uint8_t %s_area%d_coin_row[%s_COIN_COUNT];\n\n" % (slug, index, name))
+            f.write("extern const uint8_t %s_area%d_coin_column[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_coin_row[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_warp_column[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_warp_level[];\n\n" % (slug, index))
 
         f.write("#endif\n")
 
 
-def write_objects(out_dir, slug, blocks, enemies, areas, source_path):
-    # the reaction/coin lists are tens of bytes and are scanned every frame, so they stay in bank 0
-    # where no bank switch stands between the engine and a solidity probe
+def c_array(f, decl, values):
+    # an empty run still gets one byte of storage, so the header's unsized extern has an object to
+    # name and nothing has to special-case a bible that placed none of something
+    body = ", ".join(str(v) for v in values) if values else "0"
+    f.write("%s[] = {%s};\n" % (decl, body))
+
+
+def write_objects(out_dir, slug, level, source_path):
+    # the reaction/object lists are scanned every frame, so they stay in bank 0 where no bank switch
+    # stands between the engine and a solidity probe; only the grids pay the banking cost
     upper = slug.upper()
     path = os.path.join(out_dir, slug + "_objects.c")
     with open(path, "w", encoding="utf-8") as f:
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write('\n#include "%s.h"\n\n' % slug)
-        f.write(
-            "const uint16_t %s_block_column[%s_BLOCK_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(b[0]) for b in blocks))
-        )
-        f.write(
-            "const uint8_t %s_block_row[%s_BLOCK_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(b[1]) for b in blocks))
-        )
-        f.write(
-            "const uint8_t %s_block_kind[%s_BLOCK_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(b[2]) for b in blocks))
-        )
-        f.write(
-            "const uint8_t %s_block_content[%s_BLOCK_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(b[3]) for b in blocks))
-        )
-        f.write(
-            "const uint16_t %s_enemy_column[%s_ENEMY_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(e[0]) for e in enemies))
-        )
-        f.write(
-            "const uint8_t %s_enemy_row[%s_ENEMY_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(e[1]) for e in enemies))
-        )
-        f.write(
-            "const uint8_t %s_enemy_kind[%s_ENEMY_COUNT] = {%s};\n"
-            % (slug, upper, ", ".join(str(e[2]) for e in enemies))
-        )
-        for index, area in enumerate(areas):
+        blocks = level["blocks"]
+        c_array(f, "const uint16_t %s_block_column" % slug, [b[0] for b in blocks])
+        c_array(f, "const uint8_t %s_block_row" % slug, [b[1] for b in blocks])
+        c_array(f, "const uint8_t %s_block_kind" % slug, [b[2] for b in blocks])
+        c_array(f, "const uint8_t %s_block_content" % slug, [b[3] for b in blocks])
+        enemies = level["enemies"]
+        c_array(f, "const uint16_t %s_enemy_column" % slug, [e[0] for e in enemies])
+        c_array(f, "const uint8_t %s_enemy_row" % slug, [e[1] for e in enemies])
+        c_array(f, "const uint8_t %s_enemy_kind" % slug, [e[2] for e in enemies])
+        objects = level["objects"]
+        c_array(f, "const uint16_t %s_object_column" % slug, [o[0] for o in objects])
+        c_array(f, "const uint8_t %s_object_row" % slug, [o[1] for o in objects])
+        c_array(f, "const uint8_t %s_object_kind" % slug, [o[2] for o in objects])
+        c_array(f, "const uint8_t %s_object_param" % slug, [o[3] for o in objects])
+        for index, area in enumerate(level["areas"]):
             name = "%s_AREA%d" % (upper, index)
-            f.write(
-                "const uint8_t %s_area%d_coin_column[%s_COIN_COUNT] = {%s};\n"
-                % (slug, index, name, ", ".join(str(c[0]) for c in area["coins"]))
-            )
-            f.write(
-                "const uint8_t %s_area%d_coin_row[%s_COIN_COUNT] = {%s};\n"
-                % (slug, index, name, ", ".join(str(c[1]) for c in area["coins"]))
-            )
+            c_array(f, "const uint8_t %s_area%d_coin_column" % (slug, index),
+                    [c[0] for c in area["coins"]])
+            c_array(f, "const uint8_t %s_area%d_coin_row" % (slug, index),
+                    [c[1] for c in area["coins"]])
+            c_array(f, "const uint8_t %s_area%d_warp_column" % (slug, index),
+                    [w[0] for w in area["warps"]])
+            c_array(f, "const uint8_t %s_area%d_warp_level" % (slug, index),
+                    [w[1] for w in area["warps"]])
 
 
-def write_areas(out_dir, slug, areas, source_path):
+def write_areas(out_dir, slug, level, source_path):
     upper = slug.upper()
     path = os.path.join(out_dir, slug + "_areas.c")
     with open(path, "w", encoding="utf-8") as f:
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("// one column-major block grid per sub-area, banked away from the main level's own\n")
-        f.write("#pragma bank %d\n\n" % AREA_BANK)
+        f.write("#pragma bank %d\n\n" % level["area_bank"])
         f.write('#include "%s.h"\n\n' % slug)
-        for index, area in enumerate(areas):
+        for index, area in enumerate(level["areas"]):
             name = "%s_AREA%d" % (upper, index)
             f.write(
                 "const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE] = {\n"
@@ -477,18 +840,18 @@ def write_areas(out_dir, slug, areas, source_path):
             f.write("};\n\n")
 
 
-def write_source(out_dir, slug, grid, source_path):
+def write_source(out_dir, slug, level, source_path):
     path = os.path.join(out_dir, slug + ".c")
     with open(path, "w", encoding="utf-8") as f:
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("// column-major block grid; kind values are the kBlock* contract in games/mario/src/mario.h\n")
-        f.write("#pragma bank 1\n\n")
+        f.write("#pragma bank %d\n\n" % level["bank"])
         f.write('#include "%s.h"\n\n' % slug)
         f.write(
             "const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE] = {\n"
             % (slug, slug.upper(), slug.upper())
         )
-        for col in grid:
+        for col in level["grid"]:
             row_bytes = ", ".join(str(v) for v in padded(col))
             names = "/".join(KIND_NAMES[v] for v in col if v != BLOCK_EMPTY)
             comment = (" // %s" % names) if names else ""
@@ -496,7 +859,7 @@ def write_source(out_dir, slug, grid, source_path):
         f.write("};\n")
 
 
-def write_grid(out_dir, slug, grid, source_path, blocks, enemies, areas):
+def write_grid(out_dir, slug, level, source_path):
     # the same grid the rom reads out of its banked copy, as a host constant: the traversal tests
     # plan routes against it instead of re-deriving the level from the bible json
     path = os.path.join(out_dir, slug + "_grid.h")
@@ -507,39 +870,41 @@ def write_grid(out_dir, slug, grid, source_path, blocks, enemies, areas):
         f.write("#define %s\n" % guard)
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("\n#include <cstdint>\n\n")
-        f.write(
-            "inline constexpr uint8_t k%sGrid[%d][%d] = {\n" % (camel, len(grid), LEVEL_ROWS)
-        )
-        for col in grid:
+        f.write("#ifndef MARIO_LEVEL_TYPES\n#define MARIO_LEVEL_TYPES\n")
+        f.write("struct LevelBlock {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t content;\n};\n")
+        f.write("struct LevelEnemy {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n")
+        f.write("struct LevelObject {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t param;\n};\n")
+        f.write("struct LevelWarp {\n    uint8_t column;\n    uint8_t level;\n};\n")
+        f.write("#endif\n\n")
+
+        f.write("inline constexpr uint8_t k%sGrid[%d][%d] = {\n" % (camel, len(level["grid"]), LEVEL_ROWS))
+        for col in level["grid"]:
             f.write("    {%s},\n" % ", ".join(str(v) for v in col))
         f.write("};\n\n")
 
-        # the host twin needs the reaction list too: a hidden block is sky in the grid above and only
-        # this list says a bump would materialize one there
-        f.write("struct LevelBlock {\n")
-        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t content;\n};\n\n")
+        # every list ends in one padding entry the count never reaches: a level that places none of
+        # something would otherwise declare a zero-length array
         f.write("inline constexpr LevelBlock k%sBlocks[] = {\n" % camel)
-        for column, row, kind, content in blocks:
+        for column, row, kind, content in level["blocks"]:
             f.write("    {%d, %d, %d, %d},\n" % (column, row, kind, content))
-        f.write("};\n\n")
-        f.write(
-            "inline constexpr uint16_t k%sBlockCount = sizeof(k%sBlocks) / sizeof(k%sBlocks[0]);\n\n"
-            % (camel, camel, camel)
-        )
+        f.write("    {0, 0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sBlockCount = %d;\n\n" % (camel, len(level["blocks"])))
 
-        # the enemy twin plans against exactly the list the rom's spawn cursor walks
-        f.write("struct LevelEnemy {\n")
-        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n\n")
         f.write("inline constexpr LevelEnemy k%sEnemies[] = {\n" % camel)
-        for column, row, kind in enemies:
+        for column, row, kind in level["enemies"]:
             f.write("    {%d, %d, %d},\n" % (column, row, kind))
-        f.write("};\n\n")
-        f.write(
-            "inline constexpr uint16_t k%sEnemyCount = sizeof(k%sEnemies) / sizeof(k%sEnemies[0]);\n\n"
-            % (camel, camel, camel)
-        )
+        f.write("    {0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sEnemyCount = %d;\n\n" % (camel, len(level["enemies"])))
 
-        for index, area in enumerate(areas):
+        f.write("inline constexpr LevelObject k%sObjects[] = {\n" % camel)
+        for column, row, kind, param in level["objects"]:
+            f.write("    {%d, %d, %d, %d}, // %s\n" % (column, row, kind, param, OBJ_NAMES[kind]))
+        f.write("    {0, 0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sObjectCount = %d;\n\n" % (camel, len(level["objects"])))
+
+        for index, area in enumerate(level["areas"]):
             f.write(
                 "inline constexpr uint8_t k%sArea%dGrid[%d][%d] = {\n"
                 % (camel, index, area["columns"], LEVEL_ROWS)
@@ -547,83 +912,143 @@ def write_grid(out_dir, slug, grid, source_path, blocks, enemies, areas):
             for col in area["grid"]:
                 f.write("    {%s},\n" % ", ".join(str(v) for v in col))
             f.write("};\n\n")
+            f.write("inline constexpr LevelWarp k%sArea%dWarps[] = {\n" % (camel, index))
+            for column, target in area["warps"]:
+                f.write("    {%d, %d},\n" % (column, target))
+            f.write("    {0, 0},\n};\n")
+            f.write("inline constexpr uint16_t k%sArea%dWarpCount = %d;\n\n"
+                    % (camel, index, len(area["warps"])))
         f.write("#endif\n")
 
 
-def write_probes(out_dir, slug, probes, source_path, areas):
+def write_probes(out_dir, slug, level, source_path):
     path = os.path.join(out_dir, slug + "_probes.h")
     guard = slug.upper() + "_PROBES_H"
+    camel = to_camel(slug)
     with open(path, "w", encoding="utf-8") as f:
         f.write("#ifndef %s\n" % guard)
         f.write("#define %s\n" % guard)
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
-        f.write(
-            "// golden probes derived directly from the bible json's terrain runs and blocks; the host\n"
-        )
-        f.write("// test reads these instead of hand-duplicating level-1-1.json's positions\n")
+        f.write("// golden probes derived directly from the bible json's terrain runs and blocks; the host\n")
+        f.write("// test reads these instead of hand-duplicating the level json's positions\n")
         f.write("\n#include <cstdint>\n\n")
-        f.write("struct LevelProbe {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n\n")
-        f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % to_camel(slug))
-        for column, row, kind in probes:
+        f.write("#ifndef MARIO_LEVEL_PROBE\n#define MARIO_LEVEL_PROBE\n")
+        f.write("struct LevelProbe {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n")
+        f.write("#endif\n\n")
+        f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % camel)
+        for column, row, kind in level["probes"]:
             f.write("    {%d, %d, %d}, // %s\n" % (column, row, kind, KIND_NAMES[kind]))
         f.write("};\n\n")
         f.write(
             "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
-            % (to_camel(slug), to_camel(slug), to_camel(slug))
+            % (camel, camel, camel)
         )
-        for index, area in enumerate(areas):
-            camel = "%sArea%d" % (to_camel(slug), index)
-            f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % camel)
+        for index, area in enumerate(level["areas"]):
+            name = "%sArea%d" % (camel, index)
+            f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % name)
             for column, row, kind in area["probes"]:
                 f.write("    {%d, %d, %d}, // %s\n" % (column, row, kind, KIND_NAMES[kind]))
             f.write("};\n\n")
             f.write(
                 "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
-                % (camel, camel, camel)
+                % (name, name, name)
             )
         f.write("#endif\n")
 
 
-def to_camel(slug):
-    return "".join(part.capitalize() for part in slug.split("_"))
+# the world we can actually warp into; anything else clamps to its last level
+LEVEL_IDS = ["1-1", "1-2", "1-3", "1-4"]
+
+
+def compile_level(bible, bank, area_bank):
+    level_type = TYPE_MAP.get(bible.get("type"), TYPE_OVERWORLD)
+    built = compile_grid(bible, level_type)
+    grid = built["grid"]
+    areas = []
+    bible_areas = bible.get("areas", [])
+    entries = find_pipe_entries(bible, bible_areas)
+    entry_of = {index: (column, top_row) for column, top_row, index in entries}
+    # an area the bible reaches some other way than a terrain pipe still needs one to stand in
+    for column, top_row, _ in entries:
+        if grid[column][top_row] != BLOCK_PIPE_TL:
+            apply_pipe(grid, column, GROUND_ROW - top_row)
+            built["probes"].append((column, top_row, BLOCK_PIPE_TL))
+
+    for index, area in enumerate(bible_areas):
+        compiled = compile_area(area, bible, LEVEL_IDS)
+        # the bible's exit prose for 1-1 is "same pipe, returns to overworld near entry", so the
+        # return column is the entry pipe's own; an area with no compiled pipe returns to the start
+        entry = entry_of.get(index, (bible.get("start", {}).get("x", 0), GROUND_ROW - 2))
+        compiled["return_column"] = entry[0]
+        compiled["return_top_row"] = entry[1]
+        areas.append(compiled)
+
+    objects = built["objects"]
+    for column, top_row, index in entries:
+        objects.append((column, top_row, OBJ_PIPE, index))
+    objects.sort(key=lambda o: (o[0], o[2]))
+
+    start_column = bible["start"]["x"]
+    first_row = CEILING_ROWS if level_type == TYPE_UNDERGROUND else 0
+    return {
+        "type": level_type,
+        "bank": bank,
+        "area_bank": area_bank,
+        "grid": grid,
+        "columns": built["columns"],
+        "probes": built["probes"],
+        "flag_column": built["flag_column"],
+        "bridge": built["bridge"],
+        "axe_column": built["axe_column"],
+        "start_column": start_column,
+        "start_row": surface_row(grid, start_column, first_row),
+        "blocks": compile_block_list(bible),
+        "enemies": compile_enemy_list(bible, grid, first_row),
+        "objects": objects,
+        "areas": areas,
+    }
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("usage: compile_level.py <bible.json> <out_dir>", file=sys.stderr)
+    args = sys.argv[1:]
+    bank = DEFAULT_BANK
+    area_bank = DEFAULT_AREA_BANK
+    positional = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--bank":
+            bank = int(args[i + 1])
+            i += 2
+        elif args[i] == "--area-bank":
+            area_bank = int(args[i + 1])
+            i += 2
+        else:
+            positional.append(args[i])
+            i += 1
+    if len(positional) != 2:
+        print("usage: compile_level.py <bible.json> <out_dir> [--bank N] [--area-bank M]", file=sys.stderr)
         return 1
 
-    in_path, out_dir = sys.argv[1], sys.argv[2]
+    in_path, out_dir = positional
     os.makedirs(out_dir, exist_ok=True)
 
     bible = load_bible(in_path)
     slug = slug_for(bible["level"])
-    grid, length_columns, probes, flag_col = compile_grid(bible)
-    start = (bible["start"]["x"], bible["start"]["y"])
-    blocks = compile_block_list(bible)
-    enemies = compile_enemy_list(bible)
-    entry = find_pipe_entry(bible)
+    level = compile_level(bible, bank, area_bank)
 
-    areas = []
-    for area in bible.get("areas", []):
-        compiled = compile_area(area)
-        # the bible's exit prose for 1-1 is "same pipe, returns to overworld near entry", so the
-        # return column is the entry pipe's own; a bible that names another column overrides it here
-        compiled["return_column"] = area.get("entry_x", 0 if entry is None else entry[0])
-        compiled["return_top_row"] = 0 if entry is None else entry[1]
-        areas.append(compiled)
-
-    write_header(out_dir, slug, length_columns, start, flag_col, in_path, blocks, enemies, entry, areas)
-    write_source(out_dir, slug, grid, in_path)
-    write_objects(out_dir, slug, blocks, enemies, areas, in_path)
-    write_areas(out_dir, slug, areas, in_path)
-    write_grid(out_dir, slug, grid, in_path, blocks, enemies, areas)
-    write_probes(out_dir, slug, probes, in_path, areas)
+    write_header(out_dir, slug, level, in_path)
+    write_source(out_dir, slug, level, in_path)
+    write_objects(out_dir, slug, level, in_path)
+    write_areas(out_dir, slug, level, in_path)
+    write_grid(out_dir, slug, level, in_path)
+    write_probes(out_dir, slug, level, in_path)
 
     print(
-        "compiled %s: %d columns, %d probes, %d blocks, %d enemies, %d areas, flag column %s -> %s"
-        % (bible["level"], length_columns, len(probes), len(blocks), len(enemies), len(areas), flag_col,
-           out_dir)
+        "compiled %s: type %d bank %d, %d columns, %d probes, %d blocks, %d enemies, %d objects, "
+        "%d areas, flag column %s -> %s"
+        % (bible["level"], level["type"], bank, level["columns"], len(level["probes"]),
+           len(level["blocks"]), len(level["enemies"]), len(level["objects"]), len(level["areas"]),
+           level["flag_column"], out_dir)
     )
     return 0
 

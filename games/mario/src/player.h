@@ -44,8 +44,13 @@ void player_begin_clear(void);
 // one frame of the clear sequence (slide, hop off, walk to the castle, hold); 1 when it is over
 uint8_t player_clear_update(void);
 
-// writes mario's two 8x16 sprites for this frame, or parks them off screen when he is out of view
-void player_draw(uint16_t cam_x, uint8_t cam_y);
+// swaps him between the 16x16 and 16x32 bodies with his feet planted; the grow animation calls it
+// every few frames, which is what makes the pose alternate
+void player_set_big(uint8_t big);
+
+// writes mario's sprites for this frame (two 8x16 small, four big) under the given cgb palette, or
+// parks them when he is out of view or the injury blink hides him
+void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette);
 
 // the sprite box's left edge in world px; the camera follows this
 uint16_t player_x(void);
@@ -64,5 +69,17 @@ uint8_t player_on_ground(void);
 
 // 1 while he is grounded and has no horizontal speed at all: the only state the manual pan accepts
 uint8_t player_standing(void);
+
+// which way he faces, which is the way a thrown fireball goes
+uint8_t player_facing_left(void);
+
+// his collision box's top edge and height: they differ from the sprite box's while he crouches,
+// and the item and enemy passes both need the real thing rather than a fixed 16
+int16_t player_box_top(void);
+uint8_t player_box_height(void);
+
+// where his feet are in world px; the camera's default band is measured off this, not off the box
+// top, so growing to 16x32 leaves the view where it was
+int16_t player_feet(void);
 
 #endif

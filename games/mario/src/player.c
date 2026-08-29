@@ -39,6 +39,11 @@ static uint8_t anim_frame;
 static uint8_t anim_accum;
 static uint8_t walk_step;
 
+// the 16x32 body, and the crouch that folds it to 24 px. the power state itself lives in powerup.c;
+// this module only ever needs the size it implies
+static uint8_t big;
+static uint8_t crouched;
+
 // the level-clear sequence's own little state machine, driven by player_clear_update
 static uint8_t clear_phase;
 static uint8_t clear_timer;
@@ -48,6 +53,16 @@ static uint8_t pipe_phase;
 static uint8_t pipe_travel;
 // while he is inside a pipe his sprites draw behind the bg, which is what hides him in it
 static uint8_t behind_bg;
+
+// the feet always sit this far below y_pos, crouching included: folding the body moves its top edge
+// down rather than lifting him off the floor
+static uint8_t foot_h(void) {
+    return big != 0U ? (uint8_t)kPlayerBigHeightPx : (uint8_t)kPlayerHeightPx;
+}
+
+static int16_t head_y(void) {
+    return (int16_t)(y_pos + (crouched != 0U ? kCrouchInsetPx : 0));
+}
 
 // the hitbox spans [x_pos + inset, x_pos + inset + width - 1]; the sprite still spans the full 16
 static uint16_t hit_left(void) {
@@ -115,10 +130,13 @@ static void step_speed(uint8_t keys) {
     uint16_t sum;
     uint8_t delta;
 
-    if ((keys & J_LEFT) != 0U && (keys & J_RIGHT) == 0U) {
-        want_dir = -1;
-    } else if ((keys & J_RIGHT) != 0U && (keys & J_LEFT) == 0U) {
-        want_dir = 1;
+    // a crouching mario cannot walk; whatever speed he had still sheds through the friction path
+    if (crouched == 0U) {
+        if ((keys & J_LEFT) != 0U && (keys & J_RIGHT) == 0U) {
+            want_dir = -1;
+        } else if ((keys & J_RIGHT) != 0U && (keys & J_LEFT) == 0U) {
+            want_dir = 1;
+        }
     }
     if (want_dir != 0) {
         facing_left = want_dir < 0 ? 1U : 0U;
@@ -196,20 +214,30 @@ static void move_x(void) {
     x_pos = (uint16_t)next;
 }
 
+// a 32 px body can straddle three block rows, so the row between his head and his feet is probed
+// too - without it a lone block at chest height would let him walk straight through
+static uint8_t blocked_at(int16_t col) {
+    const int16_t top = head_y();
+
+    if (terrain_solid_at(col, row_of(top)) != 0U ||
+        terrain_solid_at(col, row_of((int16_t)(y_pos + foot_h() - 1))) != 0U) {
+        return 1;
+    }
+    return (big != 0U && terrain_solid_at(col, row_of((int16_t)(top + kPlayerHeightPx))) != 0U) ? 1U : 0U;
+}
+
 static void collide_x(void) {
-    const int16_t top_row = row_of(y_pos);
-    const int16_t bottom_row = row_of((int16_t)(y_pos + kPlayerHeightPx - 1));
     int16_t col;
 
     if (x_speed > 0) {
         col = col_of(hit_right());
-        if (terrain_solid_at(col, top_row) != 0U || terrain_solid_at(col, bottom_row) != 0U) {
+        if (blocked_at(col) != 0U) {
             x_pos = (uint16_t)((uint16_t)((uint16_t)col << 4) - kPlayerHitInsetPx - kPlayerHitWidthPx);
             stop_x();
         }
     } else if (x_speed < 0) {
         col = col_of(hit_left());
-        if (terrain_solid_at(col, top_row) != 0U || terrain_solid_at(col, bottom_row) != 0U) {
+        if (blocked_at(col) != 0U) {
             x_pos = (uint16_t)(((uint16_t)(col + 1) << 4) - kPlayerHitInsetPx);
             stop_x();
         }
@@ -264,6 +292,7 @@ static void step_vertical(uint8_t keys) {
 static void collide_y(void) {
     const int16_t left_col = col_of(hit_left());
     const int16_t right_col = col_of(hit_right());
+    const uint8_t height = foot_h();
     int16_t row;
 
     on_ground = 0;
@@ -271,7 +300,7 @@ static void collide_y(void) {
         uint8_t left_hit;
         uint8_t right_hit;
 
-        row = row_of(y_pos);
+        row = row_of(head_y());
         // a hidden block is absent from the grid until a rising head finds it, so it is probed here
         // as well as through terrain_solid_at; materializing it is what stops the rise
         left_hit = (terrain_solid_at(left_col, row) != 0U || blocks_hidden_at(left_col, row) != 0U) ? 1U : 0U;
@@ -279,15 +308,15 @@ static void collide_y(void) {
             (terrain_solid_at(right_col, row) != 0U || blocks_hidden_at(right_col, row) != 0U) ? 1U : 0U;
         if (left_hit != 0U || right_hit != 0U) {
             blocks_head_bump(left_hit != 0U ? left_col : right_col, row);
-            y_pos = (int16_t)((row + 1) << 4);
+            y_pos = (int16_t)(((row + 1) << 4) - (crouched != 0U ? kCrouchInsetPx : 0));
             y_speed = 0;
             y_accum = 0;
         }
         return;
     }
-    row = row_of((int16_t)(y_pos + kPlayerHeightPx - 1));
+    row = row_of((int16_t)(y_pos + height - 1));
     if (terrain_solid_at(left_col, row) != 0U || terrain_solid_at(right_col, row) != 0U) {
-        y_pos = (int16_t)(((int16_t)(row << 4)) - kPlayerHeightPx);
+        y_pos = (int16_t)(((int16_t)(row << 4)) - height);
         y_speed = 0;
         y_accum = 0;
         on_ground = 1;
@@ -305,6 +334,10 @@ static void collide_y(void) {
 static void step_anim(void) {
     const uint8_t speed_abs = abs_speed();
 
+    if (crouched != 0U) {
+        anim_frame = kFrameCrouch;
+        return;
+    }
     if (on_ground == 0U) {
         anim_frame = kFrameJump;
         return;
@@ -335,8 +368,8 @@ static uint8_t touching_flag(void) {
         col_of(hit_right()) < (int16_t)LEVEL_1_1_FLAG_COLUMN) {
         return 0;
     }
-    return (row_of(y_pos) <= (int16_t)LEVEL_1_1_FLAG_BASE_ROW &&
-            row_of((int16_t)(y_pos + kPlayerHeightPx - 1)) >= (int16_t)LEVEL_1_1_FLAG_TOP_ROW)
+    return (row_of(head_y()) <= (int16_t)LEVEL_1_1_FLAG_BASE_ROW &&
+            row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)LEVEL_1_1_FLAG_TOP_ROW)
                ? 1U
                : 0U;
 #else
@@ -347,8 +380,9 @@ static uint8_t touching_flag(void) {
 void player_place(uint16_t column, uint8_t surface_row) {
     x_pos = (uint16_t)(column << 4);
     stop_x();
+    crouched = 0;
     // the surface row is the ground the feet rest on top of, the bible's own start convention
-    y_pos = (int16_t)((int16_t)((int16_t)surface_row << 4) - kPlayerHeightPx);
+    y_pos = (int16_t)((int16_t)((int16_t)surface_row << 4) - (int16_t)foot_h());
     y_speed = 0;
     y_accum = 0;
     jump_origin_y = y_pos;
@@ -372,15 +406,35 @@ void player_init(void) {
     assets_load_item_palettes();
     SPRITES_8x16;
 
+    big = 0;
+    crouched = 0;
     player_place((uint16_t)LEVEL_1_1_START_COLUMN, (uint8_t)LEVEL_1_1_START_ROW);
     SHOW_SPRITES;
+}
+
+// the feet stay where they are and the box grows or shrinks upward, which is also what makes the
+// grow animation's alternating poses read as one body swelling in place
+void player_set_big(uint8_t next) {
+    if (next == big) {
+        return;
+    }
+    if (next != 0U) {
+        y_pos = (int16_t)(y_pos - (kPlayerBigHeightPx - kPlayerHeightPx));
+        if (y_pos < 0) {
+            y_pos = 0;
+        }
+    } else {
+        y_pos = (int16_t)(y_pos + (kPlayerBigHeightPx - kPlayerHeightPx));
+        crouched = 0;
+    }
+    big = next;
 }
 
 uint8_t player_over_pipe(uint16_t column, uint8_t top_row) {
     if (on_ground == 0U) {
         return 0;
     }
-    if (row_of((int16_t)(y_pos + kPlayerHeightPx)) != (int16_t)top_row) {
+    if (row_of((int16_t)(y_pos + foot_h())) != (int16_t)top_row) {
         return 0;
     }
     // his feet only have to be on the cap: nothing else stands at that row beside a pipe, so an
@@ -427,6 +481,8 @@ uint8_t player_pipe_update(void) {
 }
 
 uint8_t player_update(uint8_t keys) {
+    // crouching is a grounded pose only; must-measure whether smbd keeps it through a jump
+    crouched = (big != 0U && on_ground != 0U && (keys & J_DOWN) != 0U) ? 1U : 0U;
     step_speed(keys);
     move_x();
     collide_x();
@@ -458,7 +514,7 @@ void player_begin_clear(void) {
 
 // the pole's base: the row under the shaft's last cell is the ground mario's feet come to rest on
 static int16_t clear_base_y(void) {
-    return (int16_t)((int16_t)((int16_t)(LEVEL_1_1_FLAG_BASE_ROW + 1U) << 4) - kPlayerHeightPx);
+    return (int16_t)((int16_t)((int16_t)(LEVEL_1_1_FLAG_BASE_ROW + 1U) << 4) - (int16_t)foot_h());
 }
 
 // the column the walk-off ends at, kept inside the compiled level however short its tail is
@@ -524,28 +580,47 @@ uint8_t player_clear_update(void) {
 static void player_hide(void) {
     move_sprite(kSpriteMarioL, 0, 0);
     move_sprite(kSpriteMarioR, 0, 0);
+    move_sprite(kSpriteMarioLowL, 0, 0);
+    move_sprite(kSpriteMarioLowR, 0, 0);
 }
 
-void player_draw(uint16_t cam_x, uint8_t cam_y) {
+// one 16 px sprite row: flipping mirrors each 8x16 half, so the halves also swap sides
+static void draw_row(uint8_t slot, uint8_t tile, uint8_t prop, int16_t sx, int16_t sy) {
+    const uint8_t left_tile = facing_left != 0U ? (uint8_t)(tile + 2U) : tile;
+    const uint8_t right_tile = facing_left != 0U ? tile : (uint8_t)(tile + 2U);
+
+    set_sprite_tile(slot, left_tile);
+    set_sprite_tile((uint8_t)(slot + 1U), right_tile);
+    set_sprite_prop(slot, prop);
+    set_sprite_prop((uint8_t)(slot + 1U), prop);
+    move_sprite(slot, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+    move_sprite((uint8_t)(slot + 1U), (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+}
+
+void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
     const int16_t sx = (int16_t)((int16_t)x_pos - (int16_t)cam_x);
     const int16_t sy = (int16_t)(y_pos - (int16_t)cam_y);
-    const uint8_t left_tile = (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame));
-    const uint8_t right_tile = (uint8_t)(left_tile + 2U);
-    const uint8_t prop =
-        (uint8_t)((facing_left != 0U ? (uint8_t)S_FLIPX : 0U) | (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
+    const uint8_t prop = (uint8_t)(palette | (facing_left != 0U ? (uint8_t)S_FLIPX : 0U) |
+                                   (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
 
-    if (sy <= -(int16_t)kPlayerHeightPx || sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx ||
-        sx >= (int16_t)kScreenWidthPx) {
+    if (palette == (uint8_t)kSpriteHidden || sy <= -(int16_t)foot_h() || sy >= (int16_t)kScreenHeightPx ||
+        sx <= -(int16_t)kPlayerWidthPx || sx >= (int16_t)kScreenWidthPx) {
         player_hide();
         return;
     }
-    // flipping mirrors each 8x16 half, so the halves also swap sides
-    set_sprite_tile(kSpriteMarioL, facing_left != 0U ? right_tile : left_tile);
-    set_sprite_tile(kSpriteMarioR, facing_left != 0U ? left_tile : right_tile);
-    set_sprite_prop(kSpriteMarioL, prop);
-    set_sprite_prop(kSpriteMarioR, prop);
-    move_sprite(kSpriteMarioL, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-    move_sprite(kSpriteMarioR, (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+    if (big == 0U) {
+        draw_row(kSpriteMarioL, (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame)),
+                 prop, sx, sy);
+        move_sprite(kSpriteMarioLowL, 0, 0);
+        move_sprite(kSpriteMarioLowR, 0, 0);
+        return;
+    }
+    // the upper slab is shared by every pose; crouching drops it 8 px so the legs overlap it and
+    // the body reads 24 px tall without costing its own tiles
+    draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx,
+             (int16_t)(sy + (crouched != 0U ? kCrouchInsetPx : 0)));
+    draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + (uint8_t)(anim_frame * kSuperTilesPerFrame)),
+             prop, sx, (int16_t)(sy + kPlayerHeightPx));
 }
 
 uint16_t player_x(void) {
@@ -576,4 +651,20 @@ uint8_t player_on_ground(void) {
 
 uint8_t player_standing(void) {
     return (on_ground != 0U && x_speed == 0) ? 1U : 0U;
+}
+
+uint8_t player_facing_left(void) {
+    return facing_left;
+}
+
+int16_t player_box_top(void) {
+    return head_y();
+}
+
+int16_t player_feet(void) {
+    return (int16_t)(y_pos + foot_h());
+}
+
+uint8_t player_box_height(void) {
+    return (uint8_t)(foot_h() - (crouched != 0U ? kCrouchInsetPx : 0));
 }

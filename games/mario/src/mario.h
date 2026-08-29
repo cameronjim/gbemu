@@ -136,35 +136,63 @@
 #define kFrameJump 5U
 #define kWalkFrameCount 3U
 
+// super/fire mario, 16x32 = four 8x16 sprites. the pinned 0xe0-0xf7 family holds 24 tiles and one
+// 16x32 pose costs eight, so the set cannot share it: m7 takes the block between the font's last
+// glyph (0x5f) and the terrain families (0xa0..), which no other family has ever used. both sets
+// stay resident, which is what lets the grow animation alternate them without a single vram write
+#define kTileSuperFirst 0x60U
+#define kSuperTilesPerFrame 4U
+// every pose reuses one upper 16x16 slab, so only the legs cost tiles: 1 + 7 poses = 32 tiles
+#define kTileSuperUpper kTileSuperFirst
+#define kTileSuperLowerFirst (kTileSuperFirst + kSuperTilesPerFrame) // 0x64
+#define kSuperFrameCount 7U
+#define kSuperTileCount ((kSuperFrameCount + 1U) * kSuperTilesPerFrame) // 32, ids 0x60-0x7f
+// the crouch pose sits past the six small-mario poses share their order with
+#define kFrameCrouch 6U
+
+// the fire flower, in the same m7 block right after super mario
+#define kTileFlowerFirst 0x80U
+#define kFlowerTileCount 4U
+
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
-// way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop
+// way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
+// fireball as one 8x16 pair whose top tile is empty - the family is exactly full at 0xd0-0xdf
 #define kTileItemFirst 0xD0U
 #define kItemTilesPerKind 4U
 #define kTileCoinPop 0xDCU
-#define kItemTileCount 14U // 0xd0-0xdd
+#define kTileFireball 0xDEU
+#define kItemTileCount 16U // 0xd0-0xdf
 
 // the emerging item's kind, which also indexes its art and palette
 #define kItemNone 0U
 #define kItemMushroom 1U
 #define kItemStar 2U
 #define kItemOneup 3U
+#define kItemFlower 4U
+#define kItemKindCount 5U
 
-// oam slots and the cgb sprite palettes. mario 2 + one item 2 + one coin pop 1 + five enemies x 2
-// is 15 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below
+// oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
+// small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is 19
+// of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
-#define kSpriteItemL 2U
-#define kSpriteItemR 3U
-#define kSpriteCoin 4U
-#define kSpriteEnemyFirst 5U
+#define kSpriteMarioLowL 2U
+#define kSpriteMarioLowR 3U
+#define kSpriteItemL 4U
+#define kSpriteItemR 5U
+#define kSpriteCoin 6U
+#define kSpriteFireFirst 7U
+#define kSpriteEnemyFirst 9U
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
 #define kPalOneup 3U
 #define kPalCoin 4U
-// slots 5 and 6 are the enemies'; 7 stays free for m7's fire mario
 #define kPalGoomba 5U
 #define kPalKoopa 6U
+// the last free slot, spent on fire mario's white-and-red outfit. the flower and the fireball have
+// none left, so both borrow the star's white/yellow set
+#define kPalFire 7U
 
 // gbdk's move_sprite takes oam coordinates; the visible screen starts at (8, 16)
 #define kOamXOffset 8U
@@ -173,6 +201,11 @@
 // the player's sprite box; the art keeps one transparent column inside each vertical edge
 #define kPlayerWidthPx 16
 #define kPlayerHeightPx 16
+// super/fire mario is twice as tall, and crouching folds the body to 24 px by dropping its top edge
+// eight px while the feet stay put. must-measure: smb's crouch box was not read off the disassembly
+#define kPlayerBigHeightPx 32
+#define kCrouchInsetPx 8
+#define kPlayerCrouchHeightPx (kPlayerBigHeightPx - kCrouchInsetPx) // 24
 // the horizontal hitbox is 12 px centered in the 16 px sprite, so a 2 px shoulder overhangs each
 // wall before it bites; feet/head spans stay the full sprite height. must-measure: the inset is
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible
@@ -291,6 +324,26 @@
 #define kShellWakeFrames 600U
 // and the frames a freshly kicked shell cannot hurt the player, so the kick itself is not a death
 #define kShellGraceFrames 8U
+
+// the powerup chain (games/mario/src/powerup.c). the two invincibility windows come from the bible
+// through gen_physics.py; everything below is our own cadence, which the bible does not time
+#define kGrowFrames 64U
+#define kGrowFlipFrames 8U
+// how fast the injury blink and the star's palette flash alternate
+#define kBlinkMask 0x02U
+#define kStarFlashMask 0x04U
+// the prop value powerup_sprite_prop returns on a frame the blink hides him entirely
+#define kSpriteHidden 0xFFU
+// smb hands out three lives; nothing displays the counter until m8's hud
+#define kStartLives 3U
+
+// fireballs: at most two live at once, the bible's own limit for fire mario
+#define kFireballSlots 2U
+#define kFireballPx 8
+// the bible documents no landing bounce, so this rebound is ours. must-measure
+#define kFireballBouncePx -4
+// how far in front of his box centre a thrown ball starts
+#define kFireballLeadPx 6
 
 // the underground sub-area's palette set: the same tile families, tinted dark and blue
 #define kAreaMain 0U

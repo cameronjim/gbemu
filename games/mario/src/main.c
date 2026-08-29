@@ -1,4 +1,5 @@
 #include "mario.h"
+#include "terrain.h"
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
@@ -6,6 +7,8 @@
 #include <gbdk/font.h>
 #include <stdint.h>
 #include <stdio.h>
+
+enum GameState { kStateTitle, kStateCamera };
 
 // one row of vram bank 1 attribute bytes, reused for every palette-tagged row
 static uint8_t attr_row[kScreenCols];
@@ -52,11 +55,23 @@ static void draw_title(void) {
     print_centered(kPromptRow, "SPACE TO START");
 }
 
+// bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
+static void enter_camera(void) {
+    DISPLAY_OFF;
+    terrain_init();
+    SHOW_BKG;
+    DISPLAY_ON;
+}
+
 void main(void) {
+    uint8_t state = kStateTitle;
+    uint8_t keys = 0;
+    uint8_t prev = 0;
+    uint8_t pressed = 0;
+
     font_init();
     font_set(font_load(font_ibm));
 
-    // bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
     DISPLAY_OFF;
     load_palettes();
     draw_title();
@@ -65,5 +80,31 @@ void main(void) {
 
     while (1) {
         vsync();
+        prev = keys;
+        keys = joypad();
+        // edge triggered so holding start cannot re-enter the camera every frame
+        pressed = (uint8_t)(keys & (uint8_t)~prev);
+
+        if (state == kStateTitle) {
+            if ((pressed & J_START) != 0U) {
+                enter_camera();
+                state = kStateCamera;
+            }
+            continue;
+        }
+
+        // the debug camera: no player, no physics, just d-pad scroll/pan over the compiled terrain
+        if ((keys & J_RIGHT) != 0U) {
+            terrain_scroll_x((int8_t)kCamStepPx);
+        } else if ((keys & J_LEFT) != 0U) {
+            terrain_scroll_x(-(int8_t)kCamStepPx);
+        }
+        if ((keys & J_UP) != 0U) {
+            terrain_pan_y(-(int8_t)kCamStepPx);
+        } else if ((keys & J_DOWN) != 0U) {
+            terrain_pan_y((int8_t)kCamStepPx);
+        }
+        // the only bg writes of the camera state happen here, inside vblank
+        terrain_apply_scroll();
     }
 }

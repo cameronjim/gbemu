@@ -71,6 +71,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(catch2)
 
+# milestone 18 sub-milestone 2: the mario level compiler runs at configure/build time, not via gbdk
+find_package(Python3 COMPONENTS Interpreter)
+
 enable_testing()
 # palette helper is header-only frontend code, unit-tested per milestone 08
 add_executable(gbcore_tests tests/unit/apu_test.cpp tests/unit/bus_test.cpp tests/unit/cartridge_test.cpp
@@ -160,23 +163,51 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
     catch_discover_tests(crossy_tests)
 
     # milestone 18: first cgb rom, cgb-only mbc5+ram+battery, 8 banks (128kb), 8kb sram
-    set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
-    add_custom_command(
-        OUTPUT ${GB_MARIO_ROM}
-        COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8 -o ${GB_MARIO_ROM}
-                ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
-        DEPENDS games/mario/src/main.c games/mario/src/mario.h
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "building mario.gbc with gbdk lcc"
-        VERBATIM)
-    add_custom_target(mario DEPENDS ${GB_MARIO_ROM})
+    # sub-milestone 2: the level bible compiles to banked c data ahead of the gbdk build
+    if(NOT Python3_FOUND)
+        message(WARNING "python3 not found; skipping mario rom target (needs the level compiler)")
+    else()
+        set(GB_MARIO_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+        set(GB_MARIO_LEVEL_C ${GB_MARIO_GEN_DIR}/level_1_1.c)
+        set(GB_MARIO_LEVEL_H ${GB_MARIO_GEN_DIR}/level_1_1.h)
+        set(GB_MARIO_LEVEL_PROBES_H ${GB_MARIO_GEN_DIR}/level_1_1_probes.h)
+        add_custom_command(
+            OUTPUT ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/compile_level.py
+                    ${CMAKE_SOURCE_DIR}/games/mario/data/level-1-1.json ${GB_MARIO_GEN_DIR}
+            DEPENDS games/mario/tools/compile_level.py games/mario/data/level-1-1.json
+            COMMENT "compiling mario level 1-1 bible json to banked c data"
+            VERBATIM)
+        add_custom_target(mario_level DEPENDS ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H}
+                                               ${GB_MARIO_LEVEL_PROBES_H})
 
-    add_executable(mario_tests games/mario/tests/mario_test.cpp)
-    target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
-    target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
-    target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
-    add_dependencies(mario_tests mario)
-    catch_discover_tests(mario_tests)
+        set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
+        add_custom_command(
+            OUTPUT ${GB_MARIO_ROM}
+            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8 -I${GB_MARIO_GEN_DIR}
+                    -o ${GB_MARIO_ROM}
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
+                    ${GB_MARIO_LEVEL_C}
+            DEPENDS games/mario/src/main.c games/mario/src/mario.h
+                    games/mario/src/terrain.c games/mario/src/terrain.h
+                    games/mario/src/assets.c games/mario/src/assets.h
+                    ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "building mario.gbc with gbdk lcc"
+            VERBATIM)
+        add_custom_target(mario DEPENDS ${GB_MARIO_ROM})
+        add_dependencies(mario mario_level)
+
+        add_executable(mario_tests games/mario/tests/mario_test.cpp)
+        target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
+        target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
+        target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR})
+        target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
+        add_dependencies(mario_tests mario mario_level)
+        catch_discover_tests(mario_tests)
+    endif()
 else()
     message(WARNING "gbdk not found (set GBDK_HOME); skipping flappy/crossy rom targets")
 endif()

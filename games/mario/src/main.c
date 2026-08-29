@@ -222,6 +222,14 @@ void main(void) {
                     present();
                     continue;
                 }
+                // every other pipe in the game takes down, so the bonus room's own exit should too
+                if (flow_over_exit_pipe() != 0U) {
+                    pending_warp = 0xFF;
+                    player_begin_pipe_down();
+                    state = kStatePipeDown;
+                    present();
+                    continue;
+                }
             } else if ((pressed & J_UP) != 0U && flow_over_exit_pipe() != 0U) {
                 pending_warp = 0xFF;
                 player_begin_pipe_down();

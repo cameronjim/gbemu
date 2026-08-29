@@ -4490,6 +4490,48 @@ TEST_CASE("mario_pipe_round_trip") {
     REQUIRE(advanced);
 }
 
+// every other pipe in the game takes down, so the bonus room's own exit pipe should too, not just
+// up: main.c's sub-area input now checks flow_over_exit_pipe() on a down press once
+// flow_warp_under_player() comes back empty. this repeats the round trip half of
+// mario_pipe_round_trip with down instead of up
+TEST_CASE("mario_pipe_round_trip_down") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    const int overworld_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(overworld_sky >= 0);
+
+    enter_bonus_room(gameboy);
+
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(room_sky >= 0);
+    REQUIRE(room_sky != overworld_sky);
+
+    // cross the room to its exit pipe and climb onto the cap
+    REQUIRE(climb_exit_pipe(gameboy));
+
+    // down on the cap should send him back through the link, same as up does
+    press(gameboy, gb::Button::Down, 4);
+    run(gameboy, 80);
+
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == 0);
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
+
+    // camera_init frames him on where he comes to rest, so his screen box follows from the link
+    const int rest_top = static_cast<int>(kReturnTopRow) * kBlockPx - kPlayerBoxPx;
+    const int band = std::max(0, std::min(static_cast<int>(kScyMax),
+                                          rest_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx));
+    const Mario back = mario_at(gameboy);
+    REQUIRE(back.found);
+    REQUIRE(back.left == kCamFollowX + kMarioArtInset);
+    REQUIRE(back.top == rest_top - band);
+    // and he really is standing on the pipe he went down: its cap is the row under his feet
+    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.top + kPlayerBoxPx);
+}
+
 // --- sub-milestone 6: enemies -------------------------------------------------------------------
 
 TEST_CASE("mario_goomba_spawns_and_walks") {

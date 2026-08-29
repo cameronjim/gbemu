@@ -126,6 +126,10 @@ uint32_t panel_score(void) {
     return score;
 }
 
+uint8_t panel_level(void) {
+    return level;
+}
+
 uint8_t panel_gravity_frames(void) {
     static const uint8_t kGravity[kLevelMax + 1U] = kGravityTable;
     return kGravity[level];

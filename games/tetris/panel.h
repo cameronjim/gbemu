@@ -20,6 +20,8 @@ void panel_add_lines(uint8_t n);
 
 uint32_t panel_score(void);
 
+uint8_t panel_level(void);
+
 // frames per row at the current level, from the classic gb-style curve
 uint8_t panel_gravity_frames(void);
 

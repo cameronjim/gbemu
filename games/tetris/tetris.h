@@ -135,4 +135,50 @@
 #define kRngMul 37U
 #define kRngAdd 1U
 
+// apu: master on, every channel to both ears, both ears at max volume
+#define kNr52On 0x80U
+#define kNr51All 0xFFU
+#define kNr50Max 0x77U
+
+// four rows at once is a tetris and earns the bigger chime
+#define kTetrisRows 4U
+
+// rotate: ch1, 50% duty, no sweep, a bright blip that decays in ~0.23 s
+#define kRotateSweep 0x00U
+#define kRotateDuty 0x80U
+#define kRotateEnvelope 0xF1U
+#define kRotateFreqLo 0x80U
+#define kRotateFreqHi 0x87U // trigger plus freq 0x780: 1024 hz
+
+// lock: ch4 noise on a low divisor, a short deep thud
+#define kLockLength 0x00U
+#define kLockEnvelope 0xF1U
+#define kLockPoly 0x56U // 15 bit lfsr, shift 5, divisor 6
+#define kLockTrigger 0x80U
+
+// line clear: ch2, one clean tone ringing ~0.47 s
+#define kClearDuty 0x80U
+#define kClearEnvelope 0xF2U
+#define kClearFreqLo 0x00U
+#define kClearFreqHi 0x87U // trigger plus freq 0x700: 512 hz
+
+// a four row clear gets its own note: an octave and a half up, ringing ~0.94 s
+#define kTetrisEnvelope 0xF4U
+#define kTetrisFreqLo 0xA0U
+#define kTetrisFreqHi 0x87U // trigger plus freq 0x7a0: 1365 hz
+
+// level up: ch1, a fast rising whoop the sweep's own overflow cuts off
+#define kLevelSweep 0x15U // period 1, upward, shift 5
+#define kLevelDuty 0x80U
+#define kLevelEnvelope 0xF1U
+#define kLevelFreqLo 0x00U
+#define kLevelFreqHi 0x86U // trigger plus freq 0x600: 256 hz
+
+// game over: ch1 sweeping down, the longest sound in the game
+#define kOverSweep 0x4CU // period 4, downward, shift 4
+#define kOverDuty 0x80U
+#define kOverEnvelope 0xF5U
+#define kOverFreqLo 0x00U
+#define kOverFreqHi 0x87U // trigger plus freq 0x700: 512 hz
+
 #endif

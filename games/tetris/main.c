@@ -3,6 +3,7 @@
 #include "piece.h"
 #include "pieces.h"
 #include "save.h"
+#include "sfx.h"
 #include "tetris.h"
 #include "well.h"
 
@@ -217,6 +218,7 @@ static void spawn_next(void) {
 
     if (piece_spawn_blocked(id)) {
         piece_hide();
+        sfx_over();
         save_record(panel_score());
         build_popup(panel_score());
         state = kStateOver;
@@ -272,13 +274,20 @@ static void das_step(uint8_t keys) {
 
 static void lock_piece(void) {
     uint8_t cleared;
+    uint8_t was_level;
 
     piece_bake();
     piece_hide();
+    sfx_lock();
     drop_hold = 1;
     cleared = well_mark_full();
     if (cleared != 0U) {
+        was_level = panel_level();
         panel_add_lines(cleared);
+        sfx_clear(cleared);
+        if (panel_level() != was_level) {
+            sfx_level();
+        }
         flash = kFlashFrames;
         state = kStateFlash;
         return;
@@ -290,11 +299,12 @@ static void play_frame(uint8_t keys, uint8_t pressed) {
     uint8_t step = 0;
     uint8_t soft = 0;
 
-    if (pressed & J_A) {
-        piece_rotate(1);
+    // only a rotation the well actually accepted blips
+    if ((pressed & J_A) && piece_rotate(1)) {
+        sfx_rotate();
     }
-    if (pressed & J_B) {
-        piece_rotate(-1);
+    if ((pressed & J_B) && piece_rotate(-1)) {
+        sfx_rotate();
     }
     das_step(keys);
 
@@ -334,6 +344,7 @@ void main(void) {
     SPRITES_8x8;
     SHOW_BKG;
     save_init();
+    sfx_init();
     enter_title(0);
 
     while (1) {

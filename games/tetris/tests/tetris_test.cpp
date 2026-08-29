@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <set>
 #include <span>
@@ -649,6 +650,28 @@ uint32_t sram_best(std::span<const uint8_t> ram) {
 bool sram_has_magic(std::span<const uint8_t> ram) {
     return ram.size() > kSaveBestOffset + 3 && ram[0] == 'T' && ram[1] == 'T' && ram[2] == 'R' &&
            ram[3] == 'S';
+}
+
+// peak to peak, not peak: a triggered channel at volume zero still sits at its dac floor
+int32_t audio_swing(gb::Gameboy& gameboy, uint32_t frames) {
+    std::array<int16_t, 8192> buffer{};
+    int16_t high = std::numeric_limits<int16_t>::min();
+    int16_t low = std::numeric_limits<int16_t>::max();
+    for (uint32_t i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const size_t got = gameboy.read_audio(buffer);
+        for (size_t s = 0; s < got; ++s) {
+            high = std::max(high, buffer[s]);
+            low = std::min(low, buffer[s]);
+        }
+    }
+    return high < low ? 0 : static_cast<int32_t>(high) - static_cast<int32_t>(low);
+}
+
+void drain_audio(gb::Gameboy& gameboy) {
+    std::array<int16_t, 8192> drain{};
+    while (gameboy.read_audio(drain) != 0) {
+    }
 }
 
 // runs until the falling piece has descended `rows` well-rows, counting the frames it took
@@ -1351,4 +1374,91 @@ TEST_CASE("best_score_is_unchanged_by_a_loss_and_updated_by_a_win") {
     const uint32_t third_best = read_score(gameboy);
     REQUIRE(third_best > first_best);
     REQUIRE(sram_best(gameboy.external_ram()) == third_best);
+}
+
+TEST_CASE("the_title_screen_makes_no_sound") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    drain_audio(gameboy);
+
+    // the apu is powered on at boot, but nothing triggers a channel until play starts
+    REQUIRE(audio_swing(gameboy, 30) < 512);
+}
+
+TEST_CASE("a_rotation_blips_and_a_falling_piece_does_not") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+    // the o piece's rotations are all the same footprint, so it can never prove a blip
+    skip_to_non_o_piece(gameboy);
+    // gravity is 53 frames a row at level 0, so this cannot lock and ring the thud
+    run(gameboy, 20);
+
+    const Shape before = piece_shape(gameboy);
+    bool rotated = false;
+    for (int i = 0; i < 4 && !rotated; ++i) {
+        drain_audio(gameboy);
+        REQUIRE(audio_swing(gameboy, 4) < 512);
+        tap(gameboy, gb::Button::A);
+        rotated = !(piece_shape(gameboy) == before);
+        if (rotated) {
+            // measured locally: the blip swings several thousand against a silent well
+            REQUIRE(audio_swing(gameboy, 10) > 1000);
+        }
+    }
+    REQUIRE(rotated);
+}
+
+TEST_CASE("a_line_clear_rings_out") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    bool cleared = false;
+    int32_t swing = 0;
+    for (int piece = 0; piece < 60 && !cleared; ++piece) {
+        REQUIRE(wait_for_piece(gameboy, 300));
+        const std::array<Shape, 4> shapes = probe_rotations(gameboy);
+        const Choice choice = choose_placement(occupancy(read_grid(gameboy)), shapes, 1);
+        if (choice.rot < 0) {
+            break;
+        }
+        rotate_to(gameboy, shapes[choice.rot]);
+        steer_to(gameboy, choice.left);
+        // the steering blips must die out before the drop, or they would answer for the chime
+        run(gameboy, 20);
+        drain_audio(gameboy);
+
+        const int before = count_locked(read_grid(gameboy));
+        gameboy.set_button(gb::Button::Down, true);
+        for (int f = 0; f < 300; ++f) {
+            gameboy.run_frame();
+            // the sample ring holds about ten frames, so it has to be emptied as we go
+            drain_audio(gameboy);
+            if (count_locked(read_grid(gameboy)) != before) {
+                break;
+            }
+        }
+        gameboy.set_button(gb::Button::Down, false);
+        // the chime fires on the lock frame, but the flash tiles are staged two rows a frame after it
+        for (int f = 0; f < 4 && !cleared; ++f) {
+            cleared = any_flash(read_grid(gameboy));
+            if (!cleared) {
+                gameboy.run_frame();
+                drain_audio(gameboy);
+            }
+        }
+        if (cleared) {
+            swing = audio_swing(gameboy, 8);
+            break;
+        }
+        run(gameboy, 16); // let the lock thud decay before listening to the next piece
+    }
+    REQUIRE(cleared);
+    REQUIRE(swing > 1000);
 }

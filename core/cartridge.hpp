@@ -32,6 +32,10 @@ public:
     bool has_battery() const {
         return has_battery_;
     }
+    // header 0x143: 0x80 dual-mode, 0xC0 cgb-only
+    bool cgb() const {
+        return cgb_;
+    }
     Mapper& mapper() {
         return *mapper_;
     }
@@ -47,6 +51,7 @@ private:
     uint32_t rom_size_ = 0;
     uint32_t ram_size_ = 0;
     bool has_battery_ = false;
+    bool cgb_ = false;
     std::unique_ptr<Mapper> mapper_;
 };
 

@@ -12,6 +12,24 @@ uint8_t flags_from(bool z, bool n, bool h, bool c) {
 
 Cpu::Cpu(Memory& bus) : bus_(bus) {}
 
+void Cpu::set_boot_state(bool cgb_mode) {
+    if (!cgb_mode) {
+        regs_ = CpuRegs{};
+        return;
+    }
+    // pandocs power up sequence, cgb column: a=0x11 is how games detect a cgb
+    regs_.a = 0x11;
+    regs_.f = 0x80;
+    regs_.b = 0x00;
+    regs_.c = 0x00;
+    regs_.d = 0xFF;
+    regs_.e = 0x56;
+    regs_.h = 0x00;
+    regs_.l = 0x0D;
+    regs_.sp = 0xFFFE;
+    regs_.pc = 0x0100;
+}
+
 uint32_t Cpu::step() {
     if (status_ != CpuStatus::Running) {
         return 0;

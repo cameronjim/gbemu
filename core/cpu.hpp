@@ -46,6 +46,9 @@ public:
     // services one pending interrupt or executes one instruction, returns t-cycles
     uint32_t step();
 
+    // applies the no-boot-rom handoff register set for the machine mode
+    void set_boot_state(bool cgb_mode);
+
     const CpuRegs& regs() const {
         return regs_;
     }

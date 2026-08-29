@@ -181,6 +181,18 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         add_custom_target(mario_level DEPENDS ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H}
                                                ${GB_MARIO_LEVEL_PROBES_H})
 
+        # sub-milestone 3: the physics bible generates the one header both the rom and the host
+        # golden tests read, so no constant is ever hand-transcribed twice
+        set(GB_MARIO_PHYSICS_H ${GB_MARIO_GEN_DIR}/physics_constants.h)
+        add_custom_command(
+            OUTPUT ${GB_MARIO_PHYSICS_H}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/gen_physics.py
+                    ${CMAKE_SOURCE_DIR}/games/mario/research/physics.json ${GB_MARIO_GEN_DIR}
+            DEPENDS games/mario/tools/gen_physics.py games/mario/research/physics.json
+            COMMENT "generating mario physics constants from the research bible"
+            VERBATIM)
+        add_custom_target(mario_physics DEPENDS ${GB_MARIO_PHYSICS_H})
+
         set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
         add_custom_command(
             OUTPUT ${GB_MARIO_ROM}
@@ -188,24 +200,27 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${GB_MARIO_LEVEL_C}
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
                     games/mario/src/terrain.c games/mario/src/terrain.h
+                    games/mario/src/player.c games/mario/src/player.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
+                    ${GB_MARIO_PHYSICS_H}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "building mario.gbc with gbdk lcc"
             VERBATIM)
         add_custom_target(mario DEPENDS ${GB_MARIO_ROM})
-        add_dependencies(mario mario_level)
+        add_dependencies(mario mario_level mario_physics)
 
         add_executable(mario_tests games/mario/tests/mario_test.cpp)
         target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
         target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
         target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR})
         target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
-        add_dependencies(mario_tests mario mario_level)
+        add_dependencies(mario_tests mario mario_level mario_physics)
         catch_discover_tests(mario_tests)
     endif()
 else()

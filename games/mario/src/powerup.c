@@ -6,6 +6,7 @@
 #include "powerup.h"
 
 #include "enemies.h"
+#include "hud.h"
 #include "mario.h"
 #include "physics_constants.h"
 #include "terrain.h"
@@ -21,7 +22,6 @@ static uint8_t power;
 // the bible's two windows, both already multiplied out of smb's 21-frame interval timer
 static uint16_t star_timer;
 static uint8_t injury_timer;
-static uint8_t lives;
 
 // the frozen grow/shrink animation: how long is left and which state it lands on
 static uint8_t anim_timer;
@@ -62,7 +62,6 @@ static void begin_anim(uint8_t target, uint8_t from_big, uint8_t to_big) {
 }
 
 void powerup_init(void) BANKED {
-    lives = (uint8_t)kStartLives;
     powerup_reset();
 }
 
@@ -113,18 +112,18 @@ static void publish(void) {
     }
 }
 
-uint8_t powerup_lives(void) BANKED {
-    return lives;
-}
-
 uint8_t powerup_collect(uint8_t item_kind) BANKED {
+    // roster.json pays the same flat figure for any powerup taken; the 1-up pays a life instead
+    if (item_kind != kItemOneup) {
+        hud_score = (uint16_t)(hud_score + kScoreTens(kPowerupPoints));
+    }
     if (item_kind == kItemStar) {
         star_timer = (uint16_t)kStarFrames;
         publish();
         return 0;
     }
     if (item_kind == kItemOneup) {
-        ++lives;
+        hud_add_life();
         return 0;
     }
     if (item_kind == kItemFlower) {

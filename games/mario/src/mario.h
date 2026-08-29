@@ -178,6 +178,14 @@
 #define kTileBowser 0x8AU
 #define kHazardTileCount 8U // 0x84-0x8b
 
+// m8b's hud digits, which take the last of the run between the flower and the terrain families:
+// 0x8c-0x9f is exactly twenty tiles, and an 8x16 sprite digit costs two of them (the glyph, then a
+// blank lower half). ten digits fill it to the byte, which is also why there is no coin icon tile
+#define kTileDigitFirst 0x8CU
+#define kDigitTilesPerGlyph 2U
+#define kDigitCount 10U
+#define kDigitTileCount (kDigitCount * kDigitTilesPerGlyph) // 20, ids 0x8c-0x9f
+
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
 // fireball as one 8x16 pair whose top tile is empty - the family is exactly full at 0xd0-0xdf
@@ -196,22 +204,27 @@
 #define kItemKindCount 5U
 
 // oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
-// small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is 19
-// of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below
+// small parks the lower row) + the hud's 5 + one item 2 + one coin pop 1 + two fireballs + five
+// enemies x 2 is 24 of the 40 slots; the per-scanline math is the enemy pool's problem, see
+// kEnemyRowCap below. m8b's hud sits directly behind mario because the hardware draws the first
+// ten sprites it meets in oam order: on a crowded scanline the thing that has to survive is mario,
+// then the hud, and whatever else is up there is what the hardware may drop
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteMarioLowL 2U
 #define kSpriteMarioLowR 3U
-#define kSpriteItemL 4U
-#define kSpriteItemR 5U
-#define kSpriteCoin 6U
-#define kSpriteFireFirst 7U
-#define kSpriteEnemyFirst 9U
+#define kSpriteHudFirst 4U
+#define kSpriteItemL 9U
+#define kSpriteItemR 10U
+#define kSpriteCoin 11U
+#define kSpriteFireFirst 12U
+#define kSpriteEnemyFirst 14U
 // m8a's three: a firebar's flames, the fake bowser, and up to two lift decks four sprites wide.
-// 19 + 8 + 2 + 8 = 37 of the 40 slots. the per-scanline worst case is documented at kFirebarSlots
-#define kSpriteFlameFirst 19U
-#define kSpriteBowser 27U
-#define kSpriteLiftFirst 29U
+// 24 + 6 + 2 + 8 = 40 of the 40 slots, exactly full. the per-scanline worst case is documented at
+// kFirebarSlots
+#define kSpriteFlameFirst 24U
+#define kSpriteBowser 30U
+#define kSpriteLiftFirst 32U
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
@@ -428,12 +441,13 @@
 #define kFirebarSegments 6U
 #define kFirebarRadiusPx 8
 #define kFlamePx 8
-// two bars can be on screen at once, six flames each, but only eight flame sprites exist: the pool
-// draws the nearest bar's flames first. sprites are 8x16, so 8 px apart puts two of a vertical
-// bar's flames on any one scanline - plus mario's four and a lift's four, exactly the ten the
-// hardware draws per line
+// only the bar nearest mario is ever live, so the pool needs one slot per segment and no more:
+// m8b took the two spare slots back for the hud. sprites are 8x16, so 8 px apart puts two of a
+// vertical bar's flames on any one scanline - plus mario's four and the hud's five, which is
+// eleven, one past the ten the hardware draws per line. the hud and mario are earlier in oam, so
+// the flame is what drops, and only where a bar's top segment reaches the hud band in 1-4
 #define kFirebarSlots 2U
-#define kFlameSlots 8U
+#define kFlameSlots kFirebarSegments
 
 // the fake bowser. roster.json calls him "a Little Goomba in disguise" and gives no speed, so he
 // patrols at the goomba's own half a pixel a frame; his fire breath is m9's
@@ -445,6 +459,66 @@
 // into bank 5 for it at all. smb runs its objects only while they are near the screen too, and
 // on 1-2 that is the whole level bar the last forty columns
 #define kHazardMarginPx 64U
+
+// m8b's hud (games/mario/src/hud.c). systems.md: smbd's small screen shows score, coins and time
+// in a level and moves lives and the level name to the pause screen. ours is smaller again - oam is
+// exactly full at 40 sprites and the tile run left over held ten digits and nothing else - so the
+// in-level hud is the two counters that change while he plays, coins and time, and the score shows
+// on the pause and clear cards beside the lives. must-verify against the rom pass
+#define kHudCoinDigits 2U
+#define kHudTimeDigits 3U
+#define kHudDigits (kHudCoinDigits + kHudTimeDigits) // 5, one oam slot each
+// the band the digits sit in: screen y 8, which is scanlines 8-23 for an 8x16 sprite
+#define kHudRowY 8
+#define kHudCoinX 8
+#define kHudTimeX (kScreenWidthPx - 8 - (int)(kHudTimeDigits * 8U))
+// no icon fits, so the two counters are told apart by position and by palette: coins take the
+// world coin's yellow, time borrows the star's white
+#define kPalHudCoin kPalCoin
+#define kPalHudTime kPalStar
+
+// the countdown. the bible's own cadence, pinned in the milestone doc since m4: one tick every 24
+// frames, from the level json's timer field. hurrying up is music, which is m10's, so a low timer
+// changes nothing but the digits until it reaches zero, which kills him
+#define kTimerFramesPerTick 24U
+#define kTimerMax 999U
+// the coin counter rolls over rather than resets, and the life it pays is smb's own rule
+#define kCoinsMax 99U
+#define kLivesMax 99U
+#define kScoreMax 9999U
+
+// the death beat. smb freezes the world, holds, then leaps mario up and drops him through the
+// floor; none of the three counts is sourced, so all of them are ours
+#define kDeathHoldFrames 24U
+#define kDeathLaunchPx -5
+// the leap sheds a pixel of speed every fourth frame rather than through a subpixel accumulator
+#define kDeathGravityMask 0x03U
+#define kDeathMaxFallPx 5
+// a pit or a lava pool has already taken him below the level, so that death only holds
+#define kDeathFromHit 0U
+#define kDeathFromPit 1U
+
+// the cards, all our own cadence. the clear card counts the remaining time into points at smb's
+// own 50 a tick, a few ticks a frame so a full 400 does not outlast the card
+#define kGameOverFrames 120U
+#define kClearCardFrames 90U
+#define kTimeBonusTicksPerFrame 8U
+
+// sram (games/mario/src/save.c), the crossy/flappy layout with mario's own magic. systems.md:
+// smbd saves per level, and the english build resets form and score on a reload - so the slot is
+// the furthest level reached plus the score standing when it was written, and a continue starts
+// that level small with a fresh three lives
+#define kSramBase 0xA000U
+#define kSaveMagic0 'M'
+#define kSaveMagic1 'A'
+#define kSaveMagic2 'R'
+#define kSaveMagic3 '1'
+#define kSaveLevelOffset 4U
+#define kSaveScoreOffset 5U
+
+// the title's two entries once a save exists; up and down move between them
+#define kMenuNewGame 0U
+#define kMenuContinue 1U
 
 // the m2 debug camera (no player, free d-pad scroll) still ships, entered with b from the title now
 // that select is the play camera's look-ahead. define this to 0 to drop the state from the rom
@@ -459,11 +533,20 @@
 #define kEnemyLab 1
 #endif
 
-// the title's level select: up and down step through world one before start begins it. without it
-// a test that wants 1-4 has to clear the three levels ahead of it first, which is minutes of
-// emulation for one probe. define this to 0 to drop it
+// the title's level select: left and right step through world one before start begins it. it moved
+// off up/down in m8b, which the new-game/continue menu now owns. without it a test that wants 1-4
+// has to clear the three levels ahead of it first, which is minutes of emulation for one probe.
+// define this to 0 to drop it
 #ifndef kLevelSelect
 #define kLevelSelect 1
 #endif
+
+// the timer lab: a from the title starts the selected level with a countdown of kShortTimerTicks
+// instead of the bible's. a real 400 is 9600 frames of idling for one probe, which is minutes of
+// host emulation. define this to 0 to drop it
+#ifndef kTimerLab
+#define kTimerLab 1
+#endif
+#define kShortTimerTicks 70U
 
 #endif

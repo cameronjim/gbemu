@@ -209,7 +209,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         add_custom_command(
             OUTPUT ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H} ${GB_MARIO_LEVELS_HOST_H}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/gen_levels.py
-                    ${GB_MARIO_GEN_DIR} ${GB_MARIO_LEVELS}
+                    ${GB_MARIO_GEN_DIR} --bank ${GB_MARIO_AREA_BANK} ${GB_MARIO_LEVELS}
             DEPENDS games/mario/tools/gen_levels.py ${GB_MARIO_LEVEL_H}
             COMMENT "binding the mario level table"
             VERBATIM)
@@ -249,6 +249,8 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/flow.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/hud.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/save.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
@@ -264,6 +266,8 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/hazards.c games/mario/src/hazards.h
                     games/mario/src/title.c games/mario/src/title.h
                     games/mario/src/flow.c games/mario/src/flow.h
+                    games/mario/src/hud.c games/mario/src/hud.h
+                    games/mario/src/save.c games/mario/src/save.h
                     games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     games/mario/src/assets_data.c

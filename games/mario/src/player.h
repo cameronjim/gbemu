@@ -32,6 +32,10 @@ void player_place(uint16_t column, uint8_t surface_row);
 // 1 while he stands squarely on top of the two-column pipe whose cap is at (column, top_row)
 uint8_t player_over_pipe(uint16_t column, uint8_t top_row);
 
+// arms the death beat from a kDeathFrom* cause, then one frame of it; 1 when he is off the level
+void player_begin_death(uint8_t from);
+uint8_t player_death_update(void);
+
 // arms the sink-into-a-pipe animation from where he stands, or the rise-out-of-one at a given cap
 void player_begin_pipe_down(void);
 void player_begin_pipe_up(uint16_t column, uint8_t top_row);

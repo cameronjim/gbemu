@@ -1,8 +1,10 @@
 #include "blocks.h"
 
 #include "assets.h"
+#include "hud.h"
 #include "level.h"
 #include "mario.h"
+#include "physics_constants.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -160,6 +162,10 @@ static void pop_coin(int16_t column, int16_t row) {
     coin_timer = 0;
     coin_active = 1;
     ++coins_collected;
+    // the hud counters are plain ram, so a coin costs an increment and an add rather than a
+    // trampoline into bank 5; hud_frame picks up the change on the same frame
+    ++hud_coins;
+    hud_score = (uint16_t)(hud_score + kScoreTens(kCoinPoints));
 }
 
 static void spawn_item(uint8_t content) {
@@ -370,6 +376,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
     if (level->block_kind[index] == kBlockListBrick && level->block_content[index] == kContentNothing &&
         blocks_player_big != 0U) {
         // the break path: compiled, but only m7's grown mario ever reaches it
+        hud_score = (uint16_t)(hud_score + kScoreTens(kBrickPoints));
         state[index] = kBlockStateGone;
         altered[altered_count] = (uint8_t)index;
         ++altered_count;
@@ -503,6 +510,8 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py, uint8_t p
         ++coins_taken;
         ++blocks_override_count;
         ++coins_collected;
+        ++hud_coins;
+        hud_score = (uint16_t)(hud_score + kScoreTens(kCoinPoints));
         terrain_write_block((int16_t)coin_col[i], (int16_t)coin_row_of[i]);
     }
 }

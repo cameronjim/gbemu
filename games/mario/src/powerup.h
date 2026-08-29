@@ -10,7 +10,7 @@
 #define kPowerSuper 1U
 #define kPowerFire 2U
 
-// once at boot: seeds the lives counter a respawn must not touch
+// once at boot, before the first level load
 void powerup_init(void) BANKED;
 
 // every level load and respawn: back to small, no timers, no fireballs
@@ -47,8 +47,5 @@ void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t
 
 // writes the live fireballs' sprites, or parks the ones that are gone
 void powerup_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
-
-// the internal lives counter m8's hud will read; a 1-up is all that moves it for now
-uint8_t powerup_lives(void) BANKED;
 
 #endif

@@ -41,6 +41,10 @@ void assets_load_enemy_palettes(void) BANKED;
 void assets_load_hazard_tiles(void) BANKED;
 void assets_load_enemy_palettes_castle(void) BANKED;
 
+// m8b's ten hud digit pairs at 0x8c; they borrow the coin and star sprite palettes, so there is
+// no palette loader beside this one
+void assets_load_digit_tiles(void) BANKED;
+
 // per block-kind tile ids, indexed by the kBlock* constants in mario.h; one entry per 2x2 corner.
 // the streamer reads these on every column it paints, so they are the one asset table bank 0 keeps
 extern const uint8_t kBlockTileTl[kBlockKindCount];

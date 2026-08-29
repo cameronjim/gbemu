@@ -241,8 +241,10 @@ void terrain_init(uint8_t next_area) {
     uint8_t set_palettes;
 
     level_load(next_area);
+    // every row, not just the first: the streamer repaints only the rows that differ from the
+    // cache, and m8b's cards leave the map holding text a stale cache would happily keep
     for (i = 0; i < (int16_t)kRingBlocks; ++i) {
-        ring_kinds[i][0] = 0xFFU;
+        ring_forget(i);
     }
     assets_load_bg_tiles();
     set_palettes = level_palette_set();

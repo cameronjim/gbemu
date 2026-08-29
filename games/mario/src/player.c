@@ -62,6 +62,10 @@ static uint8_t riding;
 static uint8_t drawn_mario_tile[4];
 static uint8_t drawn_mario_prop[4];
 
+// the death beat: how far into the hold he is, and whether he still has a leap to make
+static uint8_t death_timer;
+static uint8_t death_leaps;
+
 // the pipe transition: which way mario is travelling and how far he has gone
 static uint8_t pipe_phase;
 static uint8_t pipe_travel;
@@ -573,6 +577,39 @@ uint8_t player_update(uint8_t keys) {
         return kPlayerFell;
     }
     return touching_flag() != 0U ? kPlayerFlag : kPlayerAlive;
+}
+
+// smb's death: the world stops, mario holds a beat, then leaps and drops clean through the floor.
+// a pit or a lava pool has already carried him under the level, so that one only holds
+void player_begin_death(uint8_t from) {
+    stop_x();
+    y_speed = 0;
+    y_accum = 0;
+    on_ground = 0;
+    riding = 0xFF;
+    crouched = 0;
+    skidding = 0;
+    behind_bg = 0;
+    anim_frame = kFrameJump;
+    death_timer = 0;
+    death_leaps = (from == (uint8_t)kDeathFromPit) ? 0U : 1U;
+}
+
+uint8_t player_death_update(void) {
+    ++death_timer;
+    if (death_timer < (uint8_t)kDeathHoldFrames) {
+        return 0;
+    }
+    if (death_timer == (uint8_t)kDeathHoldFrames) {
+        y_speed = death_leaps != 0U ? (int8_t)kDeathLaunchPx : (int8_t)0;
+    }
+    // a plain ramp, not the physics accumulator: the beat owes nothing to the bible and bank 0 had
+    // no room for a second gravity path
+    if ((death_timer & kDeathGravityMask) == 0U && y_speed < (int8_t)kDeathMaxFallPx) {
+        y_speed = (int8_t)(y_speed + 1);
+    }
+    y_pos = (int16_t)(y_pos + y_speed);
+    return (y_pos >= (int16_t)(kLevelHeightPx + kPlayerBigHeightPx)) ? 1U : 0U;
 }
 
 void player_begin_clear(uint8_t from) {

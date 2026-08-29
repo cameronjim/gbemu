@@ -54,6 +54,15 @@ def brace(values):
     return "{" + ", ".join(str(v) for v in values) + "}"
 
 
+def tens(values):
+    # every figure in the roster's table is a multiple of ten, which is what lets the score counter
+    # hold six digits in one uint16
+    for value in values:
+        if value % 10:
+            raise SystemExit("gen_physics: %d is not a whole number of tens" % value)
+    return [value // 10 for value in values]
+
+
 def subpixels(px_per_frame):
     # smb's horizontal speeds are a signed byte: high nibble whole px, low nibble 1/16 px, so a
     # px/frame figure is exactly 16x its raw byte. anything finer than a sixteenth is not sourced
@@ -144,9 +153,26 @@ def build(bible, roster, source_path, roster_path):
     add("#define kStompChainInit %s" % brace(stomps))
     add("#define kShellChainCount %d" % len(shells))
     add("#define kShellChainInit %s" % brace(shells))
+    add("// and the same two in tens, which is the unit the score counter keeps: a runtime divide")
+    add("// on a table entry pulls sdcc's whole 16-bit division helper into bank 0")
+    add("#define kStompChainTensInit %s" % brace(tens(stomps)))
+    add("#define kShellChainTensInit %s" % brace(tens(shells)))
     add("// a fireball or a star kill pays a flat per-kind figure instead, and starts no chain")
     add("#define kGoombaKillPoints %d" % score["goomba"])
     add("#define kKoopaKillPoints %d" % score["koopa_troopa_fire_or_star"])
+    add("")
+    add("// m8b's hud scoring: what a coin, a broken brick and a powerup pay, the flagpole's five")
+    add("// height bands from the bottom up, and the clear card's per-tick time bonus")
+    add("#define kCoinPoints %d" % score["coin"])
+    add("#define kBrickPoints %d" % score["brick_block_destroyed"])
+    add("#define kPowerupPoints %d" % score["powerup_pickup"])
+    add("#define kFlagBandCount 5")
+    add("#define kFlagBandPointsInit %s"
+        % brace([score["flagpole_bottom"], score["flagpole_low_mid"], score["flagpole_mid"],
+                 score["flagpole_near_top"], score["flagpole_top"]]))
+    add("#define kTimeBonusPoints %d" % score["time_bonus_per_second"])
+    add("// smb hands out a life every hundred coins, and the counter rolls over rather than resets")
+    add("#define kCoinsPerLife %d" % score["coins_per_extra_life"])
     add("")
     add("#endif")
     return "\n".join(lines) + "\n"

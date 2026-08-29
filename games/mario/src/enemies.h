@@ -40,7 +40,4 @@ uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED;
 // writes each live enemy's two 8x16 sprites, or parks the ones that are gone or off screen
 void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
 
-// the internal score the hud will read in m8; nothing displays it yet
-uint16_t enemies_points(void) BANKED;
-
 #endif

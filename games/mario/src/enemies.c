@@ -5,6 +5,7 @@
 #include "enemies.h"
 
 #include "assets.h"
+#include "hud.h"
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
@@ -47,8 +48,10 @@ static uint8_t drawn_x[kEnemySlots];
 static uint8_t drawn_y[kEnemySlots];
 
 // the roster's own point tables, generated from games/mario/research/roster.json
-static const uint16_t kStompChain[kStompChainCount] = kStompChainInit;
-static const uint16_t kShellChain[kShellChainCount] = kShellChainInit;
+// in tens, the unit hud_score keeps: a runtime divide here would cost bank 0 sdcc's whole
+// 16-bit division helper for one add
+static const uint16_t kStompChain[kStompChainCount] = kStompChainTensInit;
+static const uint16_t kShellChain[kShellChainCount] = kShellChainTensInit;
 
 #if kEnemyLab
 // the lab roster, on the long flat run 1-1 keeps past its pits so the plain route planner can reach
@@ -73,7 +76,6 @@ static uint8_t enabled;
 
 // one shared walk phase, so every walker steps together and no slot carries its own counter
 static uint8_t anim;
-static uint16_t points;
 static uint8_t stomp_chain;
 static uint8_t shell_chain;
 
@@ -100,8 +102,11 @@ static uint8_t foot_of(const Enemy* e) {
 static void award(const uint16_t* table, uint8_t count, uint8_t* chain) {
     const uint8_t step = (*chain < count) ? *chain : (uint8_t)(count - 1U);
 
-    points = (uint16_t)(points + table[step]);
-    // roster.json ends both sequences in a 1-up; lives are m8's, so the last step just repeats
+    hud_score = (uint16_t)(hud_score + table[step]);
+    // roster.json ends both sequences in a 1-up; m8b pays that life once the table runs out
+    if (*chain >= count) {
+        hud_add_life();
+    }
     if (*chain < 0xFFU) {
         ++(*chain);
     }
@@ -439,8 +444,8 @@ static uint8_t stomp(Enemy* e) {
 // star's consecutive-defeat scoring escalates but calls its smb1-era values must-verify, so the
 // escalation is left out rather than invented
 static void award_kill(uint8_t kind) {
-    points = (uint16_t)(points +
-                        (kind == kEnemyGoomba ? (uint16_t)kGoombaKillPoints : (uint16_t)kKoopaKillPoints));
+    hud_score = (uint16_t)(hud_score + (kind == kEnemyGoomba ? kScoreTens(kGoombaKillPoints)
+                                                             : kScoreTens(kKoopaKillPoints)));
 }
 
 static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
@@ -592,7 +597,6 @@ void enemies_load_level(void) BANKED {
     shown = kEnemySlots;
     note_next_spawn();
     anim = 0;
-    points = 0;
     stomp_chain = 0;
     shell_chain = 0;
     enabled = 1;
@@ -769,8 +773,4 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             move_sprite((uint8_t)(oam + 1U), 0, 0);
         }
     }
-}
-
-uint16_t enemies_points(void) BANKED {
-    return points;
 }

@@ -708,6 +708,8 @@ def write_header(out_dir, slug, level, source_path):
         f.write("#define %s_LENGTH_COLUMNS %dU\n" % (upper, level["columns"]))
         f.write("// the rom bank the level compiles into; level.c switches into it to unpack the grid\n")
         f.write("#define %s_BANK %dU\n" % (upper, level["bank"]))
+        f.write("// the bible's countdown, in smb ticks; the hud spends one every kTimerFramesPerTick\n")
+        f.write("#define %s_TIMER %dU\n" % (upper, level["timer"]))
         f.write("// the flag pole shaft: its column and the top/bottom rows apply_flag() filled. the\n")
         f.write("// pole's own cells are walk-through, so the engine tests contact against these\n")
         f.write("#define %s_HAS_FLAG %dU\n" % (upper, 0 if level["flag_column"] is None else 1))
@@ -994,6 +996,7 @@ def compile_level(bible, bank, area_bank):
         "type": level_type,
         "bank": bank,
         "area_bank": area_bank,
+        "timer": bible["timer"],
         "grid": grid,
         "columns": built["columns"],
         "probes": built["probes"],

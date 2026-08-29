@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -115,6 +116,29 @@ constexpr uint8_t kBlockPipeBodyR = 8;
 constexpr uint8_t kBlockStair = 9;
 constexpr uint8_t kBlockFlagPole = 10;
 constexpr uint8_t kBlockCastle = 11;
+constexpr uint8_t kBlockSpent = 12;
+constexpr uint8_t kBlockCoin = 13;
+
+// sub-milestone 5's own mirrors: the reaction list's kinds, the contents enum, and the two tile
+// families the spent block and the world coin take inside the pinned 0xa8/0xbc blocks
+constexpr uint8_t kBlockListHidden = 2;
+constexpr uint8_t kContentCoin = 1;
+constexpr uint8_t kContentMushroom = 2;
+constexpr uint8_t kContentMulticoin = 5;
+constexpr int kMulticoinBudget = 10;
+constexpr uint8_t kTileSky = 0x00;
+constexpr uint8_t kTileSpentLo = 0xAC;
+constexpr uint8_t kTileSpentHi = 0xAF;
+constexpr uint8_t kTileWorldCoinLo = 0xBC;
+constexpr uint8_t kTileWorldCoinHi = 0xBF;
+constexpr uint8_t kTileItemLo = 0xD0;
+constexpr uint8_t kTileItemHi = 0xDB;
+constexpr uint8_t kTileMushroomLo = 0xD0;
+constexpr uint8_t kTileMushroomHi = 0xD3;
+constexpr uint8_t kTileOneupLo = 0xD8;
+constexpr uint8_t kTileOneupHi = 0xDB;
+constexpr uint8_t kTileCoinPopLo = 0xDC;
+constexpr uint8_t kTileCoinPopHi = 0xDD;
 
 constexpr uint16_t kBlockPx = 16;
 constexpr uint16_t kScreenWidthPx = 160;
@@ -204,7 +228,11 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile >= 0xB0 && tile <= 0xB7;
     case kBlockFlagPole:
     case kBlockCastle:
-        return tile >= 0xB8 && tile <= 0xBF;
+        return tile >= 0xB8 && tile <= 0xBB;
+    case kBlockSpent:
+        return tile >= kTileSpentLo && tile <= kTileSpentHi;
+    case kBlockCoin:
+        return tile >= kTileWorldCoinLo && tile <= kTileWorldCoinHi;
     default:
         return false;
     }
@@ -456,12 +484,14 @@ constexpr int kLevelHeightPx = 240;
 constexpr uint8_t kInRight = 0x01;
 constexpr uint8_t kInA = 0x02;
 constexpr uint8_t kInB = 0x04;
+constexpr uint8_t kInLeft = 0x08;
 
 constexpr int kLevelColumns = static_cast<int>(LEVEL_1_1_LENGTH_COLUMNS);
 constexpr int kLevelRows = static_cast<int>(LEVEL_1_1_ROWS);
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
-// two ends are walls, sky above and the death pit below are not, and the pole is walk-through
+// two ends are walls, sky above and the death pit below are not, and the pole and a world coin are
+// walk-through
 bool solid_at(int column, int row) {
     if (column < 0 || column >= kLevelColumns) {
         return true;
@@ -470,7 +500,51 @@ bool solid_at(int column, int row) {
         return false;
     }
     const uint8_t kind = kLevel11Grid[column][row];
-    return kind != kBlockEmpty && kind != kBlockFlagPole;
+    return kind != kBlockEmpty && kind != kBlockFlagPole && kind != kBlockCoin;
+}
+
+// a hidden block is sky in the grid above: only the compiled reaction list says one waits there, and
+// only a rising head turns it solid. the twin has to know, or the rom diverges from it mid-route
+struct HiddenCell {
+    int column;
+    int row;
+};
+
+constexpr int count_hidden() {
+    int n = 0;
+    for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
+        if (kLevel11Blocks[i].kind == kBlockListHidden) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+constexpr int kHiddenCount = count_hidden();
+
+constexpr std::array<HiddenCell, kHiddenCount> make_hidden() {
+    std::array<HiddenCell, kHiddenCount> out{};
+    int n = 0;
+    for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
+        if (kLevel11Blocks[i].kind == kBlockListHidden) {
+            out[static_cast<size_t>(n)] = {static_cast<int>(kLevel11Blocks[i].column),
+                                           static_cast<int>(kLevel11Blocks[i].row)};
+            ++n;
+        }
+    }
+    return out;
+}
+
+constexpr std::array<HiddenCell, kHiddenCount> kHiddenCells = make_hidden();
+
+int hidden_index(int column, int row) {
+    for (int i = 0; i < kHiddenCount; ++i) {
+        if (kHiddenCells[static_cast<size_t>(i)].column == column &&
+            kHiddenCells[static_cast<size_t>(i)].row == row) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 constexpr uint8_t kJumpTierBounds[kMarioJumpBoundCount] = kMarioJumpTierBoundsInit;
@@ -490,6 +564,20 @@ struct PlayerSim {
     uint8_t on_ground = 1;
     uint8_t jump_tier = 0;
     uint8_t a_prev = 0;
+    // one bit per compiled hidden block, set the moment a rising head materializes it. it rides
+    // inside the sim so the planner's lookahead copies inherit exactly what the real run has done
+    uint32_t hidden_solid = 0;
+    // the cell this frame's head bump struck, or (-1, -1); the bump tests search on it
+    int16_t bumped_column = -1;
+    int16_t bumped_row = -1;
+
+    bool solid(int column, int row) const {
+        if (solid_at(column, row)) {
+            return true;
+        }
+        const int h = hidden_index(column, row);
+        return h >= 0 && (hidden_solid & (1u << h)) != 0u;
+    }
 
     uint8_t abs_speed() const {
         return static_cast<uint8_t>(x_speed < 0 ? -x_speed : x_speed);
@@ -560,7 +648,8 @@ struct PlayerSim {
         const uint8_t run = (in & kInB) != 0 ? 1 : 0;
         const uint8_t speed_abs = abs_speed();
         const int8_t moving_dir = x_speed > 0 ? int8_t{1} : (x_speed < 0 ? int8_t{-1} : int8_t{0});
-        const int8_t want_dir = (in & kInRight) != 0 ? int8_t{1} : int8_t{0};
+        const int8_t want_dir =
+            (in & kInRight) != 0 ? int8_t{1} : ((in & kInLeft) != 0 ? int8_t{-1} : int8_t{0});
         uint8_t max_speed = kMarioMaxWalkSubpx;
         uint16_t adder = 0;
 
@@ -627,13 +716,13 @@ struct PlayerSim {
         const int16_t bottom_row = row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx - 1));
         if (x_speed > 0) {
             const int16_t col = col_of(hit_right());
-            if (solid_at(col, top_row) || solid_at(col, bottom_row)) {
+            if (solid(col, top_row) || solid(col, bottom_row)) {
                 x_pos = static_cast<uint16_t>((col << 4) - kHitInsetPx - kHitWidthPx);
                 stop_x();
             }
         } else if (x_speed < 0) {
             const int16_t col = col_of(hit_left());
-            if (solid_at(col, top_row) || solid_at(col, bottom_row)) {
+            if (solid(col, top_row) || solid(col, bottom_row)) {
                 x_pos = static_cast<uint16_t>(((col + 1) << 4) - kHitInsetPx);
                 stop_x();
             }
@@ -685,7 +774,18 @@ struct PlayerSim {
         on_ground = 0;
         if (y_speed < 0) {
             const int16_t row = row_of(y_pos);
-            if (solid_at(left_col, row) || solid_at(right_col, row)) {
+            const int hl = hidden_index(left_col, row);
+            const int hr = hidden_index(right_col, row);
+            // player.c's rule: a hidden block joins the collision the instant a rising head reaches it
+            const bool left_hit = solid(left_col, row) || hl >= 0;
+            const bool right_hit = solid(right_col, row) || hr >= 0;
+            if (left_hit || right_hit) {
+                const int hit = left_hit ? hl : hr;
+                bumped_column = left_hit ? left_col : right_col;
+                bumped_row = row;
+                if (hit >= 0) {
+                    hidden_solid |= (1u << hit);
+                }
                 y_pos = static_cast<int16_t>((row + 1) << 4);
                 y_speed = 0;
                 y_accum = 0;
@@ -693,15 +793,15 @@ struct PlayerSim {
             return;
         }
         const int16_t row = row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx - 1));
-        if (solid_at(left_col, row) || solid_at(right_col, row)) {
+        if (solid(left_col, row) || solid(right_col, row)) {
             y_pos = static_cast<int16_t>((row << 4) - kPlayerBoxPx);
             y_speed = 0;
             y_accum = 0;
             on_ground = 1;
             return;
         }
-        if ((y_pos & 15) == 0 && (solid_at(left_col, static_cast<int16_t>(row + 1)) ||
-                                  solid_at(right_col, static_cast<int16_t>(row + 1)))) {
+        if ((y_pos & 15) == 0 && (solid(left_col, static_cast<int16_t>(row + 1)) ||
+                                  solid(right_col, static_cast<int16_t>(row + 1)))) {
             y_speed = 0;
             y_accum = 0;
             on_ground = 1;
@@ -709,6 +809,8 @@ struct PlayerSim {
     }
 
     void step(uint8_t in) {
+        bumped_column = -1;
+        bumped_row = -1;
         step_speed(in);
         move_x();
         collide_x();
@@ -822,9 +924,9 @@ struct Route {
 // frame therefore falls out of the search rather than being hand-placed, and the hold length is
 // whichever one buys the most ground. `goal` ends the route at a world x; `to_flag` ends it on pole
 // contact instead.
-Route plan_route(uint16_t goal, bool to_flag, int frame_cap) {
+Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = PlayerSim{}) {
     Route route;
-    PlayerSim sim;
+    PlayerSim sim = start;
     int jump_left = 0;
 
     for (int frame = 0; frame < frame_cap; ++frame) {
@@ -871,11 +973,13 @@ void replay(gb::Gameboy& gameboy, const std::vector<uint8_t>& script, size_t fro
     for (size_t i = from; i < to && i < script.size(); ++i) {
         const uint8_t in = script[i];
         gameboy.set_button(gb::Button::Right, (in & kInRight) != 0);
+        gameboy.set_button(gb::Button::Left, (in & kInLeft) != 0);
         gameboy.set_button(gb::Button::B, (in & kInB) != 0);
         gameboy.set_button(gb::Button::A, (in & kInA) != 0);
         gameboy.run_frame();
     }
     gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::Left, false);
     gameboy.set_button(gb::Button::B, false);
     gameboy.set_button(gb::Button::A, false);
 }
@@ -894,6 +998,355 @@ int first_tile_row(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
         }
     }
     return -1;
+}
+
+// --- sub-milestone 5: blocks, items and the pipe sub-area ---------------------------------------
+
+// how many visible 8x8 bg cells carry a tile in [lo, hi]
+int bg_family_cells(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int n = 0;
+    for (uint32_t ty = 0; ty < 18; ++ty) {
+        for (uint32_t tx = 0; tx < 20; ++tx) {
+            const uint16_t id = ids[(ty * 8 + 3) * gb::kLcdWidth + tx * 8 + 3];
+            if ((id & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(id & 0xFFu);
+            if (tile >= lo && tile <= hi) {
+                ++n;
+            }
+        }
+    }
+    return n;
+}
+
+// the sprite box of the sprites drawn from tiles in [lo, hi]; found stays false when none is drawn
+struct SpriteBox {
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    bool found = false;
+};
+
+SpriteBox sprite_box(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    SpriteBox box;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile < lo || tile > hi) {
+            continue;
+        }
+        const int x = static_cast<int>(i % gb::kLcdWidth);
+        const int y = static_cast<int>(i / gb::kLcdWidth);
+        if (!box.found || x < box.left) {
+            box.left = x;
+        }
+        if (!box.found || x > box.right) {
+            box.right = x;
+        }
+        if (!box.found || y < box.top) {
+            box.top = y;
+        }
+        box.found = true;
+    }
+    return box;
+}
+
+// the rgb555 of the first visible pixel belonging to a bg tile in [lo, hi], or -1
+int family_color(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= lo && tile <= hi) {
+            return static_cast<int>(colors[i]);
+        }
+    }
+    return -1;
+}
+
+// the first compiled block holding `content`, restricted to a row a jump off the ground can reach
+const LevelBlock* block_holding(uint8_t content, uint8_t row) {
+    for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
+        if (kLevel11Blocks[i].content == content && kLevel11Blocks[i].row == row) {
+            return &kLevel11Blocks[i];
+        }
+    }
+    return nullptr;
+}
+
+const LevelBlock* hidden_block() {
+    for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
+        if (kLevel11Blocks[i].kind == kBlockListHidden) {
+            return &kLevel11Blocks[i];
+        }
+    }
+    return nullptr;
+}
+
+// how long a held jump the bump searches use; a full rise clears a block row off the ground with
+// room to spare, and the search only cares which cell the head reaches
+constexpr int kBumpHoldFrames = 60;
+
+// appends one straight-up jump from wherever the twin stands and reports whether its head bump
+// struck (column, row). the script is left mid-jump on success, which is where the rom is watched
+bool append_bump(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t column, uint8_t row) {
+    for (int i = 0; i < 240 && (sim.on_ground == 0 || sim.a_prev != 0); ++i) {
+        script.push_back(0);
+        sim.step(0);
+    }
+    if (sim.on_ground == 0) {
+        return false;
+    }
+    for (int i = 0; i < kBumpHoldFrames + 90; ++i) {
+        const uint8_t in = i < kBumpHoldFrames ? static_cast<uint8_t>(kInA) : uint8_t{0};
+        script.push_back(in);
+        sim.step(in);
+        if (sim.bumped_column == static_cast<int16_t>(column) &&
+            sim.bumped_row == static_cast<int16_t>(row)) {
+            return true;
+        }
+        if (i > 4 && sim.on_ground != 0) {
+            return false;
+        }
+    }
+    return false;
+}
+
+struct BumpPlan {
+    std::vector<uint8_t> script;
+    PlayerSim end;
+    bool found = false;
+};
+
+// rides the route planner past whatever stands between the level start and the block, then searches
+// which frame of that run to let go on: coasting to a stop from any of them puts mario somewhere
+// different, and only some of those spots put his head under the cell. the twin reports which cell
+// the bump struck, so no frame number here is hand-placed
+BumpPlan plan_bump(uint16_t column, uint8_t row) {
+    const Route approach = plan_route(static_cast<uint16_t>((column - 3) * kBlockPx), false, 4000);
+    if (!approach.reached) {
+        return {};
+    }
+
+    std::vector<uint8_t> full = approach.script;
+    std::vector<PlayerSim> states;
+    {
+        PlayerSim sim;
+        states.push_back(sim);
+        for (uint8_t in : full) {
+            sim.step(in);
+            states.push_back(sim);
+        }
+        // the planner stops the moment its goal is met, so walking on covers the columns past it
+        for (int i = 0; i < 260; ++i) {
+            full.push_back(kInRight);
+            sim.step(kInRight);
+            states.push_back(sim);
+        }
+    }
+
+    // coasting from a run overshoots by tens of pixels, and past a pit there is no earlier grounded
+    // frame to let go on, so the search also gets to brake into the spot
+    static constexpr int kBrakes[] = {0, 4, 8, 12, 16, 20, 26, 32};
+    for (size_t f = 0; f < states.size(); ++f) {
+        if (states[f].on_ground == 0) {
+            continue;
+        }
+        for (int brake : kBrakes) {
+            PlayerSim sim = states[f];
+            std::vector<uint8_t> script(full.begin(), full.begin() + static_cast<long>(f));
+            for (int i = 0; i < brake; ++i) {
+                script.push_back(kInLeft);
+                sim.step(kInLeft);
+            }
+            for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+                script.push_back(0);
+                sim.step(0);
+            }
+            if (sim.x_speed != 0 || sim.on_ground == 0) {
+                continue;
+            }
+            if (append_bump(sim, script, column, row)) {
+                BumpPlan plan;
+                plan.script = script;
+                plan.end = sim;
+                plan.found = true;
+                return plan;
+            }
+        }
+    }
+    return {};
+}
+
+bool standing_on_pipe(const PlayerSim& sim, uint16_t column, uint8_t top_row) {
+    if (sim.on_ground == 0) {
+        return false;
+    }
+    if (PlayerSim::row_of(static_cast<int16_t>(sim.y_pos + kPlayerBoxPx)) != static_cast<int16_t>(top_row)) {
+        return false;
+    }
+    return PlayerSim::col_of(sim.hit_left()) <= static_cast<int16_t>(column + 1) &&
+           PlayerSim::col_of(sim.hit_right()) >= static_cast<int16_t>(column);
+}
+
+// searches a way to end up standing still on a pipe's cap: the rom only takes a pipe press from
+// exactly that stance. every grounded frame of a run to the right is a candidate to brake on, and
+// every jump off one is a candidate to land from, so neither the takeoff nor the braking is a
+// hand-placed frame number
+Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_row, int frame_cap) {
+    static constexpr int kBrakes[] = {0, 2, 4, 6, 8, 12, 16, 20, 26, 32};
+    // a cap is two columns wide and a run cannot be braked inside it, so the walk is searched too
+    static constexpr uint8_t kGaits[] = {static_cast<uint8_t>(kInRight | kInB), kInRight};
+    PlayerSim base = start;
+    std::vector<uint8_t> prefix;
+
+    // brakes to a halt from wherever `sim` is and reports the route when the halt lands on the cap
+    const auto settle = [&](const PlayerSim& sim, const std::vector<uint8_t>& tail) -> Route {
+        for (int brake : kBrakes) {
+            PlayerSim held = sim;
+            std::vector<uint8_t> stopping = tail;
+            for (int i = 0; i < brake; ++i) {
+                stopping.push_back(kInLeft);
+                held.step(kInLeft);
+            }
+            for (int i = 0; i < 240 && held.x_speed != 0; ++i) {
+                stopping.push_back(0);
+                held.step(0);
+            }
+            if (held.x_speed != 0 || !standing_on_pipe(held, column, top_row)) {
+                continue;
+            }
+            Route route;
+            route.script = prefix;
+            route.script.insert(route.script.end(), stopping.begin(), stopping.end());
+            route.end = held;
+            route.reached = true;
+            return route;
+        }
+        return {};
+    };
+
+    for (uint8_t gait : kGaits) {
+        base = start;
+        prefix.clear();
+        for (int frame = 0; frame < frame_cap; ++frame) {
+            if (base.on_ground != 0) {
+                const Route here = settle(base, {});
+                if (here.reached) {
+                    return here;
+                }
+            }
+            if (base.on_ground != 0 && base.a_prev == 0) {
+                for (int hold : kPlanHolds) {
+                    PlayerSim sim = base;
+                    std::vector<uint8_t> tail;
+                    for (int i = 0; i < 240; ++i) {
+                        uint8_t in = gait;
+                        if (i < hold) {
+                            in |= kInA;
+                        }
+                        tail.push_back(in);
+                        sim.step(in);
+                        if (sim.fell()) {
+                            break;
+                        }
+                        if (i > 2 && sim.on_ground != 0) {
+                            const Route landed = settle(sim, tail);
+                            if (landed.reached) {
+                                return landed;
+                            }
+                            break;
+                        }
+                    }
+                }
+                // a run cannot be braked inside two columns, so the other way up is a standing hop
+                // with just enough of a rightward nudge to clear the lip
+                PlayerSim stopped = base;
+                std::vector<uint8_t> lead;
+                for (int i = 0; i < 240 && stopped.x_speed != 0; ++i) {
+                    lead.push_back(0);
+                    stopped.step(0);
+                }
+                if (stopped.x_speed != 0 || stopped.on_ground == 0) {
+                    continue;
+                }
+                for (int hold : kPlanHolds) {
+                    for (int nudge = 0; nudge <= 48; nudge += 2) {
+                        PlayerSim sim = stopped;
+                        std::vector<uint8_t> tail = lead;
+                        bool landed = false;
+                        for (int i = 0; i < 200 && !landed; ++i) {
+                            uint8_t in = 0;
+                            if (i < hold) {
+                                in |= kInA;
+                            }
+                            if (i < nudge) {
+                                in |= kInRight;
+                            }
+                            tail.push_back(in);
+                            sim.step(in);
+                            landed = i > 2 && sim.on_ground != 0;
+                        }
+                        if (!landed) {
+                            continue;
+                        }
+                        const Route hop = settle(sim, tail);
+                        if (hop.reached) {
+                            return hop;
+                        }
+                    }
+                }
+            }
+            prefix.push_back(gait);
+            base.step(gait);
+            if (base.fell()) {
+                break;
+            }
+        }
+    }
+    return {};
+}
+
+// one frame's worth of what the block and item tests watch for
+struct Sighting {
+    bool coin_pop = false;
+    bool spent_face = false;
+    bool item = false;
+};
+
+Sighting look(const gb::Gameboy& gameboy) {
+    Sighting out;
+    out.coin_pop = sprite_box(gameboy, kTileCoinPopLo, kTileCoinPopHi).found;
+    out.spent_face = bg_family_cells(gameboy, kTileSpentLo, kTileSpentHi) > 0;
+    out.item = sprite_box(gameboy, kTileItemLo, kTileItemHi).found;
+    return out;
+}
+
+std::vector<Sighting> replay_watched(gb::Gameboy& gameboy, const std::vector<uint8_t>& script) {
+    std::vector<Sighting> seen;
+    seen.reserve(script.size());
+    for (size_t i = 0; i < script.size(); ++i) {
+        replay(gameboy, script, i, i + 1);
+        seen.push_back(look(gameboy));
+    }
+    return seen;
+}
+
+// the twin state the rom is in once it drops mario into a grid at a start cell
+PlayerSim sim_at(uint16_t column, uint8_t surface_row) {
+    PlayerSim sim;
+    sim.x_pos = static_cast<uint16_t>(column * kBlockPx);
+    sim.y_pos = static_cast<int16_t>(surface_row * kBlockPx - kPlayerBoxPx);
+    sim.jump_origin_y = sim.y_pos;
+    return sim;
 }
 
 // every visible cell is one of the families the terrain may legitimately render as
@@ -1660,4 +2113,393 @@ TEST_CASE("mario_autopilot_completes_1_1") {
         glyph_span(gameboy, kPromptRow, kFontFirstTile + 1, kFontLastTile);
     REQUIRE(prompt_left >= 0);
     REQUIRE(prompt_left + prompt_right == 19);
+}
+
+// --- sub-milestone 5: block reactions, items and the pipe sub-area ------------------------------
+
+TEST_CASE("mario_bump_coin_block") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the first coin-holding question block a jump off the ground can reach, taken from the
+    // compiled reaction list rather than from level-1-1.json by hand
+    const LevelBlock* block = block_holding(kContentCoin, 9);
+    REQUIRE(block != nullptr);
+    REQUIRE(block->kind != kBlockListHidden);
+
+    BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    const std::vector<Sighting> before = replay_watched(gameboy, plan.script);
+    // nothing is spent and no coin has popped until the block is actually struck
+    REQUIRE(!before.front().spent_face);
+    REQUIRE(!before.front().coin_pop);
+
+    int coin_frames = 0;
+    bool spent = false;
+    int raised = 999;
+    for (int i = 0; i < 60; ++i) {
+        gameboy.run_frame();
+        const Sighting now = look(gameboy);
+        coin_frames += now.coin_pop ? 1 : 0;
+        spent = spent || now.spent_face;
+        const int face = first_tile_row(gameboy, kTileSpentLo, kTileSpentHi);
+        if (face >= 0 && face < raised) {
+            raised = face;
+        }
+    }
+    // the coin arcs above the block for a while, and the face it left behind is the spent family
+    REQUIRE(coin_frames > 10);
+    REQUIRE(spent);
+
+    // and the block bounced on the way: its face spent kBumpFrames drawn one tile row higher than
+    // the row it settles back on
+    const int settled = first_tile_row(gameboy, kTileSpentLo, kTileSpentHi);
+    REQUIRE(settled >= 0);
+    REQUIRE(settled - raised == 8);
+
+    // and a second bump of the same block pays out nothing at all
+    std::vector<uint8_t> again;
+    PlayerSim sim = plan.end;
+    for (int i = 0; i < 200; ++i) {
+        const uint8_t in = (i >= 40 && i < 40 + kBumpHoldFrames) ? static_cast<uint8_t>(kInA) : uint8_t{0};
+        again.push_back(in);
+        sim.step(in);
+    }
+    run(gameboy, 40);
+    const std::vector<Sighting> second = replay_watched(gameboy, again);
+    int second_coins = 0;
+    for (const Sighting& seen : second) {
+        second_coins += seen.coin_pop ? 1 : 0;
+    }
+    REQUIRE(second_coins == 0);
+    REQUIRE(look(gameboy).spent_face);
+}
+
+TEST_CASE("mario_mushroom_emerges_and_walks") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the bible's mushroom_fire block in the opening pyramid; small mario gets the mushroom
+    const LevelBlock* block = block_holding(kContentMushroom, 9);
+    REQUIRE(block != nullptr);
+
+    BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, plan.script, 0, plan.script.size());
+
+    // physics.json timers.powerup_emergence: 16 px at 1 px every 4 frames, so 64 frames all told
+    constexpr int kRiseFrames = 64;
+    constexpr int kRisePx = 16;
+
+    int appeared = -1;
+    SpriteBox first;
+    for (int i = 0; i < 30 && appeared < 0; ++i) {
+        gameboy.run_frame();
+        first = sprite_box(gameboy, kTileMushroomLo, kTileMushroomHi);
+        if (first.found) {
+            appeared = i;
+        }
+    }
+    REQUIRE(appeared >= 0);
+    // the block is spent from the bump, not from the item finally clearing it
+    REQUIRE(look(gameboy).spent_face);
+
+    run(gameboy, kRiseFrames);
+    const SpriteBox risen = sprite_box(gameboy, kTileMushroomLo, kTileMushroomHi);
+    REQUIRE(risen.found);
+    // fully out: a whole block higher than where it started, within the frame or two of scanout lag
+    REQUIRE(first.top - risen.top >= kRisePx - 4);
+    REQUIRE(first.top - risen.top <= kRisePx + 4);
+
+    // then it walks at the bible's post-emergence speed. mario is standing still, so the camera is
+    // parked and screen px are world px
+    const int walk_frames = 40;
+    const SpriteBox from = risen;
+    run(gameboy, walk_frames);
+    const SpriteBox to = sprite_box(gameboy, kTileMushroomLo, kTileMushroomHi);
+    REQUIRE(to.found);
+    const int advanced = to.left - from.left;
+    REQUIRE(advanced >= walk_frames - 6);
+    REQUIRE(advanced <= walk_frames + 6);
+
+    // it keeps going right until the pipe turns it, then comes back the way it came. leaving the
+    // view and never returning would mean it despawned instead of turning
+    int rightmost = to.left;
+    int turned_back = -1;
+    for (int i = 0; i < 260; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTileMushroomLo, kTileMushroomHi);
+        if (!now.found) {
+            continue;
+        }
+        if (now.left > rightmost) {
+            rightmost = now.left;
+        } else if (rightmost - now.left > 8) {
+            turned_back = now.left;
+            break;
+        }
+    }
+    REQUIRE(rightmost > from.left + 40);
+    REQUIRE(turned_back >= 0);
+}
+
+TEST_CASE("mario_hidden_block_materializes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* block = hidden_block();
+    REQUIRE(block != nullptr);
+    // the compiler leaves the cell as sky, which is what the probe golden already asserts
+    REQUIRE(kLevel11Grid[block->column][block->row] == kBlockEmpty);
+
+    BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+    // the approach must not have found it already, or "before contact" would mean nothing
+    REQUIRE(plan.end.hidden_solid != 0u);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    const std::vector<Sighting> before = replay_watched(gameboy, plan.script);
+    bool early_face = false;
+    for (size_t i = 0; i + 4 < before.size(); ++i) {
+        early_face = early_face || before[i].spent_face;
+    }
+    REQUIRE(!early_face);
+
+    // the bump reveals the block and dispenses its 1-up
+    bool spent = false;
+    bool oneup = false;
+    int peak = 0;
+    for (int i = 0; i < 90; ++i) {
+        gameboy.run_frame();
+        spent = spent || look(gameboy).spent_face;
+        oneup = oneup || sprite_box(gameboy, kTileOneupLo, kTileOneupHi).found;
+        const Mario m = mario_at(gameboy);
+        if (m.found && (i == 0 || m.top < peak)) {
+            peak = m.top;
+        }
+    }
+    REQUIRE(spent);
+    REQUIRE(oneup);
+    // the rise stopped on the block's underside: one block row above where he stands
+    REQUIRE(peak == kStandTop - kBlockPx * 2);
+
+    // and it is solid from now on, so a second jump from the same spot stops at the same height
+    run(gameboy, 40);
+    int again = 0;
+    for (int i = 0; i < 90; ++i) {
+        gameboy.set_button(gb::Button::A, i < kBumpHoldFrames);
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (m.found && (i == 0 || m.top < again)) {
+            again = m.top;
+        }
+    }
+    gameboy.set_button(gb::Button::A, false);
+    REQUIRE(again == peak);
+}
+
+TEST_CASE("mario_multicoin_pays_then_spends") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* block = block_holding(kContentMulticoin, 9);
+    REQUIRE(block != nullptr);
+
+    BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    // level-1-1.json calls it the ten-coin brick, so the budget is bumped out one hit at a time
+    std::vector<uint8_t> script = plan.script;
+    std::vector<size_t> hits{script.size()};
+    PlayerSim sim = plan.end;
+    for (int i = 1; i < kMulticoinBudget + 1; ++i) {
+        REQUIRE(append_bump(sim, script, block->column, block->row));
+        hits.push_back(script.size());
+    }
+    REQUIRE(hits.size() == static_cast<size_t>(kMulticoinBudget + 1));
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    const std::vector<Sighting> seen = replay_watched(gameboy, script);
+
+    // every one of the budget's hits pays a coin out, and the face stays a brick while it lasts
+    int paid = 0;
+    for (size_t i = 0; i + 1 < hits.size(); ++i) {
+        bool coin = false;
+        for (size_t f = hits[i]; f < hits[i + 1] && f < seen.size(); ++f) {
+            coin = coin || seen[f].coin_pop;
+        }
+        paid += coin ? 1 : 0;
+    }
+    REQUIRE(paid >= kMulticoinBudget - 1);
+    REQUIRE(!seen[hits.front()].spent_face);
+
+    // the hit that empties it turns the brick into a spent block, and the next one pays nothing
+    run(gameboy, 40);
+    REQUIRE(look(gameboy).spent_face);
+
+    std::vector<uint8_t> extra;
+    append_bump(sim, extra, block->column, block->row);
+    const std::vector<Sighting> after = replay_watched(gameboy, extra);
+    int extra_coins = 0;
+    for (const Sighting& s : after) {
+        extra_coins += s.coin_pop ? 1 : 0;
+    }
+    REQUIRE(extra_coins == 0);
+    REQUIRE(look(gameboy).spent_face);
+}
+
+namespace {
+
+// the compiled links: the bible's enterable pipe, the room behind it, and the way back out
+constexpr uint16_t kPipeColumn = LEVEL_1_1_PIPE_ENTRY_COLUMN;
+constexpr uint8_t kPipeTopRow = LEVEL_1_1_PIPE_ENTRY_TOP_ROW;
+constexpr uint16_t kExitColumn = LEVEL_1_1_AREA0_EXIT_COLUMN;
+constexpr uint8_t kExitTopRow = LEVEL_1_1_AREA0_EXIT_TOP_ROW;
+constexpr uint16_t kReturnColumn = LEVEL_1_1_AREA0_RETURN_COLUMN;
+constexpr uint8_t kReturnTopRow = LEVEL_1_1_AREA0_RETURN_TOP_ROW;
+
+// walks the rom from the level start onto the enterable pipe and presses down; leaves it inside the
+// bonus room with the transition finished
+Route enter_bonus_room(gb::Gameboy& gameboy) {
+    const Route approach = plan_route(static_cast<uint16_t>((kPipeColumn - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, kPipeColumn, kPipeTopRow, 400);
+    REQUIRE(climb.reached);
+
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
+    run(gameboy, 4);
+    // the press is edge triggered, and the descent plus the lcd-off area rebuild take a few frames
+    press(gameboy, gb::Button::Down, 4);
+    run(gameboy, 60);
+    return climb;
+}
+
+// 1 while the pipe's cap is the row directly under his feet, which is the stance the rom's pipe
+// press wants. reading it off the screen keeps the room's navigation honest about where he is
+bool on_pipe_cap(const gb::Gameboy& gameboy) {
+    const Mario m = mario_at(gameboy);
+    return m.found && first_tile_row(gameboy, 0xB0, 0xB7) == m.top + kPlayerBoxPx;
+}
+
+// crosses the bonus room to its exit pipe and hops onto the cap. the room is one flat walk and one
+// two-block hop, so the search here is over how long to hold right into the hop, checked against
+// the screen after each try rather than replayed off a script
+bool climb_exit_pipe(gb::Gameboy& gameboy) {
+    press(gameboy, gb::Button::Right, 500);
+    run(gameboy, 30);
+    for (int nudge = 8; nudge <= 44; nudge += 2) {
+        for (int i = 0; i < 110; ++i) {
+            gameboy.set_button(gb::Button::A, i < 34);
+            gameboy.set_button(gb::Button::Right, i < nudge);
+            gameboy.run_frame();
+        }
+        gameboy.set_button(gb::Button::A, false);
+        gameboy.set_button(gb::Button::Right, false);
+        run(gameboy, 40);
+        if (on_pipe_cap(gameboy)) {
+            return true;
+        }
+        // back against the pipe's wall for the next try
+        press(gameboy, gb::Button::Left, 30);
+        press(gameboy, gb::Button::Right, 90);
+        run(gameboy, 30);
+    }
+    return false;
+}
+
+} // namespace
+
+TEST_CASE("mario_world_coin_touch_collects") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    enter_bonus_room(gameboy);
+
+    // the room's coins are world tiles, not blocks
+    const int before = bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi);
+    REQUIRE(before > 0);
+
+    // walking through them takes them off the map
+    travel(gameboy, gb::Button::Right, false, 90);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 10);
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) < before);
+}
+
+TEST_CASE("mario_pipe_round_trip") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // the backdrop is the one cell always on screen, on a pipe cap or down a hole alike
+    const int overworld_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(overworld_sky >= 0);
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == 0);
+
+    enter_bonus_room(gameboy);
+
+    // the room is its own grid with its own palette set: the same tile families, different colors
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(room_sky >= 0);
+    REQUIRE(room_sky != overworld_sky);
+    const int coins_before = bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi);
+    REQUIRE(coins_before > 0);
+
+    // cross the room to its exit pipe, collecting what is in the way, and climb onto the cap
+    REQUIRE(climb_exit_pipe(gameboy));
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) < coins_before);
+
+    // up on the cap sends him back through the link, emerging at the main area's own column
+    press(gameboy, gb::Button::Up, 4);
+    run(gameboy, 80);
+
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == 0);
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
+
+    // camera_init frames him on where he comes to rest, so his screen box follows from the link
+    const int rest_top = static_cast<int>(kReturnTopRow) * kBlockPx - kPlayerBoxPx;
+    const int band = std::max(0, std::min(static_cast<int>(kScyMax),
+                                          rest_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx));
+    const Mario back = mario_at(gameboy);
+    REQUIRE(back.found);
+    REQUIRE(back.left == kCamFollowX + kMarioArtInset);
+    REQUIRE(back.top == rest_top - band);
+    // and he really is standing on the pipe he went down: its cap is the row under his feet
+    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.top + kPlayerBoxPx);
+
+    // the level is still completable from the return point: the planner searches a route out of the
+    // pipe's cap and the rom runs it all the way to the level-clear title card
+    const Route rest = plan_route(0, true, 4000, sim_at(kReturnColumn, static_cast<uint8_t>(kReturnTopRow)));
+    REQUIRE(rest.reached);
+    replay(gameboy, rest.script, 0, rest.script.size());
+
+    // the frame-exact twin comparison is the autopilot test's job; here the route only has to end
+    // with the level cleared, so anything the pipe transition shook loose is walked off by holding
+    // right on to the pole
+    bool titled = false;
+    for (int i = 0; i < 2000 && !titled; ++i) {
+        gameboy.set_button(gb::Button::Right, i < 1200);
+        gameboy.set_button(gb::Button::B, i < 1200);
+        gameboy.run_frame();
+        const auto [left, right] = glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile);
+        titled = left >= 0 && left + right == 19;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::B, false);
+    REQUIRE(titled);
 }

@@ -31,6 +31,29 @@ BLOCK_THIN = 14
 BLOCK_LAVA = 15
 BLOCK_BRIDGE = 16
 BLOCK_AXE = 17
+# milestone 18's background pass. a surface ground block wears two rows of grass, so the rows
+# under it are their own kind; the castle became five kinds instead of one slab; the flag grew a
+# ball and a pennant; and the last twelve are scenery, stamped only where the level left sky
+BLOCK_GROUND_FILL = 18
+BLOCK_CASTLE_CRENEL = 19
+BLOCK_CASTLE_WINDOW = 20
+BLOCK_CASTLE_DOOR_TOP = 21
+BLOCK_CASTLE_DOOR = 22
+BLOCK_FLAG_BALL = 23
+BLOCK_FLAG_CLOTH = 24
+BLOCK_CLOUD_TL = 25
+BLOCK_CLOUD_T = 26
+BLOCK_CLOUD_TR = 27
+BLOCK_CLOUD_BL = 28
+BLOCK_CLOUD_B = 29
+BLOCK_CLOUD_BR = 30
+BLOCK_HILL_PEAK = 31
+BLOCK_HILL_SLOPE_L = 32
+BLOCK_HILL_SLOPE_R = 33
+BLOCK_HILL_FILL = 34
+BLOCK_BUSH_L = 35
+BLOCK_BUSH_M = 36
+BLOCK_BUSH_R = 37
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -51,7 +74,36 @@ KIND_NAMES = {
     BLOCK_LAVA: "LAVA",
     BLOCK_BRIDGE: "BRIDGE",
     BLOCK_AXE: "AXE",
+    BLOCK_GROUND_FILL: "GROUND_FILL",
+    BLOCK_CASTLE_CRENEL: "CASTLE_CRENEL",
+    BLOCK_CASTLE_WINDOW: "CASTLE_WINDOW",
+    BLOCK_CASTLE_DOOR_TOP: "CASTLE_DOOR_TOP",
+    BLOCK_CASTLE_DOOR: "CASTLE_DOOR",
+    BLOCK_FLAG_BALL: "FLAG_BALL",
+    BLOCK_FLAG_CLOTH: "FLAG_CLOTH",
+    BLOCK_CLOUD_TL: "CLOUD_TL",
+    BLOCK_CLOUD_T: "CLOUD_T",
+    BLOCK_CLOUD_TR: "CLOUD_TR",
+    BLOCK_CLOUD_BL: "CLOUD_BL",
+    BLOCK_CLOUD_B: "CLOUD_B",
+    BLOCK_CLOUD_BR: "CLOUD_BR",
+    BLOCK_HILL_PEAK: "HILL_PEAK",
+    BLOCK_HILL_SLOPE_L: "HILL_SLOPE_L",
+    BLOCK_HILL_SLOPE_R: "HILL_SLOPE_R",
+    BLOCK_HILL_FILL: "HILL_FILL",
+    BLOCK_BUSH_L: "BUSH_L",
+    BLOCK_BUSH_M: "BUSH_M",
+    BLOCK_BUSH_R: "BUSH_R",
 }
+
+# every kind a body walks straight through, which is what surface_row has to skip past and what
+# the decor stamper is allowed to overwrite nothing of
+WALK_THROUGH = frozenset(
+    [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH, BLOCK_COIN, BLOCK_AXE,
+     BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
+     BLOCK_CASTLE_DOOR]
+    + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
+)
 
 # the reaction list's own kind numbering, a contract with games/mario/src/mario.h's kBlockList*.
 # it is separate from the render kinds above because a hidden block renders as sky until it is bumped
@@ -135,6 +187,18 @@ PAD_COLUMNS = 8
 FLAG_POLE_TOP_ROW = 4
 FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
 
+# the castle that closes an overworld level: five blocks wide, five tall, standing this far past
+# the pole. smb puts it a short walk beyond the flag with clear sky between the two
+CASTLE_WIDTH = 5
+CASTLE_HEIGHT = 5
+CASTLE_FLAG_GAP = 3
+
+# scenery geometry. a hill or a bush stands on the row the ground's grass is about to grow out of;
+# a cloud carries its own row. smb's narrowest bush is its two caps back to back
+DECOR_BASE_ROW = GROUND_ROW - 1
+DECOR_BUSH_MIN_WIDTH = 2
+DECOR_CLOUD_MIN_WIDTH = 2
+
 # an underground level gets a two-row roof the bible never describes: SCHEMA.md's grid has rows
 # above the playfield and mariowiki calls 1-2 an enclosed cave, but no source places the ceiling.
 # compiler-invented, must-verify
@@ -204,7 +268,9 @@ def feature_max_x(bible):
             max_x = max(max_x, e["x"])
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
-        max_x = max(max_x, flag["x"])
+        # the castle stands past the pole, and the level has to be long enough to hold it and
+        # still leave the camera somewhere to stop
+        max_x = max(max_x, flag["x"] + CASTLE_FLAG_GAP + CASTLE_WIDTH)
     castle = bible.get("castle_end") or {}
     if castle.get("x") is not None:
         max_x = max(max_x, castle["x"])
@@ -229,6 +295,23 @@ def new_grid(length_columns, base_ground=True):
 
 def clamp_span(grid, x0, x1):
     return max(0, x0), min(len(grid) - 1, x1)
+
+
+def settle_ground(grid, probes=None):
+    # a ground block wears two rows of grass along its top, so only the topmost block of a stack is
+    # a surface: everything with ground directly above it becomes the plain rubble kind. run this
+    # last, once nothing else is still going to write ground, and it rewrites any probe it moves
+    # out from under so the golden set keeps describing the cell it names
+    moved = set()
+    for x, col in enumerate(grid):
+        for row in range(LEVEL_ROWS - 1, 0, -1):
+            if col[row] == BLOCK_GROUND and col[row - 1] == BLOCK_GROUND:
+                col[row] = BLOCK_GROUND_FILL
+                moved.add((x, row))
+    if probes is not None:
+        for i, (column, row, kind) in enumerate(probes):
+            if kind == BLOCK_GROUND and (column, row) in moved:
+                probes[i] = (column, row, BLOCK_GROUND_FILL)
 
 
 def apply_gap(grid, x0, x1, fill=BLOCK_EMPTY):
@@ -300,6 +383,43 @@ def apply_block(grid, x, y, kind):
         grid[x][y] = BLOCK_KIND_MAP.get(kind, BLOCK_EMPTY)
 
 
+def apply_flag_head(grid, col):
+    # the ball caps the shaft one row above it and the pennant hangs off the pole's left, at the
+    # row under the ball - smb's own arrangement. neither is ever forced: a cell that already
+    # holds something keeps it, and the shaft's own rows (and so the scoring bands, which key off
+    # FLAG_POLE_TOP_ROW/FLAG_POLE_BOTTOM_ROW and not off any cell's kind) are left alone
+    ball_row = FLAG_POLE_TOP_ROW - 1
+    if ball_row >= 0 and grid[col][ball_row] == BLOCK_EMPTY:
+        grid[col][ball_row] = BLOCK_FLAG_BALL
+    if col > 0 and grid[col - 1][FLAG_POLE_TOP_ROW] == BLOCK_EMPTY:
+        grid[col - 1][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_CLOTH
+
+
+def apply_castle(grid, x0):
+    # smb's small castle: a three-wide tower over a five-wide keep, its bottom row resting on the
+    # row above the ground. every cell is scenery, so it is only ever painted over sky
+    rows = [
+        [None, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, None],
+        [None, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW, None],
+        [BLOCK_CASTLE_CRENEL] * 5,
+        [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE, BLOCK_CASTLE],
+        [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR, BLOCK_CASTLE, BLOCK_CASTLE],
+    ]
+    top_row = GROUND_ROW - CASTLE_HEIGHT
+    placed = None
+    for dy, row in enumerate(rows):
+        for dx, kind in enumerate(row):
+            col = x0 + dx
+            if kind is None or col < 0 or col >= len(grid):
+                continue
+            if grid[col][top_row + dy] != BLOCK_EMPTY:
+                continue
+            grid[col][top_row + dy] = kind
+            if placed is None:
+                placed = (col, top_row + dy, kind)
+    return placed
+
+
 def apply_flag(grid, x):
     # only the column is sourced ("unknown" confidence per SCHEMA.md); the pole's height is a
     # provisional placeholder. the bible's approx flag x can land inside the end-of-level staircase
@@ -323,7 +443,7 @@ def surface_row(grid, column, first_row=0):
     if column < 0 or column >= len(grid):
         return GROUND_ROW
     for row in range(first_row, LEVEL_ROWS):
-        if grid[column][row] not in (BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_COIN, BLOCK_AXE):
+        if grid[column][row] not in WALK_THROUGH:
             return row
     return GROUND_ROW
 
@@ -358,6 +478,88 @@ def fit_lift(grid, obj):
         edge += 1
     span = min(LIFT_SPAN_MASK, max(1, edge - LIFT_BLOCKS - column))
     return (column, row, kind, (param & LIFT_REVERSE) | span)
+
+
+def decor_cells(item):
+    # one bible decor entry expanded into (column, row, kind) cells. SCHEMA.md's decor grid is the
+    # level grid: x is a block column, a cloud's y is a block row, and a hill or a bush always
+    # stands on DECOR_BASE_ROW, the row the grass is about to grow out of
+    kind = item.get("kind")
+    x = item.get("x")
+    if x is None:
+        return []
+    if kind == "big_hill":
+        # peak / slope-fill-slope / slope-fill-fill-fill-slope, five wide and three tall
+        return [
+            (x + 2, DECOR_BASE_ROW - 2, BLOCK_HILL_PEAK),
+            (x + 1, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_L),
+            (x + 2, DECOR_BASE_ROW - 1, BLOCK_HILL_FILL),
+            (x + 3, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_R),
+            (x + 0, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_L),
+            (x + 1, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 3, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 4, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_R),
+        ]
+    if kind == "small_hill":
+        return [
+            (x + 1, DECOR_BASE_ROW - 1, BLOCK_HILL_PEAK),
+            (x + 0, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_L),
+            (x + 1, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_R),
+        ]
+    if kind == "bush":
+        # the narrowest bush smb draws is its two caps back to back, so a width of one still
+        # spends two columns rather than inventing a stubbier shape
+        width = max(DECOR_BUSH_MIN_WIDTH, int(item.get("width", DECOR_BUSH_MIN_WIDTH)))
+        cells = [(x, DECOR_BASE_ROW, BLOCK_BUSH_L)]
+        cells += [(x + i, DECOR_BASE_ROW, BLOCK_BUSH_M) for i in range(1, width - 1)]
+        cells.append((x + width - 1, DECOR_BASE_ROW, BLOCK_BUSH_R))
+        return cells
+    if kind == "cloud":
+        y = item.get("y")
+        if y is None:
+            return []
+        width = max(DECOR_CLOUD_MIN_WIDTH, int(item.get("width", DECOR_CLOUD_MIN_WIDTH)))
+        top = [BLOCK_CLOUD_TL] + [BLOCK_CLOUD_T] * (width - 2) + [BLOCK_CLOUD_TR]
+        bottom = [BLOCK_CLOUD_BL] + [BLOCK_CLOUD_B] * (width - 2) + [BLOCK_CLOUD_BR]
+        cells = []
+        for i in range(width):
+            cells.append((x + i, y, top[i]))
+            cells.append((x + i, y + 1, bottom[i]))
+        return cells
+    return []
+
+
+def reserved_cells(bible):
+    # a hidden block renders as sky but its cell is spoken for, and the engine's reaction list
+    # still names it. scenery must not move into one
+    out = set()
+    for b in bible.get("blocks", []):
+        if b.get("x") is not None and b.get("y") is not None:
+            out.add((b["x"], b["y"]))
+    return out
+
+
+def apply_decor(grid, bible):
+    # scenery never displaces anything: a cell that is not open sky, or that the reaction list has
+    # claimed, or that falls outside the compiled level, is simply skipped. returns one probe per
+    # decor kind that actually landed, which is what pins the rendered families in the host test
+    # without making the golden set walk the camera past every cloud in the level
+    reserved = reserved_cells(bible)
+    probes = []
+    seen = set()
+    for item in bible.get("decor", []):
+        for column, row, kind in decor_cells(item):
+            if column < 0 or column >= len(grid) or row < 0 or row >= LEVEL_ROWS:
+                continue
+            if grid[column][row] != BLOCK_EMPTY or (column, row) in reserved:
+                continue
+            grid[column][row] = kind
+            if kind not in seen:
+                seen.add(kind)
+                probes.append((column, row, kind))
+    return probes
 
 
 def compile_grid(bible, level_type):
@@ -485,6 +687,17 @@ def compile_grid(bible, level_type):
     if flag_col is not None:
         probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE))
         probes.append((flag_col, FLAG_POLE_BOTTOM_ROW, BLOCK_FLAG_POLE))
+        apply_flag_head(grid, flag_col)
+        probes.append((flag_col, FLAG_POLE_TOP_ROW - 1, BLOCK_FLAG_BALL))
+        if flag_col > 0:
+            probes.append((flag_col - 1, FLAG_POLE_TOP_ROW, BLOCK_FLAG_CLOTH))
+        castle = apply_castle(grid, flag_col + CASTLE_FLAG_GAP)
+        if castle is not None:
+            probes.append(castle)
+
+    # the bible's own scenery, stamped last so it can only ever land on sky
+    probes.extend(apply_decor(grid, bible))
+    settle_ground(grid, probes)
 
     return {
         "grid": grid,
@@ -623,6 +836,7 @@ def compile_area(area, bible, level_ids):
         probes.append((coin_cells[-1][0], AREA_COIN_ROW, BLOCK_COIN))
     probes.append((exit_column, exit_top_row, BLOCK_PIPE_TL))
     probes.append((exit_column + 1, exit_top_row, BLOCK_PIPE_TR))
+    settle_ground(grid, probes)
 
     return {
         "kind": kind,
@@ -658,6 +872,8 @@ def compile_warp_area(area, bible, level_ids):
         apply_pipe(grid, column, AREA_WARP_PIPE_HEIGHT)
         probes.append((column, GROUND_ROW - AREA_WARP_PIPE_HEIGHT, BLOCK_PIPE_TL))
         cells.append((column, target))
+
+    settle_ground(grid, probes)
 
     # the room has no exit pipe of its own: the three warps are the way out. the exit fields still
     # carry the last pipe so a player who takes none of them is not stranded

@@ -22,6 +22,26 @@ game running in our emulator before any of this is trusted for level-building.
 - all `x` values are per-level, not per-screen. a "screen" is 16 columns wide if you need
   to convert to the classic nes screen-buffer numbering used by some guides.
 
+## decor (optional, overworld only)
+
+`decor` is the background scenery a level paints behind its terrain: the hills, bushes and
+clouds that give an overworld its depth. it is optional — a level that omits the key gets no
+scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
+
+- scenery never displaces anything. the compiler stamps it last and skips any cell that is
+  already terrain, an object, or a hidden block's reserved cell, and clips anything past the
+  compiled level length. so a placement that collides with a staircase simply loses the cells
+  it collided with, and the rest of the shape still lands.
+- `x` is the left column of the shape and uses the same grid every other coordinate does.
+- a `big_hill` is 5 columns wide and 3 rows tall, a `small_hill` 3 wide and 2 tall; both stand
+  on row 12, the row the ground's grass grows out of, and their rows are derived, never given.
+- a `bush` is `width` columns on row 12: a left cap, `width - 2` middles, a right cap. a width
+  of 1 still spends two columns, because smb's narrowest bush is its two caps back to back.
+- a `cloud` is the only kind that carries a row. `y` is its **top** row on this same grid and
+  the cloud occupies `y` and `y + 1`; `width` counts the top row's blocks including both caps.
+  a source map measured against the 13-row visible strip is 2 rows short of this grid, so add
+  2 when transcribing one.
+
 ## how positions were derived (read before trusting a coordinate)
 
 - mariouniverse.com map images (nes `smb` set and gbc `smbd` challenge/boo-race sets) were
@@ -83,6 +103,12 @@ game running in our emulator before any of this is trusted for level-building.
     {"id": "bonus-1", "kind": "bonus_room|underground|warp_zone", "entry_x": .., "exit": "...",
      "terrain": [...], "blocks": [...], "notes": "..."}
   ],
+  "decor": [
+    {"kind": "big_hill",   "x": 0,  "confidence": "..."},
+    {"kind": "small_hill", "x": 15, "confidence": "..."},
+    {"kind": "bush",  "x": 10, "width": 4, "confidence": "..."},
+    {"kind": "cloud", "x": 1, "y": 6, "width": 3, "confidence": "..."}
+  ],
   "flag": {"x": <int or null>, "confidence": "..."},
   "castle_end": {"x": <int>, "notes": "..."},
   "warps": [
@@ -103,6 +129,7 @@ game running in our emulator before any of this is trusted for level-building.
 ## enums
 
 - `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`
+- `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
 - `enemies.kind`: `goomba`, `koopa_green`, `koopa_red`, `koopa_para_green`, `koopa_para_red`,

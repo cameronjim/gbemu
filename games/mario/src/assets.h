@@ -20,11 +20,19 @@ extern const uint8_t kPipeTiles[64];
 // two tiles at 0xb8: flag pole, then the castle stone placeholder
 extern const uint8_t kFlagCastleTiles[32];
 
+// twenty-four tiles at 0xe0: six 16x16 frames (idle, three walk, skid, jump), each stored as
+// left-top, left-bottom, right-top, right-bottom so one 8x16 sprite pair covers a frame
+extern const uint8_t kMarioTiles[384];
+
 // loads every terrain tile above into vram bank 0 at its pinned id
 void assets_load_bg_tiles(void);
 
 // loads the six cgb bg palettes the terrain streamer tags cells with (see kCamPal* in mario.h)
 void assets_load_bg_palettes(void);
+
+// loads small mario's frames at 0xe0 and his warm cgb sprite palette
+void assets_load_sprite_tiles(void);
+void assets_load_sprite_palettes(void);
 
 // per block-kind tile ids, indexed by the kBlock* constants in mario.h; one entry per 2x2 corner
 extern const uint8_t kBlockTileTl[kBlockKindCount];

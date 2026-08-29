@@ -88,4 +88,38 @@
 #define kCamPalPipe 4U
 #define kCamPalNeutral 5U
 
+// sprite family 0xe0.. per the milestone's tile-id contract. small mario is 16x16 = two 8x16
+// sprites, so one animation frame costs four 8x8 tiles: left top/bottom then right top/bottom.
+#define kTileMarioFirst 0xE0U
+#define kMarioTilesPerFrame 4U
+#define kMarioFrameCount 6U
+#define kMarioTileCount (kMarioFrameCount * kMarioTilesPerFrame) // 24, ids 0xe0-0xf7
+// frame order inside the table; the three walk frames are consecutive so the cycle is one add
+#define kFrameIdle 0U
+#define kFrameWalk0 1U
+#define kFrameWalk1 2U
+#define kFrameWalk2 3U
+#define kFrameSkid 4U
+#define kFrameJump 5U
+#define kWalkFrameCount 3U
+
+// oam slots and the cgb sprite palette small mario draws with
+#define kSpriteMarioL 0U
+#define kSpriteMarioR 1U
+#define kPalMario 0U
+
+// gbdk's move_sprite takes oam coordinates; the visible screen starts at (8, 16)
+#define kOamXOffset 8U
+#define kOamYOffset 16U
+
+// the player's collision box; the art keeps one transparent column inside each vertical edge
+#define kPlayerWidthPx 16
+#define kPlayerHeightPx 16
+// our own cadence, not the bible's: the walk cycle advances once this many subpixels have passed
+#define kWalkAnimStepSubpx 48U
+
+// play camera: scy parks at the bottom of the level and scx follows once mario passes this screen x
+#define kPlayScy kScyMax
+#define kCamFollowX 64
+
 #endif

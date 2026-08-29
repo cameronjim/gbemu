@@ -162,14 +162,20 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
     add_dependencies(crossy_tests crossy)
     catch_discover_tests(crossy_tests)
 
-    # milestone 22: first-party cgb tetris skeleton, cgb-only mbc1+ram+battery, 32kb rom
+    # milestone 22: first-party cgb tetris, cgb-only mbc1+ram+battery, 32kb rom
     set(GB_TETRIS_ROM ${CMAKE_BINARY_DIR}/tetris.gb)
     add_custom_command(
         OUTPUT ${GB_TETRIS_ROM}
         COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x03 -Wm-ya1 -Wm-ynTETRIS -o ${GB_TETRIS_ROM}
                 ${CMAKE_SOURCE_DIR}/games/tetris/main.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/piece.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/pieces.c
+                ${CMAKE_SOURCE_DIR}/games/tetris/well.c
                 ${CMAKE_SOURCE_DIR}/games/tetris/assets.c
         DEPENDS games/tetris/main.c games/tetris/tetris.h
+                games/tetris/piece.c games/tetris/piece.h
+                games/tetris/pieces.c games/tetris/pieces.h
+                games/tetris/well.c games/tetris/well.h
                 games/tetris/assets.c games/tetris/assets.h
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "building tetris.gb with gbdk lcc"

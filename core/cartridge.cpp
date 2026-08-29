@@ -2,6 +2,7 @@
 
 #include "mapper_mbc1.hpp"
 #include "mapper_mbc3.hpp"
+#include "mapper_mbc5.hpp"
 #include "mapper_rom.hpp"
 
 #include <cstddef>
@@ -58,7 +59,9 @@ std::optional<Cartridge> Cartridge::parse(std::span<const uint8_t> bytes, std::s
     const uint8_t type = bytes[kHeaderType];
     const bool mbc1 = type >= 0x01 && type <= 0x03;
     const bool mbc3 = type >= 0x0F && type <= 0x13;
-    if (type != 0x00 && !mbc1 && !mbc3) {
+    // 0x1c-0x1e are the rumble variants; rumble itself is not emulated
+    const bool mbc5 = type >= 0x19 && type <= 0x1E;
+    if (type != 0x00 && !mbc1 && !mbc3 && !mbc5) {
         return reject("unknown cartridge type");
     }
 
@@ -101,7 +104,8 @@ std::optional<Cartridge> Cartridge::parse(std::span<const uint8_t> bytes, std::s
     cart.cgb_ = cgb;
     cart.rom_size_ = declared_rom;
     cart.ram_size_ = ram_size;
-    cart.has_battery_ = type == 0x03 || type == 0x0F || type == 0x10 || type == 0x13;
+    cart.has_battery_ =
+        type == 0x03 || type == 0x0F || type == 0x10 || type == 0x13 || type == 0x1B || type == 0x1E;
     std::vector<uint8_t> rom(bytes.begin(), bytes.end());
     if (mbc1) {
         cart.type_ = CartType::Mbc1;
@@ -109,6 +113,9 @@ std::optional<Cartridge> Cartridge::parse(std::span<const uint8_t> bytes, std::s
     } else if (mbc3) {
         cart.type_ = CartType::Mbc3;
         cart.mapper_ = std::make_unique<MapperMbc3>(std::move(rom), ram_size);
+    } else if (mbc5) {
+        cart.type_ = CartType::Mbc5;
+        cart.mapper_ = std::make_unique<MapperMbc5>(std::move(rom), ram_size);
     } else {
         cart.type_ = CartType::RomOnly;
         cart.mapper_ = std::make_unique<MapperRom>(std::move(rom));

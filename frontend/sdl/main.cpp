@@ -59,6 +59,8 @@ const char* cart_type_name(gb::CartType type) {
         return "mbc1";
     case gb::CartType::Mbc3:
         return "mbc3";
+    case gb::CartType::Mbc5:
+        return "mbc5";
     }
     return "unknown";
 }

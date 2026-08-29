@@ -10,7 +10,7 @@
 
 namespace gb {
 
-enum class CartType : uint8_t { RomOnly, Mbc1, Mbc3 };
+enum class CartType : uint8_t { RomOnly, Mbc1, Mbc3, Mbc5 };
 
 class Cartridge {
 public:

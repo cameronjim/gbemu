@@ -45,6 +45,32 @@ const uint8_t kBlockTile[16] = {
     0xFF, 0x00, // 11111111
 };
 
+// -######-  serifed I: ink in cell columns 1-6 top and bottom, 3-4 for the stem
+// ---##---
+// ---##---
+// ---##---
+// ---##---
+// ---##---
+// -######-
+// --------
+const uint8_t kPanelGlyphI[16] = {
+    0xFF, 0x7E, 0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x18,
+    0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x7E, 0xFF, 0x00,
+};
+
+// ---##---  serifed 1: the stock flag kept, a base serif added so the digit sits on the same
+// --###---  6 pixel rhythm as 0 and 2-9 instead of leaving a void beside its neighbours
+// ---##---
+// ---##---
+// ---##---
+// ---##---
+// -######-
+// --------
+const uint8_t kPanelGlyphOne[16] = {
+    0xFF, 0x18, 0xFF, 0x38, 0xFF, 0x18, 0xFF, 0x18,
+    0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x7E, 0xFF, 0x00,
+};
+
 // slot 0 is unused by the block tile, so it holds the well black the piece sits over
 const palette_color_t kPiecePalettes[28] = {
     RGB(1, 1, 3), RGB(0, 12, 16), RGB(0, 24, 28), RGB(20, 31, 31), // i cyan

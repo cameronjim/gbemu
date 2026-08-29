@@ -52,27 +52,34 @@
 #define kWallRightCol 13U
 
 // right panel: score, level, lines, and the next-piece box. the panel is exactly six cells,
-// columns 14-19, right of the wall at column 13. every label, value, and the next box centers
-// within that span (start = 14 + (6-width)/2, rounded down, so an odd leftover column goes left).
-#define kScoreLabelCol 14U // "SCORE" width 5 -> 14-18
+// columns 14-19, right of the wall at column 13. well.c's draw_frame already lays the backdrop
+// tile across all six, so everything below sits on the panel plate.
+//
+// every label, value and the next box is LEFT ALIGNED on the panel's first column. the six
+// digit score fills the span exactly, so a centering rule can never be exact for the five wide
+// labels -- the half cell rounding is what made the old layout look ragged -- and a shared left
+// edge is the only rule all seven elements can obey identically. the score, as the widest
+// element, is what defines the panel's right edge.
+#define kPanelCol 14U
+#define kScoreLabelCol kPanelCol // "SCORE" width 5 -> 14-18
 #define kScoreLabelRow 1U
 #define kScoreValueRow 2U
-#define kScoreValueCol 14U // 6 digits, fills the whole span -> 14-19
+#define kScoreValueCol kPanelCol // 6 digits, the panel's full width -> 14-19
 #define kScoreDigits 6U
-#define kLevelLabelCol 14U // "LEVEL" width 5 -> 14-18
+#define kLevelLabelCol kPanelCol // "LEVEL" width 5 -> 14-18
 #define kLevelLabelRow 5U
 #define kLevelValueRow 6U
-#define kLevelValueCol 16U // 2 digits, centered -> 16-17
+#define kLevelValueCol kPanelCol // 2 digits -> 14-15
 #define kLevelDigits 2U
-#define kLinesLabelCol 14U // "LINES" width 5 -> 14-18
+#define kLinesLabelCol kPanelCol // "LINES" width 5 -> 14-18
 #define kLinesLabelRow 9U
 #define kLinesValueRow 10U
-#define kLinesValueCol 15U // 3 digits, centered -> 15-17
+#define kLinesValueCol kPanelCol // 3 digits -> 14-16
 #define kLinesDigits 3U
-#define kNextLabelCol 15U // "NEXT" width 4 -> 15-18
+#define kNextLabelCol kPanelCol // "NEXT" width 4 -> 14-17
 #define kNextLabelRow 13U
 #define kNextBoxRow 15U // one blank row (14) under the label
-#define kNextBoxCol 15U // 4 wide, centered -> 15-18
+#define kNextBoxCol kPanelCol // 4 wide -> 14-17
 #define kNextBoxCols 4U
 #define kNextBoxRows 2U
 

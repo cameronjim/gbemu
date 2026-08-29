@@ -76,6 +76,10 @@ void panel_build_font(void) {
     for (i = 0; i < kPanelLetterCount; ++i) {
         copy_panel_glyph((uint8_t)(kPanelLetterTileId + i), kPanelLetters[i]);
     }
+
+    // the two stock glyphs whose bare stems break the panel's letter rhythm (see assets.c)
+    set_bkg_data(panel_glyph_tile('I'), 1, kPanelGlyphI);
+    set_bkg_data((uint8_t)(kDigitTileId + 1U), 1, kPanelGlyphOne);
 }
 
 void panel_init(void) {

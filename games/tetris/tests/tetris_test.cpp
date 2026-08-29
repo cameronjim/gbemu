@@ -59,24 +59,32 @@ constexpr int kPromptRow = 10;
 constexpr int kBestRow = 12;
 
 // right panel geometry, mirrored from tetris.h. the panel is six cells, columns 14-19; every
-// label, value, and the next box centers within that span.
-constexpr int kScoreLabelCol = 14;
+// label, value, and the next box is left aligned on kPanelCol.
+constexpr int kPanelCol = 14;
+constexpr int kScoreLabelCol = kPanelCol;
 constexpr int kScoreLabelRow = 1;
 constexpr int kScoreValueRow = 2;
-constexpr int kScoreValueCol = 14;
+constexpr int kScoreValueCol = kPanelCol;
 constexpr int kScoreDigits = 6;
+constexpr int kLevelLabelCol = kPanelCol;
+constexpr int kLevelLabelRow = 5;
 constexpr int kLevelValueRow = 6;
-constexpr int kLevelValueCol = 16;
+constexpr int kLevelValueCol = kPanelCol;
 constexpr int kLevelDigits = 2;
+constexpr int kLinesLabelCol = kPanelCol;
+constexpr int kLinesLabelRow = 9;
 constexpr int kLinesValueRow = 10;
-constexpr int kLinesValueCol = 15;
+constexpr int kLinesValueCol = kPanelCol;
 constexpr int kLinesDigits = 3;
 constexpr uint8_t kDigitTileId = 0x80;
+constexpr uint8_t kBackdropTileId = 0x62;
 // compact panel hud font's letter block, mirrored from tetris.h; order matches panel.c's lookup
 constexpr uint8_t kPanelLetterTileId = 0x8A;
 constexpr int kPanelLetterCount = 11;
+constexpr int kNextLabelCol = kPanelCol;
+constexpr int kNextLabelRow = 13;
 constexpr int kNextBoxRow = 15;
-constexpr int kNextBoxCol = 15;
+constexpr int kNextBoxCol = kPanelCol;
 constexpr int kNextBoxCols = 4;
 constexpr int kNextBoxRows = 2;
 
@@ -1107,23 +1115,82 @@ TEST_CASE("the_panel_digits_start_at_zero") {
     REQUIRE(read_lines(gameboy) == 0u);
 }
 
-TEST_CASE("the_score_label_sits_centered_in_the_six_column_panel") {
+TEST_CASE("every_panel_element_shares_the_panel_left_edge") {
     const std::vector<uint8_t> rom = read_tetris_rom();
 
     gb::Gameboy gameboy;
     start_play(gameboy, rom);
 
-    // "SCORE" is 5 wide in a 6-wide panel (14-19); centering with a left bias lands it at 14-18
-    static constexpr char kLabel[] = "SCORE";
-    for (int i = 0; kLabel[i] != '\0'; ++i) {
-        REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kScoreLabelCol + i, kScoreLabelRow)) ==
-                panel_letter_tile(kLabel[i]));
+    // every label is left aligned on kPanelCol, so its first character always lands there
+    struct Label {
+        const char* text;
+        int row;
+    };
+    static constexpr Label kLabels[] = {
+        {"SCORE", kScoreLabelRow},
+        {"LEVEL", kLevelLabelRow},
+        {"LINES", kLinesLabelRow},
+        {"NEXT", kNextLabelRow},
+    };
+    for (const Label& label : kLabels) {
+        for (int i = 0; label.text[i] != '\0'; ++i) {
+            REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol + i, label.row)) ==
+                    panel_letter_tile(label.text[i]));
+        }
+        // column 19, the panel's last column, is blank for every label but the score's value row
+        const uint16_t spare = tile_at(gameboy, 19, label.row);
+        REQUIRE((spare & 0x100u) == 0);
+        const uint8_t spare_tile = static_cast<uint8_t>(spare);
+        REQUIRE((spare_tile < kPanelLetterTileId || spare_tile >= kPanelLetterTileId + kPanelLetterCount));
     }
-    // column 19, the panel's last column, must be untouched: no compact-font glyph tile there
-    const uint16_t spare = tile_at(gameboy, kScoreLabelCol + 5, kScoreLabelRow);
-    REQUIRE((spare & 0x100u) == 0);
-    const uint8_t spare_tile = static_cast<uint8_t>(spare);
-    REQUIRE((spare_tile < kPanelLetterTileId || spare_tile >= kPanelLetterTileId + kPanelLetterCount));
+
+    // the wall column immediately left of the panel must stay the wall tile: a future off-by-one
+    // leftward would otherwise silently start printing over the well's right wall
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol - 1, kScoreLabelRow)) == kWallTileId);
+
+    // the score, unlike the labels, fills the panel's full six-column width: its last digit sits
+    // at column 19, pinning that this containment (not overflow) is deliberate (see design doc)
+    const uint16_t last_digit = tile_at(gameboy, kPanelCol + 5, kScoreValueRow);
+    REQUIRE((last_digit & 0x100u) == 0);
+    const uint8_t last_digit_tile = static_cast<uint8_t>(last_digit);
+    REQUIRE(last_digit_tile >= kDigitTileId);
+    REQUIRE(last_digit_tile < kDigitTileId + 10);
+}
+
+TEST_CASE("the_panel_backdrop_covers_every_column_through_nineteen") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // row 3 sits between the score value (row 2) and the level label (row 5): text-free, so
+    // every column here should show bare backdrop, confirming the plate reaches column 19
+    for (int col = 14; col <= 19; ++col) {
+        REQUIRE(static_cast<uint8_t>(tile_at(gameboy, col, 3)) == kBackdropTileId);
+    }
+}
+
+TEST_CASE("the_panel_glyphs_use_the_fonts_full_letter_width") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // the rom runs with lcdc bit 4 clear (signed tile addressing), but every panel tile id is
+    // >= 0x80, so debug_vram()[id * 16 + n] addresses it directly; do not reuse this formula for
+    // the stock font block (ids < 0x80), which lands at 0x1000 + id * 16 instead
+    const std::span<const uint8_t> vram = gameboy.debug_vram();
+    constexpr uint8_t kPanelI = kPanelLetterTileId + 2; // 'I' is index 2 of "CEILNORSTVX"
+    constexpr uint8_t kPanelOne = kDigitTileId + 1;
+
+    // serifed 'I': ink spans the full cell on the top and bottom rows, not just the stem
+    REQUIRE(vram[static_cast<size_t>(kPanelI) * 16 + 1] == 0x7E);
+    REQUIRE(vram[static_cast<size_t>(kPanelI) * 16 + 13] == 0x7E);
+    // recolor convention: background is index 1, so the low plane byte stays 0xFF throughout
+    REQUIRE(vram[static_cast<size_t>(kPanelI) * 16 + 0] == 0xFF);
+
+    // serifed '1': a base serif spans the full cell width, matching 0 and 2-9's rhythm
+    REQUIRE(vram[static_cast<size_t>(kPanelOne) * 16 + 13] == 0x7E);
 }
 
 TEST_CASE("a_line_clear_scores_the_classic_table_times_level_plus_one") {

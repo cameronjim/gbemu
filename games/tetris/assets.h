@@ -15,6 +15,15 @@ extern const uint8_t kWallTile[16];
 // a bevelled block: index 3 highlight, index 2 body, index 1 shadow, no transparent pixel
 extern const uint8_t kBlockTile[16];
 
+// panel-shade glyph overrides: the stock ibm font draws 'I' and '1' as a bare two pixel stem
+// centred in the cell, which leaves a void four times the font's normal letter gap next to a
+// glyph like 'L' that is empty on its right half. these are the same letterforms with the
+// classic serifs, so their ink spans cell columns 1-6 like E/N/S/T do. low plane is 0xFF
+// throughout to match copy_panel_glyph's recolor: background becomes index 1 (the panel
+// backdrop shade), ink stays index 3.
+extern const uint8_t kPanelGlyphI[16];
+extern const uint8_t kPanelGlyphOne[16];
+
 // seven four-colour palettes, one per piece, in i o t s z j l order
 extern const palette_color_t kPiecePalettes[28];
 // well black, panel dark, wall slate, flash white

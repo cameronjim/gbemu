@@ -96,6 +96,12 @@ public:
     uint64_t frame_count() const {
         return frames_;
     }
+    // hblank entries since the last drain; the bus paces hdma with them
+    uint32_t take_hblank_entries() {
+        const uint32_t entries = hblank_entries_;
+        hblank_entries_ = 0;
+        return entries;
+    }
 
     static constexpr size_t kStateSize = kVramBanks * kVramBankSize + 0xA0 + 4 + 14 + 2 * kPaletteRamSize + 3;
     void save_state(StateWriter& w) const;
@@ -150,6 +156,8 @@ private:
     uint32_t dot_ = 0;
     // presentation metadata only, deliberately not serialized
     uint64_t frames_ = 0;
+    // drained by the bus after every tick, so it is always zero across a savestate
+    uint32_t hblank_entries_ = 0;
     uint8_t ly_ = 0;
     uint8_t lyc_ = 0;
     // pandocs power-up values

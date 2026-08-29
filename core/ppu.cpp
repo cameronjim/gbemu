@@ -71,6 +71,7 @@ void Ppu::enter_mode(PpuMode mode) {
         render_scanline();
         break;
     case PpuMode::HBlank:
+        ++hblank_entries_;
         if ((stat_enables_ & kStatHBlankEnable) != 0) {
             irq_.request(kIntStat);
         }

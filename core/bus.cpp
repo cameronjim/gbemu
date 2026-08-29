@@ -6,12 +6,85 @@ namespace {
 constexpr uint16_t kRegDma = 0xFF46;
 } // namespace
 
+uint32_t Bus::video_cycles(uint32_t cpu_cycles) {
+    if (!double_speed_) {
+        return cpu_cycles;
+    }
+    // pandocs "key1": double speed doubles the cpu clock only, the ppu and apu keep their rate
+    const uint32_t total = cpu_cycles + video_carry_;
+    video_carry_ = static_cast<uint8_t>(total & 1u);
+    return total >> 1;
+}
+
+void Bus::tick_components(uint32_t cpu_cycles) {
+    timer_.tick(cpu_cycles);
+    const uint32_t dots = video_cycles(cpu_cycles);
+    ppu_.tick(dots);
+    apu_.tick(dots);
+    run_hdma_chunks(ppu_.take_hblank_entries());
+}
+
 void Bus::tick_access() {
     // pandocs: every sm83 memory access occupies one m-cycle; components see mid-instruction time
-    timer_.tick(4);
-    ppu_.tick(4);
-    apu_.tick(4);
+    tick_components(4);
     access_cycles_ += 4;
+}
+
+bool Bus::commit_speed_switch() {
+    if (!cgb_ || !speed_armed_) {
+        return false;
+    }
+    double_speed_ = !double_speed_;
+    speed_armed_ = false;
+    video_carry_ = 0;
+    // pandocs "key1": the switch resets the div counter
+    timer_.write_div();
+    return true;
+}
+
+uint8_t Bus::read_hdma5() const {
+    // pandocs: bit 7 set means no transfer is running, bits 0-6 hold the remaining length minus one
+    const uint8_t left = static_cast<uint8_t>((hdma_remaining_ - 1) & 0x7F);
+    return static_cast<uint8_t>((hdma_active_ ? 0x00 : 0x80) | left);
+}
+
+void Bus::write_hdma5(uint8_t value) {
+    if ((value & 0x80) == 0 && hdma_active_) {
+        // pandocs: clearing bit 7 mid-transfer stops it, leaving the remaining length readable
+        hdma_active_ = false;
+        return;
+    }
+    // pandocs: both addresses ignore their low 4 bits, and the destination is always in vram
+    // v1: pandocs names rom and wram as the only source regions, but the range is not enforced
+    hdma_src_ = static_cast<uint16_t>(hdma_latch_src_ & 0xFFF0);
+    hdma_dst_ = static_cast<uint16_t>((hdma_latch_dst_ & 0x1FF0) | 0x8000);
+    hdma_remaining_ = static_cast<uint8_t>((value & 0x7F) + 1);
+    hdma_active_ = (value & 0x80) != 0;
+    if (!hdma_active_) {
+        // v1: general purpose dma copies the whole block instantly, no cpu stall modeled
+        while (hdma_remaining_ > 0) {
+            copy_hdma_chunk();
+        }
+    }
+}
+
+void Bus::copy_hdma_chunk() {
+    for (uint8_t i = 0; i < 0x10; ++i) {
+        // the source goes through the normal read path so rom and wram banking apply
+        ppu_.write_vram(static_cast<uint16_t>(hdma_dst_ & 0x1FFF), peek8(hdma_src_));
+        hdma_src_ = static_cast<uint16_t>(hdma_src_ + 1);
+        hdma_dst_ = static_cast<uint16_t>(hdma_dst_ + 1);
+    }
+    --hdma_remaining_;
+    if (hdma_remaining_ == 0) {
+        hdma_active_ = false;
+    }
+}
+
+void Bus::run_hdma_chunks(uint32_t hblanks) {
+    for (uint32_t i = 0; i < hblanks && hdma_active_; ++i) {
+        copy_hdma_chunk();
+    }
 }
 
 uint8_t Bus::read8(uint16_t addr) {
@@ -143,8 +216,18 @@ uint8_t Bus::read_io(uint16_t addr) {
     case kRegDma:
         return dma_;
     case kRegKey1:
-        // read-only stub: bit 7 single speed, bit 0 no switch armed, bits 1-6 read 1
-        return cgb_ ? 0x7E : 0xFF;
+        // pandocs: bit 7 is the current speed, bit 0 the armed switch, bits 1-6 read 1
+        return cgb_
+                   ? static_cast<uint8_t>((double_speed_ ? 0x80 : 0x00) | 0x7E | (speed_armed_ ? 0x01 : 0x00))
+                   : 0xFF;
+    case kRegHdma1:
+    case kRegHdma2:
+    case kRegHdma3:
+    case kRegHdma4:
+        // pandocs: the hdma address registers are write-only
+        return 0xFF;
+    case kRegHdma5:
+        return cgb_ ? read_hdma5() : 0xFF;
     case kRegSvbk:
         // pandocs: svbk unused bits read 1
         return cgb_ ? static_cast<uint8_t>(0xF8 | svbk_) : 0xFF;
@@ -203,6 +286,37 @@ void Bus::write_io(uint16_t addr, uint8_t value) {
     case kRegSvbk:
         if (cgb_) {
             svbk_ = static_cast<uint8_t>(value & 0x07);
+        }
+        break;
+    case kRegKey1:
+        if (cgb_) {
+            // only the arm bit is writable
+            speed_armed_ = (value & 0x01) != 0;
+        }
+        break;
+    case kRegHdma1:
+        if (cgb_) {
+            hdma_latch_src_ = static_cast<uint16_t>((hdma_latch_src_ & 0x00FF) | (value << 8));
+        }
+        break;
+    case kRegHdma2:
+        if (cgb_) {
+            hdma_latch_src_ = static_cast<uint16_t>((hdma_latch_src_ & 0xFF00) | value);
+        }
+        break;
+    case kRegHdma3:
+        if (cgb_) {
+            hdma_latch_dst_ = static_cast<uint16_t>((hdma_latch_dst_ & 0x00FF) | (value << 8));
+        }
+        break;
+    case kRegHdma4:
+        if (cgb_) {
+            hdma_latch_dst_ = static_cast<uint16_t>((hdma_latch_dst_ & 0xFF00) | value);
+        }
+        break;
+    case kRegHdma5:
+        if (cgb_) {
+            write_hdma5(value);
         }
         break;
     case kRegIf:

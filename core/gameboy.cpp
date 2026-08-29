@@ -38,11 +38,13 @@ void Gameboy::run_frame() {
         const uint64_t frame_start = ppu_.frame_count();
         uint32_t elapsed = 0;
         while (ppu_.frame_count() == frame_start) {
+            // double speed spends two cpu cycles per video dot, so one frame costs twice as much
+            const uint32_t budget = bus_.double_speed() ? 2 * kFrameCycles : kFrameCycles;
             // lcd off never reaches vblank; spend one frame of cycles instead
-            if (elapsed >= kFrameCycles && !ppu_.lcd_enabled()) {
+            if (elapsed >= budget && !ppu_.lcd_enabled()) {
                 break;
             }
-            if (elapsed >= 2 * kFrameCycles) {
+            if (elapsed >= 2 * budget) {
                 break;
             }
             const uint32_t t = cpu_.step();
@@ -52,10 +54,7 @@ void Gameboy::run_frame() {
             }
             // the bus already ticked one m-cycle per access; spend the remainder here
             const uint32_t ticked = bus_.take_access_cycles();
-            const uint32_t remainder = t > ticked ? t - ticked : 0;
-            timer_.tick(remainder);
-            ppu_.tick(remainder);
-            apu_.tick(remainder);
+            bus_.tick_components(t > ticked ? t - ticked : 0);
             elapsed += t;
         }
         cycles_ += elapsed;

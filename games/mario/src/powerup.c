@@ -1,0 +1,291 @@
+#include "powerup.h"
+
+#include "enemies.h"
+#include "mario.h"
+#include "physics_constants.h"
+#include "terrain.h"
+
+#include <gb/gb.h>
+#include <stdint.h>
+
+static uint8_t power;
+// the bible's two windows, both already multiplied out of smb's 21-frame interval timer
+static uint16_t star_timer;
+static uint8_t injury_timer;
+static uint8_t lives;
+
+// the frozen grow/shrink animation: how long is left and which state it lands on
+static uint8_t anim_timer;
+static uint8_t anim_target;
+static uint8_t anim_from_big;
+static uint8_t anim_to_big;
+
+// one shared counter drives both the injury blink and the star flash, so neither carries its own
+static uint8_t phase;
+// smb's rule: a b press throws, holding b keeps running, so the throw is edge triggered
+static uint8_t b_prev;
+
+typedef struct {
+    uint16_t pos_x;
+    int16_t pos_y;
+    int8_t dir;
+    int8_t dy;
+    uint8_t x_force;
+    uint8_t y_accum;
+} Fireball;
+
+// packed into [0, live) the way the enemy pool is, so an empty pool costs one compare a frame
+static Fireball balls[kFireballSlots];
+static uint8_t live;
+static uint8_t shown;
+
+static int16_t row_of(int16_t py) {
+    return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
+}
+
+static void begin_anim(uint8_t target, uint8_t from_big, uint8_t to_big) {
+    anim_timer = (uint8_t)kGrowFrames;
+    anim_target = target;
+    anim_from_big = from_big;
+    anim_to_big = to_big;
+}
+
+void powerup_init(void) {
+    lives = (uint8_t)kStartLives;
+    powerup_reset();
+}
+
+void powerup_reset(void) {
+    power = kPowerSmall;
+    star_timer = 0;
+    injury_timer = 0;
+    anim_timer = 0;
+    anim_target = kPowerSmall;
+    anim_from_big = 0;
+    anim_to_big = 0;
+    phase = 0;
+    b_prev = 0;
+    live = 0;
+    // not the parked marker: a respawn leaves the last life's balls in oam, so the first draw of
+    // the new one has to write every slot off screen
+    shown = (uint8_t)kFireballSlots;
+}
+
+uint8_t powerup_state(void) {
+    return power;
+}
+
+uint8_t powerup_big(void) {
+    return power != kPowerSmall ? 1U : 0U;
+}
+
+uint8_t powerup_star(void) {
+    return star_timer != 0U ? 1U : 0U;
+}
+
+uint8_t powerup_immune(void) {
+    return injury_timer != 0U ? 1U : 0U;
+}
+
+uint8_t powerup_frozen(void) {
+    return anim_timer != 0U ? 1U : 0U;
+}
+
+uint8_t powerup_pose_big(void) {
+    if (anim_timer == 0U) {
+        return powerup_big();
+    }
+    return ((uint8_t)(anim_timer / kGrowFlipFrames) & 1U) != 0U ? anim_from_big : anim_to_big;
+}
+
+uint8_t powerup_lives(void) {
+    return lives;
+}
+
+uint8_t powerup_collect(uint8_t item_kind) {
+    if (item_kind == kItemStar) {
+        star_timer = (uint16_t)kStarFrames;
+        return 0;
+    }
+    if (item_kind == kItemOneup) {
+        ++lives;
+        return 0;
+    }
+    if (item_kind == kItemFlower) {
+        // the dispenser only pays a flower to a grown mario, so this is a palette change alone;
+        // smb would grow a small mario instead, which the branch below still covers
+        if (power != kPowerSmall) {
+            power = kPowerFire;
+            return 0;
+        }
+        begin_anim(kPowerFire, 0, 1);
+        return 1;
+    }
+    if (item_kind != kItemMushroom || power != kPowerSmall) {
+        return 0;
+    }
+    begin_anim(kPowerSuper, 0, 1);
+    return 1;
+}
+
+uint8_t powerup_damage(void) {
+    if (star_timer != 0U || injury_timer != 0U || anim_timer != 0U) {
+        return 0;
+    }
+    if (power == kPowerFire) {
+        // roster.json reads smb1 as dropping fire straight to small; m7's chain keeps the step
+        power = kPowerSuper;
+        injury_timer = (uint8_t)kInjuryFrames;
+        return 0;
+    }
+    if (power == kPowerSuper) {
+        begin_anim(kPowerSmall, 1, 0);
+        return 0;
+    }
+    return 1;
+}
+
+// smb's own throw position: level with his chest, a few px in front of the box he stands in
+static void throw_ball(uint16_t player_px, int16_t player_py, uint8_t facing_left) {
+    Fireball* f = &balls[live];
+
+    ++live;
+    f->dir = facing_left != 0U ? (int8_t)-1 : (int8_t)1;
+    if (facing_left != 0U) {
+        f->pos_x = player_px > (uint16_t)kFireballLeadPx ? (uint16_t)(player_px - kFireballLeadPx) : 0U;
+    } else {
+        f->pos_x = (uint16_t)(player_px + kPlayerWidthPx - kFireballPx + kFireballLeadPx);
+    }
+    f->pos_y = (int16_t)(player_py + kPlayerHeightPx);
+    f->dy = (int8_t)kFireballLaunchDy;
+    f->x_force = 0;
+    f->y_accum = 0;
+}
+
+// MoveObjectHorizontally again: high nibble whole px, low nibble sixteenths through a 1/256 carry
+static void move_ball_x(Fireball* f) {
+    const uint8_t raw = (uint8_t)(f->dir > 0 ? (int8_t)kFireballSubpx : (int8_t)(-(int16_t)kFireballSubpx));
+    const uint16_t sum = (uint16_t)((uint16_t)f->x_force + (uint16_t)((uint16_t)(raw & 0x0FU) << 4));
+    int16_t whole = (int16_t)(raw >> 4);
+    int16_t next;
+
+    if (whole >= 8) {
+        whole = (int16_t)(whole - 16);
+    }
+    f->x_force = (uint8_t)sum;
+    next = (int16_t)((int16_t)f->pos_x + whole + (int16_t)(sum >> 8));
+    if (next < 0) {
+        next = 0;
+    }
+    f->pos_x = (uint16_t)next;
+}
+
+// one frame of a live ball; 1 when it is spent and the slot should be freed
+static uint8_t step_ball(Fireball* f, uint16_t cam_x) {
+    uint16_t sum;
+    int16_t lead;
+    int16_t row;
+
+    move_ball_x(f);
+    lead = (int16_t)(f->dir > 0 ? (int16_t)(f->pos_x + kFireballPx - 1) : (int16_t)f->pos_x);
+    if (terrain_solid_at((int16_t)(lead >> 4), row_of(f->pos_y)) != 0U) {
+        return 1; // a wall ends it; smb's fireball only bounces off floors
+    }
+
+    sum = (uint16_t)((uint16_t)f->y_accum + (uint16_t)kFireballGravity);
+    f->y_accum = (uint8_t)sum;
+    if (sum > 0xFFU) {
+        f->dy = (int8_t)(f->dy + 1);
+        if (f->dy > (int8_t)kFireballMaxFallPx) {
+            f->dy = (int8_t)kFireballMaxFallPx;
+        }
+    }
+    f->pos_y = (int16_t)(f->pos_y + f->dy);
+    if (f->dy > 0) {
+        row = row_of((int16_t)(f->pos_y + kFireballPx - 1));
+        if (terrain_solid_at((int16_t)(f->pos_x >> 4), row) != 0U) {
+            f->pos_y = (int16_t)(((int16_t)row << 4) - kFireballPx);
+            f->dy = (int8_t)kFireballBouncePx;
+            f->y_accum = 0;
+        }
+    }
+    if (f->pos_y > (int16_t)kLevelHeightPx) {
+        return 1;
+    }
+    if ((int16_t)f->pos_x + kFireballPx < (int16_t)cam_x ||
+        (int16_t)f->pos_x > (int16_t)(cam_x + kScreenWidthPx)) {
+        return 1;
+    }
+    return enemies_fireball_hit(f->pos_x, f->pos_y);
+}
+
+void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t facing_left,
+                    uint16_t cam_x) {
+    uint8_t i = 0;
+
+    ++phase;
+    if (anim_timer != 0U) {
+        --anim_timer;
+        if (anim_timer == 0U) {
+            power = anim_target;
+            if (anim_to_big == 0U) {
+                // the shrink is the only one that leaves him blinking afterwards
+                injury_timer = (uint8_t)kInjuryFrames;
+            }
+        }
+        return;
+    }
+    if (star_timer != 0U) {
+        --star_timer;
+    }
+    if (injury_timer != 0U) {
+        --injury_timer;
+    }
+
+    if (power == kPowerFire && (keys & J_B) != 0U && b_prev == 0U && live < (uint8_t)kFireballSlots) {
+        throw_ball(player_px, player_py, facing_left);
+    }
+    b_prev = (keys & J_B) != 0U ? 1U : 0U;
+
+    while (i < live) {
+        if (step_ball(&balls[i], cam_x) != 0U) {
+            --live;
+            balls[i] = balls[live];
+            continue;
+        }
+        ++i;
+    }
+}
+
+uint8_t powerup_sprite_prop(void) {
+    if (injury_timer != 0U && (phase & kBlinkMask) != 0U) {
+        return (uint8_t)kSpriteHidden;
+    }
+    if (star_timer != 0U && (phase & kStarFlashMask) != 0U) {
+        return (uint8_t)kPalStar;
+    }
+    return power == kPowerFire ? (uint8_t)kPalFire : (uint8_t)kPalMario;
+}
+
+void powerup_draw(uint16_t cam_x, uint8_t cam_y) {
+    uint8_t i;
+
+    if (live == 0U && shown == 0U) {
+        return;
+    }
+    for (i = 0; i < live; ++i) {
+        const Fireball* f = &balls[i];
+        const uint8_t oam = (uint8_t)(kSpriteFireFirst + i);
+        const int16_t sx = (int16_t)((int16_t)f->pos_x - (int16_t)cam_x);
+        // the pair's top tile is blank, so the sprite is drawn a tile higher than the ball itself
+        const int16_t sy = (int16_t)(f->pos_y - (int16_t)cam_y - kFireballPx);
+
+        set_sprite_tile(oam, (uint8_t)kTileFireball);
+        set_sprite_prop(oam, (uint8_t)kPalStar);
+        move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+    }
+    for (; i < shown; ++i) {
+        move_sprite((uint8_t)(kSpriteFireFirst + i), 0, 0);
+    }
+    shown = live;
+}

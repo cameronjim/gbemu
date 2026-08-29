@@ -109,6 +109,9 @@ uint8_t Ppu::read_register(uint16_t addr) const {
         return wy_;
     case kRegWx:
         return wx_;
+    case kRegVbk:
+        // pandocs: vbk reads back with the unused bits set
+        return cgb_ ? static_cast<uint8_t>(0xFE | vram_bank_) : 0xFF;
     default:
         return 0xFF;
     }
@@ -158,13 +161,20 @@ void Ppu::write_register(uint16_t addr, uint8_t value) {
     case kRegWx:
         wx_ = value;
         break;
+    case kRegVbk:
+        if (cgb_) {
+            vram_bank_ = static_cast<uint8_t>(value & 0x01);
+        }
+        break;
     default:
         break;
     }
 }
 
 void Ppu::save_state(StateWriter& w) const {
-    w.bytes(vram_);
+    for (const auto& bank : vram_) {
+        w.bytes(bank);
+    }
     w.bytes(oam_);
     w.u32(dot_);
     w.u8(ly_);
@@ -179,11 +189,14 @@ void Ppu::save_state(StateWriter& w) const {
     w.u8(wx_);
     w.u8(window_line_);
     w.u8(stat_enables_);
+    w.u8(vram_bank_);
     w.u8(static_cast<uint8_t>(mode_));
 }
 
 void Ppu::load_state(StateReader& r) {
-    r.bytes(vram_);
+    for (auto& bank : vram_) {
+        r.bytes(bank);
+    }
     r.bytes(oam_);
     dot_ = r.u32() % 456;
     ly_ = static_cast<uint8_t>(r.u8() % 154);
@@ -198,6 +211,9 @@ void Ppu::load_state(StateReader& r) {
     wx_ = r.u8();
     window_line_ = static_cast<uint8_t>(r.u8() % 154);
     stat_enables_ = static_cast<uint8_t>(r.u8() & 0x78);
+    const uint8_t vram_bank = static_cast<uint8_t>(r.u8() & 0x01);
+    // dmg has no vbk; bank 0 is its only legal value
+    vram_bank_ = cgb_ ? vram_bank : 0;
     mode_ = static_cast<PpuMode>(r.u8() & 0x03);
 }
 
@@ -230,7 +246,7 @@ void Ppu::render_bg(std::span<uint8_t> colors, std::span<uint16_t> ids) const {
     const uint8_t row_in_tile = bgy & 7;
     for (uint32_t x = 0; x < kLcdWidth; ++x) {
         const uint8_t bgx = static_cast<uint8_t>(scx_ + x);
-        const uint8_t tile = vram_[map_base + (bgy / 8) * 32 + (bgx / 8)];
+        const uint8_t tile = vram0(map_base + (bgy / 8) * 32 + (bgx / 8));
         uint16_t tile_addr;
         if (unsigned_mode) {
             tile_addr = static_cast<uint16_t>(tile * 16);
@@ -238,8 +254,8 @@ void Ppu::render_bg(std::span<uint8_t> colors, std::span<uint16_t> ids) const {
             // lcdc bit 4 clear: signed indexing from 0x9000
             tile_addr = static_cast<uint16_t>(0x1000 + static_cast<int8_t>(tile) * 16);
         }
-        const uint8_t lo = vram_[tile_addr + row_in_tile * 2];
-        const uint8_t hi = vram_[tile_addr + row_in_tile * 2 + 1];
+        const uint8_t lo = vram0(tile_addr + row_in_tile * 2);
+        const uint8_t hi = vram0(tile_addr + row_in_tile * 2 + 1);
         // bit 7 is the leftmost pixel
         const uint8_t px = bgx & 7;
         colors[x] = static_cast<uint8_t>((((hi >> (7 - px)) & 1) << 1) | ((lo >> (7 - px)) & 1));
@@ -258,15 +274,15 @@ bool Ppu::render_window(std::span<uint8_t> colors, std::span<uint16_t> ids) cons
     const int start_x = static_cast<int>(wx_) - 7;
     for (int x = std::max(0, start_x); x < static_cast<int>(kLcdWidth); ++x) {
         const uint32_t wx_pixel = static_cast<uint32_t>(x - start_x);
-        const uint8_t tile = vram_[map_base + (window_line_ / 8) * 32 + (wx_pixel / 8)];
+        const uint8_t tile = vram0(map_base + (window_line_ / 8) * 32 + (wx_pixel / 8));
         uint16_t tile_addr;
         if (unsigned_mode) {
             tile_addr = static_cast<uint16_t>(tile * 16);
         } else {
             tile_addr = static_cast<uint16_t>(0x1000 + static_cast<int8_t>(tile) * 16);
         }
-        const uint8_t lo = vram_[tile_addr + row_in_tile * 2];
-        const uint8_t hi = vram_[tile_addr + row_in_tile * 2 + 1];
+        const uint8_t lo = vram0(tile_addr + row_in_tile * 2);
+        const uint8_t hi = vram0(tile_addr + row_in_tile * 2 + 1);
         const uint8_t px = wx_pixel & 7;
         colors[static_cast<uint32_t>(x)] =
             static_cast<uint8_t>((((hi >> (7 - px)) & 1) << 1) | ((lo >> (7 - px)) & 1));
@@ -321,8 +337,8 @@ void Ppu::render_sprites(std::span<const uint8_t> colors, std::span<uint8_t> row
                 sprite_row = static_cast<uint8_t>(sprite_row - 8);
             }
         }
-        const uint8_t lo = vram_[tile * 16 + sprite_row * 2];
-        const uint8_t hi = vram_[tile * 16 + sprite_row * 2 + 1];
+        const uint8_t lo = vram0(tile * 16 + sprite_row * 2);
+        const uint8_t hi = vram0(tile * 16 + sprite_row * 2 + 1);
         const uint8_t obp = (attr & 0x10) != 0 ? obp1_ : obp0_;
         for (uint8_t px = 0; px < 8; ++px) {
             const int x = sprite_x + px;

@@ -24,6 +24,10 @@ inline constexpr uint16_t kRegObp0 = 0xFF48;
 inline constexpr uint16_t kRegObp1 = 0xFF49;
 inline constexpr uint16_t kRegWy = 0xFF4A;
 inline constexpr uint16_t kRegWx = 0xFF4B;
+inline constexpr uint16_t kRegVbk = 0xFF4F;
+
+inline constexpr size_t kVramBankSize = 0x2000;
+inline constexpr size_t kVramBanks = 2;
 
 enum class PpuMode : uint8_t { HBlank = 0, VBlank = 1, OamScan = 2, Drawing = 3 };
 
@@ -34,11 +38,17 @@ public:
     // called per instruction with elapsed t-cycles
     void tick(uint32_t tcycles);
 
+    // cgb only; dmg keeps bank 0 wired and the vbk register dead
+    void set_cgb_mode(bool cgb) {
+        cgb_ = cgb;
+        vram_bank_ = 0;
+    }
+
     uint8_t read_vram(uint16_t offset) const {
-        return vram_[offset];
+        return vram_[vram_bank_][offset];
     }
     void write_vram(uint16_t offset, uint8_t value) {
-        vram_[offset] = value;
+        vram_[vram_bank_][offset] = value;
     }
     uint8_t read_oam(uint16_t offset) const {
         return oam_[offset];
@@ -59,7 +69,10 @@ public:
     }
     // debug accessor for the tile viewer
     std::span<const uint8_t> vram() const {
-        return vram_;
+        return vram_[0];
+    }
+    uint8_t vram_bank() const {
+        return vram_bank_;
     }
     PpuMode mode() const {
         return mode_;
@@ -72,11 +85,16 @@ public:
         return frames_;
     }
 
-    static constexpr size_t kStateSize = 0x2000 + 0xA0 + 4 + 13;
+    static constexpr size_t kStateSize = kVramBanks * kVramBankSize + 0xA0 + 4 + 14;
     void save_state(StateWriter& w) const;
     void load_state(StateReader& r);
 
 private:
+    // rendering ignores vbk for now: bank 1 bytes are stored, never fetched
+    uint8_t vram0(uint32_t offset) const {
+        return vram_[0][offset];
+    }
+
     PpuMode compute_mode() const;
     void enter_mode(PpuMode mode);
     void compare_lyc();
@@ -87,7 +105,7 @@ private:
                         std::span<uint16_t> ids) const;
 
     InterruptLine& irq_;
-    std::array<uint8_t, 0x2000> vram_{};
+    std::array<std::array<uint8_t, kVramBankSize>, kVramBanks> vram_{};
     std::array<uint8_t, 0xA0> oam_{};
     std::array<uint8_t, kLcdWidth * kLcdHeight> framebuffer_{};
     std::array<uint16_t, kLcdWidth * kLcdHeight> tile_ids_{};
@@ -110,6 +128,9 @@ private:
     uint8_t window_line_ = 0;
     // writable stat bits 3-6 only
     uint8_t stat_enables_ = 0;
+    // cpu-visible vram bank; rendering still reads bank 0 only
+    uint8_t vram_bank_ = 0;
+    bool cgb_ = false;
     PpuMode mode_ = PpuMode::OamScan;
 };
 

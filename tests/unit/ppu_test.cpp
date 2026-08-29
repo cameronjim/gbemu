@@ -1,10 +1,12 @@
 #include "ppu.hpp"
 
 #include "interrupts.hpp"
+#include "state.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -331,4 +333,78 @@ TEST_CASE("lcd_off_resets_ly_and_mode") {
     rig.ppu.write_register(gb::kRegLcdc, 0x91);
     rig.ppu.tick(456);
     REQUIRE(rig.ly() == 1);
+}
+
+TEST_CASE("vbk_selects_the_cpu_visible_vram_bank") {
+    Rig rig;
+    rig.ppu.set_cgb_mode(true);
+    rig.ppu.write_vram(0x0000, 0x11);
+    rig.ppu.write_register(gb::kRegVbk, 0x01);
+    rig.ppu.write_vram(0x0000, 0x22);
+    REQUIRE(rig.ppu.read_vram(0x0000) == 0x22);
+    rig.ppu.write_register(gb::kRegVbk, 0x00);
+    REQUIRE(rig.ppu.read_vram(0x0000) == 0x11);
+}
+
+TEST_CASE("vbk_reads_back_with_unused_bits_set") {
+    Rig rig;
+    rig.ppu.set_cgb_mode(true);
+    REQUIRE(rig.ppu.read_register(gb::kRegVbk) == 0xFE);
+    // only bit 0 is decoded
+    rig.ppu.write_register(gb::kRegVbk, 0xFE);
+    REQUIRE(rig.ppu.read_register(gb::kRegVbk) == 0xFE);
+    rig.ppu.write_register(gb::kRegVbk, 0xFF);
+    REQUIRE(rig.ppu.read_register(gb::kRegVbk) == 0xFF);
+    REQUIRE(rig.ppu.vram_bank() == 1);
+}
+
+TEST_CASE("vbk_is_dead_in_dmg_mode") {
+    Rig rig;
+    rig.ppu.write_vram(0x0000, 0x11);
+    rig.ppu.write_register(gb::kRegVbk, 0x01);
+    REQUIRE(rig.ppu.read_register(gb::kRegVbk) == 0xFF);
+    REQUIRE(rig.ppu.vram_bank() == 0);
+    REQUIRE(rig.ppu.read_vram(0x0000) == 0x11);
+}
+
+TEST_CASE("rendering_ignores_bank_1_tile_data") {
+    Rig rig;
+    rig.ppu.set_cgb_mode(true);
+    rig.ppu.write_register(gb::kRegLcdc, 0x91);
+    rig.ppu.write_register(gb::kRegBgp, 0xE4);
+    rig.ppu.write_vram(0x1800, 1);
+    rig.set_tile_row(0x0010, 0, 0xFF, 0xFF);
+    // bank 1 holds a different map and tile; neither may reach the scanline
+    rig.ppu.write_register(gb::kRegVbk, 0x01);
+    rig.ppu.write_vram(0x1800, 2);
+    rig.set_tile_row(0x0010, 0, 0x00, 0x00);
+    rig.set_tile_row(0x0020, 0, 0x00, 0x00);
+    rig.render_line0();
+    REQUIRE(rig.ppu.framebuffer()[0] == 3);
+    REQUIRE(rig.ppu.tile_ids()[0] == 0x0001);
+}
+
+TEST_CASE("dmg_state_load_ignores_a_tampered_vbk") {
+    Rig cgb;
+    cgb.ppu.set_cgb_mode(true);
+    cgb.ppu.write_register(gb::kRegVbk, 0x01);
+    cgb.ppu.write_vram(0x0000, 0x22);
+    std::vector<uint8_t> blob;
+    gb::StateWriter w(blob);
+    cgb.ppu.save_state(w);
+    REQUIRE(blob.size() == gb::Ppu::kStateSize);
+
+    Rig dmg;
+    gb::StateReader r(blob);
+    dmg.ppu.load_state(r);
+    REQUIRE(dmg.ppu.vram_bank() == 0);
+    // bank 1 bytes still roundtrip, they are just not cpu-visible
+    REQUIRE(dmg.ppu.read_vram(0x0000) == 0x00);
+
+    Rig back;
+    back.ppu.set_cgb_mode(true);
+    gb::StateReader r2(blob);
+    back.ppu.load_state(r2);
+    REQUIRE(back.ppu.vram_bank() == 1);
+    REQUIRE(back.ppu.read_vram(0x0000) == 0x22);
 }

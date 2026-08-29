@@ -357,6 +357,11 @@ struct App {
     uint64_t frame_count = 0;
     bool paused = false;
     bool running = true;
+    // one active pad; dpad and stick are tracked apart so neither can mask a release from the other
+    SDL_GameController* controller = nullptr;
+    std::array<bool, 4> dpad_held{};
+    std::array<bool, 4> stick_held{};
+    bool controller_fast_forward = false;
 };
 
 App g_app;
@@ -407,6 +412,88 @@ uint16_t style_mask(const App& app, size_t base) {
         }
     }
     return mask;
+}
+
+// direction buttons are 0-3 in gb::Button, so they index straight into dpad_held/stick_held
+size_t dir_index(gb::Button button) {
+    return static_cast<size_t>(button);
+}
+
+// open the first connected controller, if any and none is open yet
+void open_first_controller(App& app) {
+    if (app.controller != nullptr) {
+        return;
+    }
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_IsGameController(i)) {
+            app.controller = SDL_GameControllerOpen(i);
+            if (app.controller != nullptr) {
+                return;
+            }
+        }
+    }
+}
+
+// release everything a controller could hold so a disconnect never leaves a button stuck
+void release_controller_buttons(App& app, gb::Gameboy& gameboy) {
+    static constexpr std::array<gb::Button, 4> kDirs = {gb::Button::Right, gb::Button::Left, gb::Button::Up,
+                                                        gb::Button::Down};
+    for (gb::Button dir : kDirs) {
+        app.dpad_held[dir_index(dir)] = false;
+        app.stick_held[dir_index(dir)] = false;
+        gameboy.set_button(dir, false);
+    }
+    gameboy.set_button(gb::Button::A, false);
+    gameboy.set_button(gb::Button::B, false);
+    gameboy.set_button(gb::Button::Start, false);
+    gameboy.set_button(gb::Button::Select, false);
+    app.controller_fast_forward = false;
+}
+
+// a direction is held if either the dpad or the stick says so
+void set_direction(App& app, gb::Gameboy& gameboy, gb::Button dir) {
+    const size_t i = dir_index(dir);
+    gameboy.set_button(dir, app.dpad_held[i] || app.stick_held[i]);
+}
+
+// left stick as a d-pad; separate press/release thresholds so it doesn't chatter at the edge
+void update_stick_axis(App& app, gb::Gameboy& gameboy, uint8_t axis, int16_t value) {
+    constexpr int16_t kPress = 12000;
+    constexpr int16_t kRelease = 8000;
+    gb::Button neg;
+    gb::Button pos;
+    if (axis == SDL_CONTROLLER_AXIS_LEFTX) {
+        neg = gb::Button::Left;
+        pos = gb::Button::Right;
+    } else if (axis == SDL_CONTROLLER_AXIS_LEFTY) {
+        neg = gb::Button::Up;
+        pos = gb::Button::Down;
+    } else {
+        return;
+    }
+    if (value > kPress) {
+        app.stick_held[dir_index(pos)] = true;
+    } else if (value < kRelease) {
+        app.stick_held[dir_index(pos)] = false;
+    }
+    if (value < -kPress) {
+        app.stick_held[dir_index(neg)] = true;
+    } else if (value > -kRelease) {
+        app.stick_held[dir_index(neg)] = false;
+    }
+    set_direction(app, gameboy, pos);
+    set_direction(app, gameboy, neg);
+}
+
+// right trigger stands in for holding tab: same fast-forward flag, same hysteresis idea
+void update_trigger_axis(App& app, int16_t value) {
+    constexpr int16_t kPress = 16000;
+    constexpr int16_t kRelease = 12000;
+    if (value > kPress) {
+        app.controller_fast_forward = true;
+    } else if (value < kRelease) {
+        app.controller_fast_forward = false;
+    }
 }
 
 std::unique_ptr<gb::Gameboy> make_gameboy(std::span<const uint8_t> bytes) {
@@ -498,10 +585,12 @@ int main_impl(int argc, char* argv[]) {
     // crisp pixels: no dpi stretching, nearest-neighbour scaling
     SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "sdl init failed: %s\n", SDL_GetError());
         return 1;
     }
+    // a pre-plugged pad may not fire a device-added event, so look for one now
+    open_first_controller(app);
 
     SDL_AudioSpec want{};
     want.freq = 48000;
@@ -559,6 +648,9 @@ int main_impl(int argc, char* argv[]) {
     }
     if (app.audio_dev != 0) {
         SDL_CloseAudioDevice(app.audio_dev);
+    }
+    if (app.controller != nullptr) {
+        SDL_GameControllerClose(app.controller);
     }
     app.tile_viewer.close();
     SDL_DestroyTexture(app.texture);
@@ -634,6 +726,64 @@ void main_loop_step(void* arg) {
                     break;
                 }
             }
+            if (event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERBUTTONUP) {
+                const bool down = event.type == SDL_CONTROLLERBUTTONDOWN;
+                switch (event.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_A:
+                    gameboy.set_button(gb::Button::A, down);
+                    break;
+                case SDL_CONTROLLER_BUTTON_B:
+                case SDL_CONTROLLER_BUTTON_X:
+                    gameboy.set_button(gb::Button::B, down);
+                    break;
+                case SDL_CONTROLLER_BUTTON_START:
+                    gameboy.set_button(gb::Button::Start, down);
+                    break;
+                case SDL_CONTROLLER_BUTTON_BACK:
+                    gameboy.set_button(gb::Button::Select, down);
+                    break;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                    app.dpad_held[dir_index(gb::Button::Up)] = down;
+                    set_direction(app, gameboy, gb::Button::Up);
+                    break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                    app.dpad_held[dir_index(gb::Button::Down)] = down;
+                    set_direction(app, gameboy, gb::Button::Down);
+                    break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                    app.dpad_held[dir_index(gb::Button::Left)] = down;
+                    set_direction(app, gameboy, gb::Button::Left);
+                    break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                    app.dpad_held[dir_index(gb::Button::Right)] = down;
+                    set_direction(app, gameboy, gb::Button::Right);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (event.type == SDL_CONTROLLERAXISMOTION) {
+                if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX ||
+                    event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
+                    update_stick_axis(app, gameboy, event.caxis.axis, event.caxis.value);
+                } else if (event.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+                    update_trigger_axis(app, event.caxis.value);
+                }
+            }
+            if (event.type == SDL_CONTROLLERDEVICEADDED) {
+                if (app.controller == nullptr && SDL_IsGameController(event.cdevice.which)) {
+                    app.controller = SDL_GameControllerOpen(event.cdevice.which);
+                }
+            }
+            if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
+                if (app.controller != nullptr && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(
+                                                     app.controller)) == event.cdevice.which) {
+                    SDL_GameControllerClose(app.controller);
+                    app.controller = nullptr;
+                    release_controller_buttons(app, gameboy);
+                    open_first_controller(app);
+                }
+            }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_F10) {
                     write_ppm(gameboy, app.look, style_mask(app, 0x800), style_mask(app, 0x000),
@@ -668,7 +818,8 @@ void main_loop_step(void* arg) {
             }
         }
 
-        const bool fast_forward = SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0;
+        const bool fast_forward =
+            SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0 || app.controller_fast_forward;
         // audio drives pacing: keep the queue in a 50-100ms band; vsync is presentation only
         const bool audio_paced = app.audio_dev != 0 && opt.rom_path != nullptr;
         if (paused) {

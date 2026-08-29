@@ -33,6 +33,9 @@ crossy.cmd
 | `R` (or `Backspace`) | Select |
 | `Esc` | Back / pause menu |
 
+A gamepad works too, plug and play, no setup needed: d-pad or left stick moves, A is A,
+B or X is B, Menu is Start, View is Select, and the right trigger fast-forwards.
+
 ## Emulator keys
 
 - `P` - pause. Hold `Tab` - fast-forward.

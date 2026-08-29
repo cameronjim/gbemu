@@ -62,6 +62,10 @@ CONTENT_MAP = {
     "vine": 6,
 }
 
+# enemies.kind -> the kEnemy* contract in games/mario/src/mario.h. only the two walkers this
+# sub-milestone implements are mapped; an unmapped kind is left out of the spawn list entirely
+ENEMY_KIND_MAP = {"goomba": 0, "koopa_green": 1}
+
 # schema.md: 15 block rows, ground surface at row 13, rows 13-14 are the solid ground blocks
 LEVEL_ROWS = 15
 GROUND_ROW = 13
@@ -117,6 +121,9 @@ def feature_max_x(bible):
     for b in bible.get("blocks", []):
         if b.get("x") is not None:
             max_x = max(max_x, b["x"])
+    for e in bible.get("enemies", []):
+        if e.get("x") is not None:
+            max_x = max(max_x, e["x"])
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
         max_x = max(max_x, flag["x"])
@@ -241,6 +248,22 @@ def compile_block_list(bible):
     return out
 
 
+def compile_enemy_list(bible):
+    # the spawn list the rom walks with a single advancing cursor, so it must be sorted by column:
+    # the engine only ever compares the cursor's own entry against the camera's right edge. the
+    # bible's count_only entries carry no position and are dropped rather than invented
+    out = []
+    for e in bible.get("enemies", []):
+        if e.get("x") is None or e.get("y") is None:
+            continue
+        kind = ENEMY_KIND_MAP.get(e["kind"])
+        if kind is None:
+            continue
+        out.append((e["x"], e["y"], kind))
+    out.sort(key=lambda entry: entry[0])
+    return out
+
+
 def find_pipe_entry(bible):
     # the bible's enterable pipe: a terrain pipe with a dest, matched to the area it leads into by
     # entry_x first and by the area's kind second. returns (column, top_row, area_index) or None
@@ -306,7 +329,8 @@ def slug_for(level_id):
     return "level_" + level_id.replace("-", "_")
 
 
-def write_header(out_dir, slug, length_columns, start, flag_col, source_path, blocks, entry, areas):
+def write_header(out_dir, slug, length_columns, start, flag_col, source_path, blocks, enemies, entry,
+                 areas):
     guard = slug.upper() + "_H"
     upper = slug.upper()
     path = os.path.join(out_dir, slug + ".h")
@@ -348,6 +372,13 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path, bl
         f.write("extern const uint8_t %s_block_kind[%s_BLOCK_COUNT];\n" % (slug, upper))
         f.write("extern const uint8_t %s_block_content[%s_BLOCK_COUNT];\n\n" % (slug, upper))
 
+        f.write("// the position-triggered enemy spawn list, sorted by column so one cursor walks it.\n")
+        f.write("// row is the surface row the enemy stands on top of, the start cell's own convention\n")
+        f.write("#define %s_ENEMY_COUNT %dU\n" % (upper, len(enemies)))
+        f.write("extern const uint16_t %s_enemy_column[%s_ENEMY_COUNT];\n" % (slug, upper))
+        f.write("extern const uint8_t %s_enemy_row[%s_ENEMY_COUNT];\n" % (slug, upper))
+        f.write("extern const uint8_t %s_enemy_kind[%s_ENEMY_COUNT];\n\n" % (slug, upper))
+
         f.write("// the bible's enterable pipe and the sub-area it leads into\n")
         f.write("#define %s_HAS_PIPE_ENTRY %dU\n" % (upper, 0 if entry is None else 1))
         f.write("#define %s_PIPE_ENTRY_COLUMN %dU\n" % (upper, 0 if entry is None else entry[0]))
@@ -377,7 +408,7 @@ def write_header(out_dir, slug, length_columns, start, flag_col, source_path, bl
         f.write("#endif\n")
 
 
-def write_objects(out_dir, slug, blocks, areas, source_path):
+def write_objects(out_dir, slug, blocks, enemies, areas, source_path):
     # the reaction/coin lists are tens of bytes and are scanned every frame, so they stay in bank 0
     # where no bank switch stands between the engine and a solidity probe
     upper = slug.upper()
@@ -400,6 +431,18 @@ def write_objects(out_dir, slug, blocks, areas, source_path):
         f.write(
             "const uint8_t %s_block_content[%s_BLOCK_COUNT] = {%s};\n"
             % (slug, upper, ", ".join(str(b[3]) for b in blocks))
+        )
+        f.write(
+            "const uint16_t %s_enemy_column[%s_ENEMY_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(e[0]) for e in enemies))
+        )
+        f.write(
+            "const uint8_t %s_enemy_row[%s_ENEMY_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(e[1]) for e in enemies))
+        )
+        f.write(
+            "const uint8_t %s_enemy_kind[%s_ENEMY_COUNT] = {%s};\n"
+            % (slug, upper, ", ".join(str(e[2]) for e in enemies))
         )
         for index, area in enumerate(areas):
             name = "%s_AREA%d" % (upper, index)
@@ -453,7 +496,7 @@ def write_source(out_dir, slug, grid, source_path):
         f.write("};\n")
 
 
-def write_grid(out_dir, slug, grid, source_path, blocks, areas):
+def write_grid(out_dir, slug, grid, source_path, blocks, enemies, areas):
     # the same grid the rom reads out of its banked copy, as a host constant: the traversal tests
     # plan routes against it instead of re-deriving the level from the bible json
     path = os.path.join(out_dir, slug + "_grid.h")
@@ -481,6 +524,18 @@ def write_grid(out_dir, slug, grid, source_path, blocks, areas):
         f.write("};\n\n")
         f.write(
             "inline constexpr uint16_t k%sBlockCount = sizeof(k%sBlocks) / sizeof(k%sBlocks[0]);\n\n"
+            % (camel, camel, camel)
+        )
+
+        # the enemy twin plans against exactly the list the rom's spawn cursor walks
+        f.write("struct LevelEnemy {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n\n")
+        f.write("inline constexpr LevelEnemy k%sEnemies[] = {\n" % camel)
+        for column, row, kind in enemies:
+            f.write("    {%d, %d, %d},\n" % (column, row, kind))
+        f.write("};\n\n")
+        f.write(
+            "inline constexpr uint16_t k%sEnemyCount = sizeof(k%sEnemies) / sizeof(k%sEnemies[0]);\n\n"
             % (camel, camel, camel)
         )
 
@@ -546,6 +601,7 @@ def main():
     grid, length_columns, probes, flag_col = compile_grid(bible)
     start = (bible["start"]["x"], bible["start"]["y"])
     blocks = compile_block_list(bible)
+    enemies = compile_enemy_list(bible)
     entry = find_pipe_entry(bible)
 
     areas = []
@@ -557,16 +613,17 @@ def main():
         compiled["return_top_row"] = 0 if entry is None else entry[1]
         areas.append(compiled)
 
-    write_header(out_dir, slug, length_columns, start, flag_col, in_path, blocks, entry, areas)
+    write_header(out_dir, slug, length_columns, start, flag_col, in_path, blocks, enemies, entry, areas)
     write_source(out_dir, slug, grid, in_path)
-    write_objects(out_dir, slug, blocks, areas, in_path)
+    write_objects(out_dir, slug, blocks, enemies, areas, in_path)
     write_areas(out_dir, slug, areas, in_path)
-    write_grid(out_dir, slug, grid, in_path, blocks, areas)
+    write_grid(out_dir, slug, grid, in_path, blocks, enemies, areas)
     write_probes(out_dir, slug, probes, in_path, areas)
 
     print(
-        "compiled %s: %d columns, %d probes, %d blocks, %d areas, flag column %s -> %s"
-        % (bible["level"], length_columns, len(probes), len(blocks), len(areas), flag_col, out_dir)
+        "compiled %s: %d columns, %d probes, %d blocks, %d enemies, %d areas, flag column %s -> %s"
+        % (bible["level"], length_columns, len(probes), len(blocks), len(enemies), len(areas), flag_col,
+           out_dir)
     )
     return 0
 

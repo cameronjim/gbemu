@@ -194,22 +194,29 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         add_custom_command(
             OUTPUT ${GB_MARIO_PHYSICS_H}
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/gen_physics.py
-                    ${CMAKE_SOURCE_DIR}/games/mario/research/physics.json ${GB_MARIO_GEN_DIR}
+                    ${CMAKE_SOURCE_DIR}/games/mario/research/physics.json
+                    ${CMAKE_SOURCE_DIR}/games/mario/research/roster.json ${GB_MARIO_GEN_DIR}
             DEPENDS games/mario/tools/gen_physics.py games/mario/research/physics.json
+                    games/mario/research/roster.json
             COMMENT "generating mario physics constants from the research bible"
             VERBATIM)
         add_custom_target(mario_physics DEPENDS ${GB_MARIO_PHYSICS_H})
 
+        # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
+        # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a
+        # few hundred cycles a frame for free
         set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
         add_custom_command(
             OUTPUT ${GB_MARIO_ROM}
-            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8 -I${GB_MARIO_GEN_DIR}
+            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8
+                    -Wf--max-allocs-per-node50000 -I${GB_MARIO_GEN_DIR}
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/camera.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${GB_MARIO_LEVEL_C}
                     ${GB_MARIO_LEVEL_AREAS_C}
@@ -219,6 +226,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/camera.c games/mario/src/camera.h
                     games/mario/src/player.c games/mario/src/player.h
                     games/mario/src/blocks.c games/mario/src/blocks.h
+                    games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
                     ${GB_MARIO_LEVEL_GRID_H} ${GB_MARIO_LEVEL_AREAS_C}

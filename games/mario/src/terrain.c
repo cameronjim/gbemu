@@ -23,23 +23,34 @@ static uint16_t columns;
 static uint8_t tile_buf[kTilesPerBlock * kBgRows];
 static uint8_t attr_buf[kTilesPerBlock * kBgRows];
 
-// reads one raw column of the banked level grid; brackets the bank switch so bank 0 is current
-// otherwise
-static void read_grid_column(uint16_t block_col, uint8_t* out) {
+// the grid being played, unpacked out of its rom bank once at load time. the engine probes solidity
+// six to eight times a frame and streams a column every 16 px, and a bank switch on each of those
+// was costing the heavy frames their whole margin; a ram copy makes every probe a plain indexed
+// load and leaves the rom bank alone, which is also what lets enemies.c run banked
+static uint8_t grid[LEVEL_1_1_LENGTH_COLUMNS][LEVEL_1_1_ROW_STRIDE];
+
+// the only bank switch left in the module, and it runs with the lcd off beside terrain_init's fill
+static void load_grid(void) {
     const uint8_t* src;
+    uint16_t c;
     uint8_t r;
 
-    if (area == kAreaMain) {
-        SWITCH_ROM_MBC5(LEVEL_1_1_BANK);
-        src = level_1_1_blocks[block_col];
-    } else {
-        SWITCH_ROM_MBC5(LEVEL_1_1_AREA0_BANK);
-        src = level_1_1_area0_blocks[block_col];
-    }
-    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
-        out[r] = src[r];
+    SWITCH_ROM_MBC5(area == kAreaMain ? LEVEL_1_1_BANK : LEVEL_1_1_AREA0_BANK);
+    for (c = 0; c < columns; ++c) {
+        src = (area == kAreaMain) ? level_1_1_blocks[c] : level_1_1_area0_blocks[c];
+        for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+            grid[c][r] = src[r];
+        }
     }
     SWITCH_ROM_MBC5(0);
+}
+
+static void read_grid_column(uint16_t block_col, uint8_t* out) {
+    uint8_t r;
+
+    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+        out[r] = grid[block_col][r];
+    }
 }
 
 // the same column with blocks.c's runtime state patched over the compiled bytes
@@ -51,17 +62,7 @@ static void read_block_column(uint16_t block_col, uint8_t* out) {
 }
 
 static uint8_t grid_cell(uint16_t block_col, uint8_t row) {
-    uint8_t kind;
-
-    if (area == kAreaMain) {
-        SWITCH_ROM_MBC5(LEVEL_1_1_BANK);
-        kind = level_1_1_blocks[block_col][row];
-    } else {
-        SWITCH_ROM_MBC5(LEVEL_1_1_AREA0_BANK);
-        kind = level_1_1_area0_blocks[block_col][row];
-    }
-    SWITCH_ROM_MBC5(0);
-    return kind;
+    return grid[block_col][row];
 }
 
 // the kinds each ring slot currently paints. a column scrolling in reuses the slot the column
@@ -73,9 +74,16 @@ static uint8_t ring_slot(int16_t column) {
     return (uint8_t)((uint16_t)column & (kRingBlocks - 1U));
 }
 
-// any direct cell write leaves the slot out of step with its cached kinds, so it is marked unknown
+// any direct cell write leaves the slot out of step with its cached kinds. every row is marked
+// unknown, not just the first: the streamer now repaints only the rows that differ, so a single
+// poisoned row would leave the cell that was written by hand standing
 static void ring_forget(int16_t column) {
-    ring_kinds[ring_slot(column)][0] = 0xFFU;
+    uint8_t* cached = ring_kinds[ring_slot(column)];
+    uint8_t r;
+
+    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+        cached[r] = 0xFFU;
+    }
 }
 
 // the ring only holds kRingBlocks columns, so a write outside them would land on some other
@@ -86,6 +94,47 @@ static uint8_t column_in_ring(int16_t column) {
 
 static uint8_t ring_tile_col(int16_t column) {
     return (uint8_t)(((uint16_t)column * kTilesPerBlock) & (kRingTileCols - 1U));
+}
+
+// a whole streamed column is 60 tile bytes plus 60 attribute bytes, which is more than the frame
+// that streams it can pay: the engine was against its budget before the enemies arrived. two things
+// bring it down. the streamer repaints only the span of rows that actually differ from what the
+// ring slot already holds - across 1-1's flat stretches that is nothing at all and most of the rest
+// is a block or two - and whatever is left goes out a quarter at a time, one quarter a frame. the
+// column being streamed sits 13 blocks right of the camera's left edge, nearly three screen widths
+// of slack, so it always finishes long before it can be seen
+#define kOwedSteps 4U
+static int16_t owed_col = -1;
+static uint8_t owed_step;
+// the changed span, in bg tile rows: where it starts and how many rows it covers
+static uint8_t owed_row;
+static uint8_t owed_rows;
+
+static void owed_advance(void) {
+    const uint8_t first = (uint8_t)(owed_rows >> 1);
+    const uint8_t half = (uint8_t)(owed_step & 1U);
+    const uint8_t rows = half != 0U ? (uint8_t)(owed_rows - first) : first;
+
+    if (rows != 0U) {
+        const uint8_t row = (uint8_t)(owed_row + (half != 0U ? first : 0U));
+        const uint16_t offset = (uint16_t)(half != 0U ? first : 0U) * kTilesPerBlock;
+
+        if (owed_step < 2U) {
+            set_bkg_tiles(ring_tile_col(owed_col), row, kTilesPerBlock, rows, tile_buf + offset);
+        } else {
+            set_bkg_attributes(ring_tile_col(owed_col), row, kTilesPerBlock, rows, attr_buf + offset);
+        }
+    }
+    ++owed_step;
+    if (owed_step >= kOwedSteps) {
+        owed_col = -1;
+    }
+}
+
+static void flush_attrs(void) {
+    while (owed_col >= 0) {
+        owed_advance();
+    }
 }
 
 // writes one block cell's 2x2 face at the given tile row; the caller has already range-checked
@@ -112,8 +161,8 @@ static void stream_column(int16_t block_col) {
     uint8_t r;
     uint8_t kind;
     uint8_t pal;
-    uint8_t tile_col;
-    uint8_t same;
+    uint8_t lo = 0xFFU;
+    uint8_t hi = 0;
     uint8_t* cached;
     uint8_t* tp;
     uint8_t* ap;
@@ -125,22 +174,25 @@ static void stream_column(int16_t block_col) {
     read_block_column((uint16_t)block_col, rows);
 
     cached = ring_kinds[ring_slot(block_col)];
-    same = 1;
     for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
         if (cached[r] != rows[r]) {
-            same = 0;
-            break;
+            if (lo == 0xFFU) {
+                lo = r;
+            }
+            hi = r;
         }
     }
-    if (same != 0U) {
+    if (lo == 0xFFU) {
         return;
     }
+    // the buffers are about to be rebuilt, so whatever they still owe goes out first
+    flush_attrs();
 
     // the two buffers fill in exactly the order the ring wants them, so one walking pointer each
     // beats recomputing a row index eight times a row
     tp = tile_buf;
     ap = attr_buf;
-    for (r = 0; r < LEVEL_1_1_ROWS; ++r) {
+    for (r = lo; r <= hi; ++r) {
         kind = rows[r];
         pal = kBlockPalette[kind];
         cached[r] = kind;
@@ -154,10 +206,12 @@ static void stream_column(int16_t block_col) {
         *ap++ = pal;
     }
 
-    // two calls total: one for the tile ids (vbk 0), one for the palette attributes (vbk 1)
-    tile_col = ring_tile_col(block_col);
-    set_bkg_tiles(tile_col, 0, kTilesPerBlock, kBgRows, tile_buf);
-    set_bkg_attributes(tile_col, 0, kTilesPerBlock, kBgRows, attr_buf);
+    // this frame pays only the first quarter; the next three quiet ones pay the rest
+    owed_col = block_col;
+    owed_row = (uint8_t)(lo * kTilesPerBlock);
+    owed_rows = (uint8_t)((uint8_t)(hi - lo + 1U) * kTilesPerBlock);
+    owed_step = 0;
+    owed_advance();
 }
 
 // the ring holds [window_start, window_start + kRingBlocks); shifts one column at a time either way.
@@ -201,6 +255,7 @@ void terrain_init(uint8_t next_area) {
 
     area = next_area;
     columns = (area == kAreaMain) ? (uint16_t)LEVEL_1_1_LENGTH_COLUMNS : (uint16_t)LEVEL_1_1_AREA0_COLUMNS;
+    load_grid();
     for (i = 0; i < (int16_t)kRingBlocks; ++i) {
         ring_kinds[i][0] = 0xFFU;
     }
@@ -221,6 +276,8 @@ void terrain_init(uint8_t next_area) {
     for (i = 0; i < (int16_t)kRingBlocks; ++i) {
         stream_column(i);
     }
+    // the init fill runs with the lcd off, so it owes nothing by the time play starts
+    flush_attrs();
 
     terrain_apply_scroll();
 }
@@ -243,7 +300,13 @@ void terrain_set_scroll_x(uint16_t world_px) {
 }
 
 void terrain_stream_window(void) {
+    const uint8_t before = owed_step;
+
     sync_window((uint16_t)(world_x >> 4));
+    // a frame that started no column is the quiet one that can pay a step of what is still owed
+    if (owed_col >= 0 && owed_step == before) {
+        owed_advance();
+    }
 }
 
 void terrain_set_pan_y(uint8_t y_px) {
@@ -290,6 +353,8 @@ void terrain_write_block(int16_t column, int16_t row) {
     if (column_in_ring(column) == 0U || row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
         return;
     }
+    // a whole-column attribute write would paint over the face this is about to place
+    flush_attrs();
     ring_forget(column);
     put_face(column, (uint8_t)((uint8_t)row * kTilesPerBlock), terrain_kind_at(column, row));
 }
@@ -304,6 +369,7 @@ void terrain_bump_block(int16_t column, int16_t row) {
         terrain_kind_at(column, (int16_t)(row - 1)) != kBlockEmpty) {
         return;
     }
+    flush_attrs();
     ring_forget(column);
     put_face(column, (uint8_t)((uint8_t)row * kTilesPerBlock - 1U), terrain_kind_at(column, row));
     for (i = 0; i < 4U; ++i) {

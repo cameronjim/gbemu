@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """emits the physics constants header both the rom and the host golden tests read, straight from
-games/mario/research/physics.json. run as: gen_physics.py <physics.json> <out_dir>
+games/mario/research/physics.json plus the point/behaviour tables in roster.json.
+run as: gen_physics.py <physics.json> <roster.json> <out_dir>
 
 the milestone's trap says the bible's numbers must never be hand-transcribed twice, so nothing
-downstream of this file carries a literal from the bible - player.c and mario_test.cpp both
-include the generated header.
+downstream of this file carries a literal from the bible - player.c, enemies.c and mario_test.cpp
+all include the generated header.
 """
 
 import json
@@ -53,10 +54,33 @@ def brace(values):
     return "{" + ", ".join(str(v) for v in values) + "}"
 
 
-def build(bible, source_path):
+def subpixels(px_per_frame):
+    # smb's horizontal speeds are a signed byte: high nibble whole px, low nibble 1/16 px, so a
+    # px/frame figure is exactly 16x its raw byte. anything finer than a sixteenth is not sourced
+    value = px_per_frame * 16.0
+    if abs(value - round(value)) > 1e-9:
+        raise SystemExit("gen_physics: %r is not a whole number of subpixels" % px_per_frame)
+    return int(round(value))
+
+
+def numeric_prefix(sequence):
+    # the roster's chain tables end in a "1-Up (each further)" string; lives are m8's, so the rom
+    # keeps awarding the last numeric step and the string entry is dropped here
+    out = []
+    for value in sequence:
+        if not isinstance(value, int):
+            break
+        out.append(value)
+    return out
+
+
+def build(bible, roster, source_path, roster_path):
     horiz = bible["horizontal_movement"]
     accel = horiz["acceleration"]
     jump = bible["jump_and_gravity"]
+    enemy = bible["enemy_movement"]
+    hits = bible["interactions"]
+    score = roster["score_table"]
 
     lines = []
     add = lines.append
@@ -92,21 +116,39 @@ def build(bible, source_path):
     add("// releasing a below this much rise keeps the weak gravity for one more frame")
     add("#define kMarioMinRisePx %d" % jump["variable_jump_height_rule"]["min_rise_before_release_matters_px"])
     add("")
+    add("// enemies. the same signed-byte subpixel format the player's speed uses, so a goomba's")
+    add("// 0.5 px/frame is the bible's own 0xf8 byte and a kicked shell's 3.0 is its 0x30.")
+    add("#define kEnemyWalkSubpx %d"
+        % subpixels(enemy["goomba_koopa_walk_speed"]["normal_px_per_frame"]))
+    add("#define kEnemyShellSubpx %d" % subpixels(hits["shell_kick_speed"]["px_per_frame"]))
+    add("// the stomp kicks the player back up: -3 px/frame off a walker, -4 off a shell")
+    add("#define kEnemyStompBouncePx %d" % hits["stomp_bounce"]["normal_enemy_stomp_px_per_frame"])
+    add("#define kEnemyShellBouncePx %d" % hits["stomp_bounce"]["shell_or_demote_bounce_px_per_frame"])
+    add("")
+    add("// points, from %s's score table. consecutive stomps and consecutive shell kills each" % roster_path)
+    add("// escalate along their own sequence; the rom holds the last step once the table runs out")
+    stomps = numeric_prefix(score["stomp_chain_sequence"])
+    shells = numeric_prefix(score["shell_kick_chain_sequence"])
+    add("#define kStompChainCount %d" % len(stomps))
+    add("#define kStompChainInit %s" % brace(stomps))
+    add("#define kShellChainCount %d" % len(shells))
+    add("#define kShellChainInit %s" % brace(shells))
+    add("")
     add("#endif")
     return "\n".join(lines) + "\n"
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("usage: gen_physics.py <physics.json> <out_dir>", file=sys.stderr)
+    if len(sys.argv) != 4:
+        print("usage: gen_physics.py <physics.json> <roster.json> <out_dir>", file=sys.stderr)
         return 1
 
-    in_path, out_dir = sys.argv[1], sys.argv[2]
+    in_path, roster_path, out_dir = sys.argv[1], sys.argv[2], sys.argv[3]
     os.makedirs(out_dir, exist_ok=True)
-    text = build(load(in_path), in_path)
+    text = build(load(in_path), load(roster_path), in_path, roster_path)
     with open(os.path.join(out_dir, "physics_constants.h"), "w", encoding="utf-8") as f:
         f.write(text)
-    print("generated physics_constants.h from %s" % in_path)
+    print("generated physics_constants.h from %s and %s" % (in_path, roster_path))
     return 0
 
 

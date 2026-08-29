@@ -1,4 +1,5 @@
 #include "mario.h"
+#include "player.h"
 #include "terrain.h"
 
 #include <gb/cgb.h>
@@ -8,7 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-enum GameState { kStateTitle, kStateCamera };
+enum GameState { kStateTitle, kStatePlay, kStateCamera };
 
 // one row of vram bank 1 attribute bytes, reused for every palette-tagged row
 static uint8_t attr_row[kScreenCols];
@@ -55,10 +56,32 @@ static void draw_title(void) {
     print_centered(kPromptRow, "SPACE TO START");
 }
 
+// keeps mario at kCamFollowX once he has walked past it; m4 replaces this with smbd's own rules
+static uint16_t follow_x(void) {
+    const uint16_t mario_x = player_x();
+
+    return mario_x > (uint16_t)kCamFollowX ? (uint16_t)(mario_x - (uint16_t)kCamFollowX) : 0U;
+}
+
 // bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
 static void enter_camera(void) {
     DISPLAY_OFF;
     terrain_init();
+    SHOW_BKG;
+    DISPLAY_ON;
+}
+
+// the level load and the respawn share this: both refill the whole ring, far more vram traffic
+// than one vblank holds, so both do it with the lcd off
+static void enter_play(void) {
+    DISPLAY_OFF;
+    terrain_init();
+    terrain_set_pan_y(kPlayScy);
+    player_init();
+    terrain_set_scroll_x(follow_x());
+    terrain_apply_scroll();
+    player_draw(terrain_camera_x(), kPlayScy);
+    terrain_stream_window();
     SHOW_BKG;
     DISPLAY_ON;
 }
@@ -87,9 +110,26 @@ void main(void) {
 
         if (state == kStateTitle) {
             if ((pressed & J_START) != 0U) {
+                enter_play();
+                state = kStatePlay;
+            } else if ((pressed & J_SELECT) != 0U) {
                 enter_camera();
                 state = kStateCamera;
             }
+            continue;
+        }
+
+        if (state == kStatePlay) {
+            if (player_update(keys) != 0U) {
+                enter_play();
+                continue;
+            }
+            terrain_set_scroll_x(follow_x());
+            // scx and oam are cheap and must land before scanline 0; the ring stream can outlast
+            // vblank on a column boundary, so it goes last
+            terrain_apply_scroll();
+            player_draw(terrain_camera_x(), kPlayScy);
+            terrain_stream_window();
             continue;
         }
 

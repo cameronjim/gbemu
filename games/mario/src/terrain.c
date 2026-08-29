@@ -125,6 +125,38 @@ void terrain_scroll_x(int8_t delta_px) {
     sync_window((uint16_t)(world_x >> 4)); // /kBlockPx
 }
 
+void terrain_set_scroll_x(uint16_t world_px) {
+    world_x = (world_px > max_world_x) ? max_world_x : world_px;
+}
+
+void terrain_stream_window(void) {
+    sync_window((uint16_t)(world_x >> 4));
+}
+
+void terrain_set_pan_y(uint8_t y_px) {
+    world_y = (y_px > (uint8_t)kScyMax) ? (uint8_t)kScyMax : y_px;
+}
+
+uint16_t terrain_camera_x(void) {
+    return world_x;
+}
+
+uint8_t terrain_solid_at(int16_t column, int16_t row) {
+    uint8_t kind;
+
+    if (column < 0 || column >= (int16_t)LEVEL_1_1_LENGTH_COLUMNS) {
+        return 1; // the level's ends are walls, smb-style
+    }
+    if (row < 0 || row >= (int16_t)LEVEL_1_1_ROWS) {
+        return 0;
+    }
+    SWITCH_ROM_MBC5(LEVEL_1_1_BANK);
+    kind = level_1_1_blocks[(uint16_t)column][(uint8_t)row];
+    SWITCH_ROM_MBC5(0);
+    // sky and the flag pole are the only cells the player passes through
+    return (kind != kBlockEmpty && kind != kBlockFlagPole) ? 1U : 0U;
+}
+
 void terrain_pan_y(int8_t delta_px) {
     int16_t next = (int16_t)world_y + delta_px;
 

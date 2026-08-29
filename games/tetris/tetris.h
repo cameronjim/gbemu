@@ -43,27 +43,34 @@
 // title screen best score, under press start
 #define kBestRow 12U
 
-// the well sits left of center; columns 13-19 are the panel
+// the well sits left of a 2-column backdrop margin; the panel fills columns 14-19
 #define kWellCols 10U
 #define kWellRows 18U
-#define kWellOriginCol 2U
+#define kWellOriginCol 3U
 #define kWellOriginRow 0U
-#define kWallLeftCol 1U
-#define kWallRightCol 12U
+#define kWallLeftCol 2U
+#define kWallRightCol 13U
 
-// right panel: score, level, lines, and the next-piece box
-#define kPanelCol 13U
+// right panel: score, level, lines, and the next-piece box. the 6-digit score is the width
+// constraint: columns 14-19 is exactly six cells, so its value has no room for air off the wall.
+// every value (and the next box) is right-aligned to end at column 19; every label starts one
+// column right of where the score value starts, at column 15, so the label rows keep their gap.
+#define kPanelLabelCol 15U
 #define kScoreLabelRow 1U
 #define kScoreValueRow 2U
+#define kScoreValueCol 14U
 #define kScoreDigits 6U
-#define kLevelLabelRow 4U
-#define kLevelValueRow 5U
+#define kLevelLabelRow 5U
+#define kLevelValueRow 6U
+#define kLevelValueCol 18U
 #define kLevelDigits 2U
-#define kLinesLabelRow 7U
-#define kLinesValueRow 8U
+#define kLinesLabelRow 9U
+#define kLinesValueRow 10U
+#define kLinesValueCol 17U
 #define kLinesDigits 3U
-#define kNextLabelRow 10U
-#define kNextBoxRow 11U
+#define kNextLabelRow 13U
+#define kNextBoxRow 16U
+#define kNextBoxCol 16U
 #define kNextBoxCols 4U
 #define kNextBoxRows 2U
 
@@ -89,14 +96,15 @@
 #define kSaveMagic3 'S'
 #define kSaveBestOffset 4U
 
-// game over popup: a fixed band over the well; the bg never scrolls so placement is static
+// game over popup: a fixed band over the well; the bg never scrolls so placement is static.
+// flappy's band rhythm: a blank fill row top and bottom, and a blank row between every text line.
 #define kPopupCol 0U
 #define kPopupTopRow 5U
-#define kPopupRows 7U
-#define kPopupOverRow 0U
-#define kPopupScoreRow 2U
-#define kPopupTopScoreRow 4U
-#define kPopupPromptRow 6U
+#define kPopupRows 9U
+#define kPopupOverRow 1U
+#define kPopupScoreRow 3U
+#define kPopupTopScoreRow 5U
+#define kPopupPromptRow 7U
 #define kPopupRowsPerFrame 2U
 
 #define kCellPx 8U
@@ -150,11 +158,13 @@
 #define kRotateFreqLo 0x80U
 #define kRotateFreqHi 0x87U // trigger plus freq 0x780: 1024 hz
 
-// lock: ch4 noise on a low divisor, a short deep thud
-#define kLockLength 0x00U
-#define kLockEnvelope 0xF1U
-#define kLockPoly 0x56U // 15 bit lfsr, shift 5, divisor 6
-#define kLockTrigger 0x80U
+// lock: ch2, a soft short tock, quieter and quicker than the rotate blip. ch2 is free at lock
+// time (the clear chime below only fires after, on a completed line). volume 6 decaying by 1
+// every period at 1/64s is about 0.09s total, against the rotate blip's volume 15
+#define kLockDuty 0x40U
+#define kLockEnvelope 0x61U
+#define kLockFreqLo 0x78U
+#define kLockFreqHi 0x85U // trigger plus freq 0x578: 202 hz
 
 // line clear: ch2, one clean tone ringing ~0.47 s
 #define kClearDuty 0x80U

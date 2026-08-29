@@ -35,22 +35,22 @@ void panel_build_digits(void) {
 }
 
 void panel_init(void) {
-    gotoxy(kPanelCol, kScoreLabelRow);
+    gotoxy(kPanelLabelCol, kScoreLabelRow);
     printf("SCORE");
-    gotoxy(kPanelCol, kLevelLabelRow);
+    gotoxy(kPanelLabelCol, kLevelLabelRow);
     printf("LEVEL");
-    gotoxy(kPanelCol, kLinesLabelRow);
+    gotoxy(kPanelLabelCol, kLinesLabelRow);
     printf("LINES");
-    gotoxy(kPanelCol, kNextLabelRow);
+    gotoxy(kPanelLabelCol, kNextLabelRow);
     printf("NEXT");
 
     score = 0;
     lines = 0;
     level = 0;
     drawn_score = 0;
-    draw_number(kPanelCol, kScoreValueRow, 0, kScoreDigits);
-    draw_number(kPanelCol, kLevelValueRow, 0, kLevelDigits);
-    draw_number(kPanelCol, kLinesValueRow, 0, kLinesDigits);
+    draw_number(kScoreValueCol, kScoreValueRow, 0, kScoreDigits);
+    draw_number(kLevelValueCol, kLevelValueRow, 0, kLevelDigits);
+    draw_number(kLinesValueCol, kLinesValueRow, 0, kLinesDigits);
 }
 
 void panel_set_next(uint8_t piece) {
@@ -80,8 +80,8 @@ void panel_set_next(uint8_t piece) {
                 attr_row[x] = kPalChrome;
             }
         }
-        set_bkg_tiles(kPanelCol, (uint8_t)(kNextBoxRow + y), kNextBoxCols, 1, tile_row);
-        set_bkg_attributes(kPanelCol, (uint8_t)(kNextBoxRow + y), kNextBoxCols, 1, attr_row);
+        set_bkg_tiles(kNextBoxCol, (uint8_t)(kNextBoxRow + y), kNextBoxCols, 1, tile_row);
+        set_bkg_attributes(kNextBoxCol, (uint8_t)(kNextBoxRow + y), kNextBoxCols, 1, attr_row);
     }
 }
 
@@ -91,7 +91,7 @@ static void redraw_score(void) {
         return;
     }
     drawn_score = score;
-    draw_number(kPanelCol, kScoreValueRow, score, kScoreDigits);
+    draw_number(kScoreValueCol, kScoreValueRow, score, kScoreDigits);
 }
 
 void panel_add_soft_drop(void) {
@@ -118,8 +118,8 @@ void panel_add_lines(uint8_t n) {
         level = kLevelMax;
     }
     redraw_score();
-    draw_number(kPanelCol, kLinesValueRow, lines, kLinesDigits);
-    draw_number(kPanelCol, kLevelValueRow, level, kLevelDigits);
+    draw_number(kLinesValueCol, kLinesValueRow, lines, kLinesDigits);
+    draw_number(kLevelValueCol, kLevelValueRow, level, kLevelDigits);
 }
 
 uint32_t panel_score(void) {

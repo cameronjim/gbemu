@@ -33,10 +33,12 @@ constexpr size_t kHeaderCgbFlagOffset = 0x143;
 constexpr uint8_t kCgbFlagOnly = 0xC0;
 
 // the playfield geometry the rom draws, mirrored from tetris.h
-constexpr int kWellOriginCol = 2;
+constexpr int kWellOriginCol = 3;
 constexpr int kWellOriginRow = 0;
 constexpr int kWellCols = 10;
 constexpr int kWellRows = 18;
+constexpr int kWallLeftCol = 2;
+constexpr int kWallRightCol = 13;
 
 // locked cells carry a tile id per piece so the board reads back off the screen
 constexpr uint8_t kWellEmptyTileId = 0x61;
@@ -56,26 +58,31 @@ constexpr int kTitleRow = 7;
 constexpr int kPromptRow = 10;
 constexpr int kBestRow = 12;
 
-// right panel geometry, mirrored from tetris.h
-constexpr int kPanelCol = 13;
+// right panel geometry, mirrored from tetris.h. every value (and the next box) is right-aligned
+// to end at column 19; every label starts at column 15, a column right of the score value.
+constexpr int kPanelLabelCol = 15;
 constexpr int kScoreValueRow = 2;
+constexpr int kScoreValueCol = 14;
 constexpr int kScoreDigits = 6;
-constexpr int kLevelValueRow = 5;
+constexpr int kLevelValueRow = 6;
+constexpr int kLevelValueCol = 18;
 constexpr int kLevelDigits = 2;
-constexpr int kLinesValueRow = 8;
+constexpr int kLinesValueRow = 10;
+constexpr int kLinesValueCol = 17;
 constexpr int kLinesDigits = 3;
 constexpr uint8_t kDigitTileId = 0x80;
-constexpr int kNextBoxRow = 11;
+constexpr int kNextBoxRow = 16;
+constexpr int kNextBoxCol = 16;
 constexpr int kNextBoxCols = 4;
 constexpr int kNextBoxRows = 2;
 
 // game over popup band, mirrored from tetris.h
 constexpr int kPopupTopRow = 5;
-constexpr int kPopupRows = 7;
-constexpr int kPopupOverRow = 0;
-constexpr int kPopupScoreRow = 2;
-constexpr int kPopupTopScoreRow = 4;
-constexpr int kPopupPromptRow = 6;
+constexpr int kPopupRows = 9;
+constexpr int kPopupOverRow = 1;
+constexpr int kPopupScoreRow = 3;
+constexpr int kPopupTopScoreRow = 5;
+constexpr int kPopupPromptRow = 7;
 
 // battery sram: 'T','T','R','S' then a u32 best score, little endian
 constexpr size_t kSaveBestOffset = 4;
@@ -597,10 +604,10 @@ bool row_has_tile(const gb::Gameboy& gameboy, int row, uint8_t tile) {
 }
 
 // reads every dedicated digit tile (kDigitTileId + d) found in a row, left to right, as one number
-uint32_t read_panel_number(const gb::Gameboy& gameboy, int row, int width) {
+uint32_t read_panel_number(const gb::Gameboy& gameboy, int col, int row, int width) {
     uint32_t value = 0;
-    for (int col = 0; col < width; ++col) {
-        const uint16_t id = tile_at(gameboy, kPanelCol + col, row);
+    for (int i = 0; i < width; ++i) {
+        const uint16_t id = tile_at(gameboy, col + i, row);
         REQUIRE((id & 0x100u) == 0);
         const uint8_t tile = static_cast<uint8_t>(id);
         REQUIRE(tile >= kDigitTileId);
@@ -611,15 +618,15 @@ uint32_t read_panel_number(const gb::Gameboy& gameboy, int row, int width) {
 }
 
 uint32_t read_score(const gb::Gameboy& gameboy) {
-    return read_panel_number(gameboy, kScoreValueRow, kScoreDigits);
+    return read_panel_number(gameboy, kScoreValueCol, kScoreValueRow, kScoreDigits);
 }
 
 uint32_t read_level(const gb::Gameboy& gameboy) {
-    return read_panel_number(gameboy, kLevelValueRow, kLevelDigits);
+    return read_panel_number(gameboy, kLevelValueCol, kLevelValueRow, kLevelDigits);
 }
 
 uint32_t read_lines(const gb::Gameboy& gameboy) {
-    return read_panel_number(gameboy, kLinesValueRow, kLinesDigits);
+    return read_panel_number(gameboy, kLinesValueCol, kLinesValueRow, kLinesDigits);
 }
 
 // concatenates whatever plain font digit tiles sit in a row; used for the title/popup text lines
@@ -771,9 +778,21 @@ TEST_CASE("start_opens_an_empty_well_with_a_piece_at_the_top") {
 
     // the walls frame the ten playable columns on both sides
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    REQUIRE(static_cast<uint8_t>(ids[pixel_index(1 * 8 + 4, 4)]) == kWallTileId);
-    REQUIRE(static_cast<uint8_t>(ids[pixel_index(12 * 8 + 4, 4)]) == kWallTileId);
+    REQUIRE(static_cast<uint8_t>(ids[pixel_index(kWallLeftCol * 8 + 4, 4)]) == kWallTileId);
+    REQUIRE(static_cast<uint8_t>(ids[pixel_index(kWallRightCol * 8 + 4, 4)]) == kWallTileId);
     REQUIRE(static_cast<uint8_t>(ids[pixel_index(kWellOriginCol * 8 + 4, 4)]) == kWellEmptyTileId);
+}
+
+TEST_CASE("pressing_a_at_the_title_also_starts_the_game") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    // space is the a button on this frontend; the title must accept it same as start
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    press(gameboy, gb::Button::A, 2);
+    REQUIRE(wait_for_piece(gameboy, 120));
+    REQUIRE(count_locked(read_grid(gameboy)) == 0);
 }
 
 TEST_CASE("the_piece_falls_without_any_input") {
@@ -1027,12 +1046,15 @@ TEST_CASE("the_same_input_script_gives_the_same_board") {
     REQUIRE(first.load_rom(rom));
     REQUIRE(second.load_rom(rom));
 
-    // one script driven frame by frame; the seed is the frame counter at the start press
+    // one script driven frame by frame; the seed is the frame counter at the start press.
+    // rotate only fires once play has actually begun: a is also a title-screen start button now,
+    // so an earlier rotate pulse would open the round itself and desync the intended start frame
+    int peak_locked = 0;
     for (int i = 0; i < 900; ++i) {
         const bool start = i >= 120 && i < 122;
         const bool left = i % 37 < 6;
         const bool right = i % 53 < 4;
-        const bool rotate = i % 29 < 2;
+        const bool rotate = i >= 122 && i % 29 < 2;
         const bool down = i % 17 < 9;
         for (gb::Gameboy* g : {&first, &second}) {
             g->set_button(gb::Button::Start, start);
@@ -1042,9 +1064,12 @@ TEST_CASE("the_same_input_script_gives_the_same_board") {
             g->set_button(gb::Button::Down, down);
             g->run_frame();
         }
+        // a is also the over-card dismiss/retry button, so a busy script can top out, bounce back
+        // to the title and start a fresh round before frame 900; a running peak survives that
+        peak_locked = std::max(peak_locked, count_locked(read_grid(first)));
     }
 
-    REQUIRE(count_locked(read_grid(first)) > 0);
+    REQUIRE(peak_locked > 0);
     REQUIRE(read_grid(first) == read_grid(second));
 
     const std::span<const uint16_t> a = first.framebuffer_tiles();
@@ -1124,7 +1149,7 @@ TEST_CASE("the_next_box_shows_the_piece_that_spawns_after_the_current_one") {
     std::vector<Cell> preview_cells;
     for (int dy = 0; dy < kNextBoxRows; ++dy) {
         for (int dx = 0; dx < kNextBoxCols; ++dx) {
-            const uint16_t id = tile_at(gameboy, kPanelCol + dx, kNextBoxRow + dy);
+            const uint16_t id = tile_at(gameboy, kNextBoxCol + dx, kNextBoxRow + dy);
             if ((id & 0x100u) != 0) {
                 continue;
             }
@@ -1137,7 +1162,7 @@ TEST_CASE("the_next_box_shows_the_piece_that_spawns_after_the_current_one") {
     REQUIRE(preview_cells.size() == 4u);
     const Shape preview_shape = normalize(preview_cells);
     const uint16_t preview_color =
-        color_at(gameboy, kPanelCol + preview_cells[0].first, kNextBoxRow + preview_cells[0].second, 4, 4);
+        color_at(gameboy, kNextBoxCol + preview_cells[0].first, kNextBoxRow + preview_cells[0].second, 4, 4);
 
     // drop whatever piece is currently falling; the queued preview must become the next spawn
     drop_in_place(gameboy);
@@ -1213,6 +1238,31 @@ TEST_CASE("pressing_start_at_game_over_goes_to_the_title_not_straight_to_play") 
     run(gameboy, 20); // let the popup finish staging
 
     press(gameboy, gb::Button::Start, 2);
+    run(gameboy, 20); // DISPLAY_OFF's own vblank wait plus the whole title repaint
+    REQUIRE(row_has_tile(gameboy, kTitleRow, font_tile('T')));
+    REQUIRE(piece_cells(gameboy).empty());
+    // a single press only dismisses the popup; a second one is needed to actually start play
+    REQUIRE_FALSE(wait_for_piece(gameboy, 5));
+}
+
+TEST_CASE("pressing_a_at_game_over_dismisses_the_card_back_to_the_title") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    bool over = false;
+    for (int i = 0; i < 40 && !over; ++i) {
+        REQUIRE(wait_for_piece(gameboy, 300));
+        steer_to(gameboy, 4);
+        drop_and_settle(gameboy, count_locked(read_grid(gameboy)));
+        over = piece_cells(gameboy).empty() && !any_flash(read_grid(gameboy));
+    }
+    REQUIRE(over);
+    run(gameboy, 20); // let the popup finish staging
+
+    // space is the a button on this frontend; the game-over card must accept it same as start
+    press(gameboy, gb::Button::A, 2);
     run(gameboy, 20); // DISPLAY_OFF's own vblank wait plus the whole title repaint
     REQUIRE(row_has_tile(gameboy, kTitleRow, font_tile('T')));
     REQUIRE(piece_cells(gameboy).empty());

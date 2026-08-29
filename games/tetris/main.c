@@ -104,7 +104,7 @@ static void draw_border(void) {
 static void draw_title(void) {
     font_color(kFontFore, kFontBack);
     print_centered(kTitleRow, "TETRIS");
-    print_centered(kPromptRow, "PRESS START");
+    print_centered(kPromptRow, "SPACE TO START");
     format_value("TOP", save_best());
     print_centered(kBestRow, line);
 }
@@ -189,7 +189,7 @@ static void build_popup(uint32_t score) {
     popup_line(kPopupScoreRow, line);
     format_value("TOP", save_best());
     popup_line(kPopupTopScoreRow, line);
-    popup_line(kPopupPromptRow, "PRESS START");
+    popup_line(kPopupPromptRow, "SPACE TO RETRY");
     popup_step = 0;
 }
 
@@ -356,14 +356,15 @@ void main(void) {
         pressed = (uint8_t)(keys & (uint8_t)~prev);
 
         if (state == kStateTitle) {
-            if (pressed & J_START) {
+            // space is the a button on this frontend, and also starts the game
+            if (pressed & (J_START | J_A)) {
                 enter_play(frames);
             }
             continue;
         }
         if (state == kStateOver) {
             stage_popup();
-            if (pressed & J_START) {
+            if (pressed & (J_START | J_A)) {
                 enter_title(1);
             }
             continue;

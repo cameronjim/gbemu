@@ -22,10 +22,10 @@ void sfx_rotate(void) {
 }
 
 void sfx_lock(void) {
-    NR41_REG = kLockLength;
-    NR42_REG = kLockEnvelope;
-    NR43_REG = kLockPoly;
-    NR44_REG = kLockTrigger;
+    NR21_REG = kLockDuty;
+    NR22_REG = kLockEnvelope;
+    NR23_REG = kLockFreqLo;
+    NR24_REG = kLockFreqHi;
 }
 
 void sfx_clear(uint8_t n) {

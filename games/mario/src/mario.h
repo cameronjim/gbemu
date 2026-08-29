@@ -36,6 +36,8 @@
 #define kBgRows (kLevelBlockRows * kTilesPerBlock) // 30
 // the bg map ring is the hardware's full 32 tile columns; 16 block columns fit in it at once
 #define kRingTileCols 32U
+// the hardware bg map is square, so a full wipe walks this many rows of kRingTileCols cells
+#define kBgMapRows 32U
 #define kRingBlocks (kRingTileCols / kTilesPerBlock) // 16
 // 10 block columns fill the 160px screen; the rest of the ring buffers lookahead/lookbehind
 #define kVisibleBlocks (kScreenWidthPx / kBlockPx) // 10
@@ -112,14 +114,46 @@
 #define kOamXOffset 8U
 #define kOamYOffset 16U
 
-// the player's collision box; the art keeps one transparent column inside each vertical edge
+// the player's sprite box; the art keeps one transparent column inside each vertical edge
 #define kPlayerWidthPx 16
 #define kPlayerHeightPx 16
+// the horizontal hitbox is 12 px centered in the 16 px sprite, so a 2 px shoulder overhangs each
+// wall before it bites; feet/head spans stay the full sprite height. must-measure: the inset is
+// tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible
+#define kPlayerHitInsetPx 2
+#define kPlayerHitWidthPx (kPlayerWidthPx - 2 * kPlayerHitInsetPx) // 12
 // our own cadence, not the bible's: the walk cycle advances once this many subpixels have passed
 #define kWalkAnimStepSubpx 48U
 
-// play camera: scy parks at the bottom of the level and scx follows once mario passes this screen x
-#define kPlayScy kScyMax
+// the play camera (games/mario/src/camera.c). horizontal: mario is held at kCamFollowX and holding
+// select slides that anchor toward kCamLookAheadX to show more of what is ahead; both directions
+// scroll, so walking left really does scroll back (smbd allows what the nes locked out).
 #define kCamFollowX 64
+#define kCamLookAheadX 24
+#define kCamAnchorStepPx 2
+// vertical: the default band is the window that leaves mario's feet this far above its bottom edge,
+// sampled only while he is supported, so a jump never pans the view. must-measure: 32 px is tuned
+#define kCamGroundOffsetPx 32
+// both the manual pan and the drift back to the default band move scy this much per frame
+#define kCamPanStepPx 2
+// scy on the level's flat opening ground, which is where the default band lands there
+#define kPlayScy kScyMax
+
+// the level-clear sequence, all our own cadence (smbd's exact frame counts are unsourced)
+#define kClearSlidePx 2
+#define kClearHopFrames 12
+#define kClearHopPx 2
+#define kClearWalkPx 1
+#define kClearWalkAnimFrames 8U
+// 1-1's bible places no castle_end, so the walk off the pole ends this many blocks along the
+// closing ground, where a castle would stand. must-measure once the data names a castle column
+#define kClearWalkBlocks 5
+#define kClearHoldFrames 120U
+
+// the m2 debug camera (no player, free d-pad scroll) still ships, entered with b from the title now
+// that select is the play camera's look-ahead. define this to 0 to drop the state from the rom
+#ifndef kDebugCamera
+#define kDebugCamera 1
+#endif
 
 #endif

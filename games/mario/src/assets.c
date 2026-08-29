@@ -150,7 +150,9 @@ void assets_load_bg_palettes(void) {
     palette_color_t brick[4] = {RGB(6, 3, 2), RGB(14, 6, 3), RGB(20, 8, 4), RGB(10, 4, 2)};
     palette_color_t question[4] = {RGB(6, 4, 0), RGB(24, 18, 3), RGB(28, 22, 4), RGB(20, 14, 2)};
     palette_color_t pipe[4] = {RGB(1, 4, 1), RGB(10, 28, 10), RGB(4, 20, 6), RGB(2, 10, 3)};
-    palette_color_t neutral[4] = {RGB(8, 8, 8), RGB(22, 22, 22), RGB(16, 16, 16), RGB(28, 28, 28)};
+    // the flag/castle family's color 0 is the sky, not a shade: the pole's own tile is mostly empty
+    // and its block's other half is a blank cell, so a gray backdrop would paint the shaft as a wall
+    palette_color_t neutral[4] = {RGB(24, 28, 31), RGB(22, 22, 22), RGB(16, 16, 16), RGB(28, 28, 28)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);

@@ -38,6 +38,19 @@ static uint8_t anim_frame;
 static uint8_t anim_accum;
 static uint8_t walk_step;
 
+// the level-clear sequence's own little state machine, driven by player_clear_update
+static uint8_t clear_phase;
+static uint8_t clear_timer;
+
+// the hitbox spans [x_pos + inset, x_pos + inset + width - 1]; the sprite still spans the full 16
+static uint16_t hit_left(void) {
+    return (uint16_t)(x_pos + kPlayerHitInsetPx);
+}
+
+static uint16_t hit_right(void) {
+    return (uint16_t)(x_pos + kPlayerHitInsetPx + kPlayerHitWidthPx - 1U);
+}
+
 static uint8_t abs_speed(void) {
     return (uint8_t)(x_speed < 0 ? -x_speed : x_speed);
 }
@@ -105,6 +118,14 @@ static void step_speed(uint8_t keys) {
     }
     skidding = (want_dir != 0 && moving_dir != 0 && want_dir != moving_dir) ? 1U : 0U;
 
+    // standing still with nothing held has nothing to accelerate and nothing to shed, so the
+    // subpixel accumulator is parked instead of left ticking: otherwise how long mario happened to
+    // stand somewhere would shift the phase of his next step off the line by a pixel
+    if (want_dir == 0 && x_speed == 0) {
+        x_accum = 0;
+        return;
+    }
+
     // below the threshold a reversal snaps the speed to zero instead of skidding
     if (skidding != 0U && speed_abs < kMarioSkidStopSubpx) {
         stop_x();
@@ -151,12 +172,21 @@ static void move_x(void) {
     const uint8_t raw = (uint8_t)x_speed;
     const uint16_t sum = (uint16_t)((uint16_t)x_force + (uint16_t)((uint16_t)(raw & 0x0FU) << 4));
     int16_t whole = (int16_t)(raw >> 4);
+    int16_t next;
 
     if (whole >= 8) {
         whole = (int16_t)(whole - 16);
     }
     x_force = (uint8_t)sum;
-    x_pos = (uint16_t)((int16_t)x_pos + whole + (int16_t)(sum >> 8));
+    next = (int16_t)((int16_t)x_pos + whole + (int16_t)(sum >> 8));
+    // the level's opening edge is a wall like every other column boundary, and x_pos is unsigned:
+    // walking off it would wrap the position instead of stopping. now that the camera scrolls back,
+    // that edge is reachable, so the clamp lives here rather than in collide_x's column probe
+    if (next < 0) {
+        next = 0;
+        stop_x();
+    }
+    x_pos = (uint16_t)next;
 }
 
 static void collide_x(void) {
@@ -165,15 +195,15 @@ static void collide_x(void) {
     int16_t col;
 
     if (x_speed > 0) {
-        col = col_of((uint16_t)(x_pos + kPlayerWidthPx - 1));
+        col = col_of(hit_right());
         if (terrain_solid_at(col, top_row) != 0U || terrain_solid_at(col, bottom_row) != 0U) {
-            x_pos = (uint16_t)((uint16_t)((uint16_t)col << 4) - kPlayerWidthPx);
+            x_pos = (uint16_t)((uint16_t)((uint16_t)col << 4) - kPlayerHitInsetPx - kPlayerHitWidthPx);
             stop_x();
         }
     } else if (x_speed < 0) {
-        col = col_of(x_pos);
+        col = col_of(hit_left());
         if (terrain_solid_at(col, top_row) != 0U || terrain_solid_at(col, bottom_row) != 0U) {
-            x_pos = (uint16_t)((uint16_t)(col + 1) << 4);
+            x_pos = (uint16_t)(((uint16_t)(col + 1) << 4) - kPlayerHitInsetPx);
             stop_x();
         }
     }
@@ -225,8 +255,8 @@ static void step_vertical(uint8_t keys) {
 }
 
 static void collide_y(void) {
-    const int16_t left_col = col_of(x_pos);
-    const int16_t right_col = col_of((uint16_t)(x_pos + kPlayerWidthPx - 1));
+    const int16_t left_col = col_of(hit_left());
+    const int16_t right_col = col_of(hit_right());
     int16_t row;
 
     on_ground = 0;
@@ -281,6 +311,23 @@ static void step_anim(void) {
     anim_frame = (uint8_t)(kFrameWalk0 + walk_step);
 }
 
+// the pole's cells are walk-through, so contact is a box overlap against the compiled shaft rather
+// than a terrain_solid_at hit
+static uint8_t touching_flag(void) {
+#if LEVEL_1_1_HAS_FLAG
+    if (col_of(hit_left()) > (int16_t)LEVEL_1_1_FLAG_COLUMN ||
+        col_of(hit_right()) < (int16_t)LEVEL_1_1_FLAG_COLUMN) {
+        return 0;
+    }
+    return (row_of(y_pos) <= (int16_t)LEVEL_1_1_FLAG_BASE_ROW &&
+            row_of((int16_t)(y_pos + kPlayerHeightPx - 1)) >= (int16_t)LEVEL_1_1_FLAG_TOP_ROW)
+               ? 1U
+               : 0U;
+#else
+    return 0;
+#endif
+}
+
 void player_init(void) {
     assets_load_sprite_tiles();
     assets_load_sprite_palettes();
@@ -303,6 +350,8 @@ void player_init(void) {
     anim_frame = kFrameIdle;
     anim_accum = 0;
     walk_step = 0;
+    clear_phase = kClearSlide;
+    clear_timer = 0;
     SHOW_SPRITES;
 }
 
@@ -316,7 +365,88 @@ uint8_t player_update(uint8_t keys) {
     a_prev = (keys & J_A) != 0U ? 1U : 0U;
     // the whole body has to clear the level's bottom edge, so a pit fall really does go off screen
     // before the respawn; the death flow proper is m8, this is just the reset
-    return y_pos >= (int16_t)(kLevelHeightPx + kPlayerHeightPx) ? 1U : 0U;
+    if (y_pos >= (int16_t)(kLevelHeightPx + kPlayerHeightPx)) {
+        return kPlayerFell;
+    }
+    return touching_flag() != 0U ? kPlayerFlag : kPlayerAlive;
+}
+
+void player_begin_clear(void) {
+    x_pos = (uint16_t)((uint16_t)LEVEL_1_1_FLAG_COLUMN << 4);
+    stop_x();
+    y_speed = 0;
+    y_accum = 0;
+    on_ground = 0;
+    facing_left = 0;
+    skidding = 0;
+    anim_frame = kFrameJump;
+    walk_step = 0;
+    clear_phase = kClearSlide;
+    clear_timer = 0;
+}
+
+// the pole's base: the row under the shaft's last cell is the ground mario's feet come to rest on
+static int16_t clear_base_y(void) {
+    return (int16_t)((int16_t)((int16_t)(LEVEL_1_1_FLAG_BASE_ROW + 1U) << 4) - kPlayerHeightPx);
+}
+
+// the column the walk-off ends at, kept inside the compiled level however short its tail is
+static uint16_t clear_walk_x(void) {
+    uint16_t column = (uint16_t)(LEVEL_1_1_FLAG_COLUMN + kClearWalkBlocks);
+
+    if (column > (uint16_t)(LEVEL_1_1_LENGTH_COLUMNS - 1U)) {
+        column = (uint16_t)(LEVEL_1_1_LENGTH_COLUMNS - 1U);
+    }
+    return (uint16_t)(column << 4);
+}
+
+uint8_t player_clear_update(void) {
+    const int16_t base_y = clear_base_y();
+
+    switch (clear_phase) {
+    case kClearSlide:
+        y_pos = (int16_t)(y_pos + kClearSlidePx);
+        if (y_pos >= base_y) {
+            y_pos = base_y;
+            clear_phase = kClearHop;
+            clear_timer = 0;
+        }
+        break;
+    case kClearHop:
+        // a token hop off the pole: up for the first half of the window, back down for the second
+        y_pos =
+            (int16_t)(y_pos + (clear_timer < (uint8_t)(kClearHopFrames / 2U) ? -kClearHopPx : kClearHopPx));
+        x_pos = (uint16_t)(x_pos + kClearWalkPx);
+        ++clear_timer;
+        if (clear_timer >= (uint8_t)kClearHopFrames) {
+            y_pos = base_y;
+            clear_phase = kClearWalk;
+            clear_timer = 0;
+        }
+        break;
+    case kClearWalk:
+        x_pos = (uint16_t)(x_pos + kClearWalkPx);
+        anim_frame = (uint8_t)(kFrameWalk0 + walk_step);
+        ++clear_timer;
+        if (clear_timer >= (uint8_t)kClearWalkAnimFrames) {
+            clear_timer = 0;
+            walk_step = (uint8_t)((walk_step + 1U) % kWalkFrameCount);
+        }
+        if (x_pos >= clear_walk_x()) {
+            anim_frame = kFrameIdle;
+            clear_phase = kClearHold;
+            clear_timer = 0;
+        }
+        break;
+    default:
+        // the level-clear beat: mario stands at the castle column while the state holds
+        ++clear_timer;
+        if (clear_timer >= (uint8_t)kClearHoldFrames) {
+            return 1;
+        }
+        break;
+    }
+    return 0;
 }
 
 // oam y 0 parks a sprite entirely above the screen
@@ -348,4 +478,16 @@ void player_draw(uint16_t cam_x, uint8_t cam_y) {
 
 uint16_t player_x(void) {
     return x_pos;
+}
+
+int16_t player_y(void) {
+    return y_pos;
+}
+
+uint8_t player_on_ground(void) {
+    return on_ground;
+}
+
+uint8_t player_standing(void) {
+    return (on_ground != 0U && x_speed == 0) ? 1U : 0U;
 }

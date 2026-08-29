@@ -29,12 +29,9 @@ uint8_t Bus::peek8(uint16_t addr) {
     if (addr <= 0xBFFF) {
         return mapper_ != nullptr ? mapper_->read_ram(static_cast<uint16_t>(addr - 0xA000)) : 0xFF;
     }
-    if (addr <= 0xDFFF) {
-        return wram_[addr - 0xC000];
-    }
     if (addr <= 0xFDFF) {
-        // echo ram mirrors wram
-        return wram_[addr - 0xE000];
+        // echo ram mirrors wram, switched bank included
+        return wram_at(addr);
     }
     if (addr <= 0xFE9F) {
         return ppu_.read_oam(static_cast<uint16_t>(addr - 0xFE00));
@@ -70,12 +67,8 @@ void Bus::write8(uint16_t addr, uint8_t value) {
         }
         return;
     }
-    if (addr <= 0xDFFF) {
-        wram_[addr - 0xC000] = value;
-        return;
-    }
     if (addr <= 0xFDFF) {
-        wram_[addr - 0xE000] = value;
+        wram_at(addr) = value;
         return;
     }
     if (addr <= 0xFE9F) {
@@ -137,12 +130,19 @@ uint8_t Bus::read_io(uint16_t addr) {
     case kRegObp1:
     case kRegWy:
     case kRegWx:
+    case kRegVbk:
         return ppu_.read_register(addr);
     case kRegIf:
         // upper 3 bits read as 1
         return static_cast<uint8_t>(0xE0 | irq_.read());
     case kRegDma:
         return dma_;
+    case kRegKey1:
+        // read-only stub: bit 7 single speed, bit 0 no switch armed, bits 1-6 read 1
+        return cgb_ ? 0x7E : 0xFF;
+    case kRegSvbk:
+        // pandocs: svbk unused bits read 1
+        return cgb_ ? static_cast<uint8_t>(0xF8 | svbk_) : 0xFF;
     default:
         // unmapped io reads 0xFF, never 0x00
         return 0xFF;
@@ -187,7 +187,13 @@ void Bus::write_io(uint16_t addr, uint8_t value) {
     case kRegObp1:
     case kRegWy:
     case kRegWx:
+    case kRegVbk:
         ppu_.write_register(addr, value);
+        break;
+    case kRegSvbk:
+        if (cgb_) {
+            svbk_ = static_cast<uint8_t>(value & 0x07);
+        }
         break;
     case kRegIf:
         irq_.write(value);

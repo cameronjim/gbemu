@@ -268,6 +268,30 @@ constexpr int kPlayerBoxPx = 16;
 constexpr int kMarioArtInset = 1;
 constexpr int kPlayScy = kScyMax;
 
+// --- sub-milestone 7: the powerup chain, mirrored from games/mario/src/mario.h ------------------
+
+// super mario's own tile family, outside the pinned 0xe0 block: 24 slots cannot hold a 16x32 set,
+// so it takes the free run between the font's last glyph and the terrain families
+constexpr uint8_t kSuperFirstTile = 0x60;
+constexpr uint8_t kSuperLastTile = 0x7F;
+constexpr uint8_t kTileFlowerLo = 0x80;
+constexpr uint8_t kTileFlowerHi = 0x83;
+constexpr uint8_t kTileStarLo = 0xD4;
+constexpr uint8_t kTileStarHi = 0xD7;
+constexpr uint8_t kTileFireballLo = 0xDE;
+constexpr uint8_t kTileFireballHi = 0xDF;
+constexpr int kPlayerBigBoxPx = 32;
+constexpr int kFireballPx = 8;
+constexpr int kGrowFrames = 64;
+constexpr uint8_t kContentStar = 3;
+constexpr uint8_t kContentNothing = 0;
+constexpr uint8_t kBlockListBrick = 1;
+// the rgb555 the cgb palettes above put on mario's body: his own red, fire's white, the star's
+// yellow. no other sprite family shares them, so a pixel of one on his tiles names his state
+constexpr int kColorMarioRed = 28 | (5 << 5) | (3 << 10);
+constexpr int kColorFireWhite = 31 | (31 << 5) | (31 << 10);
+constexpr int kColorStarYellow = 31 | (26 << 5) | (4 << 10);
+
 // mario's world y while standing on the bible's start cell, in screen px (scy is pinned in play)
 constexpr int kStandTop = static_cast<int>(LEVEL_1_1_START_ROW) * kBlockPx - kPlayerBoxPx - kPlayScy;
 
@@ -275,8 +299,14 @@ struct Mario {
     int left = 0;
     int right = 0;
     int top = 0;
+    int bottom = 0;
     int frame = -1;
+    bool big = false;
     bool found = false;
+
+    int height() const {
+        return bottom - top + 1;
+    }
 };
 
 Mario mario_at(const gb::Gameboy& gameboy) {
@@ -287,7 +317,9 @@ Mario mario_at(const gb::Gameboy& gameboy) {
             continue;
         }
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        if (tile < kMarioFirstTile || tile > kMarioLastTile) {
+        const bool small_tile = tile >= kMarioFirstTile && tile <= kMarioLastTile;
+        const bool big_tile = tile >= kSuperFirstTile && tile <= kSuperLastTile;
+        if (!small_tile && !big_tile) {
             continue;
         }
         const int x = static_cast<int>(i % gb::kLcdWidth);
@@ -301,10 +333,36 @@ Mario mario_at(const gb::Gameboy& gameboy) {
         if (!m.found || y < m.top) {
             m.top = y;
         }
-        m.frame = (tile - kMarioFirstTile) / kMarioTilesPerFrame;
+        if (!m.found || y > m.bottom) {
+            m.bottom = y;
+        }
+        // the frame index only means anything for the small set; super shares one upper slab
+        if (small_tile) {
+            m.frame = (tile - kMarioFirstTile) / kMarioTilesPerFrame;
+        }
+        m.big = m.big || big_tile;
         m.found = true;
     }
     return m;
+}
+
+// 1 when any of mario's own sprite pixels is painted this exact rgb555; the fire and star palettes
+// each put a color on him that nothing else on screen uses
+bool mario_wears(const gb::Gameboy& gameboy, int rgb555) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        const bool mine = (tile >= kMarioFirstTile && tile <= kMarioLastTile) ||
+                          (tile >= kSuperFirstTile && tile <= kSuperLastTile);
+        if (mine && static_cast<int>(colors[i]) == rgb555) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // row 3 of the ground-top tile carries one dark speck every 4 px (see kGroundTiles in assets.c),
@@ -658,6 +716,9 @@ struct PlayerSim {
     uint8_t on_ground = 1;
     uint8_t jump_tier = 0;
     uint8_t a_prev = 0;
+    // player.c's 16x32 body. the planner never grows, but the powerup tests plan super moves with
+    // the same twin, so the collision box has to follow him
+    uint8_t big = 0;
     // one bit per compiled hidden block, set the moment a rising head materializes it. it rides
     // inside the sim so the planner's lookahead copies inherit exactly what the real run has done
     uint32_t hidden_solid = 0;
@@ -914,7 +975,7 @@ struct PlayerSim {
     uint8_t enemy_collide_player() {
         const uint16_t left = static_cast<uint16_t>(x_pos + kHitInsetPx);
         const uint16_t right = static_cast<uint16_t>(left + kHitWidthPx);
-        const int16_t feet = static_cast<int16_t>(y_pos + kPlayerBoxPx);
+        const int16_t feet = static_cast<int16_t>(y_pos + foot_h());
         uint8_t hit = kEnemyHitNone;
 
         for (uint8_t i = 0; i < live; ++i) {
@@ -974,8 +1035,8 @@ struct PlayerSim {
         return cursor < roster_count ? static_cast<uint16_t>(roster[cursor].column << 4) : uint16_t{0xFFFF};
     }
 
-    static uint8_t band_for(int16_t box_top) {
-        const int value = box_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx;
+    static uint8_t band_for(int16_t feet_y) {
+        const int value = feet_y + kCamGroundOffsetPx - kScreenHeightPx;
         return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
     }
 
@@ -983,7 +1044,7 @@ struct PlayerSim {
         const uint16_t want = x_pos > kCamFollowX ? static_cast<uint16_t>(x_pos - kCamFollowX) : uint16_t{0};
         cam_x = std::min(want, kMaxWorldX);
         if (on_ground != 0) {
-            band = band_for(y_pos);
+            band = band_for(static_cast<int16_t>(y_pos + foot_h()));
         }
         if (on_ground == 0 || x_speed != 0) {
             if (cam_y < band) {
@@ -1058,6 +1119,20 @@ struct PlayerSim {
         return h >= 0 && (hidden_solid & (1u << h)) != 0u;
     }
 
+    int foot_h() const {
+        return big != 0 ? kPlayerBigBoxPx : kPlayerBoxPx;
+    }
+
+    // player_set_big: the feet stay planted and the box grows or shrinks upward
+    void set_big(uint8_t next) {
+        if (next == big) {
+            return;
+        }
+        y_pos = static_cast<int16_t>(
+            y_pos + (next != 0 ? -(kPlayerBigBoxPx - kPlayerBoxPx) : (kPlayerBigBoxPx - kPlayerBoxPx)));
+        big = next;
+    }
+
     uint8_t abs_speed() const {
         return static_cast<uint8_t>(x_speed < 0 ? -x_speed : x_speed);
     }
@@ -1088,7 +1163,7 @@ struct PlayerSim {
             return false;
         }
         return row_of(y_pos) <= static_cast<int16_t>(LEVEL_1_1_FLAG_BASE_ROW) &&
-               row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx - 1)) >=
+               row_of(static_cast<int16_t>(y_pos + foot_h() - 1)) >=
                    static_cast<int16_t>(LEVEL_1_1_FLAG_TOP_ROW);
     }
 
@@ -1190,18 +1265,23 @@ struct PlayerSim {
         x_pos = static_cast<uint16_t>(next);
     }
 
+    bool blocked_at(int16_t col) const {
+        if (solid(col, row_of(y_pos)) || solid(col, row_of(static_cast<int16_t>(y_pos + foot_h() - 1)))) {
+            return true;
+        }
+        return big != 0 && solid(col, row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx)));
+    }
+
     void collide_x() {
-        const int16_t top_row = row_of(y_pos);
-        const int16_t bottom_row = row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx - 1));
         if (x_speed > 0) {
             const int16_t col = col_of(hit_right());
-            if (solid(col, top_row) || solid(col, bottom_row)) {
+            if (blocked_at(col)) {
                 x_pos = static_cast<uint16_t>((col << 4) - kHitInsetPx - kHitWidthPx);
                 stop_x();
             }
         } else if (x_speed < 0) {
             const int16_t col = col_of(hit_left());
-            if (solid(col, top_row) || solid(col, bottom_row)) {
+            if (blocked_at(col)) {
                 x_pos = static_cast<uint16_t>(((col + 1) << 4) - kHitInsetPx);
                 stop_x();
             }
@@ -1271,9 +1351,9 @@ struct PlayerSim {
             }
             return;
         }
-        const int16_t row = row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx - 1));
+        const int16_t row = row_of(static_cast<int16_t>(y_pos + foot_h() - 1));
         if (solid(left_col, row) || solid(right_col, row)) {
-            y_pos = static_cast<int16_t>((row << 4) - kPlayerBoxPx);
+            y_pos = static_cast<int16_t>((row << 4) - foot_h());
             y_speed = 0;
             y_accum = 0;
             on_ground = 1;
@@ -1307,8 +1387,8 @@ struct CameraSim {
     uint8_t anchor = kCamFollowX;
     uint8_t band = 0;
 
-    static uint8_t band_for(int16_t box_top) {
-        int value = box_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx;
+    static uint8_t band_for(int16_t feet_y) {
+        int value = feet_y + kCamGroundOffsetPx - kScreenHeightPx;
         value = std::max(0, std::min(static_cast<int>(kScyMax), value));
         return static_cast<uint8_t>(value);
     }
@@ -1320,7 +1400,7 @@ struct CameraSim {
 
     void init(const PlayerSim& p) {
         anchor = kCamFollowX;
-        band = band_for(p.y_pos);
+        band = band_for(static_cast<int16_t>(p.y_pos + p.foot_h()));
         y = band;
         step_x(p.x_pos);
     }
@@ -1330,7 +1410,7 @@ struct CameraSim {
     void update(const PlayerSim& p) {
         step_x(p.x_pos);
         if (p.on_ground != 0) {
-            band = band_for(p.y_pos);
+            band = band_for(static_cast<int16_t>(p.y_pos + p.foot_h()));
         }
         const bool standing = p.on_ground != 0 && p.x_speed == 0;
         if (standing) {
@@ -1575,11 +1655,11 @@ bool append_stand_clear(PlayerSim& sim, std::vector<uint8_t>& script) {
 // jump clears both, and a jump that does clear one drops him on top of the pyramid instead of the
 // ground the tests need him on. so the opening is walked rather than run, stopping to deal with
 // each goomba as it comes; anything past the first pipe is handed back to the route planner
-Route plan_clear_walk(uint16_t goal) {
+Route plan_clear_walk(uint16_t goal, PlayerSim start = PlayerSim{}) {
     const uint16_t opening = static_cast<uint16_t>((first_pipe_column() - 2) * kBlockPx);
     const uint16_t walk_to = std::min(goal, opening);
     Route route;
-    PlayerSim sim;
+    PlayerSim sim = start;
 
     for (int guard = 0; guard < 12; ++guard) {
         // a walk, not a run: a run cannot be braked inside the gap he has to stop in
@@ -1976,8 +2056,8 @@ struct BumpPlan {
 // which frame of that run to let go on: coasting to a stop from any of them puts mario somewhere
 // different, and only some of those spots put his head under the cell. the twin reports which cell
 // the bump struck, so no frame number here is hand-placed
-BumpPlan plan_bump(uint16_t column, uint8_t row) {
-    const Route approach = plan_clear_walk(static_cast<uint16_t>((column - 3) * kBlockPx));
+BumpPlan plan_bump(uint16_t column, uint8_t row, PlayerSim start = PlayerSim{}) {
+    const Route approach = plan_clear_walk(static_cast<uint16_t>((column - 3) * kBlockPx), start);
     if (!approach.reached) {
         return {};
     }
@@ -1985,7 +2065,7 @@ BumpPlan plan_bump(uint16_t column, uint8_t row) {
     std::vector<uint8_t> full = approach.script;
     std::vector<PlayerSim> states;
     {
-        PlayerSim sim;
+        PlayerSim sim = start;
         states.push_back(sim);
         for (uint8_t in : full) {
             sim.step(in);
@@ -2194,9 +2274,249 @@ PlayerSim sim_at(uint16_t column, uint8_t surface_row) {
     sim.x_pos = static_cast<uint16_t>(column * kBlockPx);
     sim.y_pos = static_cast<int16_t>(surface_row * kBlockPx - kPlayerBoxPx);
     sim.jump_origin_y = sim.y_pos;
-    sim.band = PlayerSim::band_for(sim.y_pos);
+    sim.band = PlayerSim::band_for(static_cast<int16_t>(sim.y_pos + sim.foot_h()));
     sim.cam_y = sim.band;
     return sim;
+}
+
+// --- sub-milestone 7: powerups ------------------------------------------------------------------
+
+// blocks.c's own rule, mirrored: with the lab armed the compiled hidden block pays a mushroom_fire
+// instead of its 1-up, which is the only lone block in 1-1 a dispensed flower can be reached on
+const LevelBlock* lab_dispenser() {
+    return hidden_block();
+}
+
+// the first brick in the compiled list that holds nothing: the cell super mario should break
+const LevelBlock* plain_brick() {
+    for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
+        if (kLevel11Blocks[i].kind == kBlockListBrick && kLevel11Blocks[i].content == kContentNothing) {
+            return &kLevel11Blocks[i];
+        }
+    }
+    return nullptr;
+}
+
+// games/mario/src/mario.h's kBumpFrames, the frames a struck block spends drawn one row higher
+constexpr int kBumpFramesHost = 8;
+
+// walks the twin toward a world x and lets it coast to a halt there
+bool append_walk(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t target) {
+    const uint8_t dir = sim.x_pos < target ? static_cast<uint8_t>(kInRight) : static_cast<uint8_t>(kInLeft);
+
+    for (int i = 0; i < 400 && !sim.dead(); ++i) {
+        if (dir == kInRight ? sim.x_pos >= target : sim.x_pos <= target) {
+            break;
+        }
+        script.push_back(dir);
+        sim.step(dir);
+    }
+    for (int i = 0; i < 240 && (sim.x_speed != 0 || sim.on_ground == 0); ++i) {
+        script.push_back(0);
+        sim.step(0);
+    }
+    return !sim.dead() && sim.on_ground != 0 && sim.x_speed == 0;
+}
+
+// walks the twin at a block and searches how long to hold before coasting, so that the standing
+// jump appended after it lands its head bump on that exact cell. no frame number here is placed by
+// hand: append_bump reports which cell was actually struck
+bool append_bump_at(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t column, uint8_t row) {
+    const uint16_t target = static_cast<uint16_t>(column * kBlockPx);
+    const uint8_t dir = sim.x_pos < target ? static_cast<uint8_t>(kInRight) : static_cast<uint8_t>(kInLeft);
+
+    for (int hold = 0; hold < 400; ++hold) {
+        PlayerSim probe = sim;
+        std::vector<uint8_t> tail;
+        for (int i = 0; i < hold; ++i) {
+            tail.push_back(dir);
+            probe.step(dir);
+        }
+        for (int i = 0; i < 300 && (probe.x_speed != 0 || probe.on_ground == 0); ++i) {
+            tail.push_back(0);
+            probe.step(0);
+        }
+        if (probe.dead() || probe.on_ground == 0 || probe.x_speed != 0) {
+            continue;
+        }
+        if (append_bump(probe, tail, column, row)) {
+            sim = probe;
+            script.insert(script.end(), tail.begin(), tail.end());
+            return true;
+        }
+    }
+    return false;
+}
+
+// blocks.c's boxes_overlap against a resting item: his sprite box is the full 16 wide whatever his
+// hitbox does, and the height is whatever body he is carrying
+bool touches_item(const PlayerSim& p, uint16_t item_x, int16_t item_y) {
+    if (p.x_pos + kPlayerBoxPx <= item_x || item_x + kPlayerBoxPx <= p.x_pos) {
+        return false;
+    }
+    return p.y_pos + p.foot_h() > item_y && item_y + kPlayerBoxPx > p.y_pos;
+}
+
+// searches a standing jump (how long a is held, how long a direction is nudged) that brings him
+// onto an item resting on top of a block. the item never moves, so no item model is needed
+bool append_touch(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t item_x, int16_t item_y) {
+    static constexpr uint8_t kDirs[] = {static_cast<uint8_t>(kInRight), static_cast<uint8_t>(kInLeft)};
+
+    for (int hold : kPlanHolds) {
+        for (int nudge = 0; nudge <= 60; nudge += 2) {
+            for (uint8_t dir : kDirs) {
+                PlayerSim probe = sim;
+                std::vector<uint8_t> tail;
+                for (int i = 0; i < 200; ++i) {
+                    uint8_t in = 0;
+                    if (i < hold) {
+                        in |= kInA;
+                    }
+                    if (i < nudge) {
+                        in |= dir;
+                    }
+                    tail.push_back(in);
+                    probe.step(in);
+                    if (probe.dead()) {
+                        break;
+                    }
+                    if (touches_item(probe, item_x, item_y)) {
+                        sim = probe;
+                        script.insert(script.end(), tail.begin(), tail.end());
+                        return true;
+                    }
+                    if (i > hold && i > nudge && probe.on_ground != 0) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// runs the rom with no input until the grow animation starts, which is the first frame his sprite
+// is drawn from the super family; -1 when the mushroom never reached him
+int wait_for_grow(gb::Gameboy& gameboy, int cap) {
+    for (int i = 0; i < cap; ++i) {
+        gameboy.run_frame();
+        if (mario_at(gameboy).big) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// bumps 1-1's opening mushroom block, lets the mushroom walk back into him and rides out the frozen
+// grow. the twin comes back untouched: he stands still throughout, and in the lab nothing spawns
+// this near the level start, so the frames spent waiting change nothing it models
+bool grow_on_the_pyramid(gb::Gameboy& gameboy, PlayerSim& sim) {
+    const LevelBlock* block = block_holding(kContentMushroom, 9);
+    std::vector<uint8_t> settle;
+
+    REQUIRE(block != nullptr);
+    // the caller may hand him over mid-jump, and the planner only searches from a standing start
+    for (int i = 0; i < 240 && (sim.on_ground == 0 || sim.a_prev != 0 || sim.x_speed != 0); ++i) {
+        settle.push_back(0);
+        sim.step(0);
+    }
+    replay(gameboy, settle, 0, settle.size());
+    const BumpPlan plan = plan_bump(block->column, block->row, sim);
+    REQUIRE(plan.found);
+    replay(gameboy, plan.script, 0, plan.script.size());
+    REQUIRE(wait_for_grow(gameboy, 900) >= 0);
+    run(gameboy, kGrowFrames + 8);
+    // the twin idles the same wait out. the plan leaves him mid-jump, and standing still under no
+    // input is a fixed point, so how many frames the mushroom took to walk back does not matter
+    sim = plan.end;
+    for (int i = 0; i < 400 && (sim.on_ground == 0 || sim.x_speed != 0 || sim.a_prev != 0); ++i) {
+        sim.step(0);
+    }
+    sim.set_big(1);
+    return mario_at(gameboy).big && sim.on_ground != 0;
+}
+
+// 1 when the level has just restarted: mario back on the bible's start cell with the view at 0
+bool at_start_cell(const gb::Gameboy& gameboy) {
+    const Mario m = mario_at(gameboy);
+
+    return m.found && !m.big && m.top == kStandTop &&
+           m.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset;
+}
+
+// how many fireballs are on screen: their lit pixels anywhere, grouped into clusters, one per ball
+int fireballs_on_screen(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint8_t> fb = gameboy.framebuffer();
+    std::set<int> columns;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if ((ids[i] & 0x100u) == 0 || tile < kTileFireballLo || tile > kTileFireballHi || fb[i] == 0) {
+            continue;
+        }
+        columns.insert(static_cast<int>(i % gb::kLcdWidth));
+    }
+    int runs = 0;
+    int prev = -100;
+    for (int x : columns) {
+        if (x - prev > 2) {
+            ++runs;
+        }
+        prev = x;
+    }
+    return runs;
+}
+
+int goombas_on_screen(const gb::Gameboy& gameboy) {
+    return busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi);
+}
+
+// grows him, opens the lab's second dispenser and collects the flower it pays out. the rom comes
+// back as fire mario standing beside that lone block, with the twin still in step
+bool become_fire(gb::Gameboy& gameboy, PlayerSim& sim) {
+    const LevelBlock* dispenser = lab_dispenser();
+
+    REQUIRE(dispenser != nullptr);
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+
+    const Route out = plan_route(static_cast<uint16_t>((dispenser->column - 6) * kBlockPx), false, 4000, sim);
+    REQUIRE(out.reached);
+    std::vector<uint8_t> script = out.script;
+    sim = out.end;
+    REQUIRE(append_bump_at(sim, script, dispenser->column, dispenser->row));
+    // physics.json timers.powerup_emergence: the flower needs its whole 64 frame rise first
+    for (int i = 0; i < 80; ++i) {
+        script.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(append_walk(sim, script, static_cast<uint16_t>((dispenser->column - 2) * kBlockPx)));
+    REQUIRE(append_touch(sim, script, static_cast<uint16_t>(dispenser->column * kBlockPx),
+                         static_cast<int16_t>((dispenser->row - 1) * kBlockPx)));
+    replay(gameboy, script, 0, script.size());
+    run(gameboy, 4);
+    for (int i = 0; i < 4; ++i) {
+        sim.step(0);
+    }
+    return mario_wears(gameboy, kColorFireWhite);
+}
+
+// the route planner runs, and a running mario jumps clean over the first goomba he meets. so it
+// only ever carries him to a stop short of the lab's row, and the last stretch is walked in
+int approach_lab_row(gb::Gameboy& gameboy, PlayerSim& sim) {
+    const uint16_t stand = spawn_stand_x(kLabEnemies[0].column);
+    const Route toward = plan_route(static_cast<uint16_t>(stand - 8 * kBlockPx), false, 4000, sim);
+
+    REQUIRE(toward.reached);
+    std::vector<uint8_t> script = toward.script;
+    sim = toward.end;
+    for (int i = 0; i < 240 && (sim.x_speed != 0 || sim.on_ground == 0 || sim.a_prev != 0); ++i) {
+        script.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(sim.x_pos < stand);
+    REQUIRE(append_walk(sim, script, stand));
+    replay(gameboy, script, 0, script.size());
+    return static_cast<int>(script.size());
 }
 
 // every visible cell is one of the families the terrain may legitimately render as
@@ -3678,4 +3998,369 @@ TEST_CASE("mario_scanline_cap_holds_at_four") {
     }
     // exactly the doc's oam trap: four 16x16 enemies is eight sprites, and mario's two make ten
     REQUIRE(worst == kEnemyRowCap);
+}
+
+// --- sub-milestone 7: the powerup chain and damage states ---------------------------------------
+
+TEST_CASE("mario_mushroom_grows_mario") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* block = block_holding(kContentMushroom, 9);
+    REQUIRE(block != nullptr);
+    const BumpPlan plan = plan_bump(block->column, block->row);
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, plan.script, 0, plan.script.size());
+
+    // the bump plan leaves him mid-jump, so the landing comes first
+    for (int i = 0; i < 120 && mario_at(gameboy).top != kStandTop; ++i) {
+        gameboy.run_frame();
+    }
+    // small, and 16 px of him, until the mushroom actually walks back into him
+    const Mario before = mario_at(gameboy);
+    REQUIRE(before.found);
+    REQUIRE(!before.big);
+    REQUIRE(before.height() == kPlayerBoxPx);
+    REQUIRE(before.top == kStandTop);
+
+    REQUIRE(wait_for_grow(gameboy, 900) >= 0);
+
+    // the frozen second. the animation alternates the two bodies, and holding right moves neither
+    // mario nor the view: main.c skips physics, camera, blocks and enemies as one block. the
+    // approach clears the opening's goombas, so mario and the camera are what is left to watch
+    const int phase = ground_phase(gameboy);
+    const Mario frozen = mario_at(gameboy);
+    REQUIRE(frozen.found);
+    int flips = 0;
+    bool was_big = frozen.big;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < kGrowFrames - 12; ++i) {
+        gameboy.run_frame();
+        const Mario now = mario_at(gameboy);
+        REQUIRE(now.found);
+        REQUIRE(now.left == frozen.left);
+        REQUIRE(ground_phase(gameboy) == phase);
+        flips += now.big != was_big ? 1 : 0;
+        was_big = now.big;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(flips >= 2);
+
+    run(gameboy, kGrowFrames);
+    const Mario big = mario_at(gameboy);
+    REQUIRE(big.found);
+    REQUIRE(big.big);
+    REQUIRE(big.height() == kPlayerBigBoxPx);
+    // his feet stayed planted and the box grew upward
+    REQUIRE(big.top == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
+
+    // and the hitbox came with it: a jump from the same spot stops on the same block underside, so
+    // the rise is 16 px shorter. that missing block is the gap a super mario can no longer enter
+    int peak = big.top;
+    for (int i = 0; i < 90; ++i) {
+        gameboy.set_button(gb::Button::A, i < kBumpHoldFrames);
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (m.found && m.top < peak) {
+            peak = m.top;
+        }
+    }
+    gameboy.set_button(gb::Button::A, false);
+    REQUIRE(peak == kStandTop - kBlockPx * 2);
+    REQUIRE(big.top - peak == kBlockPx);
+}
+
+TEST_CASE("mario_flower_when_super") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* dispenser = lab_dispenser();
+    REQUIRE(dispenser != nullptr);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    PlayerSim sim = lab_sim();
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+    REQUIRE(!mario_wears(gameboy, kColorFireWhite));
+
+    // out to the lab's second dispenser. he is already grown when it opens, so smb's rule pays a
+    // flower rather than a second mushroom
+    const Route out = plan_route(static_cast<uint16_t>((dispenser->column - 6) * kBlockPx), false, 4000, sim);
+    REQUIRE(out.reached);
+    std::vector<uint8_t> script = out.script;
+    sim = out.end;
+    REQUIRE(append_bump_at(sim, script, dispenser->column, dispenser->row));
+    replay(gameboy, script, 0, script.size());
+
+    constexpr int kRiseFrames = 64;
+    run(gameboy, kRiseFrames + 8);
+    REQUIRE(sprite_box(gameboy, kTileFlowerLo, kTileFlowerHi).found);
+    REQUIRE(!sprite_box(gameboy, kTileMushroomLo, kTileMushroomHi).found);
+
+    // it rests on the block it came out of, so collecting it is a jump from beside the block
+    std::vector<uint8_t> reach;
+    REQUIRE(append_walk(sim, reach, static_cast<uint16_t>((dispenser->column - 2) * kBlockPx)));
+    REQUIRE(append_touch(sim, reach, static_cast<uint16_t>(dispenser->column * kBlockPx),
+                         static_cast<int16_t>((dispenser->row - 1) * kBlockPx)));
+    replay(gameboy, reach, 0, reach.size());
+    run(gameboy, 4);
+
+    // the flower is gone and the palette says fire: same art, white where the red used to be
+    REQUIRE(!sprite_box(gameboy, kTileFlowerLo, kTileFlowerHi).found);
+    REQUIRE(mario_at(gameboy).big);
+    REQUIRE(mario_wears(gameboy, kColorFireWhite));
+    REQUIRE(!mario_wears(gameboy, kColorMarioRed));
+}
+
+TEST_CASE("mario_super_breaks_bricks") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* brick = plain_brick();
+    REQUIRE(brick != nullptr);
+    REQUIRE(kLevel11Grid[brick->column][brick->row] == kBlockBrick);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    // small mario first: the bump bounces the brick and leaves it standing
+    const BumpPlan small = plan_bump(brick->column, brick->row, lab_sim());
+    REQUIRE(small.found);
+    replay(gameboy, small.script, 0, small.script.size());
+    run(gameboy, kBumpFramesHost + 8);
+    REQUIRE(bg_family_cells(gameboy, 0xA4, 0xA7) > 0);
+
+    PlayerSim sim = small.end;
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+
+    const int bricks = bg_family_cells(gameboy, 0xA4, 0xA7);
+    REQUIRE(bricks > 0);
+    std::vector<uint8_t> script;
+    REQUIRE(append_bump_at(sim, script, brick->column, brick->row));
+    replay(gameboy, script, 0, script.size());
+    run(gameboy, kBumpFramesHost + 8);
+
+    // the cell is gone entirely, not spent: a broken brick leaves sky behind
+    REQUIRE(bg_family_cells(gameboy, 0xA4, 0xA7) < bricks);
+}
+
+TEST_CASE("mario_fireballs_kill") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    PlayerSim sim = lab_sim();
+    REQUIRE(become_fire(gameboy, sim));
+
+    // out to where the camera's right edge reaches the lab's first goomba, then a standing halt
+    REQUIRE(approach_lab_row(gameboy, sim) > 0);
+
+    // let it walk most of the way to him, so the ball has a short trip and stays on screen
+    std::vector<uint8_t> approach;
+    for (int i = 0; i < 600; ++i) {
+        if (sim.live != 0 && sim.pool[0].pos_x < sim.x_pos + 5 * kBlockPx) {
+            break;
+        }
+        approach.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(sim.live != 0);
+    replay(gameboy, approach, 0, approach.size());
+    REQUIRE(goombas_on_screen(gameboy) > 0);
+    REQUIRE(fireballs_on_screen(gameboy) == 0);
+
+    // b is also run, so the throw is edge triggered: one press, one ball, and it takes the goomba
+    press(gameboy, gb::Button::B, 1);
+    bool killed = false;
+    for (int i = 0; i < 40 && !killed; ++i) {
+        gameboy.run_frame();
+        killed = goombas_on_screen(gameboy) == 0;
+    }
+    REQUIRE(killed);
+
+    // with the row clear, the next one shows the bible's own arc: 4 px a frame and a floor rebound
+    for (int i = 0; i < 90; ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(fireballs_on_screen(gameboy) == 0);
+    press(gameboy, gb::Button::B, 1);
+    run(gameboy, 1);
+    REQUIRE(fireballs_on_screen(gameboy) == 1);
+
+    const SpriteBox first = sprite_box(gameboy, kTileFireballLo, kTileFireballHi);
+    REQUIRE(first.found);
+    int steps = 0;
+    int lowest = first.top;
+    bool bounced = false;
+    int flown = first.left;
+    for (int i = 0; i < 40; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTileFireballLo, kTileFireballHi);
+        if (!now.found) {
+            break;
+        }
+        ++steps;
+        flown = now.left;
+        bounced = bounced || now.top < lowest;
+        lowest = std::max(lowest, now.top);
+    }
+    REQUIRE(steps > 4);
+    REQUIRE(flown - first.left == steps * kFireballSubpx / 16);
+    REQUIRE(bounced);
+
+    // at most two live at once, however hard b is worked
+    int most = 0;
+    for (int shot = 0; shot < 4; ++shot) {
+        press(gameboy, gb::Button::B, 1);
+        for (int i = 0; i < 6; ++i) {
+            gameboy.run_frame();
+            most = std::max(most, fireballs_on_screen(gameboy));
+        }
+    }
+    REQUIRE(most == 2);
+
+    // and holding b runs without throwing: the whole hold is worth one ball, not sixty
+    for (int i = 0; i < 120; ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(fireballs_on_screen(gameboy) == 0);
+    gameboy.set_button(gb::Button::B, true);
+    int held_most = 0;
+    for (int i = 0; i < 60; ++i) {
+        gameboy.run_frame();
+        held_most = std::max(held_most, fireballs_on_screen(gameboy));
+    }
+    gameboy.set_button(gb::Button::B, false);
+    REQUIRE(held_most == 1);
+}
+
+TEST_CASE("mario_damage_chain") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    PlayerSim sim = lab_sim();
+    REQUIRE(become_fire(gameboy, sim));
+
+    REQUIRE(approach_lab_row(gameboy, sim) > 0);
+    run(gameboy, 4);
+    REQUIRE(mario_wears(gameboy, kColorFireWhite));
+
+    // he walks into the lab's row of goombas and lets the chain run. each hit costs one step, and
+    // the bible's injury window has to expire before the next touch counts for anything
+    int first_super = -1;
+    int first_small = -1;
+    int respawned = -1;
+    // half speed, tapped rather than held: at a full walk he outruns the lab's whole roster inside
+    // one injury window and there is nothing left to take the next step off him
+    for (int i = 0; i < 2400 && respawned < 0; ++i) {
+        gameboy.set_button(gb::Button::Right, (i % 4) < 2);
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (!m.found) {
+            continue; // the injury blink hides him on alternate frames
+        }
+        if (at_start_cell(gameboy)) {
+            respawned = i;
+        } else if (!m.big) {
+            if (first_small < 0) {
+                first_small = i;
+            }
+        } else if (!mario_wears(gameboy, kColorFireWhite) && first_super < 0) {
+            first_super = i;
+        }
+    }
+    gameboy.set_button(gb::Button::Right, false);
+
+    REQUIRE(first_super > 0);
+    REQUIRE(first_small > first_super);
+    REQUIRE(respawned > first_small);
+    // no second hit landed inside either window; the shrink adds its frozen animation on top
+    REQUIRE(first_small - first_super >= kInjuryFrames);
+    REQUIRE(respawned - first_small >= kInjuryFrames);
+}
+
+TEST_CASE("mario_star_invincibility") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelBlock* block = block_holding(kContentStar, 9);
+    REQUIRE(block != nullptr);
+    const BumpPlan plan = plan_bump(block->column, block->row, lab_sim());
+    REQUIRE(plan.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    replay(gameboy, plan.script, 0, plan.script.size());
+
+    PlayerSim sim = plan.end;
+    std::vector<uint8_t> settle;
+    for (int i = 0; i < 240 && (sim.on_ground == 0 || sim.a_prev != 0 || sim.x_speed != 0); ++i) {
+        settle.push_back(0);
+        sim.step(0);
+    }
+    replay(gameboy, settle, 0, settle.size());
+
+    // the star hops away down the row, so he chases it; the palette flash says he caught it
+    int elapsed = -1;
+    // the pit past the star block, not 1-1's first one: the chase must stop short of its lip
+    const uint16_t pit_edge = static_cast<uint16_t>((block->column + 6) * kBlockPx);
+    for (int i = 0; i < 400 && elapsed < 0; ++i) {
+        const uint8_t in = sim.x_pos < pit_edge ? static_cast<uint8_t>(kInRight) : uint8_t{0};
+
+        sim.step(in);
+        gameboy.set_button(gb::Button::Right, (in & kInRight) != 0);
+        gameboy.run_frame();
+        if (mario_wears(gameboy, kColorStarYellow)) {
+            elapsed = 0;
+        }
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(elapsed == 0);
+
+    // out to the lab's goombas, then stand and let the first of them walk into him
+    elapsed += approach_lab_row(gameboy, sim);
+
+    std::vector<uint8_t> wait;
+    for (int i = 0; i < 900 && !sim.damaged; ++i) {
+        wait.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(sim.damaged);
+    replay(gameboy, wait, 0, wait.size() - 1);
+    elapsed += static_cast<int>(wait.size()) - 1;
+    REQUIRE(goombas_on_screen(gameboy) > 0);
+
+    // the twin calls this contact fatal; with the star running it takes the goomba instead
+    run(gameboy, 4);
+    elapsed += 4;
+    REQUIRE(!at_start_cell(gameboy));
+    REQUIRE(goombas_on_screen(gameboy) == 0);
+
+    // nothing else can reach him with the camera parked, so the rest of the window just runs out
+    REQUIRE(elapsed < kStarFrames);
+    for (; elapsed < kStarFrames + 40; ++elapsed) {
+        gameboy.run_frame();
+        REQUIRE(!at_start_cell(gameboy));
+    }
+
+    // and with it over, the next one he walks into costs him the level
+    int respawned = -1;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < 1500 && respawned < 0; ++i) {
+        gameboy.run_frame();
+        if (at_start_cell(gameboy)) {
+            respawned = i;
+        }
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(respawned >= 0);
 }

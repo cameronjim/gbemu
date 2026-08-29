@@ -542,19 +542,25 @@ def reserved_cells(bible):
 
 
 def apply_decor(grid, bible):
-    # scenery never displaces anything: a cell that is not open sky, or that the reaction list has
-    # claimed, or that falls outside the compiled level, is simply skipped. returns one probe per
-    # decor kind that actually landed, which is what pins the rendered families in the host test
-    # without making the golden set walk the camera past every cloud in the level
+    # scenery never displaces anything, and it is placed whole or not at all. a hill is a dome over
+    # a pair of slopes and a bush is two caps around a run of middles: drop one cell of either and
+    # what is left is not a smaller hill, it is a broken one. so a shape whose every cell is not
+    # open sky - inside the compiled level, not already terrain, not a cell the reaction list has
+    # claimed for a hidden block - is skipped entirely and the bible's column is the thing to move.
+    #
+    # returns one probe per decor kind that actually landed, which is what pins the rendered
+    # families in the host test without making the golden set walk the camera past every cloud
     reserved = reserved_cells(bible)
     probes = []
     seen = set()
     for item in bible.get("decor", []):
-        for column, row, kind in decor_cells(item):
-            if column < 0 or column >= len(grid) or row < 0 or row >= LEVEL_ROWS:
-                continue
-            if grid[column][row] != BLOCK_EMPTY or (column, row) in reserved:
-                continue
+        cells = decor_cells(item)
+        fits = all(0 <= column < len(grid) and 0 <= row < LEVEL_ROWS
+                   and grid[column][row] == BLOCK_EMPTY and (column, row) not in reserved
+                   for column, row, kind in cells)
+        if not fits:
+            continue
+        for column, row, kind in cells:
             grid[column][row] = kind
             if kind not in seen:
                 seen.add(kind)

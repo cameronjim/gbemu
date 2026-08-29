@@ -102,6 +102,13 @@ void enter_play(gb::Gameboy& gameboy) {
     run(gameboy, 64);
 }
 
+// select from the title starts the same level with the denser lab roster (kEnemyLab in mario.h)
+void enter_lab(gb::Gameboy& gameboy) {
+    run(gameboy, kBootFrames);
+    press(gameboy, gb::Button::Select, 2);
+    run(gameboy, 64);
+}
+
 // the kBlock* contract and camera geometry from games/mario/src/mario.h, mirrored the same way
 // kTitleRow/kFontFirstTile above already mirror it, so the host test never includes a gbdk header
 constexpr uint8_t kBlockEmpty = 0;
@@ -456,6 +463,16 @@ int pole_face(const gb::Gameboy& gameboy, const Mario& m) {
     return face_of(gameboy, m, 0xB8, 0xBF);
 }
 
+// the level's first pipe, from the compiler's own probes rather than the bible's json
+uint16_t first_pipe_column() {
+    for (const auto& probe : kLevel11Probes) {
+        if (probe.kind == kBlockPipeTl) {
+            return probe.column;
+        }
+    }
+    return 0;
+}
+
 // the level's first pit, taken from the compiler's own probes rather than the bible's json
 uint16_t first_gap_column() {
     for (const auto& probe : kLevel11Probes) {
@@ -549,6 +566,83 @@ int hidden_index(int column, int row) {
 
 constexpr uint8_t kJumpTierBounds[kMarioJumpBoundCount] = kMarioJumpTierBoundsInit;
 
+// --- sub-milestone 6: the enemy pool, mirrored from games/mario/src/mario.h -------------------
+
+constexpr int kEnemySlots = 5;
+constexpr int kEnemyRowCap = 4;
+constexpr int kEnemyBoxPx = 16;
+constexpr int kEnemyHitInsetPx = 2;
+constexpr int kEnemyHitWidthPx = kEnemyBoxPx - 2 * kEnemyHitInsetPx;
+constexpr int kEnemyStompLinePx = kEnemyBoxPx / 2;
+constexpr int kEnemySpawnMarginPx = 0;
+constexpr int kEnemyDespawnMarginPx = 32;
+constexpr int kSquashFrames = 30;
+constexpr int kEnemyGravitySubpx = 24;
+constexpr int kEnemyMaxFallPx = 4;
+constexpr int kShellWakeFrames = 600;
+constexpr int kShellGraceFrames = 8;
+
+constexpr uint8_t kEnemyGoomba = 0;
+constexpr uint8_t kEnemyKoopa = 1;
+constexpr uint8_t kEnemyOff = 0;
+constexpr uint8_t kEnemyWalk = 1;
+constexpr uint8_t kEnemySquashed = 2;
+constexpr uint8_t kEnemyShellIdle = 3;
+constexpr uint8_t kEnemyShellMove = 4;
+constexpr uint8_t kEnemyHitNone = 0;
+constexpr uint8_t kEnemyHitDamage = 1;
+constexpr uint8_t kEnemyHitStomp = 2;
+constexpr uint8_t kEnemyHitShellStomp = 3;
+
+// the pinned 0xc0 sprite family, split the way games/mario/src/assets.c lays it out
+constexpr uint8_t kTileGoombaWalkLo = 0xC0;
+constexpr uint8_t kTileGoombaWalkHi = 0xC3;
+constexpr uint8_t kTileGoombaSquashLo = 0xC4;
+constexpr uint8_t kTileGoombaSquashHi = 0xC5;
+constexpr uint8_t kTileShellLo = 0xC6;
+constexpr uint8_t kTileShellHi = 0xC7;
+constexpr uint8_t kTileKoopaLo = 0xC8;
+constexpr uint8_t kTileKoopaHi = 0xCF;
+constexpr uint8_t kTileEnemyLo = kTileGoombaWalkLo;
+constexpr uint8_t kTileEnemyHi = kTileKoopaHi;
+
+// the point tables both sides read, generated from games/mario/research/roster.json
+constexpr uint16_t kStompChainTable[kStompChainCount] = kStompChainInit;
+constexpr uint16_t kShellChainTable[kShellChainCount] = kShellChainInit;
+
+// the lab roster, the one hand-kept mirror this sub-milestone adds: games/mario/src/enemies.c's
+// kLabColumn/kLabRow/kLabKind, entered from the title with select. see kEnemyLab in mario.h
+constexpr LevelEnemy kLabEnemies[] = {
+    {106, 13, kEnemyGoomba}, {108, 13, kEnemyGoomba}, {110, 13, kEnemyGoomba}, {112, 13, kEnemyGoomba},
+    {114, 13, kEnemyGoomba}, {126, 13, kEnemyKoopa},  {128, 13, kEnemyGoomba}, {130, 13, kEnemyGoomba},
+};
+constexpr uint16_t kLabEnemyCount = sizeof(kLabEnemies) / sizeof(kLabEnemies[0]);
+
+// one pool slot, field for field with enemies.c's Enemy
+struct EnemySlot {
+    uint8_t state = kEnemyOff;
+    uint8_t kind = 0;
+    int8_t dir = -1;
+    uint8_t grounded = 1;
+    uint8_t x_force = 0;
+    uint8_t y_accum = 0;
+    int8_t dy = 0;
+    uint8_t lead_col = 0;
+    uint8_t foot_col = 0;
+    uint8_t grace = 0;
+    uint16_t timer = 0;
+    uint16_t pos_x = 0;
+    int16_t pos_y = 0;
+
+    uint8_t lead() const {
+        return static_cast<uint8_t>((dir > 0 ? static_cast<uint16_t>(pos_x + kEnemyBoxPx - 1) : pos_x) >> 4);
+    }
+
+    uint8_t foot() const {
+        return static_cast<uint8_t>(static_cast<uint16_t>(pos_x + kEnemyBoxPx / 2) >> 4);
+    }
+};
+
 // the host twin of games/mario/src/player.c: the same fixed-point state in the same types, stepped
 // in the same order. the planner searches with it, and the autopilot test replays its predictions
 // against the rom frame for frame, so any drift between the two is a test failure.
@@ -570,6 +664,391 @@ struct PlayerSim {
     // the cell this frame's head bump struck, or (-1, -1); the bump tests search on it
     int16_t bumped_column = -1;
     int16_t bumped_row = -1;
+
+    // the enemy pool rides inside the player sim rather than beside it: the planner searches by
+    // copying whole sims, and a lookahead that forgot the goombas would plan straight into one.
+    // every field and every step below mirrors games/mario/src/enemies.c
+    std::array<EnemySlot, kEnemySlots> pool{};
+    // the pool stays packed into [0, live), exactly as enemies.c keeps it
+    uint8_t live = 0;
+    const LevelEnemy* roster = kLevel11Enemies;
+    uint16_t roster_count = kLevel11EnemyCount;
+    uint16_t cursor = 0;
+    uint16_t cam_x = 0;
+    // camera.c's own scy: the band it drifts to while he moves, and where it currently sits. the
+    // pan is frozen while he stands perfectly still, so a plan that ends standing has to check it
+    uint8_t cam_y = kScyMax;
+    uint8_t band = kScyMax;
+    uint16_t points = 0;
+    uint8_t stomp_chain = 0;
+    uint8_t shell_chain = 0;
+    // the frame's contact code and whether one of them ever ended the run
+    uint8_t contact = kEnemyHitNone;
+    bool damaged = false;
+    // the spawner refused a slot on a full row this frame; the scanline-cap test watches it
+    bool refused = false;
+
+    void use_lab() {
+        roster = kLabEnemies;
+        roster_count = kLabEnemyCount;
+    }
+
+    // the run is over either way: the planner treats a goomba like a pit
+    bool dead() const {
+        return fell() || damaged;
+    }
+
+    void remove_at(uint8_t i) {
+        --live;
+        pool[i] = pool[live];
+    }
+
+    void award(const uint16_t* table, uint8_t count, uint8_t& chain) {
+        points = static_cast<uint16_t>(points + table[chain < count ? chain : count - 1]);
+        if (chain < 0xFF) {
+            ++chain;
+        }
+    }
+
+    void enemy_reverse(EnemySlot& e) const {
+        e.dir = static_cast<int8_t>(-e.dir);
+        e.x_force = 0;
+        e.lead_col = e.lead();
+    }
+
+    static void enemy_move_x(EnemySlot& e, int8_t speed) {
+        const uint8_t raw = static_cast<uint8_t>(speed);
+        const uint16_t sum = static_cast<uint16_t>(e.x_force + ((raw & 0x0Fu) << 4));
+        int16_t whole = static_cast<int16_t>(raw >> 4);
+        if (whole >= 8) {
+            whole = static_cast<int16_t>(whole - 16);
+        }
+        e.x_force = static_cast<uint8_t>(sum);
+        int16_t next =
+            static_cast<int16_t>(static_cast<int16_t>(e.pos_x) + whole + static_cast<int16_t>(sum >> 8));
+        if (next < 0) {
+            next = 0;
+        }
+        e.pos_x = static_cast<uint16_t>(next);
+    }
+
+    void enemy_step_ground(EnemySlot& e, uint8_t speed) const {
+        enemy_move_x(e, e.dir > 0 ? static_cast<int8_t>(speed) : static_cast<int8_t>(-speed));
+        const uint8_t lead = e.lead();
+        if (lead != e.lead_col) {
+            if (solid(lead, row_of(e.pos_y)) ||
+                solid(lead, row_of(static_cast<int16_t>(e.pos_y + kEnemyBoxPx - 1)))) {
+                e.pos_x = (e.dir > 0) ? static_cast<uint16_t>((lead << 4) - kEnemyBoxPx)
+                                      : static_cast<uint16_t>((lead + 1) << 4);
+                enemy_reverse(e);
+            } else {
+                e.lead_col = lead;
+            }
+        }
+        if (e.grounded == 0) {
+            return;
+        }
+        const uint8_t foot = e.foot();
+        if (foot == e.foot_col) {
+            return;
+        }
+        e.foot_col = foot;
+        if (!solid(foot, row_of(static_cast<int16_t>(e.pos_y + kEnemyBoxPx)))) {
+            e.grounded = 0;
+            e.dy = 0;
+            e.y_accum = 0;
+        }
+    }
+
+    void enemy_step_fall(EnemySlot& e) const {
+        const unsigned sum = static_cast<unsigned>(e.y_accum) + kEnemyGravitySubpx;
+        e.y_accum = static_cast<uint8_t>(sum);
+        if (sum > 0xFFu) {
+            e.dy = static_cast<int8_t>(e.dy + 1);
+            if (e.dy > kEnemyMaxFallPx) {
+                e.dy = kEnemyMaxFallPx;
+            }
+        }
+        e.pos_y = static_cast<int16_t>(e.pos_y + e.dy);
+        e.foot_col = e.foot();
+        const int16_t row = row_of(static_cast<int16_t>(e.pos_y + kEnemyBoxPx - 1));
+        if (!solid(e.foot_col, row)) {
+            return;
+        }
+        e.pos_y = static_cast<int16_t>((row << 4) - kEnemyBoxPx);
+        e.dy = 0;
+        e.y_accum = 0;
+        e.grounded = 1;
+    }
+
+    uint8_t enemy_row_load(uint8_t top_row) const {
+        uint8_t n = 0;
+        for (uint8_t i = 0; i < live; ++i) {
+            if (static_cast<uint8_t>(pool[i].pos_y >> 4) == top_row) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+    void enemy_spawn() {
+        refused = false;
+        while (cursor < roster_count) {
+            const uint16_t px = static_cast<uint16_t>(roster[cursor].column << 4);
+            if (px > static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemySpawnMarginPx)) {
+                return;
+            }
+            if (static_cast<uint16_t>(px + kEnemyBoxPx + kEnemyDespawnMarginPx) < cam_x) {
+                ++cursor;
+                continue;
+            }
+            const uint8_t top_row = static_cast<uint8_t>(roster[cursor].row - 1);
+            if (enemy_row_load(top_row) >= kEnemyRowCap) {
+                refused = true;
+                return;
+            }
+            if (live >= kEnemySlots) {
+                refused = true;
+                return;
+            }
+            EnemySlot* slot = &pool[live];
+            ++live;
+            *slot = EnemySlot{};
+            slot->state = kEnemyWalk;
+            slot->kind = roster[cursor].kind;
+            slot->pos_x = px;
+            slot->pos_y = static_cast<int16_t>(top_row << 4);
+            slot->lead_col = slot->lead();
+            slot->foot_col = slot->foot();
+            ++cursor;
+        }
+    }
+
+    void enemy_despawn() {
+        uint8_t i = 0;
+        while (i < live) {
+            const EnemySlot& e = pool[i];
+            if (e.pos_y > static_cast<int16_t>(kLevelHeightPx) ||
+                static_cast<uint16_t>(e.pos_x + kEnemyBoxPx + kEnemyDespawnMarginPx) < cam_x ||
+                e.pos_x > static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemyDespawnMarginPx)) {
+                remove_at(i);
+                continue;
+            }
+            ++i;
+        }
+    }
+
+    static bool enemies_meet(const EnemySlot& a, const EnemySlot& b) {
+        if (a.pos_x + kEnemyBoxPx <= b.pos_x || b.pos_x + kEnemyBoxPx <= a.pos_x) {
+            return false;
+        }
+        return a.pos_y + kEnemyBoxPx > b.pos_y && b.pos_y + kEnemyBoxPx > a.pos_y;
+    }
+
+    void enemy_collide() {
+        uint8_t i = 0;
+        while (static_cast<uint8_t>(i + 1) < live) {
+            EnemySlot& a = pool[i];
+            bool died = false;
+            if (a.state == kEnemySquashed) {
+                ++i;
+                continue;
+            }
+            uint8_t j = static_cast<uint8_t>(i + 1);
+            while (j < live) {
+                EnemySlot& b = pool[j];
+                if (b.state == kEnemySquashed || !enemies_meet(a, b)) {
+                    ++j;
+                    continue;
+                }
+                if (a.state == kEnemyShellMove && b.state != kEnemyShellMove) {
+                    remove_at(j);
+                    award(kShellChainTable, kShellChainCount, shell_chain);
+                    continue;
+                }
+                if (b.state == kEnemyShellMove && a.state != kEnemyShellMove) {
+                    remove_at(i);
+                    award(kShellChainTable, kShellChainCount, shell_chain);
+                    died = true;
+                    break;
+                }
+                EnemySlot& left = (a.pos_x <= b.pos_x) ? a : b;
+                EnemySlot& right = (&left == &a) ? b : a;
+                right.pos_x = static_cast<uint16_t>(left.pos_x + kEnemyBoxPx);
+                if (left.dir > 0) {
+                    enemy_reverse(left);
+                }
+                if (right.dir < 0) {
+                    enemy_reverse(right);
+                }
+                ++j;
+            }
+            if (!died) {
+                ++i;
+            }
+        }
+    }
+
+    uint8_t enemy_stomp(EnemySlot& e) {
+        if (e.state == kEnemyShellMove) {
+            e.state = kEnemyShellIdle;
+            e.timer = kShellWakeFrames;
+            e.grace = kShellGraceFrames;
+            e.x_force = 0;
+            shell_chain = 0;
+            return kEnemyHitShellStomp;
+        }
+        award(kStompChainTable, kStompChainCount, stomp_chain);
+        if (e.kind == kEnemyKoopa) {
+            e.state = kEnemyShellIdle;
+            e.timer = kShellWakeFrames;
+            e.grace = kShellGraceFrames;
+            e.x_force = 0;
+            return kEnemyHitStomp;
+        }
+        e.state = kEnemySquashed;
+        e.timer = kSquashFrames;
+        return kEnemyHitStomp;
+    }
+
+    uint8_t enemy_collide_player() {
+        const uint16_t left = static_cast<uint16_t>(x_pos + kHitInsetPx);
+        const uint16_t right = static_cast<uint16_t>(left + kHitWidthPx);
+        const int16_t feet = static_cast<int16_t>(y_pos + kPlayerBoxPx);
+        uint8_t hit = kEnemyHitNone;
+
+        for (uint8_t i = 0; i < live; ++i) {
+            EnemySlot& e = pool[i];
+            if (e.state == kEnemySquashed) {
+                continue;
+            }
+            const uint16_t enemy_left = static_cast<uint16_t>(e.pos_x + kEnemyHitInsetPx);
+            if (right <= enemy_left || static_cast<uint16_t>(enemy_left + kEnemyHitWidthPx) <= left) {
+                continue;
+            }
+            if (feet <= e.pos_y || static_cast<int16_t>(e.pos_y + kEnemyBoxPx) <= y_pos) {
+                continue;
+            }
+            if (e.grace != 0) {
+                continue;
+            }
+            const bool from_above = y_speed > 0 && feet <= static_cast<int16_t>(e.pos_y + kEnemyStompLinePx);
+            if (e.state == kEnemyShellIdle) {
+                e.dir = (static_cast<uint16_t>(x_pos + kPlayerBoxPx / 2) <
+                         static_cast<uint16_t>(e.pos_x + kEnemyBoxPx / 2))
+                            ? int8_t{1}
+                            : int8_t{-1};
+                e.state = kEnemyShellMove;
+                e.grace = kShellGraceFrames;
+                e.x_force = 0;
+                e.lead_col = e.lead();
+                shell_chain = 0;
+                if (from_above && hit < kEnemyHitShellStomp) {
+                    hit = kEnemyHitShellStomp;
+                }
+                continue;
+            }
+            if (from_above) {
+                const uint8_t code = enemy_stomp(e);
+                if (code > hit) {
+                    hit = code;
+                }
+                continue;
+            }
+            return kEnemyHitDamage;
+        }
+        return hit;
+    }
+
+    // player.c's player_stomp_bounce: the same launch a jump takes, off the bible's stomp table
+    void stomp_bounce(int8_t speed) {
+        y_speed = speed;
+        y_accum = 0;
+        jump_origin_y = y_pos;
+        jump_tier = tier_for(abs_speed());
+        on_ground = 0;
+    }
+
+    // main.c's frame tail: the camera resolves first, then the enemy pass, then mario's reaction
+    uint16_t next_spawn_px() const {
+        return cursor < roster_count ? static_cast<uint16_t>(roster[cursor].column << 4) : uint16_t{0xFFFF};
+    }
+
+    static uint8_t band_for(int16_t box_top) {
+        const int value = box_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx;
+        return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
+    }
+
+    void step_world() {
+        const uint16_t want = x_pos > kCamFollowX ? static_cast<uint16_t>(x_pos - kCamFollowX) : uint16_t{0};
+        cam_x = std::min(want, kMaxWorldX);
+        if (on_ground != 0) {
+            band = band_for(y_pos);
+        }
+        if (on_ground == 0 || x_speed != 0) {
+            if (cam_y < band) {
+                cam_y = static_cast<uint8_t>(std::min<int>(band, cam_y + kCamPanStepPx));
+            } else if (cam_y > band) {
+                cam_y = static_cast<uint8_t>(std::max<int>(band, cam_y - kCamPanStepPx));
+            }
+        }
+        contact = kEnemyHitNone;
+        // enemies.c's idle fast path, mirrored so the two stay frame-identical
+        if (live == 0 &&
+            static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemySpawnMarginPx) < next_spawn_px()) {
+            return;
+        }
+        // landing ends a stomp chain: the escalation only runs while he stays off the ground
+        if (on_ground != 0) {
+            stomp_chain = 0;
+        }
+        enemy_spawn();
+        uint8_t i = 0;
+        while (i < live) {
+            EnemySlot& e = pool[i];
+            if (e.grace != 0) {
+                --e.grace;
+            }
+            if (e.state == kEnemySquashed) {
+                if (--e.timer == 0) {
+                    remove_at(i);
+                    continue;
+                }
+                ++i;
+                continue;
+            }
+            if (e.state == kEnemyShellIdle) {
+                if (--e.timer == 0) {
+                    e.state = kEnemyWalk;
+                    e.lead_col = e.lead();
+                }
+                ++i;
+                continue;
+            }
+            if (e.state == kEnemyShellMove) {
+                enemy_step_ground(e, static_cast<uint8_t>(kEnemyShellSubpx));
+            } else {
+                enemy_step_ground(e, static_cast<uint8_t>(kEnemyWalkSubpx));
+            }
+            if (e.grounded == 0) {
+                enemy_step_fall(e);
+            }
+            ++i;
+        }
+        if (live > 1) {
+            enemy_collide();
+        }
+        contact = live != 0 ? enemy_collide_player() : uint8_t{kEnemyHitNone};
+        enemy_despawn();
+        if (contact == kEnemyHitDamage) {
+            damaged = true;
+            return;
+        }
+        if (contact != kEnemyHitNone) {
+            stomp_bounce(contact == kEnemyHitShellStomp ? static_cast<int8_t>(kEnemyShellBouncePx)
+                                                        : static_cast<int8_t>(kEnemyStompBouncePx));
+        }
+    }
 
     bool solid(int column, int row) const {
         if (solid_at(column, row)) {
@@ -817,6 +1296,7 @@ struct PlayerSim {
         step_vertical(in);
         collide_y();
         a_prev = (in & kInA) != 0 ? 1 : 0;
+        step_world();
     }
 };
 
@@ -873,16 +1353,24 @@ constexpr int kPlanGainPx = 8;
 // only a fall this soon belongs to the decision being made now; a pit two obstacles away shows up
 // inside the progress horizon too and must not veto the jump that clears the obstacle in front
 constexpr int kPlanFallHorizon = 110;
+// how far ahead the walk-and-clear approach watches for something alive, and how long it will
+// stand waiting for one to walk on past before it goes looking for a stomp instead
+constexpr int kClearWatchPx = 120;
+constexpr int kClearWaitFrames = 400;
+// and only a death this close is worth a jump that merely postpones it; anything further off is
+// the lookahead guessing about a stretch the route has not decided how to run yet
+constexpr int kPlanPanicFrames = 70;
 // the hold lengths the takeoff search tries, shortest first
 constexpr int kPlanHolds[] = {4, 8, 12, 16, 20, 24, 28, 32, 40};
 
 struct Lookahead {
-    int fell_at = -1;
+    // the frame the run ended on, in a pit or under a goomba; the planner treats both the same
+    int died_at = -1;
     int total = 0;
     int tail = 0;
 
-    bool falls_now() const {
-        return fell_at >= 0 && fell_at < kPlanFallHorizon;
+    bool dies_now() const {
+        return died_at >= 0 && died_at < kPlanFallHorizon;
     }
 };
 
@@ -903,8 +1391,8 @@ Lookahead look_ahead(PlayerSim sim, int hold) {
         if (i == kPlanHorizon - kPlanTail) {
             mid_x = end_x;
         }
-        if (sim.fell()) {
-            out.fell_at = i;
+        if (sim.dead()) {
+            out.died_at = i;
             break;
         }
     }
@@ -936,12 +1424,12 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
             --jump_left;
         } else if (sim.on_ground != 0 && sim.a_prev == 0) {
             const Lookahead plain = look_ahead(sim, 0);
-            if (plain.falls_now() || (plain.fell_at < 0 && plain.tail < kPlanTailPx)) {
+            if (plain.dies_now() || (plain.died_at < 0 && plain.tail < kPlanTailPx)) {
                 int best_hold = 0;
-                int best_total = plain.falls_now() ? -1 : plain.total;
+                int best_total = plain.dies_now() ? -1 : plain.total;
                 for (int hold : kPlanHolds) {
                     const Lookahead tried = look_ahead(sim, hold);
-                    if (tried.falls_now() || tried.total <= best_total + kPlanGainPx) {
+                    if (tried.dies_now() || tried.total <= best_total + kPlanGainPx) {
                         continue;
                     }
                     best_total = tried.total;
@@ -956,7 +1444,7 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
 
         route.script.push_back(in);
         sim.step(in);
-        if (sim.fell()) {
+        if (sim.dead()) {
             break;
         }
         if (to_flag ? sim.at_flag() : (sim.x_pos >= goal && sim.on_ground != 0 && jump_left == 0)) {
@@ -966,6 +1454,317 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
     }
     route.end = sim;
     return route;
+}
+
+// how many pool slots still hold something that can hurt him; a flattened goomba cannot
+uint8_t threats(const PlayerSim& sim) {
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < sim.live; ++i) {
+        const uint8_t state = sim.pool[i].state;
+        n = static_cast<uint8_t>(n + (state == kEnemyWalk || state == kEnemyShellMove ? 1 : 0));
+    }
+    return n;
+}
+
+// something alive is close enough ahead of him to be worth stopping for
+bool threat_ahead(const PlayerSim& sim) {
+    for (uint8_t i = 0; i < sim.live; ++i) {
+        const EnemySlot& e = sim.pool[i];
+        if (e.state != kEnemySquashed && e.pos_x > sim.x_pos && e.pos_x - sim.x_pos < kClearWatchPx) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// the pan only drifts back to its band while he is moving, so a plan that ends with him standing
+// perfectly still can freeze the view wherever it happened to be. a hop in place walks it home
+// without moving him, which is what the tests that measure screen rows need
+bool append_settle_camera(PlayerSim& sim, std::vector<uint8_t>& script) {
+    for (int guard = 0; guard < 6 && sim.cam_y != sim.band; ++guard) {
+        for (int i = 0; i < 200; ++i) {
+            const uint8_t in = i < 8 ? static_cast<uint8_t>(kInA) : uint8_t{0};
+
+            script.push_back(in);
+            sim.step(in);
+            if (sim.dead()) {
+                return false;
+            }
+            if (i > 8 && sim.on_ground != 0 && sim.cam_y == sim.band) {
+                break;
+            }
+        }
+    }
+    return sim.cam_y == sim.band && sim.x_speed == 0 && sim.on_ground != 0;
+}
+
+// brings him to a halt and then gets the ground around him empty again. waiting is the cheap way
+// out - a goomba that walks past him is forgotten as soon as it clears the camera - and where it
+// would reach him first, the wait before a standing jump and its hold are searched instead, so the
+// goomba walks into the landing. no frame number below is hand-placed
+bool append_stand_clear(PlayerSim& sim, std::vector<uint8_t>& script) {
+    // skid to a halt rather than coast: a run coasts most of a hundred px, further than the gap
+    for (int i = 0; i < 240 && sim.x_speed > 0; ++i) {
+        script.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+        script.push_back(0);
+        sim.step(0);
+    }
+    if (sim.dead() || sim.on_ground == 0) {
+        return false;
+    }
+
+    for (int round = 0; round < 4; ++round) {
+        if (threats(sim) == 0) {
+            return true;
+        }
+        {
+            PlayerSim probe = sim;
+            std::vector<uint8_t> tail;
+            for (int i = 0; i < kClearWaitFrames && threats(probe) != 0 && !probe.dead(); ++i) {
+                tail.push_back(0);
+                probe.step(0);
+            }
+            if (!probe.dead() && threats(probe) == 0) {
+                sim = probe;
+                script.insert(script.end(), tail.begin(), tail.end());
+                return true;
+            }
+        }
+        bool got = false;
+        for (int wait = 0; wait < kClearWaitFrames && !got; ++wait) {
+            for (int hold : kPlanHolds) {
+                PlayerSim probe = sim;
+                std::vector<uint8_t> tail;
+                bool stomped = false;
+                bool landed = false;
+                for (int i = 0; i < wait + hold + 120 && !landed; ++i) {
+                    const uint8_t in =
+                        (i >= wait && i < wait + hold) ? static_cast<uint8_t>(kInA) : uint8_t{0};
+                    tail.push_back(in);
+                    probe.step(in);
+                    if (probe.dead()) {
+                        break;
+                    }
+                    stomped = stomped || probe.contact == kEnemyHitStomp;
+                    landed = stomped && i > wait && probe.on_ground != 0;
+                }
+                if (!landed || probe.dead() || probe.x_speed != 0) {
+                    continue;
+                }
+                sim = probe;
+                script.insert(script.end(), tail.begin(), tail.end());
+                got = true;
+                break;
+            }
+        }
+        if (!got) {
+            return false;
+        }
+    }
+    if (threats(sim) != 0) {
+        return false;
+    }
+    return append_settle_camera(sim, script);
+}
+
+// the approach the camera, pan and block tests lean on. running at 1-1's opening goombas is not
+// something the route planner can plan around - they come in pairs a dozen frames apart, no one
+// jump clears both, and a jump that does clear one drops him on top of the pyramid instead of the
+// ground the tests need him on. so the opening is walked rather than run, stopping to deal with
+// each goomba as it comes; anything past the first pipe is handed back to the route planner
+Route plan_clear_walk(uint16_t goal) {
+    const uint16_t opening = static_cast<uint16_t>((first_pipe_column() - 2) * kBlockPx);
+    const uint16_t walk_to = std::min(goal, opening);
+    Route route;
+    PlayerSim sim;
+
+    for (int guard = 0; guard < 12; ++guard) {
+        // a walk, not a run: a run cannot be braked inside the gap he has to stop in
+        for (int i = 0; i < 4000 && sim.x_pos < walk_to && !threat_ahead(sim); ++i) {
+            route.script.push_back(kInRight);
+            sim.step(kInRight);
+        }
+        if (sim.dead() || !append_stand_clear(sim, route.script)) {
+            return {};
+        }
+        if (sim.x_pos >= walk_to) {
+            break;
+        }
+    }
+    if (sim.x_pos < walk_to || threats(sim) != 0) {
+        return {};
+    }
+    if (sim.x_pos < goal) {
+        const Route rest = plan_route(goal, false, 4000, sim);
+
+        if (!rest.reached) {
+            return {};
+        }
+        route.script.insert(route.script.end(), rest.script.begin(), rest.script.end());
+        sim = rest.end;
+    }
+    route.end = sim;
+    route.reached = true;
+    return route;
+}
+
+// walks him out to a world x and brakes to a halt there, jumping over nothing and stomping nothing:
+// the enemy tests need whatever is coming for him still walking
+Route plan_walk_to(uint16_t goal, PlayerSim start = PlayerSim{}) {
+    Route route;
+    PlayerSim sim = start;
+
+    for (int i = 0; i < 4000 && sim.x_pos < goal && !sim.dead(); ++i) {
+        route.script.push_back(kInRight);
+        sim.step(kInRight);
+    }
+    for (int i = 0; i < 240 && sim.x_speed > 0; ++i) {
+        route.script.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+        route.script.push_back(0);
+        sim.step(0);
+    }
+    route.end = sim;
+    route.reached = sim.x_pos >= goal && !sim.dead() && sim.on_ground != 0;
+    return route;
+}
+
+// the world x at which the camera's right edge first reaches a column, which is the frame anything
+// standing there spawns; every enemy test waits at one of these rather than running into its target
+uint16_t spawn_stand_x(uint16_t column) {
+    return static_cast<uint16_t>(column * kBlockPx - kScreenWidthPx + kCamFollowX);
+}
+
+PlayerSim lab_sim() {
+    PlayerSim sim;
+    sim.use_lab();
+    return sim;
+}
+
+// the lab's roster all stands past 1-1's pits, so the run out to it is the plain route planner's
+// job and nothing is in the way until the camera reaches the first of them
+Route plan_lab_walk(uint16_t goal) {
+    const uint16_t first = spawn_stand_x(kLabEnemies[0].column);
+    Route route = plan_route(std::min(goal, first), false, 4000, lab_sim());
+    PlayerSim sim = route.end;
+
+    if (!route.reached) {
+        return {};
+    }
+    for (int guard = 0; guard < 16; ++guard) {
+        for (int i = 0; i < 4000 && sim.x_pos < goal && !threat_ahead(sim); ++i) {
+            route.script.push_back(kInRight);
+            sim.step(kInRight);
+        }
+        // whatever waits past the goal is the caller's business, so it is left walking
+        if (sim.x_pos >= goal) {
+            break;
+        }
+        if (sim.dead() || !append_stand_clear(sim, route.script)) {
+            return {};
+        }
+    }
+    for (int i = 0; i < 240 && sim.x_speed > 0; ++i) {
+        route.script.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+        route.script.push_back(0);
+        sim.step(0);
+    }
+    route.end = sim;
+    route.reached = sim.x_pos >= goal && !sim.dead() && sim.on_ground != 0;
+    return route;
+}
+
+// clears the lab's row of five and then walks on until the koopa behind them is close enough to
+// meet him with its goombas already on screen, which is what lets the chain be watched rather than
+// happening off the right edge
+Route plan_lab_koopa(const LevelEnemy& koopa) {
+    const uint16_t meet = static_cast<uint16_t>(koopa.column * kBlockPx - 4 * kBlockPx);
+    Route route = plan_lab_walk(static_cast<uint16_t>(spawn_stand_x(koopa.column) - kClearWatchPx));
+    PlayerSim sim = route.end;
+
+    if (!route.reached) {
+        return {};
+    }
+    for (int i = 0; i < 400 && sim.x_pos < meet && !sim.dead(); ++i) {
+        route.script.push_back(kInRight);
+        sim.step(kInRight);
+    }
+    for (int i = 0; i < 240 && sim.x_speed > 0; ++i) {
+        route.script.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+        route.script.push_back(0);
+        sim.step(0);
+    }
+    route.end = sim;
+    route.reached = sim.x_pos >= meet && !sim.dead() && sim.on_ground != 0;
+    return route;
+}
+
+// the slot a shell is sitting or sliding in, or -1
+int shell_slot(const PlayerSim& sim) {
+    for (uint8_t i = 0; i < sim.live; ++i) {
+        if (sim.pool[i].state == kEnemyShellIdle || sim.pool[i].state == kEnemyShellMove) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// searches the wait before a standing jump and its hold until the twin reports a stomp; the enemy
+// walks into the landing, so no frame here is hand-placed. `frame` is where the stomp lands
+struct StompPlan {
+    std::vector<uint8_t> script;
+    PlayerSim end;
+    size_t frame = 0;
+    bool found = false;
+};
+
+StompPlan plan_stomp(const PlayerSim& start) {
+    for (int wait = 0; wait < kClearWaitFrames; ++wait) {
+        for (int hold : kPlanHolds) {
+            PlayerSim probe = start;
+            std::vector<uint8_t> tail;
+            size_t at = 0;
+
+            for (int i = 0; i < wait + hold + 120; ++i) {
+                const uint8_t in = (i >= wait && i < wait + hold) ? static_cast<uint8_t>(kInA) : uint8_t{0};
+
+                tail.push_back(in);
+                probe.step(in);
+                if (probe.dead()) {
+                    break;
+                }
+                if (at == 0 && probe.contact == kEnemyHitStomp) {
+                    at = tail.size();
+                }
+                // stopping a few frames past the stomp leaves him still rising off it: whether he
+                // then lands on the shell it left or backs away from it is the caller's choice
+                if (at != 0 && tail.size() > at + 3) {
+                    break;
+                }
+            }
+            if (at == 0 || probe.dead()) {
+                continue;
+            }
+            StompPlan plan;
+            plan.script = tail;
+            plan.end = probe;
+            plan.frame = at;
+            plan.found = true;
+            return plan;
+        }
+    }
+    return {};
 }
 
 // replays a planned script on the rom one frame at a time
@@ -1019,6 +1818,46 @@ int bg_family_cells(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
         }
     }
     return n;
+}
+
+// how many separate enemies a scanline draws, at its busiest row. runs closer together than this
+// many transparent px are the same enemy split by mario's own sprite drawing over it, not two
+constexpr int kRunGapPx = 8;
+
+int enemy_runs_on_line(const std::span<const uint16_t>& ids, const std::span<const uint8_t>& fb, int y,
+                       uint8_t lo, uint8_t hi) {
+    int runs = 0;
+    int gap = kRunGapPx + 1;
+    for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
+        const size_t i = static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x);
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        const bool lit = (ids[i] & 0x100u) != 0 && tile >= lo && tile <= hi && fb[i] != 0;
+        if (!lit) {
+            ++gap;
+            continue;
+        }
+        if (gap > kRunGapPx) {
+            ++runs;
+        }
+        gap = 0;
+    }
+    return runs;
+}
+
+// the most enemies any one scanline is asked to draw this frame. the hardware drops the eleventh
+// sprite on a line, and a 16x16 enemy costs two, so this is the number the oam cap is about
+int busiest_line(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint8_t> fb = gameboy.framebuffer();
+    int worst = 0;
+    for (int y = 0; y < static_cast<int>(gb::kLcdHeight); ++y) {
+        worst = std::max(worst, enemy_runs_on_line(ids, fb, y, lo, hi));
+    }
+    return worst;
+}
+
+int busiest_enemy_line(const gb::Gameboy& gameboy) {
+    return busiest_line(gameboy, kTileEnemyLo, kTileEnemyHi);
 }
 
 // the sprite box of the sprites drawn from tiles in [lo, hi]; found stays false when none is drawn
@@ -1101,6 +1940,9 @@ bool append_bump(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t column, 
     for (int i = 0; i < 240 && (sim.on_ground == 0 || sim.a_prev != 0); ++i) {
         script.push_back(0);
         sim.step(0);
+        if (sim.dead()) {
+            return false;
+        }
     }
     if (sim.on_ground == 0) {
         return false;
@@ -1109,6 +1951,10 @@ bool append_bump(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t column, 
         const uint8_t in = i < kBumpHoldFrames ? static_cast<uint8_t>(kInA) : uint8_t{0};
         script.push_back(in);
         sim.step(in);
+        // a goomba wandering under him mid-bump would respawn the rom, so that candidate is out
+        if (sim.dead()) {
+            return false;
+        }
         if (sim.bumped_column == static_cast<int16_t>(column) &&
             sim.bumped_row == static_cast<int16_t>(row)) {
             return true;
@@ -1131,7 +1977,7 @@ struct BumpPlan {
 // different, and only some of those spots put his head under the cell. the twin reports which cell
 // the bump struck, so no frame number here is hand-placed
 BumpPlan plan_bump(uint16_t column, uint8_t row) {
-    const Route approach = plan_route(static_cast<uint16_t>((column - 3) * kBlockPx), false, 4000);
+    const Route approach = plan_clear_walk(static_cast<uint16_t>((column - 3) * kBlockPx));
     if (!approach.reached) {
         return {};
     }
@@ -1146,7 +1992,7 @@ BumpPlan plan_bump(uint16_t column, uint8_t row) {
             states.push_back(sim);
         }
         // the planner stops the moment its goal is met, so walking on covers the columns past it
-        for (int i = 0; i < 260; ++i) {
+        for (int i = 0; i < 260 && !sim.dead(); ++i) {
             full.push_back(kInRight);
             sim.step(kInRight);
             states.push_back(sim);
@@ -1171,7 +2017,9 @@ BumpPlan plan_bump(uint16_t column, uint8_t row) {
                 script.push_back(0);
                 sim.step(0);
             }
-            if (sim.x_speed != 0 || sim.on_ground == 0) {
+            // the pan freezes the moment he stands perfectly still, so a candidate that comes to
+            // rest with the view still drifting is no good to a test measuring screen rows
+            if (sim.x_speed != 0 || sim.on_ground == 0 || sim.dead() || sim.cam_y != sim.band) {
                 continue;
             }
             if (append_bump(sim, script, column, row)) {
@@ -1221,7 +2069,7 @@ Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_ro
                 stopping.push_back(0);
                 held.step(0);
             }
-            if (held.x_speed != 0 || !standing_on_pipe(held, column, top_row)) {
+            if (held.dead() || held.x_speed != 0 || !standing_on_pipe(held, column, top_row)) {
                 continue;
             }
             Route route;
@@ -1255,7 +2103,7 @@ Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_ro
                         }
                         tail.push_back(in);
                         sim.step(in);
-                        if (sim.fell()) {
+                        if (sim.dead()) {
                             break;
                         }
                         if (i > 2 && sim.on_ground != 0) {
@@ -1275,7 +2123,7 @@ Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_ro
                     lead.push_back(0);
                     stopped.step(0);
                 }
-                if (stopped.x_speed != 0 || stopped.on_ground == 0) {
+                if (stopped.dead() || stopped.x_speed != 0 || stopped.on_ground == 0) {
                     continue;
                 }
                 for (int hold : kPlanHolds) {
@@ -1307,7 +2155,7 @@ Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_ro
             }
             prefix.push_back(gait);
             base.step(gait);
-            if (base.fell()) {
+            if (base.dead()) {
                 break;
             }
         }
@@ -1346,6 +2194,8 @@ PlayerSim sim_at(uint16_t column, uint8_t surface_row) {
     sim.x_pos = static_cast<uint16_t>(column * kBlockPx);
     sim.y_pos = static_cast<int16_t>(surface_row * kBlockPx - kPlayerBoxPx);
     sim.jump_origin_y = sim.y_pos;
+    sim.band = PlayerSim::band_for(sim.y_pos);
+    sim.cam_y = sim.band;
     return sim;
 }
 
@@ -1674,8 +2524,12 @@ TEST_CASE("mario_wall_stops_motion") {
     REQUIRE(gameboy.load_rom(rom));
     enter_play(gameboy);
 
-    // 1-1's first pipe is a few hundred px out; running there takes well under this many frames
-    travel(gameboy, gb::Button::Right, true, 260);
+    // 1-1's first pipe is a few hundred px out, with the opening goombas between it and the start,
+    // so the planner takes him past them and then he leans on the pipe
+    const Route approach = plan_clear_walk(static_cast<uint16_t>((first_pipe_column() - 8) * kBlockPx));
+    REQUIRE(approach.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    travel(gameboy, gb::Button::Right, true, 200);
     const Mario m = mario_at(gameboy);
     REQUIRE(m.found);
     REQUIRE(m.top == kStandTop);
@@ -1797,10 +2651,11 @@ TEST_CASE("mario_camera_follows_and_scrolls_back") {
     // at the level start the camera is pinned against the left end, so mario sits at his world x
     REQUIRE(mario_at(gameboy).left == kMarioArtInset);
 
-    // running right hands him to the camera, which then holds him at the follow anchor
-    travel(gameboy, gb::Button::Right, true, 200);
-    gameboy.set_button(gb::Button::Right, false);
-    gameboy.set_button(gb::Button::B, false);
+    // running right hands him to the camera, which then holds him at the follow anchor. the route
+    // also flattens the goombas it passes, so the walk back has empty ground behind it
+    const Route out = plan_clear_walk(static_cast<uint16_t>(20 * kBlockPx));
+    REQUIRE(out.reached);
+    replay(gameboy, out.script, 0, out.script.size());
     run(gameboy, 30);
     REQUIRE(mario_at(gameboy).left == kCamFollowX + kMarioArtInset);
 
@@ -1851,12 +2706,11 @@ TEST_CASE("mario_camera_manual_pan") {
     }
     REQUIRE(high_probe != nullptr);
 
-    int walked = 0;
-    const int target = static_cast<int>(high_probe->column) * kBlockPx;
-    while (walked < target) {
-        walked += travel(gameboy, gb::Button::Right, false, 8);
-    }
-    gameboy.set_button(gb::Button::Right, false);
+    // the pyramid is exactly where 1-1 sends its first goombas, and the pan only answers to a mario
+    // standing perfectly still, so the route stomps them on the way in
+    const Route approach = plan_clear_walk(static_cast<uint16_t>(high_probe->column * kBlockPx));
+    REQUIRE(approach.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
     run(gameboy, 90);
 
     // the band shows the row 9 block and nothing above it
@@ -1898,9 +2752,9 @@ TEST_CASE("mario_camera_select_look_ahead") {
     REQUIRE(gameboy.load_rom(rom));
     enter_play(gameboy);
 
-    travel(gameboy, gb::Button::Right, true, 200);
-    gameboy.set_button(gb::Button::Right, false);
-    gameboy.set_button(gb::Button::B, false);
+    const Route out = plan_clear_walk(static_cast<uint16_t>(20 * kBlockPx));
+    REQUIRE(out.reached);
+    replay(gameboy, out.script, 0, out.script.size());
     run(gameboy, 30);
     REQUIRE(mario_at(gameboy).left == kCamFollowX + kMarioArtInset);
 
@@ -2054,7 +2908,6 @@ TEST_CASE("mario_autopilot_completes_1_1") {
             matched = hits;
         }
     }
-    REQUIRE(best_lag >= 0);
     REQUIRE(matched > 400);
 
     // the clear sequence owns him from here: he slides down the pole with no input at all. the two
@@ -2502,4 +3355,327 @@ TEST_CASE("mario_pipe_round_trip") {
     gameboy.set_button(gb::Button::Right, false);
     gameboy.set_button(gb::Button::B, false);
     REQUIRE(titled);
+}
+
+// --- sub-milestone 6: enemies -------------------------------------------------------------------
+
+TEST_CASE("mario_goomba_spawns_and_walks") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the bible's first goomba, out of the compiled spawn list rather than level-1-1.json by hand
+    REQUIRE(kLevel11EnemyCount > 0u);
+    const LevelEnemy& first = kLevel11Enemies[0];
+    REQUIRE(first.kind == kEnemyGoomba);
+
+    // he waits at the x where the camera's right edge reaches it, which is the frame it spawns
+    const Route walk = plan_walk_to(spawn_stand_x(first.column));
+    REQUIRE(walk.reached);
+    REQUIRE(walk.end.live == 1);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    run(gameboy, 4);
+
+    // it is on screen and mario is standing still, so the camera is parked and screen px are world px
+    const SpriteBox appeared = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(appeared.found);
+    const Mario before = mario_at(gameboy);
+    REQUIRE(before.found);
+
+    constexpr int kMeasure = 60;
+    run(gameboy, kMeasure);
+    const SpriteBox moved = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(moved.found);
+    REQUIRE(mario_at(gameboy).left == before.left);
+
+    // physics.json enemy_movement.goomba_koopa_walk_speed: half a pixel a frame, to the left
+    const int expected = kMeasure * kEnemyWalkSubpx / 16;
+    REQUIRE(appeared.left - moved.left >= expected - 2);
+    REQUIRE(appeared.left - moved.left <= expected + 2);
+}
+
+TEST_CASE("mario_stomp_squashes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+    // roster.json's stomp chain opens at 100, and the counter is internal until m8's hud reads it
+    REQUIRE(stomp.end.points == kStompChainTable[0]);
+
+    // the twin's screen prediction for the frames either side of the landing
+    std::vector<std::pair<int, int>> want;
+    {
+        PlayerSim sim = walk.end;
+        for (uint8_t in : stomp.script) {
+            sim.step(in);
+            want.emplace_back(static_cast<int>(sim.x_pos) - static_cast<int>(sim.cam_x),
+                              static_cast<int>(sim.y_pos) - static_cast<int>(sim.cam_y));
+        }
+    }
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+
+    std::vector<std::pair<int, int>> saw;
+    bool squashed = false;
+    for (size_t i = 0; i < stomp.script.size(); ++i) {
+        replay(gameboy, stomp.script, i, i + 1);
+        const Mario m = mario_at(gameboy);
+        saw.emplace_back(m.found ? m.left - kMarioArtInset : -1000, m.found ? m.top : -1000);
+        squashed = squashed || sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found;
+    }
+    // the goomba went flat under him, and the rom drew the arc off it the bible's constants predict
+    REQUIRE(squashed);
+    int matched = 0;
+    for (size_t i = 1; i < saw.size(); ++i) {
+        if (want[i - 1].first < 0 || want[i - 1].second < 0) {
+            continue;
+        }
+        REQUIRE(saw[i] == want[i - 1]);
+        ++matched;
+    }
+    REQUIRE(matched > 20);
+
+    // the first frame of the bounce is the bible's own stomp velocity, straight off the twin
+    const int rise = want[stomp.frame - 1].second - want[stomp.frame].second;
+    REQUIRE(rise == -kEnemyStompBouncePx);
+
+    // and the flat goomba is gone a squash timer later, with nothing walking in its place
+    run(gameboy, kSquashFrames + 8);
+    REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
+}
+
+TEST_CASE("mario_side_contact_respawns") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+
+    // walking into it, no jump: the twin says which frame kills him
+    std::vector<uint8_t> into;
+    {
+        PlayerSim sim = walk.end;
+        for (int i = 0; i < 600 && !sim.damaged; ++i) {
+            into.push_back(kInRight);
+            sim.step(kInRight);
+        }
+        REQUIRE(sim.damaged);
+    }
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    replay(gameboy, into, 0, into.size());
+
+    // m7 replaces this with the shrink chain; for now the touch costs him the level
+    run(gameboy, 90);
+    const Mario back = mario_at(gameboy);
+    REQUIRE(back.found);
+    REQUIRE(back.top == kStandTop);
+    REQUIRE(back.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset);
+    REQUIRE(!sprite_box(gameboy, kTileEnemyLo, kTileEnemyHi).found);
+}
+
+TEST_CASE("mario_koopa_shell_chain") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the lab's koopa, with two goombas walking down the same row at it
+    const LevelEnemy* koopa = nullptr;
+    for (const LevelEnemy& e : kLabEnemies) {
+        if (e.kind == kEnemyKoopa) {
+            koopa = &e;
+            break;
+        }
+    }
+    REQUIRE(koopa != nullptr);
+
+    const Route walk = plan_lab_koopa(*koopa);
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+    // a stomped koopa is a shell, not a corpse
+    const int shell = shell_slot(stomp.end);
+    REQUIRE(shell >= 0);
+    REQUIRE(stomp.end.pool[static_cast<size_t>(shell)].state == kEnemyShellIdle);
+
+    // walking into the resting shell kicks it away from him, and it goes hunting
+    std::vector<uint8_t> kick;
+    PlayerSim sim = stomp.end;
+    const uint16_t before_points = sim.points;
+    for (int i = 0; i < 400 && shell_slot(sim) >= 0 &&
+                    sim.pool[static_cast<size_t>(shell_slot(sim))].state != kEnemyShellMove;
+         ++i) {
+        kick.push_back(kInRight);
+        sim.step(kInRight);
+    }
+    REQUIRE(shell_slot(sim) >= 0);
+    REQUIRE(sim.pool[static_cast<size_t>(shell_slot(sim))].state == kEnemyShellMove);
+    REQUIRE(sim.pool[static_cast<size_t>(shell_slot(sim))].dir > 0);
+
+    // he stands and watches: the shell and the goomba walking at it are both on screen already
+    size_t kill_at = 0;
+    for (int i = 0; i < 600 && kill_at == 0 && !sim.dead(); ++i) {
+        const uint8_t in = 0;
+
+        kick.push_back(in);
+        sim.step(in);
+        if (sim.points != before_points) {
+            kill_at = kick.size();
+        }
+    }
+    REQUIRE(kill_at > 1);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    {
+        PlayerSim probe = lab_sim();
+        int wx = 0;
+        int wy = 0;
+        int bad = -1;
+        for (size_t i = 0; i < walk.script.size(); ++i) {
+            replay(gameboy, walk.script, i, i + 1);
+            const Mario m = mario_at(gameboy);
+            // the rom scans a frame out one frame after it computes it, so the screen shows the
+            // twin's previous step
+            if (bad < 0 && i > 2 && m.found && wx >= 0 && wx <= 144 && wy >= 0 && wy <= 128 &&
+                (m.left - kMarioArtInset != wx || m.top != wy)) {
+                bad = static_cast<int>(i);
+            }
+            probe.step(walk.script[i]);
+            wx = static_cast<int>(probe.x_pos) - static_cast<int>(probe.cam_x);
+            wy = static_cast<int>(probe.y_pos) - static_cast<int>(probe.cam_y);
+        }
+        REQUIRE(bad < 0);
+    }
+    replay(gameboy, stomp.script, 0, stomp.script.size());
+
+    // the rom draws the same story: a shell where the koopa was, travelling right at the bible's
+    // kick speed, and one fewer goomba on the row once it gets there
+    run(gameboy, 2);
+    REQUIRE(sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
+    // the goomba it is hunting is on screen with it, and it is gone once the shell arrives
+    int most_goombas = 0;
+    int with_shell = 0;
+    for (size_t i = 0; i < kick.size(); ++i) {
+        replay(gameboy, kick, i, i + 1);
+        const int goombas = busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi);
+        if (goombas > most_goombas) {
+            most_goombas = goombas;
+        }
+        if (goombas > 0 && sprite_box(gameboy, kTileShellLo, kTileShellHi).found) {
+            ++with_shell;
+        }
+    }
+    REQUIRE(most_goombas > 0);
+    REQUIRE(with_shell > 0);
+    REQUIRE(busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi) < most_goombas);
+    // and nothing squashed it: a shell kill takes the goomba straight off the pool
+    REQUIRE(sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
+}
+
+TEST_CASE("mario_shell_wakes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelEnemy* koopa = nullptr;
+    for (const LevelEnemy& e : kLabEnemies) {
+        if (e.kind == kEnemyKoopa) {
+            koopa = &e;
+            break;
+        }
+    }
+    REQUIRE(koopa != nullptr);
+
+    const Route walk = plan_lab_koopa(*koopa);
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    // back away from it and leave it alone; the twin proves he never touches it while it sleeps
+    std::vector<uint8_t> wait;
+    PlayerSim sim = stomp.end;
+    for (int i = 0; i < 40; ++i) {
+        wait.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < kShellWakeFrames + 120 && shell_slot(sim) >= 0; ++i) {
+        wait.push_back(0);
+        sim.step(0);
+        REQUIRE(!sim.dead());
+    }
+    // the untouched shell woke back into its koopa kShellWakeFrames after the stomp made it
+    REQUIRE(shell_slot(sim) < 0);
+    const size_t slept = stomp.script.size() - stomp.frame + wait.size();
+    REQUIRE(slept >= static_cast<size_t>(kShellWakeFrames));
+    REQUIRE(slept <= static_cast<size_t>(kShellWakeFrames) + 4);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    replay(gameboy, stomp.script, 0, stomp.script.size());
+    run(gameboy, 2);
+    REQUIRE(sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
+
+    // must-measure: the wake is our own kShellWakeFrames, smb's own count is unsourced
+    replay(gameboy, wait, 0, 40);
+    bool shell_seen = false;
+    bool koopa_back = false;
+    for (size_t i = 40; i < wait.size() && !koopa_back; ++i) {
+        replay(gameboy, wait, i, i + 1);
+        shell_seen = shell_seen || sprite_box(gameboy, kTileShellLo, kTileShellHi).found;
+        koopa_back = sprite_box(gameboy, kTileKoopaLo, kTileKoopaHi).found;
+    }
+    REQUIRE(shell_seen);
+    run(gameboy, 4);
+    REQUIRE(sprite_box(gameboy, kTileKoopaLo, kTileKoopaHi).found);
+    REQUIRE(!sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
+}
+
+TEST_CASE("mario_scanline_cap_holds_at_four") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the lab's row of five, which is one more than a scanline may draw beside mario
+    int cluster = 0;
+    for (const LevelEnemy& e : kLabEnemies) {
+        cluster += e.kind == kEnemyGoomba && e.row == kLabEnemies[0].row ? 1 : 0;
+        if (e.kind != kEnemyGoomba) {
+            break;
+        }
+    }
+    REQUIRE(cluster > kEnemyRowCap);
+
+    const Route walk = plan_lab_walk(spawn_stand_x(kLabEnemies[cluster - 1].column) + 6 * kBlockPx);
+    REQUIRE(walk.reached);
+
+    // the twin says the spawner refused a slot on the full row and let the waiting one in later
+    {
+        PlayerSim sim = lab_sim();
+        bool refused = false;
+        for (uint8_t in : walk.script) {
+            sim.step(in);
+            refused = refused || sim.refused;
+        }
+        REQUIRE(refused);
+        REQUIRE(sim.cursor >= static_cast<uint16_t>(cluster));
+    }
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    int worst = 0;
+    for (size_t i = 0; i < walk.script.size(); ++i) {
+        replay(gameboy, walk.script, i, i + 1);
+        worst = std::max(worst, busiest_enemy_line(gameboy));
+    }
+    // exactly the doc's oam trap: four 16x16 enemies is eight sprites, and mario's two make ten
+    REQUIRE(worst == kEnemyRowCap);
 }

@@ -3,11 +3,13 @@
 #include "enemies.h"
 #include "flow.h"
 #include "hazards.h"
+#include "hud.h"
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
 #include "powerup.h"
+#include "save.h"
 #include "terrain.h"
 #include "title.h"
 
@@ -18,7 +20,18 @@
 #include <stdint.h>
 #include <stdio.h>
 
-enum GameState { kStateTitle, kStatePlay, kStateClear, kStateCamera, kStatePipeDown, kStatePipeUp };
+enum GameState {
+    kStateTitle,
+    kStatePlay,
+    kStateClear,
+    kStateClearCard,
+    kStateDeath,
+    kStatePause,
+    kStateGameOver,
+    kStateCamera,
+    kStatePipeDown,
+    kStatePipeUp
+};
 
 // the grid mario is playing in; a pipe swaps it and rebuilds the whole ring with the lcd off
 static uint8_t current_area;
@@ -30,7 +43,6 @@ static uint8_t pending_warp;
 static uint8_t hazard_active;
 // and whether any of them is near enough this frame to be worth entering bank 5 for
 static uint8_t hazard_near;
-
 // scx/scy and oam are cheap and must land before scanline 0; the ring stream can outlast vblank on
 // a column boundary, so it always goes last
 static void present(void) {
@@ -63,6 +75,17 @@ static void enter_play(void) {
     hazard_near = hazard_active;
     present();
     SHOW_BKG;
+    SHOW_SPRITES;
+    DISPLAY_ON;
+}
+
+// a card overwrote the bg map and every actor is frozen where it stood: the ring is repainted
+// where the camera already is, which is the same lcd-off refill a level load pays
+static void leave_card(void) {
+    DISPLAY_OFF;
+    flow_resume_from_card(current_area, camera_pos_x);
+    present();
+    SHOW_BKG;
     DISPLAY_ON;
 }
 
@@ -86,6 +109,12 @@ static void leave_sub_area(void) {
     DISPLAY_ON;
 }
 
+// every death goes through the same beat, whatever killed him
+static uint8_t begin_death(uint8_t from) {
+    player_begin_death(from);
+    return kStateDeath;
+}
+
 void main(void) {
     uint8_t state = kStateTitle;
     uint8_t keys = 0;
@@ -100,8 +129,9 @@ void main(void) {
     font_init();
     font_set(font_load(font_ibm));
     powerup_init();
+    save_init();
     level_number = 0;
-    title_show();
+    title_reset();
 
     while (1) {
         vsync();
@@ -111,37 +141,15 @@ void main(void) {
         pressed = (uint8_t)(keys & (uint8_t)~prev);
 
         if (state == kStateTitle) {
-            if ((pressed & J_START) != 0U) {
-                enemies_set_lab(0);
-                blocks_set_lab(0);
+            const uint8_t action = title_frame(pressed, &level_number);
+
+            if (action == (uint8_t)kTitlePlay) {
                 enter_play();
                 state = kStatePlay;
-            }
-#if kEnemyLab
-            // the same level, seeded with the lab's denser roster and its second dispenser; see
-            // kEnemyLab in mario.h
-            else if ((pressed & J_SELECT) != 0U) {
-                enemies_set_lab(1);
-                blocks_set_lab(1);
-                enter_play();
-                state = kStatePlay;
-            }
-#endif
-#if kLevelSelect
-            // step through world one before starting: see kLevelSelect in mario.h
-            else if ((pressed & J_DOWN) != 0U) {
-                level_number = (uint8_t)((level_number + 1U) % (uint8_t)kLevelCount);
-            } else if ((pressed & J_UP) != 0U) {
-                level_number = (uint8_t)((level_number + (uint8_t)kLevelCount - 1U) % (uint8_t)kLevelCount);
-            }
-#endif
-#if kDebugCamera
-            else if ((pressed & J_B) != 0U) {
+            } else if (action == (uint8_t)kTitleCamera) {
                 current_area = kAreaMain;
-                debug_camera_enter();
                 state = kStateCamera;
             }
-#endif
             continue;
         }
 
@@ -151,6 +159,17 @@ void main(void) {
             if ((powerup_flags & kPowerFlagFrozen) != 0U) {
                 powerup_update(keys, player_x(), player_y(), player_facing_left(), camera_pos_x);
                 player_set_big(powerup_pose);
+                present();
+                continue;
+            }
+            if ((pressed & J_START) != 0U) {
+                card_pause(level_number);
+                state = kStatePause;
+                continue;
+            }
+            // the countdown and the coin rollover, and the five digit sprites they move
+            if (hud_frame() != 0U) {
+                state = begin_death(kDeathFromHit);
                 present();
                 continue;
             }
@@ -169,10 +188,13 @@ void main(void) {
             }
             status = player_update(keys);
             if (status == kPlayerFell) {
-                enter_play();
+                // the pit has already taken him under the level, so the beat only holds
+                state = begin_death(kDeathFromPit);
+                present();
                 continue;
             }
             if (status == kPlayerFlag) {
+                flow_score_flag(player_feet());
                 player_begin_clear(kClearFromFlag);
                 state = kStateClear;
                 present();
@@ -239,8 +261,9 @@ void main(void) {
                 }
             }
             if (contact == kEnemyHitDamage && powerup_damage() != 0U) {
-                // small mario has nothing left to lose; m8b turns this into lives and a death beat
-                enter_play();
+                // small mario has nothing left to lose
+                state = begin_death(kDeathFromHit);
+                present();
                 continue;
             }
             if (contact > kEnemyHitDamage) {
@@ -255,6 +278,39 @@ void main(void) {
             player_set_big(powerup_pose);
             blocks_player_big = (uint8_t)((powerup_flags & kPowerFlagBig) != 0U ? 1U : 0U);
             present();
+            continue;
+        }
+
+        if (state == kStateDeath) {
+            // the world is frozen: nothing steps but mario falling out of it
+            if (player_death_update() != 0U) {
+                if (flow_after_death() != (uint8_t)kAfterDeathRespawn) {
+                    state = kStateGameOver;
+                } else {
+                    // the level reloads whole, spent blocks and all, which is smb's own respawn
+                    enter_play();
+                    state = kStatePlay;
+                }
+                continue;
+            }
+            present();
+            continue;
+        }
+
+        if (state == kStatePause) {
+            if ((pressed & J_START) != 0U) {
+                leave_card();
+                state = kStatePlay;
+            }
+            continue;
+        }
+
+        if (state == kStateGameOver) {
+            if (flow_game_over_frame() != 0U) {
+                level_number = 0;
+                title_reset();
+                state = kStateTitle;
+            }
             continue;
         }
 
@@ -289,21 +345,27 @@ void main(void) {
 
         if (state == kStateClear) {
             if (player_clear_update() != 0U) {
-                // 1-1 to 1-4 in order, then back to the title; m8b turns this into the map screen
-                if ((uint8_t)(level_number + 1U) < (uint8_t)kLevelCount) {
-                    ++level_number;
-                    enter_play();
-                    state = kStatePlay;
-                } else {
-                    level_number = 0;
-                    title_show();
-                    state = kStateTitle;
-                }
+                flow_clear_card();
+                state = kStateClearCard;
                 continue;
             }
             // the sequence owns mario, so the camera tracks him as a supported-but-moving actor
             camera_update(player_x(), player_feet(), 1, 0, 0);
             present();
+            continue;
+        }
+
+        if (state == kStateClearCard) {
+            const uint8_t after = flow_clear_frame(&level_number);
+
+            if (after == (uint8_t)kAfterCardNext) {
+                enter_play();
+                state = kStatePlay;
+            } else if (after == (uint8_t)kAfterCardTitle) {
+                level_number = 0;
+                title_reset();
+                state = kStateTitle;
+            }
             continue;
         }
 

@@ -16,7 +16,10 @@ extern uint16_t level_columns;
 extern const LevelInfo* level;
 extern const AreaInfo* level_sub;
 
+// copies the table entry out of kLevelTableBank into ram; every level-> read afterwards is a plain
+// load, which is what lets the whole table live outside bank 0
 void level_select(uint8_t index);
+
 // unpacks kAreaMain or one of the level's sub-areas; switches banks, so it stays in bank 0
 void level_load(uint8_t area);
 // the palette set a grid is painted with: a sub-area is always underground, whatever holds it

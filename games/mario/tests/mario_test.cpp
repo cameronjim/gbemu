@@ -374,7 +374,8 @@ constexpr uint8_t kContentNothing = 0;
 constexpr uint8_t kBlockListBrick = 1;
 // the rgb555 the cgb palettes above put on mario's body: his own red, fire's white, the star's
 // yellow. no other sprite family shares them, so a pixel of one on his tiles names his state
-constexpr int kColorMarioRed = 28 | (5 << 5) | (3 << 10);
+// m19's art pass retuned mario's own red; nothing else on screen is painted this exact value
+constexpr int kColorMarioRed = 26 | (2 << 5) | (0 << 10);
 constexpr int kColorFireWhite = 31 | (31 << 5) | (31 << 10);
 constexpr int kColorStarYellow = 31 | (26 << 5) | (4 << 10);
 

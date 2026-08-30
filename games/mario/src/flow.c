@@ -36,11 +36,12 @@ uint8_t flow_enter_level(uint8_t index) BANKED {
     return hazards_count();
 }
 
-uint8_t flow_begin_run(uint8_t entry, uint8_t selected) {
+uint8_t flow_begin_run(uint8_t selected) {
+    // systems.md: the english build resets the form and the score on a reload, so picking a file
+    // carries the level it saved and nothing else - three fresh lives and a score of zero. the
+    // levels a run walks between on the map share those, which is why nothing resets them again
     hud_new_game();
-    // systems.md: the english build resets the form and the score on a reload, so a continue
-    // carries the level it saved and nothing else. must-verify which one smbd's jp build keeps
-    return (entry == (uint8_t)kMenuContinue && save_has_progress() != 0U) ? save_level() : selected;
+    return selected;
 }
 
 // roster.json: "contact height determines the score bonus", in five bands from the pole's base to
@@ -110,13 +111,13 @@ uint8_t flow_clear_frame(uint8_t* level) BANKED {
     if (card_timer < (uint8_t)kClearCardFrames) {
         return kAfterCardStay;
     }
+    // the node after this one, which may be kLevelCount: world one finished, every node cleared.
+    // the file records that as is - it is what "furthest unlocked" means - and front_cleared is
+    // what opens the node and clamps this back to a real one before the map puts mario down
     next = (uint8_t)(*level + 1U);
-    if (next >= (uint8_t)kLevelCount) {
-        return kAfterCardTitle;
-    }
     save_record(next, hud_score);
     *level = next;
-    return kAfterCardNext;
+    return kAfterCardMap;
 }
 
 // the card wrote over the whole bg map, and every actor is exactly where it was frozen: the ring

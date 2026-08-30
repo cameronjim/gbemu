@@ -6,6 +6,7 @@
 #include "hud.h"
 #include "level.h"
 #include "mario.h"
+#include "mapscreen.h"
 #include "physics_constants.h"
 #include "player.h"
 #include "powerup.h"
@@ -20,8 +21,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// title -> select file -> world map -> level -> world map. a game over is the only way back to
+// the title from play; b walks the front end back a screen at a time
 enum GameState {
-    kStateTitle,
+    kStateFront,
     kStatePlay,
     kStateClear,
     kStateClearCard,
@@ -120,7 +123,7 @@ static uint8_t begin_death(uint8_t from) {
 }
 
 void main(void) {
-    uint8_t state = kStateTitle;
+    uint8_t state = kStateFront;
     uint8_t keys = 0;
     uint8_t prev = 0;
     uint8_t pressed = 0;
@@ -136,7 +139,7 @@ void main(void) {
     powerup_init();
     save_init();
     level_number = 0;
-    title_reset();
+    front_title();
 
     while (1) {
         vsync();
@@ -145,13 +148,15 @@ void main(void) {
         // edge triggered so holding a button cannot re-enter a state every frame
         pressed = (uint8_t)(keys & (uint8_t)~prev);
 
-        if (state == kStateTitle) {
-            const uint8_t action = title_frame(pressed, &level_number);
+        if (state == kStateFront) {
+            // the title card, the file select and the world map, all driven by mapscreen.c: bank 0
+            // only needs to know that one of them asked for a level or for the debug camera
+            const uint8_t action = front_frame(pressed, &level_number);
 
-            if (action == (uint8_t)kTitlePlay) {
+            if (action == (uint8_t)kFrontPlay) {
                 enter_play();
                 state = kStatePlay;
-            } else if (action == (uint8_t)kTitleCamera) {
+            } else if (action == (uint8_t)kFrontCamera) {
                 current_area = kAreaMain;
                 state = kStateCamera;
             }
@@ -326,9 +331,11 @@ void main(void) {
 
         if (state == kStateGameOver) {
             if (flow_game_over_frame() != 0U) {
+                // a game over ends the run, so the file is let go of: whatever it recorded stands,
+                // and the next thing the player picks starts a fresh three lives
                 level_number = 0;
-                title_reset();
-                state = kStateTitle;
+                front_title();
+                state = kStateFront;
             }
             continue;
         }
@@ -378,15 +385,11 @@ void main(void) {
         }
 
         if (state == kStateClearCard) {
-            const uint8_t after = flow_clear_frame(&level_number);
-
-            if (after == (uint8_t)kAfterCardNext) {
-                enter_play();
-                state = kStatePlay;
-            } else if (after == (uint8_t)kAfterCardTitle) {
-                level_number = 0;
-                title_reset();
-                state = kStateTitle;
+            if (flow_clear_frame(&level_number) == (uint8_t)kAfterCardMap) {
+                // back to the map with the next node open and the file written, not straight on
+                // into the next level: picking what to play is the map's job now
+                front_cleared(&level_number);
+                state = kStateFront;
             }
             continue;
         }

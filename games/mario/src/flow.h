@@ -26,9 +26,9 @@ uint8_t flow_warp_under_player(void) BANKED;
 // 1 while he stands on the sub-area's exit pipe, the way back up
 uint8_t flow_over_exit_pipe(void) BANKED;
 
-// starts a run with three lives and no score; a continue answers with the furthest level the save
-// slot reached, anything else with the level the title had selected
-uint8_t flow_begin_run(uint8_t entry, uint8_t selected);
+// starts a run with three lives and no score at the given level, and answers with it. the file
+// select arms a player's run this way; the title's labs arm theirs the same way
+uint8_t flow_begin_run(uint8_t selected);
 
 // pays the flagpole band his feet touched at; call once, before the slide moves him
 void flow_score_flag(int16_t feet) BANKED;
@@ -43,10 +43,11 @@ uint8_t flow_after_death(void) BANKED;
 uint8_t flow_game_over_frame(void) BANKED;
 
 // paints the level-clear card, then one frame of it: the countdown converting into points, the
-// hold, and finally the level after this one written through `level`
+// hold, and finally the file's record. m19 hands back to the world map rather than straight into
+// the next level, so `level` comes back as the RAW next node - which is kLevelCount once world one
+// is finished; front_cleared is what opens that node on the map and clamps this back to a real one
 #define kAfterCardStay 0U
-#define kAfterCardNext 1U
-#define kAfterCardTitle 2U
+#define kAfterCardMap 1U
 void flow_clear_card(void) BANKED;
 uint8_t flow_clear_frame(uint8_t* level) BANKED;
 

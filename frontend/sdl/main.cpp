@@ -731,9 +731,12 @@ void main_loop_step(void* arg) {
                     gameboy.set_button(gb::Button::Start, down);
                     break;
                 case SDLK_ESCAPE:
-                    // esc backs out of menus with b, opens the pause menu in game
+                    // esc backs out of menus with b on dmg carts (tetris' block style), but cgb
+                    // carts like mario have no such menu and use esc to pause/unpause with start
                     if (down) {
-                        app.esc_button = style_mask(app, 0x800) == 0 ? gb::Button::B : gb::Button::Start;
+                        app.esc_button = (gameboy.cgb_mode() || style_mask(app, 0x800) != 0)
+                                              ? gb::Button::Start
+                                              : gb::Button::B;
                     }
                     gameboy.set_button(app.esc_button, down);
                     break;

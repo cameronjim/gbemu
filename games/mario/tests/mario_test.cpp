@@ -96,10 +96,39 @@ void enter_camera(gb::Gameboy& gameboy) {
     run(gameboy, 64);
 }
 
-// same settling rule as enter_camera: start loads 1-1 and drops mario on the bible's start cell
+// m19's front end sits between the title and a level: start opens SELECT FILE, start again opens
+// file 1 onto the world map, and start a third time enters the node mario is standing on, which on
+// a fresh file is 1-1. every one of those three is an lcd-off repaint that outruns a whole host
+// frame, and the rom only samples the pad at the top of its loop - so each press has to wait for
+// the burst before it, or the edge lands while nothing is reading. this is the player's own path
+// in, so the forty-odd tests that use it exercise both new screens on every run
+constexpr uint32_t kScreenSettleFrames = 60;
+
+void step_screen(gb::Gameboy& gameboy, gb::Button button) {
+    run(gameboy, kScreenSettleFrames);
+    press(gameboy, button, 2);
+}
+
+// m19's world map, kMapSkyRgb in mario.h: the overworld sky lifted a shade so this one probe tells
+// the map apart from the two overworld levels that share every other color with it. it is declared
+// up here because leaving the map is what every entry into a level now waits on
+constexpr int kSkyMap = 8 | (20 << 5) | (31 << 10);
+int sky_color(const gb::Gameboy& gameboy);
+
+// mario is drawn on the map too, so "he is on screen" cannot say a level has loaded: what does is
+// the backdrop no longer being the map's
+void wait_off_map(gb::Gameboy& gameboy) {
+    for (int i = 0; i < 400 && sky_color(gameboy) == kSkyMap; ++i) {
+        gameboy.run_frame();
+    }
+}
+
 void enter_play(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
     press(gameboy, gb::Button::Start, 2);
+    step_screen(gameboy, gb::Button::Start);
+    step_screen(gameboy, gb::Button::Start);
+    wait_off_map(gameboy);
     run(gameboy, 64);
 }
 
@@ -3064,6 +3093,36 @@ int wait_for_sky(gb::Gameboy& gameboy, int want, int cap) {
     return -1;
 }
 
+// m19: a cleared level hands back to the world map, one node further along, rather than straight
+// into the next level. so every progression probe is now "the map came up, and start off the node
+// mario was put down on opens the level behind it"
+int wait_for_map(gb::Gameboy& gameboy, int cap) {
+    return wait_for_sky(gameboy, kSkyMap, cap);
+}
+
+void map_enter_level(gb::Gameboy& gameboy) {
+    run(gameboy, kScreenSettleFrames);
+    press(gameboy, gb::Button::Start, 2);
+    wait_off_map(gameboy);
+}
+
+// the whole hand-off: the clear card, the map, and the level the node it opened holds
+int clear_into(gb::Gameboy& gameboy, int want, int cap) {
+    if (wait_for_map(gameboy, cap) < 0) {
+        return -1;
+    }
+    map_enter_level(gameboy);
+    return wait_for_sky(gameboy, want, cap);
+}
+
+// the same hand-off for a route that overran the pole and may already have left the map behind
+int settle_into(gb::Gameboy& gameboy, int want, int cap) {
+    if (sky_color(gameboy) == kSkyMap) {
+        map_enter_level(gameboy);
+    }
+    return wait_for_sky(gameboy, want, cap);
+}
+
 // the first compiled block holding `content`, restricted to a row a jump off the ground can reach
 const LevelBlock* block_holding(uint8_t content, uint8_t row) {
     for (uint16_t i = 0; i < kLevel11BlockCount; ++i) {
@@ -4714,9 +4773,9 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     REQUIRE(descents > 8);
     REQUIRE(feet_on_ground);
 
-    // the walk off the pole, the level-clear beat, and straight on into 1-2: m8a's progression
-    // takes the place of m4's return to the title card
-    REQUIRE(wait_for_sky(gameboy, kSkyUnderground, 600) >= 0);
+    // the walk off the pole, the level-clear beat, and back out to the world map with 1-2's node
+    // unlocked under him; start off it opens 1-2
+    REQUIRE(clear_into(gameboy, kSkyUnderground, 900) >= 0);
 }
 
 // --- sub-milestone 5: block reactions, items and the pipe sub-area ------------------------------
@@ -5275,13 +5334,14 @@ TEST_CASE("mario_pipe_round_trip") {
 
     // the frame-exact twin comparison is the autopilot test's job; here the route only has to end
     // with the level cleared, so anything the pipe transition shook loose is walked off by holding
-    // right on to the pole. clearing 1-1 now loads 1-2 rather than returning to the title
+    // right on to the pole. clearing 1-1 hands back to the world map, which is where m19 puts the
+    // choice of what to play next
     bool advanced = false;
     for (int i = 0; i < 2000 && !advanced; ++i) {
         gameboy.set_button(gb::Button::Right, i < 1200);
         gameboy.set_button(gb::Button::B, i < 1200);
         gameboy.run_frame();
-        advanced = sky_color(gameboy) == kSkyUnderground;
+        advanced = sky_color(gameboy) == kSkyMap;
     }
     gameboy.set_button(gb::Button::Right, false);
     gameboy.set_button(gb::Button::B, false);
@@ -6183,7 +6243,13 @@ void enter_level(gb::Gameboy& gameboy, int level) {
         press(gameboy, gb::Button::Right, 2);
         run(gameboy, 2);
     }
-    press(gameboy, gb::Button::Start, 2);
+    // select with up held is the direct entry, past the file select and the map. m19 needs one:
+    // start opens the file select now, and the map locks every node past a file's furthest, so
+    // without this a probe of 1-4 would have to clear the three levels ahead of it first
+    gameboy.set_button(gb::Button::Up, true);
+    run(gameboy, 2);
+    press(gameboy, gb::Button::Select, 2);
+    gameboy.set_button(gb::Button::Up, false);
     // the lcd-off rebuild outruns a whole host frame, so the wait is for mario to be drawn rather
     // than for a frame count; from there the game and the host advance one for one
     for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
@@ -6221,6 +6287,10 @@ std::vector<std::pair<int, int>> predict(const Route& route, int level) {
 
 // how the rom's own scanout compared with the twin's prediction over a replayed route
 struct Match {
+    // 1 if the world map was on screen at any point during the replay. a planned route runs a few
+    // hundred frames past the pole, so its own jump presses reach the map and can open the next
+    // node before the test gets a look - watching for it as it happens is what actually holds
+    bool saw_map = false;
     // where the two stopped agreeing at all, for the diagnosis when one of them is wrong
     int broke_at = -1;
     // frames where mario was fully on screen and the two agreed to the pixel
@@ -6246,6 +6316,7 @@ Match replay_matched(gb::Gameboy& gameboy, const Route& route, int level) {
     saw.reserve(route.script.size());
     for (size_t i = 0; i < route.script.size(); ++i) {
         replay(gameboy, route.script, i, i + 1);
+        out.saw_map = out.saw_map || sky_color(gameboy) == kSkyMap;
         const Mario m = mario_at(gameboy);
         saw.emplace_back(m.found ? m.left - kMarioArtInset : -1000, m.found ? m.top : -1000);
     }
@@ -6383,7 +6454,7 @@ TEST_CASE("mario_level_progression") {
     const Route route = plan_route(0, true, 4000);
     REQUIRE(route.reached);
     replay(gameboy, route.script, 0, route.script.size());
-    REQUIRE(wait_for_sky(gameboy, kSkyUnderground, 900) >= 0);
+    REQUIRE(clear_into(gameboy, kSkyUnderground, 900) >= 0);
 }
 
 TEST_CASE("mario_autopilot_completes_1_2") {
@@ -6407,8 +6478,9 @@ TEST_CASE("mario_autopilot_completes_1_2") {
     REQUIRE(match.hits > 400);
     REQUIRE(match.drops <= kMaxVsyncMisses);
 
-    // the pole, the walk off it, and 1-3 behind it
-    REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
+    // the pole, the walk off it, and the world map between the two levels
+    REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
+    REQUIRE(settle_into(gameboy, kSkyOverworld, 900) >= 0);
 }
 
 TEST_CASE("mario_autopilot_completes_1_3") {
@@ -6430,8 +6502,9 @@ TEST_CASE("mario_autopilot_completes_1_3") {
     REQUIRE(match.hits > 400);
     REQUIRE(match.drops <= kMaxVsyncMisses);
 
-    // and the castle behind it
-    REQUIRE(wait_for_sky(gameboy, kSkyCastle, 900) >= 0);
+    // the pole, the walk off it, and the world map between the two levels
+    REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
+    REQUIRE(settle_into(gameboy, kSkyCastle, 900) >= 0);
 }
 
 TEST_CASE("mario_autopilot_completes_1_4") {
@@ -6453,14 +6526,9 @@ TEST_CASE("mario_autopilot_completes_1_4") {
     REQUIRE(match.hits > 400);
     REQUIRE(match.drops <= kMaxVsyncMisses);
 
-    // world one is over, so the clear walk hands back to the title card
-    bool titled = false;
-    for (int i = 0; i < 900 && !titled; ++i) {
-        gameboy.run_frame();
-        const auto [left, right] = glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile);
-        titled = left >= 0 && left + right == 19;
-    }
-    REQUIRE(titled);
+    // world one is over, so the clear walk hands back to the map with every node cleared and
+    // mario left standing on the last one
+    REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
 }
 
 TEST_CASE("mario_thin_platforms") {
@@ -6716,13 +6784,7 @@ TEST_CASE("mario_axe_ends_1_4") {
     REQUIRE(bg_family_cells(gameboy, kTileBridge, kTileBridge) == 0);
     REQUIRE(!sprite_box(gameboy, kTileBowserLo, kTileBowserHi).found);
 
-    bool titled = false;
-    for (int i = 0; i < 900 && !titled; ++i) {
-        gameboy.run_frame();
-        const auto [left, right] = glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile);
-        titled = left >= 0 && left + right == 19;
-    }
-    REQUIRE(titled);
+    REQUIRE(wait_for_map(gameboy, 900) >= 0);
 }
 
 TEST_CASE("mario_warp_zone_compiles") {
@@ -6782,9 +6844,6 @@ constexpr uint32_t kCardLivesRow = kPauseRow + 6;
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
 constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
 constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
-// the menu entries the battery slot adds under the prompt
-constexpr uint32_t kMenuNewGameRow = kPromptRow + 2;
-constexpr uint32_t kMenuContinueRow = kPromptRow + 3;
 // gbdk's ibm font puts ascii '0' on tile 0x10
 constexpr uint8_t kFontDigitLo = 0x10;
 constexpr uint8_t kFontDigitHi = 0x19;
@@ -7237,28 +7296,224 @@ TEST_CASE("mario_flag_scoring") {
     REQUIRE(jumped > walked);
 }
 
-TEST_CASE("mario_save_and_continue") {
+// --- m19: three save slots, the SELECT FILE screen and world one's map -------------------------
+
+namespace {
+
+// the sram layout at kSramBase, mirrored from mario.h the same way kTitleRow already is
+constexpr size_t kSaveSlotBase = 8;
+constexpr size_t kSaveSlotStride = 8;
+constexpr size_t kSlotUsed = 0;
+constexpr size_t kSlotLevel = 1;
+constexpr size_t kSlotScore = 2;
+constexpr int kSaveSlots = 3;
+
+// the SELECT FILE card's rows and its cursor column, from the kFile* block in mario.h. every slot
+// line is padded to kFileLineWidth glyphs, so the cursor always sits in the same column
+constexpr uint32_t kFileHeadRow = 2;
+constexpr uint32_t kFileFirstRow = 5;
+constexpr uint32_t kFileRowStep = 3;
+constexpr uint32_t kFileLineWidth = 12;
+constexpr uint32_t kFileLeftCol = (20 - kFileLineWidth) / 2;
+constexpr uint32_t kEraseRow = 5;
+// and the map's geometry, from the kMap* block
+constexpr int kMapNodeFirstCol = 1;
+constexpr int kMapNodeStepCol = 2;
+
+size_t slot_at(int slot) {
+    return kSaveSlotBase + static_cast<size_t>(slot) * kSaveSlotStride;
+}
+
+uint32_t file_row(int slot) {
+    return kFileFirstRow + static_cast<uint32_t>(slot) * kFileRowStep;
+}
+
+// writes a file straight into a cart's battery ram, which is how a test reaches a state that would
+// otherwise cost a full playthrough to reach. every test that does it says so
+void seed_slot(std::span<uint8_t> ram, int slot, uint8_t level, uint16_t score) {
+    ram[0] = 'M';
+    ram[1] = 'A';
+    ram[2] = 'R';
+    ram[3] = '2';
+    const size_t at = slot_at(slot);
+    ram[at + kSlotUsed] = 1;
+    ram[at + kSlotLevel] = level;
+    ram[at + kSlotScore] = static_cast<uint8_t>(score & 0xFF);
+    ram[at + kSlotScore + 1] = static_cast<uint8_t>(score >> 8);
+}
+
+// gbdk's ibm font puts ascii c on tile c - 0x20
+constexpr int font_tile(char c) {
+    return c - 0x20;
+}
+
+int bg_tile_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const uint16_t id = ids[(row * 8 + 3) * gb::kLcdWidth + col * 8 + 3];
+    return (id & 0x100u) != 0 ? -1 : static_cast<int>(id & 0xFFu);
+}
+
+// which of the three slot lines carries the '>' cursor, or -1
+int file_cursor(const gb::Gameboy& gameboy) {
+    for (int slot = 0; slot < kSaveSlots; ++slot) {
+        if (bg_tile_at(gameboy, file_row(slot), kFileLeftCol) == font_tile('>')) {
+            return slot;
+        }
+    }
+    return -1;
+}
+
+// boots and opens the file select; the settle is the same lcd-off drain every card pays
+void enter_file_select(gb::Gameboy& gameboy) {
+    run(gameboy, kBootFrames);
+    press(gameboy, gb::Button::Start, 2);
+    run(gameboy, kScreenSettleFrames);
+}
+
+// ...and opens file `slot` off it, leaving the world map up
+void open_file(gb::Gameboy& gameboy, int slot) {
+    enter_file_select(gameboy);
+    for (int i = 0; i < slot; ++i) {
+        step_screen(gameboy, gb::Button::Down);
+    }
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+}
+
+// walks into the level mario is standing on and waits for him to be drawn in it
+void map_play(gb::Gameboy& gameboy) {
+    step_screen(gameboy, gb::Button::Start);
+    wait_off_map(gameboy);
+    for (int i = 0; i < 300 && !mario_at(gameboy).found; ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, kLevelSettleFrames);
+}
+
+// where mario's art starts on the map when he stands on node `node`
+int map_node_left(int node) {
+    return (kMapNodeFirstCol + node * kMapNodeStepCol) * kBlockPx + kMarioArtInset;
+}
+
+} // namespace
+
+TEST_CASE("mario_file_select_lists_three_slots") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // a fresh cart: three NEW slots, no score line under any of them
+    enter_file_select(gameboy);
+    // "SELECT FILE" is eleven glyphs, centered across the twenty columns
+    REQUIRE(glyph_span(gameboy, kFileHeadRow, kFontFirstTile + 1, kFontLastTile) ==
+            std::pair<int, int>{4, 14});
+    for (int slot = 0; slot < kSaveSlots; ++slot) {
+        // a NEW line's only digit is the slot's own number
+        REQUIRE(card_number(gameboy, file_row(slot)) == slot + 1);
+        REQUIRE(card_number(gameboy, file_row(slot) + 1) < 0);
+    }
+    REQUIRE(file_cursor(gameboy) == 0);
+}
+
+TEST_CASE("mario_file_select_shows_progress_and_score") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // seeded straight into battery ram: file 1 has reached 1-2 with 1230 points, 2 and 3 are empty
+    seed_slot(gameboy.external_ram(), 0, 1, 123);
+    enter_file_select(gameboy);
+
+    // ">1 WORLD 1-2" carries three digits - the slot, the world and the level
+    REQUIRE(card_number(gameboy, file_row(0)) == 112);
+    // and the score line under it, which prints the trailing zero hud_score does not count
+    REQUIRE(card_number(gameboy, file_row(0) + 1) == 1230);
+    for (int slot = 1; slot < kSaveSlots; ++slot) {
+        REQUIRE(card_number(gameboy, file_row(slot)) == slot + 1);
+        REQUIRE(card_number(gameboy, file_row(slot) + 1) < 0);
+    }
+}
+
+TEST_CASE("mario_file_select_cursor_and_confirm") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_file_select(gameboy);
+    REQUIRE(file_cursor(gameboy) == 0);
+
+    // down walks the three and wraps, up walks back
+    step_screen(gameboy, gb::Button::Down);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 1);
+    step_screen(gameboy, gb::Button::Down);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 2);
+    step_screen(gameboy, gb::Button::Down);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 0);
+    step_screen(gameboy, gb::Button::Up);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 2);
+
+    // b walks back to the title, whose wordmark is the six glyph span
+    step_screen(gameboy, gb::Button::B);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) ==
+            std::pair<int, int>{7, 12});
+
+    // and start off the title opens the card again, cursor back on the first slot
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 0);
+
+    // start confirms: the map comes up, and the file is stamped in use even before a level is won
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+    REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotUsed] == 1);
+}
+
+TEST_CASE("mario_three_slots_are_independent") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // file 3, played rather than seeded: the whole front end, then 1-1 cleared
+    open_file(gameboy, 2);
+    map_play(gameboy);
+    replay(gameboy, route.script, 0, route.script.size());
+    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+
+    const std::span<const uint8_t> ram = gameboy.external_ram();
+    // the file it was played on carries 1-2; the other two are untouched, in use flag included
+    REQUIRE(ram[slot_at(2) + kSlotUsed] == 1);
+    REQUIRE(ram[slot_at(2) + kSlotLevel] == 1);
+    REQUIRE(ram[slot_at(0) + kSlotUsed] == 0);
+    REQUIRE(ram[slot_at(0) + kSlotLevel] == 0);
+    REQUIRE(ram[slot_at(1) + kSlotUsed] == 0);
+    REQUIRE(ram[slot_at(1) + kSlotLevel] == 0);
+}
+
+TEST_CASE("mario_save_survives_a_power_cycle") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const Route route = plan_route(0, true, 4000);
     REQUIRE(route.reached);
 
     gb::Gameboy first;
     REQUIRE(first.load_rom(rom));
-    // a fresh cart has no progress, so the title is the one-line prompt
-    run(first, kBootFrames);
-    REQUIRE(glyph_span(first, kMenuContinueRow, kFontFirstTile + 1, kFontLastTile).first < 0);
-    press(first, gb::Button::Start, 2);
-    run(first, 64);
+    open_file(first, 0);
+    map_play(first);
     replay(first, route.script, 0, route.script.size());
-    // through the clear card and into 1-2, which is the level the slot records
-    REQUIRE(wait_for_sky(first, kSkyUnderground, 900) >= 0);
+    REQUIRE(wait_for_map(first, 900) >= 0);
 
+    // the battery bytes the frontend would write out to a .sav, carried to a brand new machine
     const std::vector<uint8_t> saved(first.external_ram().begin(), first.external_ram().end());
     REQUIRE(saved[0] == 'M');
-    REQUIRE(saved[1] == 'A');
-    REQUIRE(saved[2] == 'R');
-    REQUIRE(saved[3] == '1');
-    REQUIRE(saved[4] == 1);
+    REQUIRE(saved[3] == '2');
+    REQUIRE(saved[slot_at(0) + kSlotLevel] == 1);
 
     gb::Gameboy second;
     REQUIRE(second.load_rom(rom));
@@ -7266,20 +7521,187 @@ TEST_CASE("mario_save_and_continue") {
     REQUIRE(ram.size() == saved.size());
     std::copy(saved.begin(), saved.end(), ram.begin());
 
-    run(second, kBootFrames);
-    // the slot puts both entries on the card
-    REQUIRE(glyph_span(second, kMenuNewGameRow, kFontFirstTile + 1, kFontLastTile).first >= 0);
-    REQUIRE(glyph_span(second, kMenuContinueRow, kFontFirstTile + 1, kFontLastTile).first >= 0);
+    // the file is still there after the power cycle, and opening it puts mario on 1-2's node
+    enter_file_select(second);
+    REQUIRE(card_number(second, file_row(0)) == 112);
+    step_screen(second, gb::Button::Start);
+    run(second, kScreenSettleFrames);
+    REQUIRE(sky_color(second) == kSkyMap);
+    REQUIRE(mario_at(second).left == map_node_left(1));
 
-    // down moves onto CONTINUE, and start opens the level the slot saved rather than 1-1
-    press(second, gb::Button::Down, 2);
-    run(second, 8);
-    press(second, gb::Button::Start, 2);
-    for (int i = 0; i < 300 && !mario_at(second).found; ++i) {
-        second.run_frame();
-    }
-    run(second, kLevelSettleFrames);
+    // and start off that node opens 1-2, not 1-1
+    map_play(second);
     REQUIRE(sky_color(second) == kSkyUnderground);
-    // a continue starts small with a fresh set of lives, per systems.md's english-build behaviour
+    // picking a file starts small with a fresh set of lives, per systems.md's english-build rule
     REQUIRE(paused_lives(second) == kStartLives);
+}
+
+TEST_CASE("mario_legacy_one_slot_save_migrates") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // the layout that shipped before m19: magic "MAR1", the furthest level at 4, the score at 5
+    const std::span<uint8_t> ram = gameboy.external_ram();
+    ram[0] = 'M';
+    ram[1] = 'A';
+    ram[2] = 'R';
+    ram[3] = '1';
+    ram[4] = 2;
+    ram[5] = 45;
+    ram[6] = 0;
+
+    enter_file_select(gameboy);
+    // it lands in file 1 with both of its fields intact, and files 2 and 3 stay empty
+    REQUIRE(card_number(gameboy, file_row(0)) == 113);
+    REQUIRE(card_number(gameboy, file_row(0) + 1) == 450);
+    REQUIRE(card_number(gameboy, file_row(1)) == 2);
+    REQUIRE(card_number(gameboy, file_row(2)) == 3);
+    // and the header is rewritten, so the old layout is only ever read once
+    REQUIRE(gameboy.external_ram()[3] == '2');
+    REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotLevel] == 2);
+}
+
+TEST_CASE("mario_erase_clears_only_the_chosen_slot") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // three seeded files, so the erase has neighbours it could damage
+    seed_slot(gameboy.external_ram(), 0, 1, 10);
+    seed_slot(gameboy.external_ram(), 1, 2, 20);
+    seed_slot(gameboy.external_ram(), 2, 3, 30);
+    enter_file_select(gameboy);
+    REQUIRE(card_number(gameboy, file_row(1)) == 213);
+
+    // onto file 2, then select: a confirm card, not an erase
+    step_screen(gameboy, gb::Button::Down);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(file_cursor(gameboy) == 1);
+    step_screen(gameboy, gb::Button::Select);
+    run(gameboy, kScreenSettleFrames);
+    // the card names the file it is about to take, and nothing is gone yet
+    REQUIRE(card_number(gameboy, kEraseRow + 2) == 2);
+    REQUIRE(gameboy.external_ram()[slot_at(1) + kSlotUsed] == 1);
+
+    // b keeps it: back to the three slots with the file still there
+    step_screen(gameboy, gb::Button::B);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(card_number(gameboy, file_row(1)) == 213);
+    REQUIRE(gameboy.external_ram()[slot_at(1) + kSlotUsed] == 1);
+
+    // and a takes it - only it
+    step_screen(gameboy, gb::Button::Select);
+    run(gameboy, kScreenSettleFrames);
+    step_screen(gameboy, gb::Button::A);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(card_number(gameboy, file_row(1)) == 2);
+    REQUIRE(card_number(gameboy, file_row(1) + 1) < 0);
+    const std::span<const uint8_t> ram = gameboy.external_ram();
+    REQUIRE(ram[slot_at(1) + kSlotUsed] == 0);
+    REQUIRE(ram[slot_at(1) + kSlotLevel] == 0);
+    REQUIRE(ram[slot_at(0) + kSlotUsed] == 1);
+    REQUIRE(ram[slot_at(0) + kSlotLevel] == 1);
+    REQUIRE(ram[slot_at(2) + kSlotUsed] == 1);
+    REQUIRE(ram[slot_at(2) + kSlotLevel] == 3);
+}
+
+TEST_CASE("mario_map_refuses_a_locked_node") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // a fresh file, so only 1-1's node is open
+    open_file(gameboy, 0);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+
+    // right is simply refused: a whole walk's worth of frames goes by and he has not moved
+    press(gameboy, gb::Button::Right, 2);
+    run(gameboy, 120);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+
+    // and left off the first node is refused the same way
+    press(gameboy, gb::Button::Left, 2);
+    run(gameboy, 120);
+    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+
+    // start still opens the node he is standing on
+    map_play(gameboy);
+    REQUIRE(sky_color(gameboy) == kSkyOverworld);
+}
+
+TEST_CASE("mario_map_walks_between_unlocked_nodes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // seeded to 1-3 unlocked, so two steps are open and the third is not
+    seed_slot(gameboy.external_ram(), 0, 2, 0);
+    open_file(gameboy, 0);
+    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+
+    // left walks him a node back, and it is a walk: he is caught part way between the two, and the
+    // art changes frame on the way rather than holding the idle pose
+    press(gameboy, gb::Button::Left, 2);
+    bool between = false;
+    std::set<int> frames;
+    for (int i = 0; i < 40; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (!m.found) {
+            continue;
+        }
+        if (m.left > map_node_left(1) && m.left < map_node_left(2)) {
+            between = true;
+        }
+        frames.insert(m.frame);
+    }
+    REQUIRE(between);
+    REQUIRE(frames.size() > 1);
+    run(gameboy, 60);
+    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+
+    // right walks him forward again, twice, up to the furthest node the file has opened
+    press(gameboy, gb::Button::Right, 2);
+    run(gameboy, 120);
+    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+    press(gameboy, gb::Button::Right, 2);
+    run(gameboy, 120);
+    // 1-4's node is still locked, so the walk never starts
+    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+
+    // b hands back to the file select
+    step_screen(gameboy, gb::Button::B);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(glyph_span(gameboy, kFileHeadRow, kFontFirstTile + 1, kFontLastTile) ==
+            std::pair<int, int>{4, 14});
+}
+
+TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    open_file(gameboy, 0);
+    map_play(gameboy);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    // the clear card hands back to the map, not to 1-2, and mario is standing on the node it opened
+    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+    REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotLevel] == 1);
+
+    // exactly one node further: 1-3's is still locked, so a second right does nothing
+    press(gameboy, gb::Button::Right, 2);
+    run(gameboy, 120);
+    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+
+    // and the node he is on is 1-2
+    map_play(gameboy);
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
 }

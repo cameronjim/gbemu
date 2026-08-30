@@ -55,33 +55,48 @@
 // columns 14-19, right of the wall at column 13. well.c's draw_frame already lays the backdrop
 // tile across all six, so everything below sits on the panel plate.
 //
-// every label, value and the next box is LEFT ALIGNED on the panel's first column. the six
-// digit score fills the span exactly, so a centering rule can never be exact for the five wide
-// labels -- the half cell rounding is what made the old layout look ragged -- and a shared left
-// edge is the only rule all seven elements can obey identically. the score, as the widest
-// element, is what defines the panel's right edge.
+// every element is CENTERED in that six cell span. a whole cell element can only be centered
+// exactly when its width is even -- (6 - width) / 2 has to be a whole number of cells -- so
+// every runtime value and the next box is an even number of cells wide, and the three five
+// character labels, which cannot be renamed to an even length, are baked at font build time
+// into six tile strips shifted right four pixels (see kPanelStripTileId and panel.c).
 #define kPanelCol 14U
-#define kScoreLabelCol kPanelCol // "SCORE" width 5 -> 14-18
+#define kPanelCols 6U
+#define kPanelLabelChars 5U // "SCORE" / "LEVEL" / "LINES"
+
+#define kScoreLabelCol kPanelCol // baked strip, the full span -> 14-19
 #define kScoreLabelRow 1U
 #define kScoreValueRow 2U
-#define kScoreValueCol kPanelCol // 6 digits, the panel's full width -> 14-19
+#define kScoreValueCol kPanelCol // 6 digits, the full span -> 14-19
 #define kScoreDigits 6U
-#define kLevelLabelCol kPanelCol // "LEVEL" width 5 -> 14-18
+#define kLevelLabelCol kPanelCol // baked strip -> 14-19
 #define kLevelLabelRow 5U
 #define kLevelValueRow 6U
-#define kLevelValueCol kPanelCol // 2 digits -> 14-15
+#define kLevelValueCol 16U // 2 digits centered -> 16-17
 #define kLevelDigits 2U
-#define kLinesLabelCol kPanelCol // "LINES" width 5 -> 14-18
+#define kLinesLabelCol kPanelCol // baked strip -> 14-19
 #define kLinesLabelRow 9U
 #define kLinesValueRow 10U
-#define kLinesValueCol kPanelCol // 3 digits -> 14-16
-#define kLinesDigits 3U
-#define kNextLabelCol kPanelCol // "NEXT" width 4 -> 14-17
+#define kLinesValueCol 15U // 4 digits centered -> 15-18
+#define kLinesDigits 4U
+#define kNextLabelCol 15U // "NEXT" width 4, centered -> 15-18
 #define kNextLabelRow 13U
 #define kNextBoxRow 15U // one blank row (14) under the label
-#define kNextBoxCol kPanelCol // 4 wide -> 14-17
+#define kNextBoxCol 15U // 4 wide, centered -> 15-18
 #define kNextBoxCols 4U
 #define kNextBoxRows 2U
+
+// the three five character labels, each composed into a six tile strip shifted right half a
+// cell so it centers exactly. parked right after the panel letter block (0x8a-0x94); the next
+// id in use after these is the sprite's 0xe0.
+#define kPanelStripTileId 0x95U
+#define kPanelStripCols kPanelCols
+#define kPanelStripCount 3U
+#define kPanelStripScore 0U // tiles 0x95-0x9a
+#define kPanelStripLevel 1U // tiles 0x9b-0xa0
+#define kPanelStripLines 2U // tiles 0xa1-0xa6
+// (kPanelCols - kPanelLabelChars) * 8 / 2: half a cell
+#define kPanelStripShift 4U
 
 // a dedicated digit tile block, so tests read numbers off the bg directly. these hold recolored
 // copies of the stock ibm font's own digit glyphs (see panel_build_font), not a separate font.
@@ -96,7 +111,9 @@
 // classic scoring: single/double/triple/tetris, each times (level + 1)
 #define kLineScoreTable {40U, 100U, 300U, 1200U}
 #define kScoreCap 999999UL
-#define kLinesCap 999U
+// the lines field is four cells wide (an odd width cannot center in the six cell panel), so the
+// cap is what four digits can show rather than the three the old field held
+#define kLinesCap 9999U
 
 // classic gb-style curve: frames per row by level, index 0..kLevelMax
 #define kGravityTable                                                                                        \

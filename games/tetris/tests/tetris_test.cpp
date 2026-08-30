@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -59,8 +60,10 @@ constexpr int kPromptRow = 10;
 constexpr int kBestRow = 12;
 
 // right panel geometry, mirrored from tetris.h. the panel is six cells, columns 14-19; every
-// label, value, and the next box is left aligned on kPanelCol.
+// element is centered in that span, with the five character labels baked into
+// half-cell-shifted six tile strips.
 constexpr int kPanelCol = 14;
+constexpr int kPanelCols = 6;
 constexpr int kScoreLabelCol = kPanelCol;
 constexpr int kScoreLabelRow = 1;
 constexpr int kScoreValueRow = 2;
@@ -69,22 +72,29 @@ constexpr int kScoreDigits = 6;
 constexpr int kLevelLabelCol = kPanelCol;
 constexpr int kLevelLabelRow = 5;
 constexpr int kLevelValueRow = 6;
-constexpr int kLevelValueCol = kPanelCol;
+constexpr int kLevelValueCol = 16;
 constexpr int kLevelDigits = 2;
 constexpr int kLinesLabelCol = kPanelCol;
 constexpr int kLinesLabelRow = 9;
 constexpr int kLinesValueRow = 10;
-constexpr int kLinesValueCol = kPanelCol;
-constexpr int kLinesDigits = 3;
+constexpr int kLinesValueCol = 15;
+constexpr int kLinesDigits = 4;
 constexpr uint8_t kDigitTileId = 0x80;
 constexpr uint8_t kBackdropTileId = 0x62;
 // compact panel hud font's letter block, mirrored from tetris.h; order matches panel.c's lookup
 constexpr uint8_t kPanelLetterTileId = 0x8A;
 constexpr int kPanelLetterCount = 11;
-constexpr int kNextLabelCol = kPanelCol;
+// the three five character labels baked into half-cell-shifted six tile strips, mirrored from
+// tetris.h; order matches panel.c's kPanelStripText
+constexpr uint8_t kPanelStripTileId = 0x95;
+constexpr int kPanelStripCols = 6;
+constexpr int kPanelStripScore = 0;
+constexpr int kPanelStripLevel = 1;
+constexpr int kPanelStripLines = 2;
+constexpr int kNextLabelCol = 15;
 constexpr int kNextLabelRow = 13;
 constexpr int kNextBoxRow = 15;
-constexpr int kNextBoxCol = kPanelCol;
+constexpr int kNextBoxCol = 15;
 constexpr int kNextBoxCols = 4;
 constexpr int kNextBoxRows = 2;
 
@@ -1115,46 +1125,170 @@ TEST_CASE("the_panel_digits_start_at_zero") {
     REQUIRE(read_lines(gameboy) == 0u);
 }
 
-TEST_CASE("every_panel_element_shares_the_panel_left_edge") {
+// a tile in [kDigitTileId, kDigitTileId + 10) is a digit; anything else on a value row is backdrop
+bool is_digit_tile(const gb::Gameboy& gameboy, int col, int row) {
+    const uint16_t id = tile_at(gameboy, col, row);
+    if ((id & 0x100u) != 0) {
+        return false;
+    }
+    const uint8_t tile = static_cast<uint8_t>(id);
+    return tile >= kDigitTileId && tile < kDigitTileId + 10;
+}
+
+TEST_CASE("every_panel_element_is_centered_in_the_six_column_panel") {
     const std::vector<uint8_t> rom = read_tetris_rom();
 
     gb::Gameboy gameboy;
     start_play(gameboy, rom);
 
-    // every label is left aligned on kPanelCol, so its first character always lands there
-    struct Label {
-        const char* text;
+    // the three five character labels are baked six tile strips covering the whole 14-19 span
+    struct Strip {
+        int strip;
         int row;
     };
-    static constexpr Label kLabels[] = {
-        {"SCORE", kScoreLabelRow},
-        {"LEVEL", kLevelLabelRow},
-        {"LINES", kLinesLabelRow},
-        {"NEXT", kNextLabelRow},
+    static constexpr Strip kStrips[] = {
+        {kPanelStripScore, kScoreLabelRow},
+        {kPanelStripLevel, kLevelLabelRow},
+        {kPanelStripLines, kLinesLabelRow},
     };
-    for (const Label& label : kLabels) {
-        for (int i = 0; label.text[i] != '\0'; ++i) {
-            REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol + i, label.row)) ==
-                    panel_letter_tile(label.text[i]));
+    for (const Strip& s : kStrips) {
+        for (int i = 0; i < kPanelStripCols; ++i) {
+            REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol + i, s.row)) ==
+                    static_cast<uint8_t>(kPanelStripTileId + s.strip * kPanelStripCols + i));
         }
-        // column 19, the panel's last column, is blank for every label but the score's value row
-        const uint16_t spare = tile_at(gameboy, 19, label.row);
-        REQUIRE((spare & 0x100u) == 0);
-        const uint8_t spare_tile = static_cast<uint8_t>(spare);
-        REQUIRE((spare_tile < kPanelLetterTileId || spare_tile >= kPanelLetterTileId + kPanelLetterCount));
     }
+
+    // "NEXT" is four wide, so it stays a plain glyph run centered on whole cells at column 15
+    static constexpr char kNext[] = "NEXT";
+    for (int i = 0; kNext[i] != '\0'; ++i) {
+        REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kNextLabelCol + i, kNextLabelRow)) ==
+                panel_letter_tile(kNext[i]));
+    }
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol, kNextLabelRow)) == kBackdropTileId);
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 19, kNextLabelRow)) == kBackdropTileId);
 
     // the wall column immediately left of the panel must stay the wall tile: a future off-by-one
     // leftward would otherwise silently start printing over the well's right wall
     REQUIRE(static_cast<uint8_t>(tile_at(gameboy, kPanelCol - 1, kScoreLabelRow)) == kWallTileId);
 
-    // the score, unlike the labels, fills the panel's full six-column width: its last digit sits
-    // at column 19, pinning that this containment (not overflow) is deliberate (see design doc)
-    const uint16_t last_digit = tile_at(gameboy, kPanelCol + 5, kScoreValueRow);
-    REQUIRE((last_digit & 0x100u) == 0);
-    const uint8_t last_digit_tile = static_cast<uint8_t>(last_digit);
-    REQUIRE(last_digit_tile >= kDigitTileId);
-    REQUIRE(last_digit_tile < kDigitTileId + 10);
+    // the score fills the panel's full six-column width -> cols 14-19
+    for (int col = 14; col <= 19; ++col) {
+        REQUIRE(is_digit_tile(gameboy, col, kScoreValueRow));
+    }
+
+    // the level value is two digits centered at 16-17, with 14/15/18/19 bare backdrop
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 14, kLevelValueRow)) == kBackdropTileId);
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 15, kLevelValueRow)) == kBackdropTileId);
+    REQUIRE(is_digit_tile(gameboy, 16, kLevelValueRow));
+    REQUIRE(is_digit_tile(gameboy, 17, kLevelValueRow));
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 18, kLevelValueRow)) == kBackdropTileId);
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 19, kLevelValueRow)) == kBackdropTileId);
+
+    // the lines value is four digits centered at 15-18, with 14/19 bare backdrop
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 14, kLinesValueRow)) == kBackdropTileId);
+    for (int col = 15; col <= 18; ++col) {
+        REQUIRE(is_digit_tile(gameboy, col, kLinesValueRow));
+    }
+    REQUIRE(static_cast<uint8_t>(tile_at(gameboy, 19, kLinesValueRow)) == kBackdropTileId);
+}
+
+// the requirement is a visual one, so this scans rendered pixels rather than the tilemap: for a
+// panel row, the leftmost and rightmost ink pixel must sit an equal number of columns from each
+// side of the six cell span (screen x=112..159) when the row's content genuinely fills its own
+// advance box on both ends.
+TEST_CASE("panel_rows_are_pixel_centered_in_the_panel") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // kChromePalette[3] = RGB(31,31,31): the panel's own ink colour. the well sits entirely left
+    // of x=112 and the next-piece blocks use per-piece palettes whose index 3 is never pure
+    // white, so this predicate is unambiguous inside the panel's pixel columns.
+    constexpr uint16_t kInkColor = 0x7FFF;
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+
+    auto margins = [&](int row) -> std::pair<int, int> {
+        int leftmost = -1;
+        int rightmost = -1;
+        for (int y = row * 8; y < row * 8 + 8; ++y) {
+            for (int x = 112; x < 160; ++x) {
+                if (colors[pixel_index(x, y)] == kInkColor) {
+                    if (leftmost < 0 || x < leftmost) {
+                        leftmost = x;
+                    }
+                    if (rightmost < 0 || x > rightmost) {
+                        rightmost = x;
+                    }
+                }
+            }
+        }
+        REQUIRE(leftmost >= 0);
+        return {leftmost - 112, 159 - rightmost};
+    };
+
+    // whole-cell rows: both ends ink a full 6px letterform, so the margins must match exactly
+    struct ExactRow {
+        int row;
+        int expected;
+    };
+    static constexpr ExactRow kExactRows[] = {
+        {kScoreValueRow, 1},
+        {kLevelValueRow, 17},
+        {kLinesValueRow, 9},
+        {kNextLabelRow, 9},
+    };
+    for (const ExactRow& r : kExactRows) {
+        const auto [left, right] = margins(r.row);
+        REQUIRE(left == r.expected);
+        REQUIRE(right == r.expected);
+    }
+
+    // baked label strip rows: cell-box centering is exact, but LEVEL's trailing 'L' inks only 5
+    // of its 6 columns on its bottom row (the letterform's own empty right half, see assets.c's
+    // reasoning trail), so its ink extent is 1px short on the right -- a tolerance, not a bug.
+    struct StripRow {
+        int row;
+        int left;
+        int right;
+    };
+    static constexpr StripRow kStripRows[] = {
+        {kScoreLabelRow, 5, 5},
+        {kLevelLabelRow, 5, 6},
+        {kLinesLabelRow, 5, 5},
+    };
+    for (const StripRow& r : kStripRows) {
+        const auto [left, right] = margins(r.row);
+        REQUIRE(left == r.left);
+        REQUIRE(right == r.right);
+        REQUIRE(std::abs(left - right) <= 1);
+    }
+}
+
+TEST_CASE("the_label_strips_are_shifted_half_a_cell") {
+    const std::vector<uint8_t> rom = read_tetris_rom();
+
+    gb::Gameboy gameboy;
+    start_play(gameboy, rom);
+
+    // same signed-addressing note as the glyph test below: every strip tile id is >= 0x80, so
+    // debug_vram()[id * 16 + n] addresses it directly
+    const std::span<const uint8_t> vram = gameboy.debug_vram();
+    constexpr uint8_t kLinesStripFirst = kPanelStripTileId + kPanelStripLines * kPanelStripCols;
+    constexpr uint8_t kLinesStripLast = kLinesStripFirst + kPanelStripCols - 1;
+
+    // low plane stays solid, so the strip sits on the panel's backdrop shade like every other
+    // recolored glyph
+    REQUIRE(vram[static_cast<size_t>(kLinesStripFirst) * 16 + 0] == 0xFF);
+
+    // the half-cell shift directly observed: the strip's leading tile carries ink only in its
+    // low nibble (the glyph's right half), and the trailing tile only in its high nibble (the
+    // next glyph's left half) -- nothing bleeds across the strip's own outer edge
+    REQUIRE((vram[static_cast<size_t>(kLinesStripFirst) * 16 + 1] & 0xF0u) == 0);
+    REQUIRE((vram[static_cast<size_t>(kLinesStripLast) * 16 + 1] & 0x0Fu) == 0);
+
+    // and the trailing half cell was not silently dropped
+    REQUIRE(vram[static_cast<size_t>(kLinesStripLast) * 16 + 1] != 0);
 }
 
 TEST_CASE("the_panel_backdrop_covers_every_column_through_nineteen") {

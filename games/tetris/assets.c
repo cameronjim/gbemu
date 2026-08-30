@@ -45,30 +45,28 @@ const uint8_t kBlockTile[16] = {
     0xFF, 0x00, // 11111111
 };
 
-// -######-  serifed I: ink in cell columns 1-6 top and bottom, 3-4 for the stem
-// ---##---
-// ---##---
-// ---##---
-// ---##---
-// ---##---
-// -######-
-// --------
+// serifed i so the l-i pair keeps the font's 2 px rhythm; low byte then high byte per row
 const uint8_t kPanelGlyphI[16] = {
-    0xFF, 0x7E, 0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x18,
-    0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x7E, 0xFF, 0x00,
+    0xFF, 0x7E, // -######-
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x7E, // -######-
+    0xFF, 0x00, // --------
 };
 
-// ---##---  serifed 1: the stock flag kept, a base serif added so the digit sits on the same
-// --###---  6 pixel rhythm as 0 and 2-9 instead of leaving a void beside its neighbours
-// ---##---
-// ---##---
-// ---##---
-// ---##---
-// -######-
-// --------
+// the stock flag kept over a base serif, so 1 sits on the same 6 px rhythm as its neighbours
 const uint8_t kPanelGlyphOne[16] = {
-    0xFF, 0x18, 0xFF, 0x38, 0xFF, 0x18, 0xFF, 0x18,
-    0xFF, 0x18, 0xFF, 0x18, 0xFF, 0x7E, 0xFF, 0x00,
+    0xFF, 0x18, // ---##---
+    0xFF, 0x38, // --###---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x18, // ---##---
+    0xFF, 0x7E, // -######-
+    0xFF, 0x00, // --------
 };
 
 // slot 0 is unused by the block tile, so it holds the well black the piece sits over

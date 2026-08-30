@@ -121,7 +121,7 @@ static void bake_panel_strip(uint8_t strip) {
             // glyph copies do; only the high plane (the ink) is composed
             strip_out[row] = 0xFFU;
             strip_out[row + 1U] = (uint8_t)((uint8_t)(strip_prev[row + 1U] << (8U - kPanelStripShift)) |
-                                             (uint8_t)(strip_cur[row + 1U] >> kPanelStripShift));
+                                            (uint8_t)(strip_cur[row + 1U] >> kPanelStripShift));
         }
         set_bkg_data((uint8_t)(base + i), 1, strip_out);
     }

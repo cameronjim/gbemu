@@ -398,15 +398,33 @@
 #define kCamFollowX 64
 #define kCamLookAheadX 24
 #define kCamAnchorStepPx 2
-// vertical: the default band is the window that leaves mario's feet this far above its bottom edge.
-// While airborne he may move inside a safe screen band; crossing either edge moves the camera at
-// once, so a fast lift/drop cannot leave him outside the picture. Up/down are bounded looks around
-// the grounded band rather than unbounded scroll controls.
+// vertical: the view is a deadzone window in SCREEN space, not a band pinned to mario. his feet are
+// left wherever they are as long as they sit between kCamWindowTopPx and kCamWindowBottomPx down the
+// screen, so hopping onto a pipe or a two-block ledge does not move the picture and the ground he
+// came from stays in it. Only a climb of four blocks or more pushes his feet past the top edge and
+// asks the view to rise. kCamGroundOffsetPx is what is left of the old band: camera_init still snaps
+// onto mario with his feet that far above the bottom, and it is the level's opening scy.
 #define kCamGroundOffsetPx 32
+#define kCamWindowTopPx 64
+#define kCamWindowBottomPx (kScreenHeightPx - kCamGroundOffsetPx) // 112
+// airborne the window is wider at the top so a whole jump arc moves nothing at all; the bottom edge
+// is shared with the grounded one, so landing back where he took off is already inside both.
 #define kCamSafeTopPx 32
 #define kCamSafeBottomPx (kScreenHeightPx - kCamGroundOffsetPx)
+// the view never snaps: each frame it closes distance>>shift of the gap, capped at kCamEaseMaxPx.
+// distance-proportional means a long correction decelerates as it arrives instead of stopping dead.
+// the cap is mario's own max fall speed, so a fall can draw level with the camera but never outrun
+// it; the airborne shift is the faster of the two so a long drop settles his feet well inside the
+// picture rather than riding the bottom edge.
+#define kCamEaseMaxPx 4
+#define kCamEaseShift 3
+#define kCamAirEaseShift 2
+// up/down are bounded peeks (smb deluxe's own control), offsets from where the view already sits.
+// they only engage after the key has been held this long with mario standing perfectly still, so a
+// tap on the way into a jump cannot yank the picture.
 #define kCamLookUpPx 32
 #define kCamLookDownPx 24
+#define kCamLookDelayFrames 24U
 // scy on the level's flat opening ground, which is where the default band lands there
 #define kPlayScy kScyMax
 

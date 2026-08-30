@@ -5,16 +5,18 @@
 #include <stdint.h>
 
 // the smbd play camera. horizontal follow with backward scrolling allowed, a select-held look-ahead
-// that slides mario's screen anchor forward, bounded up/down looks, and an airborne vertical safe
-// zone that a fast rise or drop cannot outrun. it owns no vram: the caller feeds its output to
-// terrain_set_scroll_x/_pan_y.
+// that slides mario's screen anchor forward, and a vertical deadzone: the view only moves when
+// mario's feet leave a window in screen space, and then it eases there a fraction of the gap a
+// frame rather than snapping. hopping a ledge costs no camera motion at all; a real climb pans
+// smoothly and a fall cannot outrun the ease. up/down are bounded peeks behind a hold delay.
+// it owns no vram: the caller feeds its output to terrain_set_scroll_x/_pan_y.
 
 // snaps the camera onto mario, anchor at kCamFollowX and scy at his default band
 void camera_init(uint16_t mario_x, int16_t feet_y) BANKED;
 
 // one frame of camera rules. feet_y is the bottom of mario's collision box, so growing does not move
-// the band; on_ground and standing come from the player (standing means grounded with no horizontal
-// speed, the only state that may pan)
+// the view; on_ground picks the window (the airborne one is wider, so a jump arc moves nothing) and
+// standing means grounded with no horizontal speed, the only state a held up/down peek answers in
 void camera_update(uint16_t mario_x, int16_t feet_y, uint8_t on_ground, uint8_t standing,
                    uint8_t keys) BANKED;
 

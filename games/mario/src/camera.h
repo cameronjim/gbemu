@@ -5,8 +5,9 @@
 #include <stdint.h>
 
 // the smbd play camera. horizontal follow with backward scrolling allowed, a select-held look-ahead
-// that slides mario's screen anchor forward, and a manually panned scy that returns to the level's
-// default band. it owns no vram: the caller feeds its output to terrain_set_scroll_x/_pan_y.
+// that slides mario's screen anchor forward, bounded up/down looks, and an airborne vertical safe
+// zone that a fast rise or drop cannot outrun. it owns no vram: the caller feeds its output to
+// terrain_set_scroll_x/_pan_y.
 
 // snaps the camera onto mario, anchor at kCamFollowX and scy at his default band
 void camera_init(uint16_t mario_x, int16_t feet_y) BANKED;

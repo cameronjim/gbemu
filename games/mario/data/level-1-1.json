@@ -7,9 +7,10 @@
   "start": {"x": 0, "y": 13},
   "terrain": [
     {"kind": "ground", "x0": 0, "x1": 20, "confidence": "approx", "notes": "flat open path per mariowiki opening description"},
-    {"kind": "pipe", "x": 28, "height": 2, "dest": null, "confidence": "approx", "notes": "first of the 'three pipes' grouping, goombas between pipes"},
-    {"kind": "pipe", "x": 36, "height": 3, "dest": null, "confidence": "approx"},
-    {"kind": "pipe", "x": 44, "height": 4, "dest": "bonus_room", "confidence": "approx", "notes": "mariowiki: bonus area accessible via one of these pipes, 19 coins inside"},
+    {"kind": "pipe", "x": 28, "height": 2, "dest": null, "confidence": "approx", "notes": "pre-existing first pipe in the opening run"},
+    {"kind": "pipe", "x": 36, "height": 3, "dest": null, "confidence": "approx", "notes": "pre-existing second pipe in the opening run"},
+    {"kind": "pipe", "x": 44, "height": 4, "dest": null, "confidence": "approx", "notes": "pre-existing third pipe in the opening run"},
+    {"kind": "pipe", "x": 57, "height": 4, "dest": "bonus_room", "confidence": "sourced", "notes": "fourth pipe; enterable route to the 19-coin underground bonus room"},
     {"kind": "gap", "x0": 68, "x1": 70, "confidence": "approx", "notes": "'a pit appears after these pipes' - first pit"},
     {"kind": "gap", "x0": 86, "x1": 88, "confidence": "approx", "notes": "'followed by another pit further along' - second pit"},
     {"kind": "ground", "x0": 90, "x1": 150, "confidence": "unknown", "notes": "mid-late level ground/hard-block pyramids, sequence only, no landmark spacing sourced"},
@@ -22,7 +23,7 @@
     {"x": 23, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx"},
     {"x": 22, "y": 5, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "top of the 6-block pyramid, remaining 2 blocks of formation"},
     {"x": 23, "y": 5, "kind": "brick", "contents": "nothing", "confidence": "unknown"},
-    {"x": 48, "y": 9, "kind": "hidden", "contents": "oneup", "confidence": "sourced", "notes": "mariowiki: invisible block containing 1-up 'between the fourth pipe and the first pit' - position of the 4th pipe itself not independently sourced (only 3 pipes described in the grouping), flagged as an inconsistency between summarized passages"},
+    {"x": 48, "y": 9, "kind": "hidden", "contents": "oneup", "confidence": "approx", "notes": "pre-existing gameplay position retained; exact Deluxe coordinate will be handled in the later full 1-1 layout pass"},
     {"x": 74, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "mariowiki: brick giving 'ten coins' when hit repeatedly"},
     {"x": 76, "y": 9, "kind": "brick", "contents": "nothing", "confidence": "approx", "notes": "first of 'two subsequent bricks'"},
     {"x": 77, "y": 9, "kind": "brick", "contents": "star", "confidence": "sourced", "notes": "mariowiki: 'the second one contains a Starman'"},
@@ -46,11 +47,11 @@
     {
       "id": "bonus-1",
       "kind": "bonus_room",
-      "entry_x": 44,
+      "entry_x": 57,
       "exit": "same pipe, returns to overworld near entry",
       "terrain": [],
       "blocks": [
-        {"x": 0, "y": 9, "kind": "brick", "contents": "coin", "confidence": "sourced", "notes": "mariowiki: bonus area behind third pipe contains 19 coins total, individual block layout not sourced"}
+        {"x": 0, "y": 9, "kind": "brick", "contents": "coin", "confidence": "sourced", "notes": "bonus room contains 19 coins total; individual block layout not sourced"}
       ],
       "notes": "19 coins total per mariowiki, arranged as coins in the open room, not confirmed to be one single multicoin block"
     }
@@ -121,5 +122,5 @@
     "https://www.mariowiki.com/World_1-1_(Super_Mario_Bros.)",
     "https://vgmaps.de/maps/view?m=5492"
   ],
-  "confidence_notes": "block/enemy contents and challenge-mode facts are sourced from mariowiki.com text (fetched via an automated summarizer, not raw html - spot-check before treating as final). all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from the map images. the mariowiki passages disagree on pipe count in the opening area ('three pipes' vs. a later reference to a 'fourth pipe') - flagged inline on the 1-up block entry, needs resolving against the actual rom. length_columns and exact flagpole column are unknown - must-verify items for a rom-based pass."
+  "confidence_notes": "block/enemy contents and challenge-mode facts are sourced from mariowiki.com text (fetched via an automated summarizer, not raw html - spot-check before treating as final). most x/y coordinates are sequence-derived placeholders per SCHEMA.md; this pass adds the missing fourth-pipe bonus entrance from the Mario Universe 1-1 map while retaining the first three pre-existing placements. length_columns and exact flagpole column are unknown - must-verify items for a rom-based pass."
 }

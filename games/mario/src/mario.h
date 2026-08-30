@@ -394,11 +394,15 @@
 #define kCamFollowX 64
 #define kCamLookAheadX 24
 #define kCamAnchorStepPx 2
-// vertical: the default band is the window that leaves mario's feet this far above its bottom edge,
-// sampled only while he is supported, so a jump never pans the view. must-measure: 32 px is tuned
+// vertical: the default band is the window that leaves mario's feet this far above its bottom edge.
+// While airborne he may move inside a safe screen band; crossing either edge moves the camera at
+// once, so a fast lift/drop cannot leave him outside the picture. Up/down are bounded looks around
+// the grounded band rather than unbounded scroll controls.
 #define kCamGroundOffsetPx 32
-// both the manual pan and the drift back to the default band move scy this much per frame
-#define kCamPanStepPx 2
+#define kCamSafeTopPx 32
+#define kCamSafeBottomPx (kScreenHeightPx - kCamGroundOffsetPx)
+#define kCamLookUpPx 32
+#define kCamLookDownPx 24
 // scy on the level's flat opening ground, which is where the default band lands there
 #define kPlayScy kScyMax
 

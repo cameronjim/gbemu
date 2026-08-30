@@ -14,9 +14,13 @@ uint16_t camera_pos_x;
 uint8_t camera_pos_y;
 // mario's screen anchor; select slides it forward and releasing slides it back, 2 px a frame
 uint8_t camera_pos_anchor;
-// the scy the view drifts to whenever mario is moving; resampled only while he is supported, which
-// is what keeps a jump from panning the camera (smbd's own auto behaviour is undocumented)
+// the grounded view. Manual look is always relative to this value, never to the previous frame,
+// so holding a direction reaches a finite target instead of scrolling forever.
 static uint8_t band;
+// feet value that produced band. Most grounded frames stay on one surface, so this avoids repeating
+// band_for's signed 16-bit arithmetic and pays for the airborne safe-zone checks in the frame budget.
+static uint8_t band_feet;
+static uint8_t air_tick;
 
 // the window that leaves mario's feet kCamGroundOffsetPx above its bottom edge, clamped to the pan.
 // the feet rather than the box top, so growing to 16x32 does not jerk the view up half a block
@@ -64,45 +68,51 @@ static void step_x(uint16_t mario_x) {
 static void step_y(int16_t feet_y, uint8_t on_ground, uint8_t standing, uint8_t keys) {
     const uint8_t up = (keys & J_UP) != 0U ? 1U : 0U;
     const uint8_t down = (keys & J_DOWN) != 0U ? 1U : 0U;
-    int16_t next = (int16_t)camera_pos_y;
+    const uint8_t feet = (uint8_t)feet_y;
 
-    if (on_ground != 0U) {
+    if (on_ground != 0U && feet != band_feet) {
+        band_feet = feet;
         band = band_for(feet_y);
     }
-    if (standing != 0U) {
-        // the manual pan: only a standing mario may move the view, and it stays where he left it
-        if (up != 0U && down == 0U) {
-            next -= (int16_t)kCamPanStepPx;
-        } else if (down != 0U && up == 0U) {
-            next += (int16_t)kCamPanStepPx;
-        } else {
+    if (on_ground == 0U) {
+        // Sampling every other frame still beats Mario's maximum fall by a wide margin (the dead
+        // zone has 80 px of travel), while keeping 1-2's busiest frames under their CPU budget.
+        air_tick ^= 1U;
+        if (air_tick != 0U) {
             return;
         }
-    } else if (camera_pos_y < band) {
-        next += (int16_t)kCamPanStepPx;
-        if (next > (int16_t)band) {
-            next = (int16_t)band;
+        // The old camera kept chasing the last grounded band, which a fast fall could outrun.
+        // Play coordinates fit in one byte, keeping this hot path cheap enough for the ROM budget.
+        if (feet < (uint8_t)(camera_pos_y + (uint8_t)kCamSafeTopPx)) {
+            camera_pos_y = feet > (uint8_t)kCamSafeTopPx ? (uint8_t)(feet - (uint8_t)kCamSafeTopPx) : 0U;
+        } else if (feet > (uint8_t)(camera_pos_y + (uint8_t)kCamSafeBottomPx)) {
+            const uint8_t want = (uint8_t)(feet - (uint8_t)kCamSafeBottomPx);
+            camera_pos_y = want < (uint8_t)kScyMax ? want : (uint8_t)kScyMax;
         }
-    } else if (camera_pos_y > band) {
-        next -= (int16_t)kCamPanStepPx;
-        if (next < (int16_t)band) {
-            next = (int16_t)band;
-        }
-    } else {
         return;
     }
+    air_tick = 0U;
 
-    if (next < 0) {
-        next = 0;
+    if (standing != 0U) {
+        // Up/down name finite views relative to Mario. Assigning the target directly makes holding
+        // either key idempotent, and release restores the gameplay view without requiring movement.
+        if (up != 0U && down == 0U) {
+            camera_pos_y = band > (uint8_t)kCamLookUpPx ? (uint8_t)(band - (uint8_t)kCamLookUpPx) : 0U;
+            return;
+        } else if (down != 0U && up == 0U) {
+            camera_pos_y = band > (uint8_t)(kScyMax - kCamLookDownPx)
+                               ? (uint8_t)kScyMax
+                               : (uint8_t)(band + (uint8_t)kCamLookDownPx);
+            return;
+        }
     }
-    if (next > (int16_t)kScyMax) {
-        next = (int16_t)kScyMax;
-    }
-    camera_pos_y = (uint8_t)next;
+    camera_pos_y = band;
 }
 
 void camera_init(uint16_t mario_x, int16_t feet_y) BANKED {
     camera_pos_anchor = (uint8_t)kCamFollowX;
+    band_feet = (uint8_t)feet_y;
+    air_tick = 0U;
     band = band_for(feet_y);
     camera_pos_y = band;
     step_x(mario_x);

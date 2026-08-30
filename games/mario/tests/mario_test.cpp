@@ -646,7 +646,6 @@ constexpr int kCamWindowBottomPx = kScreenHeightPx - kCamGroundOffsetPx;
 constexpr int kCamEaseMaxPx = 4;
 constexpr int kCamEaseShift = 3;
 constexpr int kCamAirEaseShift = 2;
-constexpr int kCamAirRisePx = 1;
 constexpr int kCamLookUpPx = 32;
 constexpr int kCamLookDownPx = 24;
 constexpr int kCamLookDelayFrames = 24;
@@ -658,16 +657,19 @@ inline uint8_t cam_clamp_scy(int value) {
     return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
 }
 
-inline uint8_t cam_window_target(int feet, uint8_t on_ground, uint8_t cam_y) {
-    const int top = on_ground != 0 ? kCamWindowTopPx : kCamSafeTopPx;
-    const int bottom = on_ground != 0 ? kCamWindowBottomPx : kCamSafeBottomPx;
-    const int screen = feet - static_cast<int>(cam_y);
+inline uint8_t cam_window_target(int feet_world, uint8_t on_ground, uint8_t cam_y) {
+    // saturating, exactly as camera_update does: a pit carries his feet past 255, and a byte that
+    // wrapped there would send the view up the level after them
+    const uint8_t feet = static_cast<uint8_t>(std::max(0, std::min(255, feet_world)));
+    const uint8_t top = static_cast<uint8_t>(on_ground != 0 ? kCamWindowTopPx : kCamSafeTopPx);
+    const uint8_t bottom = static_cast<uint8_t>(on_ground != 0 ? kCamWindowBottomPx : kCamSafeBottomPx);
 
-    if (screen < top) {
-        return cam_clamp_scy(feet - top);
+    if (feet < static_cast<uint8_t>(cam_y + top)) {
+        return feet > top ? static_cast<uint8_t>(feet - top) : uint8_t{0};
     }
-    if (screen > bottom) {
-        return cam_clamp_scy(feet - bottom);
+    if (feet > static_cast<uint8_t>(cam_y + bottom)) {
+        const uint8_t want = static_cast<uint8_t>(feet - bottom);
+        return want < static_cast<uint8_t>(kScyMax) ? want : static_cast<uint8_t>(kScyMax);
     }
     return cam_y;
 }
@@ -679,9 +681,6 @@ inline uint8_t cam_ease(uint8_t cam_y, uint8_t want, uint8_t on_ground) {
     const int shift = on_ground != 0 ? kCamEaseShift : kCamAirEaseShift;
     const int gap = std::abs(static_cast<int>(want) - static_cast<int>(cam_y));
     int step = std::max(1, std::min(kCamEaseMaxPx, gap >> shift));
-    if (on_ground == 0 && want < cam_y) {
-        step = std::min(step, kCamAirRisePx);
-    }
     step = std::min(step, gap);
     return static_cast<uint8_t>(want > cam_y ? cam_y + step : cam_y - step);
 }
@@ -3998,6 +3997,51 @@ TEST_CASE("mario_play_is_deterministic") {
 
 // --- sub-milestone 4: the camera ----------------------------------------------------------------
 
+// the rom's scy, read straight out of a save state. the camera rules are about how far the view
+// moves and how fast, which no screen readout answers cleanly once the thing being measured is
+// itself scrolling, so the tests below read the register. the ppu section of the blob is
+// vram(2 banks) + oam + dot + ly + lyc + lcdc + bgp, and scy is the byte after those; the first
+// camera test asserts it against kPlayScy, which is what pins this offset down.
+uint32_t state_u32(const std::vector<uint8_t>& blob, size_t at) {
+    return blob[at] | (blob[at + 1] << 8) | (blob[at + 2] << 16) | (static_cast<uint32_t>(blob[at + 3]) << 24);
+}
+
+int play_scy(const gb::Gameboy& gameboy) {
+    std::vector<uint8_t> blob;
+    gameboy.save_state(blob);
+    size_t at = 8; // magic + version
+    for (int section = 0; section < 6; ++section) {
+        at += 4 + state_u32(blob, at);
+    }
+    return blob[at + 4 + 2 * 8192 + 160 + 4 + 4];
+}
+
+// runs frames until the view stops moving, and reports how many px it moved in the largest single
+// frame on the way. the whole point of the redesign is that this number stays small
+struct Pan {
+    int frames = 0;
+    int biggest_step = 0;
+    int scy = 0;
+};
+
+Pan settle_pan(gb::Gameboy& gameboy, int cap = 240) {
+    Pan out;
+    int scy = play_scy(gameboy);
+    int still = 0;
+
+    for (int i = 0; i < cap && still < 4; ++i) {
+        gameboy.run_frame();
+        const int next = play_scy(gameboy);
+        const int step = std::abs(next - scy);
+        out.biggest_step = std::max(out.biggest_step, step);
+        still = step == 0 ? still + 1 : 0;
+        scy = next;
+        ++out.frames;
+    }
+    out.scy = scy;
+    return out;
+}
+
 TEST_CASE("mario_camera_follows_and_scrolls_back") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -4070,36 +4114,157 @@ TEST_CASE("mario_camera_manual_pan") {
     replay(gameboy, approach.script, 0, approach.script.size());
     run(gameboy, 90);
 
-    // the band shows the row 9 block and nothing above it
+    // the level's own view shows the row 9 block and nothing above it. this is also what pins the
+    // save-state offset play_scy() reads: flat 1-1 ground opens at kPlayScy and never leaves it
     const int grounded_row = first_tile_row(gameboy, 0xA8, 0xAB);
     REQUIRE(grounded_row == 9 * kBlockPx - kScyMax);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
 
-    // standing still, up selects a bounded 32 px look target and reveals the upper block.
-    press(gameboy, gb::Button::Up, 12);
+    // a tap is not a request to look. the old camera answered the first frame up was down, which
+    // yanked the picture out from under anyone who brushed up on the way into a jump
+    press(gameboy, gb::Button::Up, 3);
+    run(gameboy, 6);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
+    REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == grounded_row);
+
+    // held past the delay it engages, and then eases - it never jumps to the target
+    gameboy.set_button(gb::Button::Up, true);
+    run(gameboy, kCamLookDelayFrames - 1);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
+    const Pan up = settle_pan(gameboy);
+    REQUIRE(up.biggest_step <= kCamEaseMaxPx);
+    REQUIRE(up.frames > kCamLookUpPx / kCamEaseMaxPx);
+    REQUIRE(up.scy == kPlayScy - kCamLookUpPx);
+
+    // that target is bounded: leaning on up for another two seconds cannot scroll past it
     const int panned_row = first_tile_row(gameboy, 0xA8, 0xAB);
     REQUIRE(panned_row == 5 * kBlockPx - (kScyMax - kCamLookUpPx));
     REQUIRE(panned_row < grounded_row);
+    run(gameboy, 120);
+    REQUIRE(play_scy(gameboy) == kPlayScy - kCamLookUpPx);
 
-    // Holding up longer cannot scroll past that target, and releasing returns to the ground band
-    // without requiring Mario to walk and "wake" the camera.
-    gameboy.set_button(gb::Button::Up, true);
-    run(gameboy, 90);
+    // and releasing eases back to the gameplay view, without requiring Mario to walk first
     gameboy.set_button(gb::Button::Up, false);
-    REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == panned_row);
-    run(gameboy, 2);
+    const Pan back = settle_pan(gameboy);
+    REQUIRE(back.biggest_step <= kCamEaseMaxPx);
+    REQUIRE(back.scy == kPlayScy);
     REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == grounded_row);
 
-    // and the pan is refused outright while airborne, however hard up is held
+    // the peek is refused outright while airborne, however long up is held
     gameboy.set_button(gb::Button::A, true);
     gameboy.set_button(gb::Button::Up, true);
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 30; ++i) {
         gameboy.run_frame();
-        REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == grounded_row);
+        REQUIRE(play_scy(gameboy) == kPlayScy);
     }
     gameboy.set_button(gb::Button::A, false);
     gameboy.set_button(gb::Button::Up, false);
     run(gameboy, 60);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
     REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == grounded_row);
+}
+
+// the redesign's headline: a hop onto something knee-high must not move the view at all. the old
+// camera pinned his feet kCamGroundOffsetPx off the bottom and snapped there the frame he landed,
+// which threw the ground he came from off the screen every time he stood on a pipe
+TEST_CASE("mario_camera_ignores_a_low_platform") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    uint16_t pipe_column = 0;
+    uint8_t pipe_top_row = 0;
+    for (uint16_t column = 0; column < LEVEL_1_1_LENGTH_COLUMNS && pipe_column == 0; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel11Grid[column][row] == kBlockPipeTl) {
+                pipe_column = column;
+                pipe_top_row = row;
+                break;
+            }
+        }
+    }
+    REQUIRE(pipe_column > 6);
+
+    // the first pipe is right where 1-1 sends its opening goombas, so the approach flattens them:
+    // a goomba walking into him mid-climb would answer a different question than this one
+    const Route approach = plan_clear_walk(static_cast<uint16_t>((pipe_column - 6) * kBlockPx));
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, pipe_column, pipe_top_row, 400);
+    REQUIRE(climb.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
+    run(gameboy, 30);
+
+    // he is a whole pipe higher up the screen and the view has not moved a pixel
+    const Mario capped = mario_at(gameboy);
+    REQUIRE(capped.found);
+    REQUIRE(capped.top == static_cast<int>(pipe_top_row) * kBlockPx - kPlayerBoxPx - kPlayScy);
+    REQUIRE(capped.top < kStandTop);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
+}
+
+// and the invariant that the redesign lives or dies by, measured over a whole level: the view never
+// moves more than kCamEaseMaxPx in one frame, it does move (1-1's staircase is four blocks and more
+// of climb), and nothing it does loses Mario off the edge of the picture
+TEST_CASE("mario_camera_never_snaps_over_a_level") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route full = plan_route(0, true, 6000);
+    REQUIRE(full.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    int scy = play_scy(gameboy);
+    int lowest = scy;
+    int highest = scy;
+    int biggest_step = 0;
+    for (size_t i = 0; i < full.script.size(); ++i) {
+        replay(gameboy, full.script, i, i + 1);
+        const int next = play_scy(gameboy);
+        biggest_step = std::max(biggest_step, std::abs(next - scy));
+        lowest = std::min(lowest, next);
+        highest = std::max(highest, next);
+        scy = next;
+    }
+
+    REQUIRE(biggest_step <= kCamEaseMaxPx);
+    REQUIRE(highest - lowest >= kBlockPx);
+
+    // and over the same route the twin - the host copy of camera.c the planner predicts screen rows
+    // with - never lets a climb or a drop put him outside the picture. the drops are what the ease
+    // cap is sized for: kCamEaseMaxPx is Mario's own terminal fall speed, so nothing he does
+    // outruns the view on the way down
+    PlayerSim sim;
+    int lowest_feet = 0;
+    for (const uint8_t in : full.script) {
+        sim.step(in);
+        if (sim.dead()) {
+            break;
+        }
+        const int screen_top = sim.y_pos - sim.cam_y;
+        const int screen_feet = screen_top + sim.foot_h();
+        // the ease cap is sized on Mario's own terminal fall speed, so the drop side is a
+        // guarantee: while the view has anywhere left to go, a fall draws level with it and never
+        // outruns it
+        if (sim.cam_y < kScyMax) {
+            REQUIRE(screen_top < kScreenHeightPx);
+        }
+        // the rise side is best effort, because a jump off the top step of the staircase carries
+        // him over the top of the map itself and scy 0 is as far as the view can follow. inside
+        // the level, though, the window keeps his feet on the screen
+        if (sim.y_pos >= 0) {
+            REQUIRE(screen_feet > 0);
+        }
+        lowest_feet = std::max(lowest_feet, screen_feet);
+    }
+    // a fall really did press him toward the bottom edge without ever reaching it
+    REQUIRE(lowest_feet > kCamWindowBottomPx);
+    REQUIRE(lowest_feet < kScreenHeightPx);
 }
 
 TEST_CASE("mario_camera_select_look_ahead") {
@@ -4180,6 +4345,13 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
     enter_play(gameboy);
     replay(gameboy, approach.script, 0, approach.script.size());
 
+    // the view eases now instead of snapping onto him, so the approach can leave it still drifting:
+    // let it come to rest first, and the flat ground before the pit then holds it against the
+    // bottom of the level for the whole walk and the whole drop. that is what keeps his screen row
+    // his world row here, and it is worth asserting frame by frame rather than assuming
+    settle_pan(gameboy);
+    REQUIRE(play_scy(gameboy) == kPlayScy);
+
     bool fell = false;
     int last_top = kStandTop;
     gameboy.set_button(gb::Button::Right, true);
@@ -4190,6 +4362,7 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
             fell = last_top > kStandTop;
             continue;
         }
+        REQUIRE(play_scy(gameboy) == kPlayScy);
         // he must never come to rest on the pit's far lip on the way down
         REQUIRE(!(m.top == kStandTop && last_top > kStandTop));
         last_top = m.top;

@@ -209,13 +209,13 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
 }
 
 void card_pause(uint8_t level) BANKED {
-    begin_card(kTitleRow);
-    print_centered(kTitleRow, "PAUSED");
+    begin_card(kPauseRow);
+    print_centered(kPauseRow, "PAUSED");
     // systems.md: smbd's small screen moves the lives and the level name onto this card
-    print_value((uint8_t)(kTitleRow + 2U), "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
-    print_value((uint8_t)(kTitleRow + 4U), "SCORE ", hud_score, 5, 1);
-    print_value((uint8_t)(kTitleRow + 6U), "LIVES ", hud_lives, 2, 0);
-    print_centered((uint8_t)(kTitleRow + 9U), "START RESUMES");
+    print_value((uint8_t)(kPauseRow + 2U), "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
+    print_value((uint8_t)(kPauseRow + 4U), "SCORE ", hud_score, 5, 1);
+    print_value((uint8_t)(kPauseRow + 6U), "LIVES ", hud_lives, 2, 0);
+    print_centered((uint8_t)(kPauseRow + 9U), "START RESUMES");
     end_card();
 }
 

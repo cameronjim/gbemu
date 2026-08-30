@@ -11,6 +11,10 @@
 // reads as a band rather than exactly the glyph height. kPromptRow sits 5 rows below kTitleRow so
 // the two banners (each reaching one row above/below their text) still leave a 2-row sky gap
 #define kBannerRows 3U
+// the pause card's own heading row, 2 rows above kTitleRow: it carries more lines (world, score,
+// lives, footer) than the title/game-over/clear cards do, so it sits higher to leave the footer
+// some breathing room above the bottom of the 18-row screen
+#define kPauseRow 4U
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f
 #define kFontFirstChar 0x20U

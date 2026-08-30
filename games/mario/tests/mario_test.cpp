@@ -36,6 +36,7 @@ constexpr uint32_t kBootFrames = 120;
 // the rows main.c tints and prints to, per games/mario/src/mario.h
 constexpr uint32_t kTitleRow = 6;
 constexpr uint32_t kPromptRow = 11;
+constexpr uint32_t kPauseRow = 4;
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f; space (tile 0) is excluded so a
 // span only ever measures real glyphs
@@ -6043,10 +6044,11 @@ constexpr int kHudTimeX = 128;
 constexpr int kHudCoinDigits = 2;
 constexpr int kHudTimeDigits = 3;
 
-// the card rows title.c prints on, all measured off kTitleRow
-constexpr uint32_t kCardWorldRow = kTitleRow + 2;
-constexpr uint32_t kCardPauseScoreRow = kTitleRow + 4;
-constexpr uint32_t kCardLivesRow = kTitleRow + 6;
+// the card rows title.c prints on; the pause card is measured off its own kPauseRow (it sits
+// higher than the title/game-over/clear cards to leave its footer some room), the rest off kTitleRow
+constexpr uint32_t kCardWorldRow = kPauseRow + 2;
+constexpr uint32_t kCardPauseScoreRow = kPauseRow + 4;
+constexpr uint32_t kCardLivesRow = kPauseRow + 6;
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
 constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
 constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;

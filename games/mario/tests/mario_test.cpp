@@ -641,8 +641,50 @@ constexpr int kCamGroundOffsetPx = 32;
 constexpr int kScreenHeightPx = 144;
 constexpr int kCamSafeTopPx = 32;
 constexpr int kCamSafeBottomPx = kScreenHeightPx - kCamGroundOffsetPx;
+constexpr int kCamWindowTopPx = 64;
+constexpr int kCamWindowBottomPx = kScreenHeightPx - kCamGroundOffsetPx;
+constexpr int kCamEaseMaxPx = 4;
+constexpr int kCamEaseShift = 3;
+constexpr int kCamAirEaseShift = 2;
+constexpr int kCamAirRisePx = 1;
 constexpr int kCamLookUpPx = 32;
 constexpr int kCamLookDownPx = 24;
+constexpr int kCamLookDelayFrames = 24;
+
+// the host twin of games/mario/src/camera.c's vertical rules: a deadzone window in screen space and
+// a distance-proportional ease onto whatever it asks for. both sims below share these, so the
+// planner's screen predictions stay frame-identical with the rom's.
+inline uint8_t cam_clamp_scy(int value) {
+    return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
+}
+
+inline uint8_t cam_window_target(int feet, uint8_t on_ground, uint8_t cam_y) {
+    const int top = on_ground != 0 ? kCamWindowTopPx : kCamSafeTopPx;
+    const int bottom = on_ground != 0 ? kCamWindowBottomPx : kCamSafeBottomPx;
+    const int screen = feet - static_cast<int>(cam_y);
+
+    if (screen < top) {
+        return cam_clamp_scy(feet - top);
+    }
+    if (screen > bottom) {
+        return cam_clamp_scy(feet - bottom);
+    }
+    return cam_y;
+}
+
+inline uint8_t cam_ease(uint8_t cam_y, uint8_t want, uint8_t on_ground) {
+    if (want == cam_y) {
+        return cam_y;
+    }
+    const int shift = on_ground != 0 ? kCamEaseShift : kCamAirEaseShift;
+    const int gap = std::abs(static_cast<int>(want) - static_cast<int>(cam_y));
+    int step = std::max(1, std::min(kCamEaseMaxPx, gap >> shift));
+    if (on_ground == 0 && want < cam_y) {
+        step = std::min(step, kCamAirRisePx);
+    }
+    step = std::min(step, gap);
+    return static_cast<uint8_t>(want > cam_y ? cam_y + step : cam_y - step);
+}
 constexpr int kClearSlidePx = 2;
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
@@ -1500,20 +1542,11 @@ struct PlayerSim {
     void step_world() {
         const uint16_t want = x_pos > kCamFollowX ? static_cast<uint16_t>(x_pos - kCamFollowX) : uint16_t{0};
         cam_x = std::min(want, max_x());
-        if (on_ground != 0) {
-            band = band_for(static_cast<int16_t>(y_pos + foot_h()));
-        }
+        // camera.c's vertical rules: the window names a target, and the view eases onto it. `band`
+        // is that target, so cam_y == band still reads as "the view has settled".
         const int feet = y_pos + foot_h();
-        if (on_ground != 0) {
-            cam_air_tick = 0;
-            cam_y = band;
-        } else if ((cam_air_tick ^= 1U) != 0U) {
-            // sampled on the next frame, matching the ROM's frame-budget throttle
-        } else if (feet - cam_y < kCamSafeTopPx) {
-            cam_y = clamp_cam_y(feet - kCamSafeTopPx);
-        } else if (feet - cam_y > kCamSafeBottomPx) {
-            cam_y = clamp_cam_y(feet - kCamSafeBottomPx);
-        }
+        band = cam_window_target(feet, on_ground, cam_y);
+        cam_y = cam_ease(cam_y, band, on_ground);
         step_item();
         contact = kEnemyHitNone;
         // enemies.c's idle fast path, mirrored so the two stay frame-identical
@@ -2099,21 +2132,8 @@ struct CameraSim {
     void update(const PlayerSim& p) {
         step_x(p.x_pos);
         const int feet = p.y_pos + p.foot_h();
-        if (p.on_ground != 0) {
-            air_tick = 0;
-            band = band_for(static_cast<int16_t>(feet));
-            y = band;
-            return;
-        }
-        air_tick ^= 1U;
-        if (air_tick != 0U) {
-            return;
-        }
-        if (feet - y < kCamSafeTopPx) {
-            y = clamp_y(feet - kCamSafeTopPx);
-        } else if (feet - y > kCamSafeBottomPx) {
-            y = clamp_y(feet - kCamSafeBottomPx);
-        }
+        band = cam_window_target(feet, p.on_ground, y);
+        y = cam_ease(y, band, p.on_ground);
     }
 };
 
@@ -4750,6 +4770,122 @@ TEST_CASE("mario_pipe_round_trip_down") {
     REQUIRE(back.top == rest_top - band);
     // and he really is standing on the pipe he went down: its cap is the row under his feet
     REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.top + kPlayerBoxPx);
+}
+
+// down is held rather than edge triggered now, so landing on a cap with down already pressed still
+// enters the pipe: main.c used to gate every pipe check on `pressed & J_DOWN`, which player_over_pipe
+// itself already rejects outright while he is airborne. a player who jumps onto the cap holding down
+// gets the rejection in the air and never gets a second, later edge to answer to once he is grounded
+TEST_CASE("mario_jump_onto_pipe_holding_down_enters_it") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    const int overworld_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(overworld_sky >= 0);
+
+    const Route approach = plan_route(static_cast<uint16_t>((kPipeColumn - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, kPipeColumn, kPipeTopRow, 400);
+    REQUIRE(climb.reached);
+
+    replay(gameboy, approach.script, 0, approach.script.size());
+    // down goes low before the jump even starts and never comes back up: it is already held for
+    // every frame of the hop, the landing included, with no fresh press anywhere in the script
+    gameboy.set_button(gb::Button::Down, true);
+    for (uint8_t in : climb.script) {
+        gameboy.set_button(gb::Button::Right, (in & kInRight) != 0);
+        gameboy.set_button(gb::Button::Left, (in & kInLeft) != 0);
+        gameboy.set_button(gb::Button::B, (in & kInB) != 0);
+        gameboy.set_button(gb::Button::A, (in & kInA) != 0);
+        gameboy.run_frame();
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::Left, false);
+    gameboy.set_button(gb::Button::B, false);
+    gameboy.set_button(gb::Button::A, false);
+    run(gameboy, 90);
+
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) != overworld_sky);
+    gameboy.set_button(gb::Button::Down, false);
+}
+
+// the pipe-up transition that spits him back into the overworld settles him right back onto the
+// entry pipe's own cap (kReturnColumn == kPipeColumn), so a held-rather-than-edge down check could
+// swallow him straight back in on the very next frame if he never let go of down on the way out
+TEST_CASE("mario_holding_down_out_of_bonus_room_does_not_reenter_it") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    const int overworld_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(overworld_sky >= 0);
+
+    enter_bonus_room(gameboy);
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(room_sky >= 0);
+    REQUIRE(room_sky != overworld_sky);
+
+    REQUIRE(climb_exit_pipe(gameboy));
+
+    // hold down through the whole round trip out of the room and well beyond it
+    gameboy.set_button(gb::Button::Down, true);
+    run(gameboy, 200);
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
+
+    // still holding: if the reentry lock had not caught, this is exactly the moment he would fall
+    // straight back into the pipe he is still standing over
+    run(gameboy, 60);
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
+
+    gameboy.set_button(gb::Button::Down, false);
+}
+
+// flow_enter_sub_area used to call terrain_init() before blocks_enter_area(), so the ring painted
+// every coin from its raw compiled kind before the coin_taken[] machinery was even pointed at the
+// room: a coin already spent came back to life on screen (though never re-payable) the moment the
+// room was repainted. entering, spending some coins, leaving and coming straight back in must find
+// the same coins gone, not the full room again
+TEST_CASE("mario_bonus_room_coin_stays_collected_after_reentry") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    enter_bonus_room(gameboy);
+
+    const int coins_before = bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi);
+    REQUIRE(coins_before > 0);
+
+    // walk through some of the room's coins
+    travel(gameboy, gb::Button::Right, false, 90);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 10);
+    const int coins_after_first_pass = bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi);
+    REQUIRE(coins_after_first_pass < coins_before);
+
+    // out through the exit pipe; the return lands him right back on the entry pipe's own cap
+    // (kReturnColumn == kPipeColumn), so going straight back in is just another press of down
+    REQUIRE(climb_exit_pipe(gameboy));
+    press(gameboy, gb::Button::Up, 4);
+    run(gameboy, 80);
+    press(gameboy, gb::Button::Down, 4);
+    run(gameboy, 60);
+
+    // the room repaints on reentry; only the coins still there when he left should be, not the ones
+    // he already spent - without the fix every one of coins_before would be back
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == coins_after_first_pass);
+
+    // walking back over the same ground a second time must not remove any more of them: they are
+    // truly gone (coin_taken[] refuses them), not just hidden behind a stale repaint
+    travel(gameboy, gb::Button::Right, false, 90);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 10);
+    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == coins_after_first_pass);
 }
 
 // --- sub-milestone 6: enemies -------------------------------------------------------------------

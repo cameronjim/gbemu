@@ -39,6 +39,10 @@ static uint8_t current_area;
 static uint8_t level_number;
 static uint8_t pending_area;
 static uint8_t pending_warp;
+// set the instant a pipe spits him back out while down is still held, so the same frame's held
+// check cannot swallow him straight back into the exit pipe he just climbed out of; clears the
+// moment down is released
+static uint8_t pipe_reentry_lock;
 // 0 on a level with nothing hazards.c owns, which is 1-1: the bank-5 module is not entered at all
 static uint8_t hazard_active;
 // and whether any of them is near enough this frame to be worth entering bank 5 for
@@ -125,6 +129,7 @@ void main(void) {
     uint8_t taken = kItemNone;
     uint8_t flags = 0;
     uint8_t target = 0xFF;
+    uint8_t down_held = 0;
 
     font_init();
     font_set(font_load(font_ibm));
@@ -200,9 +205,15 @@ void main(void) {
                 present();
                 continue;
             }
-            // pipes are edge triggered, so holding the same d-pad direction still pans the camera
+            // down is held rather than edge triggered, so landing on a cap with down already
+            // pressed still enters it; the lock (cleared the instant down is released) is the only
+            // thing standing between that and immediately re-swallowing him on the way out of one
+            if ((keys & J_DOWN) == 0U) {
+                pipe_reentry_lock = 0;
+            }
+            down_held = (uint8_t)(((keys & J_DOWN) != 0U && pipe_reentry_lock == 0U) ? 1U : 0U);
             if (current_area == kAreaMain) {
-                if ((pressed & J_DOWN) != 0U) {
+                if (down_held != 0U) {
                     target = flow_pipe_under_player();
                     if (target != 0xFF) {
                         pending_area = target;
@@ -213,7 +224,7 @@ void main(void) {
                         continue;
                     }
                 }
-            } else if ((pressed & J_DOWN) != 0U) {
+            } else if (down_held != 0U) {
                 target = flow_warp_under_player();
                 if (target != 0xFF) {
                     pending_warp = target;
@@ -346,6 +357,9 @@ void main(void) {
         if (state == kStatePipeUp) {
             if (player_pipe_update() != 0U) {
                 state = kStatePlay;
+                // he can only just have climbed out of the exit pipe, so if down is still held this
+                // is not a new press against it - lock the held check until he lets go of down
+                pipe_reentry_lock = (uint8_t)((keys & J_DOWN) != 0U ? 1U : 0U);
             }
             present();
             continue;

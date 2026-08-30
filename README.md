@@ -1,6 +1,6 @@
-# gbemu
+﻿# gbemu
 
-A Game Boy (DMG) emulator made from scratch, with three playable games: Tetris, Flappy Bird, and Crossy Road. Runs on Windows, Mac, and Linux. Flappy has a course preview title and Mario style colors, Crossy is an endless road crosser, and Tetris has its own piece editor.
+A Game Boy (DMG) emulator made from scratch, with three playable games: Tetris, Flappy Bird, and Crossy Road. Runs on Windows, Mac, and Linux. Flappy has a course preview title and Mario style colors, Crossy is an endless road crosser, and Tetris is a Game Boy Color build with a color-per-piece well, a score/level/lines panel, and a saved best score.
 
 **First time here?** Follow [SETUP.md](SETUP.md): it covers cloning,
 building, and a one-command installer that sets everything below up.
@@ -29,10 +29,9 @@ crossy.cmd
 | --- | --- |
 | Arrows or `WASD` | D-pad |
 | `F` or `Space` (or `Z`) | A |
-| `G` (or `X`) | B |
+| `G` (or `X`, `Esc`) | B |
 | `E` or `Enter` | Start |
 | `R` (or `Backspace`) | Select |
-| `Esc` | Back / pause menu |
 
 A game controller works too, plug and play, no setup needed: d-pad or left stick moves, A is A,
 B or X is B, Menu is Start, View is Select, and the right trigger fast-forwards.
@@ -57,6 +56,5 @@ dist\gbemu-sdl.exe --volume 60 dist\flappy.gb
 
 ## Credits
 
-The included Tetris is based on [Adjustris](https://github.com/tbsp/Adjustris)
-by Dave VanEe (tbsp), public domain, vendored at `assets/roms/tetris.gb`.
-Flappy Bird and Crossy Road are this repo's own gbdk-2020 roms (`games/`).
+Tetris, Flappy Bird, and Crossy Road are all this repo's own gbdk-2020 roms,
+written from scratch under `games/` and vendored built at `assets/roms/`.

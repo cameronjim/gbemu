@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# builds gbemu-sdl (+ flappy/crossy roms) and assembles a dist folder on linux/macos.
+# builds gbemu-sdl (+ the tetris/flappy/crossy roms) and assembles a dist folder on linux/macos.
 # the counterpart of make-dist.ps1. sdl2 is linked against the system copy, so
 # nothing is bundled here.
 set -euo pipefail
@@ -112,8 +112,8 @@ fi
 
 # --- build ---
 if [ "$have_gbdk" -eq 1 ]; then
-    step "building gbemu-sdl, flappy, crossy"
-    cmake --build "$build_dir" --target gbemu-sdl flappy crossy -j || fail "build failed"
+    step "building gbemu-sdl, tetris, flappy, crossy"
+    cmake --build "$build_dir" --target gbemu-sdl tetris flappy crossy -j || fail "build failed"
 else
     step "building gbemu-sdl"
     cmake --build "$build_dir" --target gbemu-sdl -j || fail "build failed"
@@ -123,14 +123,18 @@ emu_src="$build_dir/gbemu-sdl"
 [ -x "$emu_src" ] || fail "expected build output missing: $emu_src (is sdl2 installed?)"
 
 if [ "$have_gbdk" -eq 1 ]; then
+    tetris_src="$build_dir/tetris.gb"
     flappy_src="$build_dir/flappy.gb"
     crossy_src="$build_dir/crossy.gb"
+    [ -f "$tetris_src" ] || fail "expected build output missing: $tetris_src"
     [ -f "$flappy_src" ] || fail "expected build output missing: $flappy_src"
     [ -f "$crossy_src" ] || fail "expected build output missing: $crossy_src"
 else
     # no gbdk build; play from the committed roms instead
+    tetris_src="assets/roms/tetris.gb"
     flappy_src="assets/roms/flappy.gb"
     crossy_src="assets/roms/crossy.gb"
+    [ -f "$tetris_src" ] || fail "expected vendored rom missing: $tetris_src"
     [ -f "$flappy_src" ] || fail "expected vendored rom missing: $flappy_src"
     [ -f "$crossy_src" ] || fail "expected vendored rom missing: $crossy_src"
 fi
@@ -151,12 +155,14 @@ install_file() {
 step "copying emulator, roms, icon"
 install_file "$emu_src" "$dist_dir/gbemu-sdl"
 chmod +x "$dist_dir/gbemu-sdl"
+install_file "$tetris_src" "$dist_dir/tetris.gb"
 install_file "$flappy_src" "$dist_dir/flappy.gb"
 install_file "$crossy_src" "$dist_dir/crossy.gb"
 
 # gbdk built fresh roms; keep the committed copies in sync with the sources
 if [ "$have_gbdk" -eq 1 ]; then
     step "refreshing vendored roms in assets/roms from this build"
+    install_file "$tetris_src" assets/roms/tetris.gb
     install_file "$flappy_src" assets/roms/flappy.gb
     install_file "$crossy_src" assets/roms/crossy.gb
 fi
@@ -165,16 +171,6 @@ if [ -f assets/icons/gbemu.bmp ]; then
     install_file assets/icons/gbemu.bmp "$dist_dir/gbemu.bmp"
 else
     warn "assets/icons/gbemu.bmp not found, skipping window icon"
-fi
-
-# --- tetris.gb ---
-# saves and states live next to the roms, so an existing tetris.gb is left alone
-if [ -f "$dist_dir/tetris.gb" ]; then
-    step "tetris.gb already present in dist, leaving it alone"
-else
-    step "copying assets/roms/tetris.gb into dist"
-    [ -f assets/roms/tetris.gb ] || fail "expected vendored rom missing: assets/roms/tetris.gb"
-    install_file assets/roms/tetris.gb "$dist_dir/tetris.gb"
 fi
 
 # --- launcher scripts ---

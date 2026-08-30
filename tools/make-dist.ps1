@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    builds gbemu-sdl (+ flappy/crossy roms) and assembles a portable dist folder.
+    builds gbemu-sdl (+ the tetris/flappy/crossy roms) and assembles a portable dist folder.
 .DESCRIPTION
     windows powershell 5.1 compatible packaging script. configures/builds with
     ninja + mingw, then copies the exe, sdl2.dll, roms, and launcher .cmd files
@@ -59,8 +59,8 @@ try {
 
     # --- build ---
     if ($HaveGbdk) {
-        Write-Step "building gbemu-sdl, flappy, crossy"
-        cmake --build $BuildDir --target gbemu-sdl flappy crossy -j
+        Write-Step "building gbemu-sdl, tetris, flappy, crossy"
+        cmake --build $BuildDir --target gbemu-sdl tetris flappy crossy -j
         if ($LASTEXITCODE -ne 0) { Fail "build failed" }
     } else {
         Write-Step "building gbemu-sdl"
@@ -71,14 +71,18 @@ try {
     $exeSrc = Join-Path $BuildDir "gbemu-sdl.exe"
     if (-not (Test-Path $exeSrc)) { Fail "expected build output missing: $exeSrc" }
     if ($HaveGbdk) {
+        $tetrisSrc = Join-Path $BuildDir "tetris.gb"
         $flappySrc = Join-Path $BuildDir "flappy.gb"
         $crossySrc = Join-Path $BuildDir "crossy.gb"
+        if (-not (Test-Path $tetrisSrc)) { Fail "expected build output missing: $tetrisSrc" }
         if (-not (Test-Path $flappySrc)) { Fail "expected build output missing: $flappySrc" }
         if (-not (Test-Path $crossySrc)) { Fail "expected build output missing: $crossySrc" }
     } else {
         # no gbdk build; play from the committed roms instead
+        $tetrisSrc = Join-Path $RepoRoot "assets\roms\tetris.gb"
         $flappySrc = Join-Path $RepoRoot "assets\roms\flappy.gb"
         $crossySrc = Join-Path $RepoRoot "assets\roms\crossy.gb"
+        if (-not (Test-Path $tetrisSrc)) { Fail "expected vendored rom missing: $tetrisSrc" }
         if (-not (Test-Path $flappySrc)) { Fail "expected vendored rom missing: $flappySrc" }
         if (-not (Test-Path $crossySrc)) { Fail "expected vendored rom missing: $crossySrc" }
     }
@@ -120,6 +124,7 @@ try {
     # gbdk built fresh roms; keep the committed copies in sync with the sources
     if ($HaveGbdk) {
         Write-Step "refreshing vendored roms in assets/roms from this build"
+        Copy-Item -Path $tetrisSrc -Destination (Join-Path $RepoRoot "assets\roms\tetris.gb") -Force
         Copy-Item -Path $flappySrc -Destination (Join-Path $RepoRoot "assets\roms\flappy.gb") -Force
         Copy-Item -Path $crossySrc -Destination (Join-Path $RepoRoot "assets\roms\crossy.gb") -Force
     }
@@ -146,13 +151,8 @@ try {
 
     # --- tetris.gb ---
     if (-not $NoTetris) {
-        $tetrisDest = Join-Path $DistDir "tetris.gb"
-        if (Test-Path $tetrisDest) {
-            Write-Step "tetris.gb already present in dist, leaving it alone"
-        } else {
-            Write-Step "copying assets/roms/tetris.gb into dist"
-            Copy-Item -Path (Join-Path $RepoRoot "assets\roms\tetris.gb") -Destination $tetrisDest -Force
-        }
+        Write-Step "copying tetris.gb into dist"
+        Copy-Item -Path $tetrisSrc -Destination (Join-Path $DistDir "tetris.gb") -Force
     } else {
         Write-Step "skipping tetris.gb (-NoTetris)"
     }

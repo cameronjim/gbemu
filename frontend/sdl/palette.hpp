@@ -3,16 +3,8 @@
 #include <array>
 #include <cstdint>
 
-// standard tetris shape colors: i, o, t, s, z, j, l
-inline constexpr std::array<uint32_t, 7> kPieceColors = {
-    0xFF00BCD4u, 0xFFFFC107u, 0xFF9C27B0u, 0xFF4CAF50u, 0xFFF44336u, 0xFF2196F3u, 0xFFFF9800u,
-};
 inline constexpr uint32_t kBlack = 0xFF000000u;
 inline constexpr uint32_t kWhite = 0xFFFFFFFFu;
-// faint beveled grid on the empty background
-inline constexpr uint32_t kGridFace = 0xFF101014u;
-inline constexpr uint32_t kGridLight = 0xFF1E1E26u;
-inline constexpr uint32_t kGridDark = 0xFF050508u;
 
 // rgb555 channel (5 bits) to 8 bits, replicating the high bits into the low ones;
 // matches tests/roms/harness.cpp's expand5 exactly so screenshots and gate ppms agree
@@ -29,83 +21,16 @@ inline uint32_t rgb555_to_argb(uint16_t c) {
     return 0xFF000000u | (r << 16) | (g << 8) | b;
 }
 
-inline uint32_t scale_rgb(uint32_t c, uint32_t num, uint32_t den) {
-    const uint32_t r = ((c >> 16) & 0xFF) * num / den;
-    const uint32_t g = ((c >> 8) & 0xFF) * num / den;
-    const uint32_t b = (c & 0xFF) * num / den;
-    return 0xFF000000u | (r << 16) | (g << 8) | b;
-}
-
-inline uint32_t lighten_rgb(uint32_t c, uint32_t num, uint32_t den) {
-    const uint32_t r = ((c >> 16) & 0xFF) + (255 - ((c >> 16) & 0xFF)) * num / den;
-    const uint32_t g = ((c >> 8) & 0xFF) + (255 - ((c >> 8) & 0xFF)) * num / den;
-    const uint32_t b = (c & 0xFF) + (255 - (c & 0xFF)) * num / den;
-    return 0xFF000000u | (r << 16) | (g << 8) | b;
-}
-
-// id: low byte tile index, bit 8 sprite; block slots are tiles 0x80-0x8f and the
-// slot number is the shape's identity, so a piece keeps one color for its life.
-// the falling piece is sprites whose tile index mirrors its slot at 0x00-0x0f;
-// sprite_mask says which mirror slots truly hold styles, so ui sprites that
-// happen to use low tiles (the piece editor icons) keep their own art.
-inline uint32_t colorize(uint16_t id, uint8_t shade, uint32_t x, uint32_t y, uint16_t block_mask,
-                         uint16_t sprite_mask) {
-    if ((shade & 0x3u) == 0) {
-        // menus have no block bank in vram, so they stay flat black
-        if (block_mask == 0) {
-            return kBlack;
-        }
-        // in game, empty space shows a faint beveled grid so the play area reads clearly
-        const uint32_t cx = x & 7;
-        const uint32_t cy = y & 7;
-        if (cx == 0 || cy == 0) {
-            return kGridLight;
-        }
-        if (cx == 7 || cy == 7) {
-            return kGridDark;
-        }
-        return kGridFace;
-    }
-    const uint8_t tile = static_cast<uint8_t>(id & 0xFF);
-    const bool sprite = (id & 0x100) != 0;
-    uint8_t slot = 0;
-    bool is_block = false;
-    if (tile >= 0x80 && tile <= 0x8F) {
-        // bg blocks, and sprites reusing the bg bank (the editor's tile row)
-        slot = static_cast<uint8_t>(tile - 0x80);
-        is_block = ((block_mask >> slot) & 1u) != 0;
-    } else if (sprite && tile <= 0x0F) {
-        slot = tile;
-        is_block = ((sprite_mask >> slot) & 1u) != 0;
-    }
-    if (is_block) {
-        const uint32_t c = kPieceColors[slot % kPieceColors.size()];
-        // classic block bevel inside each 8x8 cell
-        const uint32_t cx = x & 7;
-        const uint32_t cy = y & 7;
-        if (cx == 0 || cy == 0) {
-            return lighten_rgb(c, 4, 9);
-        }
-        if (cx == 7 || cy == 7) {
-            return scale_rgb(c, 5, 9);
-        }
-        return c;
-    }
-    switch (shade & 0x3u) {
-    case 1:
-        return 0xFF4C4C55u;
-    case 2:
-        return 0xFF9C9CA8u;
-    default:
-        return kWhite;
-    }
-}
-
 // four argb entries per shade, the way a game boy color palette works
 using Palette4 = std::array<uint32_t, 4>;
 
 // shade 0 is black and shade 3 white here, and the games set bgp to identity
 inline constexpr Palette4 kGrayShades = {kBlack, 0xFF4C4C55u, 0xFF9C9CA8u, kWhite};
+
+// the fallback look: any dmg rom the frontend has no colorizer for renders as the plain ramp
+inline uint32_t colorize(uint8_t shade) {
+    return kGrayShades[shade & 0x3u];
+}
 
 // both games draw their popup bands from an inverted copy of the font parked at 0x60,
 // which flips shade 0 and 3: white strokes on a dark card

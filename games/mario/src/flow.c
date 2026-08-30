@@ -130,8 +130,10 @@ void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED {
 }
 
 void flow_enter_sub_area(uint8_t index) BANKED {
-    terrain_init(index);
+    // block/coin state must point at this room before the ring paints it, or the coin blocks paint
+    // from their raw compiled kind (always full) and stay visible even for coins already taken
     blocks_enter_area(index);
+    terrain_init(index);
     enemies_enter_area(index);
     player_place(0U, (uint8_t)level_sub->start_row);
     camera_init(player_x(), player_feet());
@@ -141,8 +143,8 @@ void flow_leave_sub_area(void) BANKED {
     const uint16_t column = level_sub->return_column;
     const uint8_t top_row = level_sub->return_top_row;
 
-    terrain_init(kAreaMain);
     blocks_enter_area(kAreaMain);
+    terrain_init(kAreaMain);
     enemies_enter_area(kAreaMain);
     player_begin_pipe_up(column, top_row);
     // the camera is framed on where he ends up standing, not on the shaft he is still climbing out of

@@ -33,7 +33,7 @@ static uint8_t text_len(const char* text) {
 }
 
 // putchar, not printf: the format parser costs about 1.3kb that two fixed strings do not need
-static void print_centered(uint8_t y, const char* text) {
+void card_print_centered(uint8_t y, const char* text) {
     uint8_t i;
 
     gotoxy((uint8_t)((kScreenCols - text_len(text)) / 2U), y);
@@ -44,7 +44,7 @@ static void print_centered(uint8_t y, const char* text) {
 
 // tags `rows` consecutive whole bg rows starting at y0 with one cgb palette; vram bank 1 holds the
 // attribute map. every banner uses this so the tinted band is never just the glyph height
-static void paint_band(uint8_t y0, uint8_t rows, uint8_t palette) {
+void card_paint_band(uint8_t y0, uint8_t rows, uint8_t palette) {
     uint8_t x;
     uint8_t r;
     for (x = 0; x < kScreenCols; ++x) {
@@ -66,7 +66,7 @@ static void load_palettes(void) {
 }
 
 // wipes the whole ring back to blank sky cells; coming back from a level leaves terrain in it
-static void clear_map(void) {
+void card_clear_map(void) {
     uint8_t y;
     uint8_t x;
 
@@ -85,7 +85,7 @@ static void clear_map(void) {
 }
 
 // one label followed by `digits` decimal digits, the pair centered across the 20 columns together
-static void print_value(uint8_t y, const char* label, uint16_t value, uint8_t digits, uint8_t trailing) {
+void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digits, uint8_t trailing) {
     uint8_t out[6];
     uint8_t i;
     const uint8_t len = (uint8_t)(text_len(label) + digits + trailing);
@@ -108,58 +108,44 @@ static void print_value(uint8_t y, const char* label, uint16_t value, uint8_t di
 // every card opens the same way: a blank sky map, the wordmark palette banded around its heading
 // row - one padding row above the text, one below, so there is banner-colored space around the
 // letters instead of a band exactly as tall as they are
-static void begin_card(uint8_t heading_row) {
+void card_begin(uint8_t heading_row) {
     DISPLAY_OFF;
     HIDE_SPRITES;
     SCX_REG = 0;
     SCY_REG = 0;
     load_palettes();
-    clear_map();
-    paint_band((uint8_t)(heading_row - 1U), kBannerRows, kPalWordmark);
+    card_clear_map();
+    card_paint_band((uint8_t)(heading_row - 1U), kBannerRows, kPalWordmark);
     font_color(kFontFore, kFontBack);
 }
 
-static void end_card(void) {
+void card_end(void) {
     SHOW_BKG;
     DISPLAY_ON;
 }
 
 // the whole map is rewritten here, far more vram traffic than a vblank holds, so the lcd is off
-static void title_show(uint8_t has_continue, uint8_t entry) {
-    begin_card(kTitleRow);
+static void title_show(void) {
+    card_begin(kTitleRow);
     // "!" pads the wordmark to an even glyph span so it lands pixel-centered
-    print_centered(kTitleRow, "MARIO!");
-    if (has_continue == 0U) {
-        // one line, banded the same way every other banner is: a padding row above and below
-        paint_band((uint8_t)(kPromptRow - 1U), kBannerRows, kPalAccent);
-        print_centered(kPromptRow, "SPACE TO START");
-    } else {
-        // the prompt row keeps saying what start does, unbanded; the accent band wraps just the
-        // two menu entries under it plus a padding row above and below them
-        print_centered(kPromptRow, "START TO BEGIN");
-        paint_band((uint8_t)(kPromptRow + 1U), (uint8_t)(kBannerRows + 1U), kPalAccent);
-        print_centered((uint8_t)(kPromptRow + 2U),
-                       entry == (uint8_t)kMenuNewGame ? ">NEW GAME" : " NEW GAME");
-        print_centered((uint8_t)(kPromptRow + 3U),
-                       entry == (uint8_t)kMenuContinue ? ">CONTINUE" : " CONTINUE");
-        print_centered((uint8_t)(kPromptRow + 5U), "UP DOWN PICKS");
-    }
-    end_card();
+    card_print_centered(kTitleRow, "MARIO!");
+    // one line, banded the same way every other banner is: a padding row above and below. m19's
+    // file select is what start opens now, so the card no longer carries a menu of its own
+    card_paint_band((uint8_t)(kPromptRow - 1U), kBannerRows, kPalAccent);
+    card_print_centered(kPromptRow, "SPACE TO START");
+    card_end();
 }
-
-// which entry is lit, and whether the battery slot puts a second one on the card at all
-static uint8_t menu_entry;
-static uint8_t menu_continue;
 
 void title_reset(void) BANKED {
-    menu_continue = save_has_progress();
-    menu_entry = kMenuNewGame;
-    title_show(menu_continue, menu_entry);
+    title_show();
 }
 
-// every way into a level goes through here, so the labs and the menu arm the same run
-static uint8_t start_run(uint8_t* level, uint8_t entry, uint8_t lab, uint8_t short_timer) {
-    *level = flow_begin_run(entry, *level);
+// every debug way into a level goes through here, so both labs and the level select arm the same
+// run. a player's own way in is the file select and the world map, which do this themselves
+static uint8_t start_run(uint8_t* level, uint8_t lab, uint8_t short_timer) {
+    // a debug run belongs to no file, so nothing it clears can be recorded over a real save
+    save_select(kSaveNoSlot);
+    *level = flow_begin_run(*level);
     hud_set_short_timer(short_timer);
     enemies_set_lab(lab);
     blocks_set_lab(lab);
@@ -167,29 +153,32 @@ static uint8_t start_run(uint8_t* level, uint8_t entry, uint8_t lab, uint8_t sho
 }
 
 uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
-    // start and a both begin a normal run: the frontend maps space to a, and space is the
+    // start and a both open the file select: the frontend maps space to a, and space is the
     // advertised start key, so a must never land in a lab
     if ((pressed & (J_START | J_A)) != 0U) {
-        return start_run(level, menu_entry, 0, 0);
+        return kTitleFile;
     }
     if ((pressed & J_SELECT) != 0U) {
 #if kTimerLab
         // select with down held: the timer lab, a countdown short enough to watch run out
         // (down is the modifier because pressing it does nothing a player would mind)
         if ((joypad() & J_DOWN) != 0U) {
-            return start_run(level, kMenuNewGame, 0, 1);
+            return start_run(level, 0, 1);
+        }
+#endif
+#if kLevelSelect
+        // select with up held: straight into the selected level, past the file select and the map.
+        // the map locks every node past a file's furthest, so this is the only way a probe can
+        // reach 1-4 without clearing the three levels ahead of it; see kLevelSelect in mario.h
+        if ((joypad() & J_UP) != 0U) {
+            return start_run(level, 0, 0);
         }
 #endif
 #if kEnemyLab
         // select alone: the same level, seeded with the lab's denser roster and its second
         // dispenser; see kEnemyLab
-        return start_run(level, kMenuNewGame, 1, 0);
+        return start_run(level, 1, 0);
 #endif
-    }
-    if (menu_continue != 0U && (pressed & (J_UP | J_DOWN)) != 0U) {
-        menu_entry = (uint8_t)(menu_entry == (uint8_t)kMenuNewGame ? kMenuContinue : kMenuNewGame);
-        title_show(menu_continue, menu_entry);
-        return kTitleStay;
     }
 #if kLevelSelect
     // step through world one before starting: see kLevelSelect in mario.h
@@ -209,36 +198,36 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
 }
 
 void card_pause(uint8_t level) BANKED {
-    begin_card(kPauseRow);
-    print_centered(kPauseRow, "PAUSED");
+    card_begin(kPauseRow);
+    card_print_centered(kPauseRow, "PAUSED");
     // systems.md: smbd's small screen moves the lives and the level name onto this card
-    print_value((uint8_t)(kPauseRow + 2U), "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
-    print_value((uint8_t)(kPauseRow + 4U), "SCORE ", hud_score, 5, 1);
-    print_value((uint8_t)(kPauseRow + 6U), "LIVES ", hud_lives, 2, 0);
-    print_centered((uint8_t)(kPauseRow + 9U), "START RESUMES");
-    end_card();
+    card_print_value((uint8_t)(kPauseRow + 2U), "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
+    card_print_value((uint8_t)(kPauseRow + 4U), "SCORE ", hud_score, 5, 1);
+    card_print_value((uint8_t)(kPauseRow + 6U), "LIVES ", hud_lives, 2, 0);
+    card_print_centered((uint8_t)(kPauseRow + 9U), "START RESUMES");
+    card_end();
 }
 
 void card_game_over(void) {
-    begin_card(kTitleRow);
-    print_centered(kTitleRow, "GAME OVER");
-    print_value((uint8_t)(kTitleRow + 3U), "SCORE ", hud_score, 5, 1);
-    end_card();
+    card_begin(kTitleRow);
+    card_print_centered(kTitleRow, "GAME OVER");
+    card_print_value((uint8_t)(kTitleRow + 3U), "SCORE ", hud_score, 5, 1);
+    card_end();
 }
 
 // the clear card's score line moves every frame while the countdown converts, so the two are split:
 // this paints the whole card once with the lcd off
 void card_clear(void) {
-    begin_card(kTitleRow);
-    print_centered(kTitleRow, "COURSE CLEAR");
+    card_begin(kTitleRow);
+    card_print_centered(kTitleRow, "COURSE CLEAR");
     card_clear_refresh();
-    end_card();
+    card_end();
 }
 
 // ...and this rewrites the two lines that move, which is twenty cells inside one vblank
 void card_clear_refresh(void) {
-    print_value((uint8_t)(kTitleRow + 3U), "TIME ", hud_time, 3, 0);
-    print_value((uint8_t)(kTitleRow + 5U), "SCORE ", hud_score, 5, 1);
+    card_print_value((uint8_t)(kTitleRow + 3U), "TIME ", hud_time, 3, 0);
+    card_print_value((uint8_t)(kTitleRow + 5U), "SCORE ", hud_score, 5, 1);
 }
 
 #if kDebugCamera

@@ -3,19 +3,30 @@
 
 #include <gb/gb.h>
 
-// paints the cgb title card with the lcd off, rereading the battery slot first: progress in it
-// turns the prompt into the two-entry menu up and down move between. banked: it runs at boot and
-// after the last level, never inside a frame of play
+// paints the cgb title card with the lcd off. m19 moved the new-game/continue menu off it: the
+// three-slot SELECT FILE screen behind start subsumes both entries, so the card is the wordmark
+// and one prompt again. banked: it runs at boot and after a game over, never inside a frame of play
 void title_reset(void) BANKED;
 
-// what one title frame decided; the game loop owns the lcd-off level load either answer needs
+// what one title frame decided; the game loop owns the lcd-off paint or level load each answer needs
 #define kTitleStay 0U
 #define kTitlePlay 1U
 #define kTitleCamera 2U
+#define kTitleFile 3U
 
-// one frame of the menu, the level select and the two labs. every entry it takes arms the run and
-// writes the level to load through `level`, so the loop is left with nothing but the load
+// one frame of the title, the level select and the labs. start/a asks for the file select; the
+// debug entries arm a run outright and write the level to load through `level`
 uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED;
+
+// title.c's card machinery, shared with mapscreen.c. both live in bank 5, so none of these needs a
+// trampoline - and none may be called from another bank, because a `const char*` argument would
+// point into the caller's own banked rodata and read as whatever bank 5 has at that address
+void card_begin(uint8_t heading_row);
+void card_end(void);
+void card_clear_map(void);
+void card_paint_band(uint8_t y0, uint8_t rows, uint8_t palette);
+void card_print_centered(uint8_t y, const char* text);
+void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digits, uint8_t trailing);
 
 // the between-states cards, all painted the same lcd-off way the title is: everything freezes
 // while one is up, so the bg map is theirs to overwrite and flow_resume_from_card puts it back

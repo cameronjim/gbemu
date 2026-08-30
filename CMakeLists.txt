@@ -248,6 +248,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/mapscreen.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/flow.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hud.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/save.c
@@ -265,6 +266,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/powerup.c games/mario/src/powerup.h
                     games/mario/src/hazards.c games/mario/src/hazards.h
                     games/mario/src/title.c games/mario/src/title.h
+                    games/mario/src/mapscreen.c games/mario/src/mapscreen.h
                     games/mario/src/flow.c games/mario/src/flow.h
                     games/mario/src/hud.c games/mario/src/hud.h
                     games/mario/src/save.c games/mario/src/save.h

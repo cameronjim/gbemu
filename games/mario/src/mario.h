@@ -609,10 +609,11 @@
 #define kPalHudCoin kPalCoin
 #define kPalHudTime kPalStar
 
-// the countdown. the bible's own cadence, pinned in the milestone doc since m4: one tick every 24
-// frames, from the level json's timer field. hurrying up is music, which is m10's, so a low timer
-// changes nothing but the digits until it reaches zero, which kills him
-#define kTimerFramesPerTick 24U
+// the countdown. the bible pins one tick every 24 frames, but that reads as a broken clock, so
+// ours ticks once per real second (60 frames), from the level json's timer field. hurrying up is
+// music, which is m10's, so a low timer changes nothing but the digits until it reaches zero,
+// which kills him
+#define kTimerFramesPerTick 60U
 #define kTimerMax 999U
 // the coin counter rolls over rather than resets, and the life it pays is smb's own rule
 #define kCoinsMax 99U
@@ -673,9 +674,10 @@
 #define kLevelSelect 1
 #endif
 
-// the timer lab: a from the title starts the selected level with a countdown of kShortTimerTicks
-// instead of the bible's. a real 400 is 9600 frames of idling for one probe, which is minutes of
-// host emulation. define this to 0 to drop it
+// the timer lab: select with down held from the title starts the selected level with a countdown
+// of kShortTimerTicks instead of the level's own. a real 400 is 24000 frames of idling for one
+// probe, which is minutes of host emulation. plain a is off limits here: the frontend maps the
+// space bar to a, and space is the advertised start key. define this to 0 to drop it
 #ifndef kTimerLab
 #define kTimerLab 1
 #endif

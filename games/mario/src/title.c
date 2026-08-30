@@ -167,21 +167,25 @@ static uint8_t start_run(uint8_t* level, uint8_t entry, uint8_t lab, uint8_t sho
 }
 
 uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
-    if ((pressed & J_START) != 0U) {
+    // start and a both begin a normal run: the frontend maps space to a, and space is the
+    // advertised start key, so a must never land in a lab
+    if ((pressed & (J_START | J_A)) != 0U) {
         return start_run(level, menu_entry, 0, 0);
     }
-#if kEnemyLab
-    // the same level, seeded with the lab's denser roster and its second dispenser; see kEnemyLab
     if ((pressed & J_SELECT) != 0U) {
-        return start_run(level, kMenuNewGame, 1, 0);
-    }
-#endif
 #if kTimerLab
-    // and again with a countdown short enough to watch run out; see kTimerLab
-    if ((pressed & J_A) != 0U) {
-        return start_run(level, kMenuNewGame, 0, 1);
-    }
+        // select with down held: the timer lab, a countdown short enough to watch run out
+        // (down is the modifier because pressing it does nothing a player would mind)
+        if ((joypad() & J_DOWN) != 0U) {
+            return start_run(level, kMenuNewGame, 0, 1);
+        }
 #endif
+#if kEnemyLab
+        // select alone: the same level, seeded with the lab's denser roster and its second
+        // dispenser; see kEnemyLab
+        return start_run(level, kMenuNewGame, 1, 0);
+#endif
+    }
     if (menu_continue != 0U && (pressed & (J_UP | J_DOWN)) != 0U) {
         menu_entry = (uint8_t)(menu_entry == (uint8_t)kMenuNewGame ? kMenuContinue : kMenuNewGame);
         title_show(menu_continue, menu_entry);

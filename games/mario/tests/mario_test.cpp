@@ -6009,7 +6009,7 @@ constexpr int kShortTimerTicks = 70;
 constexpr int kStartLives = 3;
 // how long a is held at the pole to clear its top row entirely, which is what misses the contact
 constexpr int kFlagClearHold = 12;
-constexpr int kTimerFramesPerTick = 24;
+constexpr int kTimerFramesPerTick = 60;
 // the kContent* contract again, for the one entry the earlier mirrors did not need
 constexpr uint8_t kContentOneup = 4;
 
@@ -6074,11 +6074,15 @@ bool on_card(const gb::Gameboy& gameboy) {
     return sky_color(gameboy) == kSkyTitle;
 }
 
-// the timer lab, kTimerLab in mario.h: a from the title starts the selected level with a countdown
-// short enough to watch run out. a real 400 is 9600 frames of idling for one probe
+// the timer lab, kTimerLab in mario.h: select with down held from the title starts the selected
+// level with a countdown short enough to watch run out. a real 400 is 24000 frames of idling for
+// one probe
 void enter_timer_lab(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
-    press(gameboy, gb::Button::A, 2);
+    gameboy.set_button(gb::Button::Down, true);
+    run(gameboy, 2);
+    press(gameboy, gb::Button::Select, 2);
+    gameboy.set_button(gb::Button::Down, false);
     for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
     }

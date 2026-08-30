@@ -72,6 +72,7 @@ def write_header(gen_dir, levels, bank):
         f.write("    uint8_t kind;\n")
         f.write("    uint8_t bank;\n")
         f.write("    uint16_t columns;\n")
+        f.write("    uint8_t start_column;\n")
         f.write("    uint8_t start_row;\n")
         f.write("    uint8_t exit_column;\n")
         f.write("    uint8_t exit_top_row;\n")
@@ -142,8 +143,9 @@ def write_table(gen_dir, levels, bank):
             f.write("static const AreaInfo k%sAreas[%s_AREA_COUNT] = {\n" % (to_camel(slug), upper))
             for i in range(d[upper + "_AREA_COUNT"]):
                 name = "%s_AREA%d" % (upper, i)
-                f.write("    {%s_KIND, %s_BANK, %s_COLUMNS, %s_START_ROW, %s_EXIT_COLUMN,\n"
+                f.write("    {%s_KIND, %s_BANK, %s_COLUMNS, %s_START_COLUMN, %s_START_ROW,\n"
                         % (name, name, name, name, name))
+                f.write("     %s_EXIT_COLUMN,\n" % name)
                 f.write("     %s_EXIT_TOP_ROW, %s_RETURN_COLUMN, %s_RETURN_TOP_ROW, %s_COIN_COUNT,\n"
                         % (name, name, name, name))
                 f.write("     %s_WARP_COUNT, (const uint8_t*)%s_area%d_blocks, %s_area%d_coin_column,\n"
@@ -191,7 +193,8 @@ def write_host(gen_dir, levels):
         f.write("    const uint8_t (*grid)[kHostLevelRows];\n")
         f.write("    const LevelWarp* warps;\n    int warp_count;\n")
         f.write("    int exit_column;\n    int exit_top_row;\n");
-        f.write("    int return_column;\n    int return_top_row;\n};\n\n")
+        f.write("    int return_column;\n    int return_top_row;\n")
+        f.write("    int start_column;\n    int start_row;\n};\n\n")
         f.write("struct HostLevel {\n")
         f.write("    int type;\n    int timer;\n    int columns;\n    int start_column;\n    int start_row;\n")
         f.write("    int has_flag;\n    int flag_column;\n    int flag_top_row;\n    int flag_base_row;\n")
@@ -227,8 +230,10 @@ def write_host(gen_dir, levels):
                 name = "%s_AREA%d" % (upper, i)
                 rows.append(
                     "    {%d, %s_KIND, %s_COLUMNS, k%sArea%dGrid, k%sArea%dWarps, k%sArea%dWarpCount,\n"
-                    "     %s_EXIT_COLUMN, %s_EXIT_TOP_ROW, %s_RETURN_COLUMN, %s_RETURN_TOP_ROW},\n"
-                    % (index, name, name, camel, i, camel, i, camel, i, name, name, name, name))
+                    "     %s_EXIT_COLUMN, %s_EXIT_TOP_ROW, %s_RETURN_COLUMN, %s_RETURN_TOP_ROW,\n"
+                    "     %s_START_COLUMN, %s_START_ROW},\n"
+                    % (index, name, name, camel, i, camel, i, camel, i, name, name, name, name,
+                       name, name))
         f.write("inline constexpr int kHostAreaCount = %d;\n" % max(1, len(rows)))
         f.write("inline constexpr HostArea kHostAreas[kHostAreaCount] = {\n")
         if rows:

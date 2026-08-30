@@ -345,6 +345,17 @@ def apply_pipe(grid, x, height):
         grid[x + 1][row] = BLOCK_PIPE_BODY_R
 
 
+def apply_stair_heights(grid, x0, heights):
+    # the measured form: one explicit block height per column, which is the only way to write smb's
+    # descending flights (4,3,2,1) and its flat-topped ones (1,2,3,4,4) without inventing a slope rule
+    for i, height in enumerate(heights):
+        col = x0 + i
+        if col < 0 or col >= len(grid):
+            continue
+        for row in range(GROUND_ROW - height, GROUND_ROW):
+            grid[col][row] = BLOCK_STAIR
+
+
 def apply_stairs(grid, x0, x1, step_height):
     # a positive step_height climbs one row per column up to its cap; a negative one is the bible's
     # descending castle opening, which starts |step_height| rows up and walks back down to the floor
@@ -571,7 +582,10 @@ def apply_decor(grid, bible):
 def compile_grid(bible, level_type):
     terrain = bible.get("terrain", [])
     has_islands = any(t["kind"] == "island" for t in terrain)
-    length_columns = feature_max_x(bible) + 1 + PAD_COLUMNS
+    # a bible that measured its own extent says so; anything else is still the last positioned
+    # feature plus the provisional padding below
+    stated = bible.get("length_columns")
+    length_columns = int(stated) if isinstance(stated, int) else feature_max_x(bible) + 1 + PAD_COLUMNS
     # an athletic level is islands over open air: only the runs the bible names are solid, so the
     # default ground is dropped and everything the level does not place is a pit
     grid = new_grid(length_columns, base_ground=not has_islands)
@@ -612,6 +626,13 @@ def compile_grid(bible, level_type):
             # out to the flag are the ground the pole and the walk-off need
             if has_islands:
                 apply_ground(grid, t["x0"], length_columns - 1)
+            if t.get("heights"):
+                heights = t["heights"]
+                apply_stair_heights(grid, t["x0"], heights)
+                probes.append((t["x0"], GROUND_ROW - heights[0], BLOCK_STAIR))
+                last = min(len(heights) - 1, t["x1"] - t["x0"])
+                probes.append((t["x0"] + last, GROUND_ROW - heights[last], BLOCK_STAIR))
+                continue
             apply_stairs(grid, t["x0"], t["x1"], t["step_height"])
             if t["step_height"] >= 0:
                 probes.append((t["x0"], GROUND_ROW - 1, BLOCK_STAIR))
@@ -697,7 +718,10 @@ def compile_grid(bible, level_type):
         probes.append((flag_col, FLAG_POLE_TOP_ROW - 1, BLOCK_FLAG_BALL))
         if flag_col > 0:
             probes.append((flag_col - 1, FLAG_POLE_TOP_ROW, BLOCK_FLAG_CLOTH))
-        castle = apply_castle(grid, flag_col + CASTLE_FLAG_GAP)
+        # a bible that measured the castle's own column places it there; otherwise it stands the
+        # default short walk past the pole
+        castle_x = (bible.get("castle_end") or {}).get("x")
+        castle = apply_castle(grid, castle_x if castle_x is not None else flag_col + CASTLE_FLAG_GAP)
         if castle is not None:
             probes.append(castle)
 
@@ -810,10 +834,73 @@ def warp_target(to_level, level_ids):
     return None
 
 
+def compile_measured_area(area, kind):
+    # the room transcribed cell by cell: the bible names its width, the brick runs that shape it,
+    # the pipes standing in it and every coin. nothing here is synthesised from a prose count
+    length_columns = int(area["columns"])
+    grid = new_grid(length_columns)
+    probes = [(0, GROUND_ROW, BLOCK_GROUND)]
+    exit_column = None
+    exit_top_row = GROUND_ROW - AREA_EXIT_PIPE_HEIGHT
+
+    for t in area.get("terrain", []):
+        if t["kind"] == "bricks":
+            x0, x1 = clamp_span(grid, t["x0"], t["x1"])
+            for column in range(x0, x1 + 1):
+                for row in range(t["y0"], t["y1"] + 1):
+                    grid[column][row] = BLOCK_BRICK
+            probes.append((x0, t["y0"], BLOCK_BRICK))
+            probes.append((x1, t["y1"], BLOCK_BRICK))
+        elif t["kind"] == "pipe":
+            apply_pipe(grid, t["x"], t["height"])
+            top_row = GROUND_ROW - t["height"]
+            probes.append((t["x"], top_row, BLOCK_PIPE_TL))
+            probes.append((t["x"] + 1, top_row, BLOCK_PIPE_TR))
+            if t.get("dest") == "overworld":
+                exit_column = t["x"]
+                exit_top_row = top_row
+
+    for b in area.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        apply_block(grid, b["x"], b["y"], b["kind"])
+        probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    coin_cells = []
+    for c in area.get("coins", []):
+        column, row = c["x"], c["y"]
+        if 0 <= column < length_columns and grid[column][row] == BLOCK_EMPTY:
+            grid[column][row] = BLOCK_COIN
+            coin_cells.append((column, row))
+    if coin_cells:
+        probes.append((coin_cells[0][0], coin_cells[0][1], BLOCK_COIN))
+        probes.append((coin_cells[-1][0], coin_cells[-1][1], BLOCK_COIN))
+
+    if exit_column is None:
+        exit_column = length_columns - 2
+    settle_ground(grid, probes)
+
+    start_column = int((area.get("start") or {}).get("x", 0))
+    return {
+        "kind": kind,
+        "grid": grid,
+        "columns": length_columns,
+        "coins": coin_cells,
+        "warps": [],
+        "exit_column": exit_column,
+        "exit_top_row": exit_top_row,
+        "start_column": start_column,
+        "start_row": surface_row(grid, start_column),
+        "probes": probes,
+    }
+
+
 def compile_area(area, bible, level_ids):
     kind = AREA_KIND_MAP.get(area.get("kind"), AREA_BONUS)
     if kind == AREA_WARP:
         return compile_warp_area(area, bible, level_ids)
+    if area.get("columns") is not None:
+        return compile_measured_area(area, kind)
 
     coins = area_coin_count(area)
     exit_column = AREA_FIRST_COIN_COLUMN + coins + AREA_EXIT_GAP_COLUMNS
@@ -852,6 +939,8 @@ def compile_area(area, bible, level_ids):
         "warps": [],
         "exit_column": exit_column,
         "exit_top_row": exit_top_row,
+        "start_column": 0,
+        "start_row": GROUND_ROW,
         "probes": probes,
     }
 
@@ -892,6 +981,8 @@ def compile_warp_area(area, bible, level_ids):
         "warps": cells,
         "exit_column": exit_column,
         "exit_top_row": GROUND_ROW - AREA_WARP_PIPE_HEIGHT,
+        "start_column": 0,
+        "start_row": GROUND_ROW,
         "probes": probes,
     }
 
@@ -982,8 +1073,8 @@ def write_header(out_dir, slug, level, source_path):
             f.write("#define %s_KIND %dU\n" % (name, area["kind"]))
             f.write("#define %s_COLUMNS %dU\n" % (name, area["columns"]))
             f.write("#define %s_BANK %dU\n" % (name, level["area_bank"]))
-            f.write("#define %s_START_COLUMN 0U\n" % name)
-            f.write("#define %s_START_ROW %dU\n" % (name, GROUND_ROW))
+            f.write("#define %s_START_COLUMN %dU\n" % (name, area["start_column"]))
+            f.write("#define %s_START_ROW %dU\n" % (name, area["start_row"]))
             f.write("#define %s_EXIT_COLUMN %dU\n" % (name, area["exit_column"]))
             f.write("#define %s_EXIT_TOP_ROW %dU\n" % (name, area["exit_top_row"]))
             f.write("#define %s_RETURN_COLUMN %dU\n" % (name, area["return_column"]))

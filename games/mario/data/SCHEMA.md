@@ -2,6 +2,11 @@
 
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
+**1-1 is measured.** its terrain, blocks, enemies, decor, flagpole, castle and bonus room were
+extracted pixel by pixel from the official nes 1-1 map image and carry
+`"confidence": "measured"`; see "measured levels" below. everything written about
+sequence-derived positions applies to 1-2, 1-3 and 1-4 only.
+
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
 pixel-by-pixel off the rom. a later pass must verify every coordinate against the actual
@@ -87,7 +92,8 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
     {"kind": "ground", "x0": 0, "x1": 20, "confidence": "..."},
     {"kind": "gap", "x0": 68, "x1": 70, "confidence": "..."},
     {"kind": "pipe", "x": 28, "height": 2, "dest": "bonus_room|overworld|null", "confidence": "..."},
-    {"kind": "stairs", "x0": 150, "x1": 158, "step_height": 8, "confidence": "..."},
+    {"kind": "stairs", "x0": 150, "x1": 158, "step_height": 8,
+     "heights": [1, 2, 3, 4, 5, 6, 7, 8, 8], "confidence": "..."},
     {"kind": "elevation", "x0": .., "x1": .., "y": .., "confidence": "..."}
   ],
   "blocks": [
@@ -101,7 +107,12 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
   ],
   "areas": [
     {"id": "bonus-1", "kind": "bonus_room|underground|warp_zone", "entry_x": .., "exit": "...",
-     "terrain": [...], "blocks": [...], "notes": "..."}
+     "columns": 18, "start": {"x": 2, "y": 13},
+     "terrain": [
+       {"kind": "bricks", "x0": 0, "x1": 0, "y0": 2, "y1": 12, "confidence": "..."},
+       {"kind": "pipe", "x": 13, "height": 2, "dest": "overworld", "confidence": "..."}
+     ],
+     "blocks": [...], "coins": [{"x": 5, "y": 5}, ...], "notes": "..."}
   ],
   "decor": [
     {"kind": "big_hill",   "x": 0,  "confidence": "..."},
@@ -134,9 +145,44 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
 - `enemies.kind`: `goomba`, `koopa_green`, `koopa_red`, `koopa_para_green`, `koopa_para_red`,
   `piranha`, `firebar`, `bowser_fake`, `lift_horizontal`, `lift_vertical`
-- `confidence`: `sourced` (fact came directly from cited text), `approx` (position is
-  sequence-derived, see above; or a count/detail is a reasonable paraphrase of source
-  text), `unknown` (no source data at all — placeholder only)
+- `confidence`: `measured` (the coordinate was extracted from a map image pixel by pixel —
+  see "measured levels" below), `sourced` (fact came directly from cited text), `approx`
+  (position is sequence-derived, see above; or a count/detail is a reasonable paraphrase of
+  source text), `unknown` (no source data at all — placeholder only)
+
+## measured levels
+
+1-1 is no longer sequence-derived. every terrain run, block, enemy, decor shape, the flagpole
+and the castle were extracted from the official nes 1-1 map image by classifying each 16x16
+cell against a tile sheet cut from the same image, and carry `"confidence": "measured"`. the
+fields a measured level uses that a prose-derived one does not:
+
+- `length_columns` is honoured rather than derived. when it is an integer the compiler builds
+  exactly that many columns; when it is null the length is still the last positioned feature
+  plus the compiler's own padding. it must not exceed the grid the engine allocates
+  (`LEVEL_GRID_COLUMNS` in the generated levels.h, sized by the longest level).
+- `terrain.stairs.heights` is an optional array of one block height per column, left to right.
+  it is the only way to write a descending flight or a flat-topped one; `step_height` stays
+  beside it as the shape's nominal height and is what a bible without `heights` still uses.
+- `castle_end.x` places the castle's left column. without it the castle stands a fixed short
+  walk past the flagpole, which is what the other three levels still do.
+
+## measured sub-areas
+
+an `areas` entry that carries `columns` is laid out cell by cell instead of being synthesised
+from a coin count in its prose. such an entry uses:
+
+- `columns`: the room's width. the room always has the same 15 rows and the same two ground
+  rows at the bottom as a level does.
+- `start`: the cell the pipe drops the player onto. it is compiled into the area's
+  `START_COLUMN`/`START_ROW` and is where `flow_enter_sub_area` places him, so a room with a
+  wall down its left edge starts him past the wall rather than inside it.
+- `terrain[].kind = "bricks"`: a solid rectangle of brick from (`x0`,`y0`) to (`x1`,`y1`).
+- `terrain[].kind = "pipe"`: as in a level. the one carrying `"dest": "overworld"` is the
+  room's exit, and its column and cap row become the area's `EXIT_COLUMN`/`EXIT_TOP_ROW`.
+- `coins`: every collectible coin, one `{"x":..,"y":..}` per coin. an area without this key
+  falls back to the old behaviour, where the count is read out of the room's `notes` prose and
+  a flat row of coins is invented for it (which is what 1-2's bonus room still does).
 
 ## smbd-specific notes (apply to all 4 files)
 

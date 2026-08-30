@@ -32,7 +32,9 @@ void hud_split(uint16_t value, uint8_t* out, uint8_t count) {
 
     while (i != 0U) {
         uint16_t rest = value;
-        uint8_t digit = 0;
+        // the carry is the whole rest of the number, not one digit of it: a uint8_t here wrapped
+        // every score past 25600, which 1-1's full sixteen goombas plus its time bonus now clears
+        uint16_t digit = 0;
 
         while (rest >= 10U) {
             rest = (uint16_t)(rest - 10U);

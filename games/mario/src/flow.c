@@ -130,12 +130,18 @@ void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED {
 }
 
 void flow_enter_sub_area(uint8_t index) BANKED {
+    // the room's own AreaInfo has to be in ram before anything reads it: blocks_enter_area takes
+    // the coin table off level_sub, and level_sub is still null while the main level is loaded, so
+    // without this the room's coin list was whatever bytes sat at address zero - which is why none
+    // of the room's coins could be picked up. terrain_init below loads it again, with the lcd off
+    level_load(index);
     // block/coin state must point at this room before the ring paints it, or the coin blocks paint
     // from their raw compiled kind (always full) and stay visible even for coins already taken
     blocks_enter_area(index);
     terrain_init(index);
     enemies_enter_area(index);
-    player_place(0U, (uint8_t)level_sub->start_row);
+    // the room's own entry cell: 1-1's drops him past the brick wall down its left edge, not into it
+    player_place(level_sub->start_column, (uint8_t)level_sub->start_row);
     camera_init(player_x(), player_feet());
 }
 

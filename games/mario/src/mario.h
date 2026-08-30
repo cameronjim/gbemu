@@ -16,6 +16,40 @@
 // some breathing room above the bottom of the 18-row screen
 #define kPauseRow 4U
 
+// the SELECT FILE card (games/mario/src/mapscreen.c). its heading sits high because the three
+// slots each take two rows - the slot line and its score - and three hint lines close the screen
+#define kFileHeadRow 2U
+#define kFileFirstRow 5U
+#define kFileRowStep 3U
+#define kFileHintRow 14U
+// every slot line is padded to this many glyphs so the cursor column does not shift between a
+// "NEW" slot and a "WORLD 1-2" one
+#define kFileLineWidth 12U
+// the erase confirm is its own card over the same machinery
+#define kEraseRow 5U
+
+// the world one map (games/mario/src/mapscreen.c), a single static 20x18 screen = 10x9 blocks.
+// nothing scrolls, so every position here is a block cell
+#define kMapBlockCols 10U
+#define kMapBlockRows 9U
+// the four level nodes: columns 1, 3, 5 and 7, with the castle filling 8-9
+#define kMapNodeFirstCol 1U
+#define kMapNodeStepCol 2U
+// the marker block floats two rows above the ground; mario walks the row between them
+#define kMapMarkerRow 3U
+#define kMapWalkRow 5U
+#define kMapGroundRow 6U
+// a node step is kMapNodeStepCol blocks = 32 px, walked a pixel a frame: 32 frames, about half a
+// second, which is a walk rather than a teleport
+#define kMapWalkPx 1
+#define kMapWalkAnimFrames 8U
+// the map's own backdrop, the overworld sky lifted a shade so a host probe can name the screen the
+// same way kSkyRgb/kUndergroundRgb/kCastleRgb name a level type. it is written over color 0 of
+// every bg palette whose color 0 is kSkyRgb - seven of the eight - because a block's transparent
+// half is drawn out of its OWN palette, so recoloring the sky slot alone would leave a visible
+// rectangle of level-blue behind every hill, bush, cloud, marker and castle cell
+#define kMapSkyRgb RGB(8, 20, 31)
+
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f
 #define kFontFirstChar 0x20U
 #define kFontFirstTile 0x00U
@@ -361,6 +395,8 @@
 #define kSpriteFlameFirst 24U
 #define kSpriteBowser 30U
 #define kSpriteLiftFirst 32U
+// the hardware's whole oam, which the map screen parks every slot of before drawing its two
+#define kOamSlots 40U
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
@@ -663,21 +699,42 @@
 #define kClearCardFrames 90U
 #define kTimeBonusTicksPerFrame 8U
 
-// sram (games/mario/src/save.c), the crossy/flappy layout with mario's own magic. systems.md:
-// smbd saves per level, and the english build resets form and score on a reload - so the slot is
-// the furthest level reached plus the score standing when it was written, and a continue starts
-// that level small with a fresh three lives
+// sram (games/mario/src/save.c). the cart is MBC5+RAM+BATTERY with one 8 kb bank, so three slots
+// cost 32 of the 8192 bytes and no bank switching. layout:
+//
+//   0x00..0x03  magic "MAR2" - the 4th byte is the version, so a layout change is a magic change
+//   0x08..0x0f  slot 0: [0] in use, [1] furthest level, [2..3] score, [4..7] reserved
+//   0x10..0x17  slot 1
+//   0x18..0x1f  slot 2
+//
+// systems.md: smbd saves per level, and the english build resets form and score on a reload - so a
+// slot carries the furthest level reached plus the score standing when it was written, and picking
+// the file starts that level small with a fresh three lives.
+//
+// "furthest" is the highest UNLOCKED node, 0..kLevelCount: node i is cleared when i < furthest and
+// still to do when i == furthest, so clearing the last level leaves it at kLevelCount with every
+// node marked done. the map clamps it back to the last node when it places mario
 #define kSramBase 0xA000U
 #define kSaveMagic0 'M'
 #define kSaveMagic1 'A'
 #define kSaveMagic2 'R'
-#define kSaveMagic3 '1'
-#define kSaveLevelOffset 4U
-#define kSaveScoreOffset 5U
-
-// the title's two entries once a save exists; up and down move between them
-#define kMenuNewGame 0U
-#define kMenuContinue 1U
+#define kSaveMagic3 '2'
+#define kSaveSlots 3U
+#define kSaveSlotBase 8U
+#define kSaveSlotStride 8U
+#define kSaveSlotUsedOffset 0U
+#define kSaveSlotLevelOffset 1U
+#define kSaveSlotScoreOffset 2U
+#define kSaveBytes (kSaveSlotBase + kSaveSlots * kSaveSlotStride) // 32
+// the one-slot layout that shipped before this: magic "MAR1", then the furthest level and the
+// score at 4 and 5. save_init migrates it into slot 1 rather than discarding it - the two fields
+// mean exactly what they still mean, so there is nothing to guess, and a player who had progress
+// keeps it. the level byte's old meaning was also "furthest unlocked", so it carries over as is
+#define kSaveLegacyMagic3 '1'
+#define kSaveLegacyLevelOffset 4U
+#define kSaveLegacyScoreOffset 5U
+// no file picked: a debug/lab run records nothing, so a lab clear cannot invent a save
+#define kSaveNoSlot 0xFFU
 
 // the m2 debug camera (no player, free d-pad scroll) still ships, entered with b from the title now
 // that select is the play camera's look-ahead. define this to 0 to drop the state from the rom

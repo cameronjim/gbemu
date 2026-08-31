@@ -222,24 +222,34 @@ static uint16_t map_x;
 // columns. every cell is landscape - no cell is left as the band's plain sky-blue backdrop, so no
 // sky shows between the black header and the path; the only blue in the strip is water. kBlockEmpty
 // is never used here any more (see below); every other value under kBlockKindCount is a kind the
-// level itself draws (reused straight through put_block); the two sentinels past it are this
-// screen's own new art, water and path, added by put_new_quad. row by row: a ridge of hill peaks
-// over a second, smaller mound, a pipe's lip and the castle's crenels, filling the strip's top edge
-// end to end; the hills' base, a bush and the pipe's body under the castle's window; the path mario
-// and the four markers stand on, running under the castle's door; and, below that, the hill
-// trailing into a pond, more path, and the castle's wall
+// level itself draws (reused straight through put_block); the four sentinels past it are this
+// screen's own new art added by put_new_quad/put_dome_quad - water and path, then the rounded
+// foliage that replaced the level's 45-degree hill slopes (see kTileMapDomeCapTop in assets.h): a
+// tall dome (cap over fill), a shorter standalone mound and a low grass edge, alternated rather
+// than repeated so no silhouette stamps twice in a row. row by row: two tall domes and a mound
+// between them, a pipe's lip and the castle's crenels, filling the strip's top edge end to end;
+// the domes' fill/base, a low grass tuft, a bush and the pipe's body under the castle's window;
+// the path mario and the four markers stand on, running under the castle's door; and, below that,
+// a small mound at the pond's bank, more path, and the castle's wall
 #define W (uint8_t)(kBlockKindCount)
 #define P (uint8_t)(kBlockKindCount + 1U)
+#define D (uint8_t)(kBlockKindCount + 2U) // dome cap (pairs with F directly below)
+#define F (uint8_t)(kBlockKindCount + 3U) // dome fill/base, meets the sand
+#define M (uint8_t)(kBlockKindCount + 4U) // small standalone mound
+#define G (uint8_t)(kBlockKindCount + 5U) // low grass edge, meets the sand, no dome above
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
-    {kBlockHillPeak, kBlockHillPeak, kBlockHillFill, kBlockHillSlopeL, kBlockHillPeak,
-     kBlockHillSlopeR, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
-    {kBlockHillSlopeL, kBlockHillFill, kBlockHillSlopeR, kBlockBushL, kBlockBushM, kBlockBushR,
-     kBlockPipeBodyL, kBlockPipeBodyR, kBlockCastleDoorTop, kBlockCastleWindow},
+    {D, M, D, M, D, M, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
+    {F, G, F, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR,
+     kBlockCastleDoorTop, kBlockCastleWindow},
     {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
-    {kBlockHillFill, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
+    {M, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
 };
 #undef W
 #undef P
+#undef D
+#undef F
+#undef M
+#undef G
 
 static uint8_t node_column(uint8_t node) {
     return (uint8_t)(kMapNodeFirstCol + node * kMapNodeStepCol);
@@ -297,7 +307,31 @@ static void put_new_quad(uint8_t bx, uint8_t by, uint8_t top, uint8_t body, uint
     set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attrp);
 }
 
+// the same 16x16 shape again, for the map's foliage kinds: unlike put_new_quad's water/path (the
+// same tile stamped at both left and right), a dome's silhouette is not left-right symmetric per
+// tile, so the right half is the left tile mirrored with the cgb x-flip bit - the same trick a
+// mirrored hill slope or bush cap already uses for its other side
+static void put_dome_quad(uint8_t bx, uint8_t by, uint8_t top, uint8_t base, uint8_t attr) {
+    uint8_t tiles[2];
+    uint8_t attrp[2];
+    const uint8_t x = (uint8_t)(bx * kTilesPerBlock);
+    const uint8_t y = (uint8_t)(by * kTilesPerBlock);
+
+    attrp[0] = attr;
+    attrp[1] = (uint8_t)(attr | kCamAttrXFlip);
+    tiles[0] = top;
+    tiles[1] = top;
+    set_bkg_tiles(x, y, 2, 1, tiles);
+    set_bkg_attributes(x, y, 2, 1, attrp);
+    tiles[0] = base;
+    tiles[1] = base;
+    set_bkg_tiles(x, (uint8_t)(y + 1U), 2, 1, tiles);
+    set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attrp);
+}
+
 static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
+    const uint8_t foliage_attr = (uint8_t)(kCamPalPipe | kCamAttrVram1);
+
     if (kind == (uint8_t)kBlockEmpty) {
         return; // the band paint underneath is already this cell's answer
     }
@@ -306,9 +340,17 @@ static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
     } else if (kind == (uint8_t)kBlockKindCount) {
         put_new_quad(bx, by, kTileMapWaterTop, kTileMapWaterBody,
                      (uint8_t)(kCamPalNeutral | kCamAttrVram1));
-    } else {
+    } else if (kind == (uint8_t)(kBlockKindCount + 1U)) {
         put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody,
                      (uint8_t)(kCamPalCoin | kCamAttrVram1));
+    } else if (kind == (uint8_t)(kBlockKindCount + 2U)) {
+        put_dome_quad(bx, by, kTileMapDomeCapTop, kTileMapDomeCapBase, foliage_attr);
+    } else if (kind == (uint8_t)(kBlockKindCount + 3U)) {
+        put_dome_quad(bx, by, kTileMapDomeFillTop, kTileMapDomeFillBase, foliage_attr);
+    } else if (kind == (uint8_t)(kBlockKindCount + 4U)) {
+        put_dome_quad(bx, by, kTileMapMoundTop, kTileMapMoundBase, foliage_attr);
+    } else {
+        put_dome_quad(bx, by, kTileMapGrassEdgeTop, kTileMapGrassEdgeBase, foliage_attr);
     }
 }
 

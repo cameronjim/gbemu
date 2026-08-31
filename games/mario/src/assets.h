@@ -71,6 +71,19 @@ void assets_load_digit_tiles(void) BANKED;
 #define kTileMapListVEdge 0x67U
 #define kTileMapListCellEmpty 0x68U
 #define kTileMapListCellFilled 0x69U
+// the map strip's own foliage, replacing the level's 45-degree hill slopes with rounded overworld
+// clumps: a dome cap and the fill/base it sits on (each a top+base pair, the right half of the
+// 16x16 quad the mirror of the left the same way a hill peak's right slope is), a small standalone
+// mound and a low grass-tuft edge, both meeting the sand path with a scalloped fringe instead of a
+// ruled line. see put_dome_quad in mapscreen.c
+#define kTileMapDomeCapTop 0x6AU
+#define kTileMapDomeCapBase 0x6BU
+#define kTileMapDomeFillTop 0x6CU
+#define kTileMapDomeFillBase 0x6DU
+#define kTileMapMoundTop 0x6EU
+#define kTileMapMoundBase 0x6FU
+#define kTileMapGrassEdgeTop 0x70U
+#define kTileMapGrassEdgeBase 0x71U
 void assets_load_map_tiles(void) BANKED;
 
 // the map screen's own eight cgb bg palettes - a card screen, never up during play, so it does not

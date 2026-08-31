@@ -1161,47 +1161,40 @@ static const uint8_t kMapTiles[160] = {
     0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x00, 0x00,
 };
 
-// the map's own foliage (see kTileMapDomeCapTop in assets.h): rounded overworld clumps rather
-// than the level's 45-degree hill slopes. drawn with kCamPalPipe, the same slot the level's hills
-// and bushes already use on this screen - its four colors are exactly a dark green field (also
-// doubling as the underside shading), a light upper-left highlight, a mid green body and a black
+// the map's own foliage (see kTileMapHedgeTallTop in assets.h): a low hedge row - three
+// flat-topped mounds, each wider than it is tall, at three heights - rather than the level's
+// 45-degree hill slopes or the standing-clump first pass that still read as teardrop creatures.
+// drawn with kCamPalPipe, the same slot the level's hills and bushes already use on this screen -
+// its four colors are exactly a dark green field (also doubling as the underside shading and the
+// plain backdrop above the hedge line), a light upper-left highlight, a mid green body and a black
 // outline, so no new palette slot is needed. every "top"/"base" pair is the left half of a 16x16
 // quad; put_dome_quad gets the right half by x-flipping the same tile, the trick a mirrored hill
-// slope or bush cap already uses for its other side. the scattered lone '#' pixels off the outline
-// are the speckle detail every other map kind already carries; the ragged run near the bottom of
-// dome_fill_base, mound_base and grass_edge_base is the scalloped fringe that keeps the green/sand
-// line from reading as ruled
-static const uint8_t kFoliageTiles[128] = {
-    // dome cap top (big clump's rounded peak)
-    0x00, 0x00, 0x03, 0x02, 0x06, 0x05, 0x0C, 0x0B,
-    0x18, 0x17, 0x18, 0x17, 0x30, 0x2F, 0x30, 0x2F,
-    // dome cap base
-    0x60, 0x5F, 0x64, 0x5F, 0x60, 0x5F, 0x80, 0xBF,
-    0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBF,
-    // dome fill top (the clump's main body)
-    0xC0, 0xBF, 0xC0, 0xBF, 0xC8, 0xBF, 0xC0, 0xBF,
-    0x60, 0x5F, 0xC2, 0xBF, 0x80, 0xBF, 0x40, 0x5F,
-    // dome fill base (meets the sand with a scalloped fringe)
-    0x80, 0xBF, 0x40, 0x5F, 0x80, 0xBF, 0x20, 0x2F,
-    0x40, 0x5F, 0x10, 0x14, 0x20, 0x26, 0x08, 0x08,
-    // small mound top (a shorter standalone clump)
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x03, 0x02, 0x0C, 0x0B, 0x18, 0x17, 0x30, 0x2F,
-    // small mound base (meets the sand with its own fringe)
-    0x60, 0x5F, 0x68, 0x5F, 0xC0, 0xBF, 0xC0, 0xBF,
-    0xC0, 0xBF, 0x40, 0x5C, 0x00, 0x0C, 0x00, 0x02,
-    // grass edge top: low sparse blades, no dome above them
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x08, 0x00, 0x42, 0x00, 0x4A, 0x4A, 0x4A,
-    // grass edge base: an uneven tufted fringe over the sand line
-    0x00, 0x4A, 0xCA, 0xDB, 0x11, 0x95, 0x04, 0x36,
-    0x40, 0x62, 0x08, 0x88, 0x00, 0x00, 0x00, 0x00,
+// slope or bush cap already uses for its other side. each mound's silhouette widens fast off the
+// flat top - never a single-pixel peak - then holds a level plateau before the ragged run near the
+// bottom of every base tile breaks the green/sand line into a scalloped fringe instead of a ruled
+// one. field fill is a plain, shapeless tile, stamped unmirrored at both quad halves the way
+// put_new_quad already stamps water and path
+static const uint8_t kFoliageTiles[112] = {
+    // hedge tall top: field above, the mound's flat-wide crown emerging low in the tile
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x17, 0x60, 0x5F, 0xC0, 0xBF, 0xC0, 0xBF,
+    // hedge tall base: full body, scalloped where it meets the sand
+    0xC0, 0xBF, 0xC0, 0xBF, 0xC0, 0xBF, 0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBD, 0x80, 0xA7, 0x80, 0x99,
+    // hedge medium top: mostly field, the crown only just emerging at the very bottom
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x17,
+    // hedge medium base: full body, a shorter mound overall than tall
+    0x40, 0x5F, 0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBF, 0x80, 0xBD, 0x80, 0xA7, 0x80, 0x99,
+    // hedge low top: all field, this mound never reaches the upper tile
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // hedge low base: the shortest mound, crown and scalloped fringe both inside one tile
+    0x00, 0x00, 0x00, 0x00, 0x10, 0x17, 0x40, 0x5F, 0x80, 0xBF, 0x80, 0xBD, 0x80, 0xA7, 0x80, 0x99,
+    // field fill: flat, no shape, doubles as the plain dark backdrop above the hedge line
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 void assets_load_map_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileMapWaterTop, 10, kMapTiles);
-    set_bkg_data(kTileMapDomeCapTop, 8, kFoliageTiles);
+    set_bkg_data(kTileMapHedgeTallTop, 7, kFoliageTiles);
     VBK_REG = VBK_BANK_0;
 }
 

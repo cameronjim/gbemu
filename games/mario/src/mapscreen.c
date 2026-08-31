@@ -223,33 +223,35 @@ static uint16_t map_x;
 // sky shows between the black header and the path; the only blue in the strip is water. kBlockEmpty
 // is never used here any more (see below); every other value under kBlockKindCount is a kind the
 // level itself draws (reused straight through put_block); the four sentinels past it are this
-// screen's own new art added by put_new_quad/put_dome_quad - water and path, then the rounded
-// foliage that replaced the level's 45-degree hill slopes (see kTileMapDomeCapTop in assets.h): a
-// tall dome (cap over fill), a shorter standalone mound and a low grass edge, alternated rather
-// than repeated so no silhouette stamps twice in a row. row by row: two tall domes and a mound
-// between them, a pipe's lip and the castle's crenels, filling the strip's top edge end to end;
-// the domes' fill/base, a low grass tuft, a bush and the pipe's body under the castle's window;
-// the path mario and the four markers stand on, running under the castle's door; and, below that,
-// a small mound at the pond's bank, more path, and the castle's wall
+// screen's own new art added by put_new_quad/put_dome_quad - water and path, then the low hedge row
+// that replaced the level's 45-degree hill slopes (see kTileMapHedgeTallTop in assets.h): three
+// flat-topped mounds at three heights, plus a plain field fill for the block above a mound that
+// meets the sand's a single tile below the strip's top edge (a mound is never itself the top block
+// of the two-block foliage column - the field always is), so the canopy line comes out irregular
+// rather than a repeated silhouette. row by row: plain field over a pipe's lip and the castle's
+// crenels, filling the strip's top edge end to end; the hedge row itself (tall, low, medium - no two
+// alike side by side), a bush and the pipe's body under the castle's window; the path mario and the
+// four markers stand on, running under the castle's door; and, below that, a low hedge at the pond's
+// bank, more path, and the castle's wall
 #define W (uint8_t)(kBlockKindCount)
 #define P (uint8_t)(kBlockKindCount + 1U)
-#define D (uint8_t)(kBlockKindCount + 2U) // dome cap (pairs with F directly below)
-#define F (uint8_t)(kBlockKindCount + 3U) // dome fill/base, meets the sand
-#define M (uint8_t)(kBlockKindCount + 4U) // small standalone mound
-#define G (uint8_t)(kBlockKindCount + 5U) // low grass edge, meets the sand, no dome above
+#define N (uint8_t)(kBlockKindCount + 2U) // plain field fill, no shape
+#define T (uint8_t)(kBlockKindCount + 3U) // hedge, tall
+#define E (uint8_t)(kBlockKindCount + 4U) // hedge, medium
+#define L (uint8_t)(kBlockKindCount + 5U) // hedge, low
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
-    {D, M, D, M, D, M, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
-    {F, G, F, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR,
+    {N, N, N, N, N, N, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
+    {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR,
      kBlockCastleDoorTop, kBlockCastleWindow},
     {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
-    {M, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
+    {L, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
 };
 #undef W
 #undef P
-#undef D
-#undef F
-#undef M
-#undef G
+#undef N
+#undef T
+#undef E
+#undef L
 
 static uint8_t node_column(uint8_t node) {
     return (uint8_t)(kMapNodeFirstCol + node * kMapNodeStepCol);
@@ -307,10 +309,10 @@ static void put_new_quad(uint8_t bx, uint8_t by, uint8_t top, uint8_t body, uint
     set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attrp);
 }
 
-// the same 16x16 shape again, for the map's foliage kinds: unlike put_new_quad's water/path (the
-// same tile stamped at both left and right), a dome's silhouette is not left-right symmetric per
-// tile, so the right half is the left tile mirrored with the cgb x-flip bit - the same trick a
-// mirrored hill slope or bush cap already uses for its other side
+// the same 16x16 shape again, for the map's hedge kinds: unlike put_new_quad's water/path/field
+// (the same tile stamped at both left and right), a hedge mound's silhouette is not left-right
+// symmetric per tile, so the right half is the left tile mirrored with the cgb x-flip bit - the
+// same trick a mirrored hill slope or bush cap already uses for its other side
 static void put_dome_quad(uint8_t bx, uint8_t by, uint8_t top, uint8_t base, uint8_t attr) {
     uint8_t tiles[2];
     uint8_t attrp[2];
@@ -344,13 +346,13 @@ static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
         put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody,
                      (uint8_t)(kCamPalCoin | kCamAttrVram1));
     } else if (kind == (uint8_t)(kBlockKindCount + 2U)) {
-        put_dome_quad(bx, by, kTileMapDomeCapTop, kTileMapDomeCapBase, foliage_attr);
+        put_new_quad(bx, by, kTileMapFieldFill, kTileMapFieldFill, foliage_attr);
     } else if (kind == (uint8_t)(kBlockKindCount + 3U)) {
-        put_dome_quad(bx, by, kTileMapDomeFillTop, kTileMapDomeFillBase, foliage_attr);
+        put_dome_quad(bx, by, kTileMapHedgeTallTop, kTileMapHedgeTallBase, foliage_attr);
     } else if (kind == (uint8_t)(kBlockKindCount + 4U)) {
-        put_dome_quad(bx, by, kTileMapMoundTop, kTileMapMoundBase, foliage_attr);
+        put_dome_quad(bx, by, kTileMapHedgeMedTop, kTileMapHedgeMedBase, foliage_attr);
     } else {
-        put_dome_quad(bx, by, kTileMapGrassEdgeTop, kTileMapGrassEdgeBase, foliage_attr);
+        put_dome_quad(bx, by, kTileMapHedgeLowTop, kTileMapHedgeLowBase, foliage_attr);
     }
 }
 

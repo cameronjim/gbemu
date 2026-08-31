@@ -324,6 +324,9 @@
 // and right columns swapped and this bit set - which is what lets one cloud cap, one hill slope
 // and one bush cap each serve both ends of the shape they cap
 #define kCamAttrXFlip 0x20U
+// the vertical twin of kCamAttrXFlip, bit 6 of a cgb bg map attribute byte: the map screen's
+// round node marker is one quadrant tile stamped four times, x- and y-flipped for the other three
+#define kCamAttrYFlip 0x40U
 // and the bank bit, which is what puts a scenery block's tiles in vram bank 1
 #define kCamAttrVram1 0x08U
 

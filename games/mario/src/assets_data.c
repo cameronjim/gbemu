@@ -1118,12 +1118,16 @@ void assets_load_map_bg_palettes(void) BANKED {
     set_bkg_palette(kCamPalCoin, 1, path);
 }
 
-// water (foam top edge, then a plain body) and path (a dark edge where it meets the grass, then
-// plain sand), the only tile art this screen adds that the level never draws. bank 0's tile table
-// is exactly full (see the kTile* ids in mario.h), so these ride in bank 1 like the scenery does,
-// at ids nothing in that bank ever claimed (the scenery run stops at 0x5a). the four ids are
-// declared in assets.h so mapscreen.c can build bg quads out of them directly
-static const uint8_t kMapTiles[64] = {
+// water (foam top edge, then a plain body), path (a dark edge where it meets the grass, then plain
+// sand), the round node marker's one quadrant (reused via flip for the other three - see put_marker
+// in mapscreen.c, the same trick the hill/bush/cloud kinds already use for their mirrored halves),
+// and the CLEAR LIST panel's border (a corner, reused by flip for all four, plus a straight edge
+// for the horizontal sides and one for the vertical) and its two checkbox cells. none of this art
+// the level ever draws; bank 0's tile table is exactly full (see the kTile* ids in mario.h), so all
+// of it rides in bank 1 like the scenery does, at ids nothing in that bank ever claimed (the
+// scenery run stops at 0x5a). the ids are declared in assets.h so mapscreen.c can build bg quads
+// out of them directly
+static const uint8_t kMapTiles[160] = {
     // water top: a foam line over the first wave of body
     0xFF, 0xB6, 0xB6, 0x49, 0x00, 0xFF, 0x22, 0xDD,
     0x00, 0xFF, 0x44, 0xBB, 0x00, 0xFF, 0x10, 0xEF,
@@ -1136,11 +1140,30 @@ static const uint8_t kMapTiles[64] = {
     // path body: plain sand, speckled the same way
     0x20, 0xDF, 0x02, 0xFD, 0x80, 0x7F, 0x08, 0xF7,
     0x00, 0xFF, 0x10, 0xEF, 0x02, 0xFD, 0x20, 0xDF,
+    // marker: the top-left quadrant of a filled, outlined circle with a small highlight - circularly
+    // symmetric, so put_marker gets the other three quadrants by x/y-flipping this one tile
+    0x00, 0x00, 0x07, 0x07, 0x18, 0x1F, 0x30, 0x3F,
+    0x2E, 0x31, 0x4E, 0x71, 0x4E, 0x71, 0x40, 0x7F,
+    // list corner: a 2px top-left bracket, flipped for the other three corners
+    0xFF, 0xFF, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0,
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0,
+    // list h-edge: a 2px top line, flipped for the bottom
+    0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // list v-edge: a 2px left line, flipped for the right
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0,
+    0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0,
+    // list cell, hollow: a small square outline
+    0x00, 0x00, 0x7E, 0x7E, 0x42, 0x42, 0x42, 0x42,
+    0x42, 0x42, 0x42, 0x42, 0x7E, 0x7E, 0x00, 0x00,
+    // list cell, filled: the same square, solid
+    0x00, 0x00, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E,
+    0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x00, 0x00,
 };
 
 void assets_load_map_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
-    set_bkg_data(kTileMapWaterTop, 4, kMapTiles);
+    set_bkg_data(kTileMapWaterTop, 10, kMapTiles);
     VBK_REG = VBK_BANK_0;
 }
 

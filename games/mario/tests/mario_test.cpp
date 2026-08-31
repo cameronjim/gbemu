@@ -7790,10 +7790,14 @@ constexpr uint32_t kMapListCellsRow = 15;
 constexpr uint32_t kMapBandFirstTileRow = 4; // (kMapBandFirstRow=2) * kTilesPerBlock
 constexpr uint32_t kMapFooterFirstTileRow = 12;
 
+// the panel's own checkbox tile ids, from assets.h - the cells are drawn tiles now, not font
+// punctuation, so a filled one is a raw bg tile id rather than a glyph
+constexpr int kTileMapListCellFilled = 0x69;
+
 // the four CLEAR LIST cells, at kMapListLeftCol+2 stepping by 3
 bool clear_list_cell_filled(const gb::Gameboy& gameboy, int cell) {
     const int col = static_cast<int>(kMapListLeftCol) + 2 + cell * 3;
-    return bg_tile_at(gameboy, kMapListCellsRow, static_cast<uint32_t>(col)) == font_tile('#');
+    return bg_tile_at(gameboy, kMapListCellsRow, static_cast<uint32_t>(col)) == kTileMapListCellFilled;
 }
 } // namespace
 

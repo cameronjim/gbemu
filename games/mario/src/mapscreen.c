@@ -219,18 +219,20 @@ static uint8_t map_anim_timer;
 static uint16_t map_x;
 
 // the map strip's backdrop, four block rows (local 0-3, absolute kMapBandFirstRow+0..3) of ten
-// columns. kBlockEmpty leaves a cell as the band's plain sky-blue; every other value under
-// kBlockKindCount is a kind the level itself draws (reused straight through put_block); the two
-// sentinels past it are this screen's own new art, water and path, added by put_new_quad. row by
-// row: the hill's peak, a pipe's lip and the castle's crenels; the hill's base, a bush and the
-// pipe's body under the castle's window; the path mario and the four markers stand on, running
-// under the castle's door; and, below that, the hill trailing into a pond, more path, and the
-// castle's wall
+// columns. every cell is landscape - no cell is left as the band's plain sky-blue backdrop, so no
+// sky shows between the black header and the path; the only blue in the strip is water. kBlockEmpty
+// is never used here any more (see below); every other value under kBlockKindCount is a kind the
+// level itself draws (reused straight through put_block); the two sentinels past it are this
+// screen's own new art, water and path, added by put_new_quad. row by row: a ridge of hill peaks
+// over a second, smaller mound, a pipe's lip and the castle's crenels, filling the strip's top edge
+// end to end; the hills' base, a bush and the pipe's body under the castle's window; the path mario
+// and the four markers stand on, running under the castle's door; and, below that, the hill
+// trailing into a pond, more path, and the castle's wall
 #define W (uint8_t)(kBlockKindCount)
 #define P (uint8_t)(kBlockKindCount + 1U)
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
-    {kBlockEmpty, kBlockHillPeak, kBlockEmpty, kBlockEmpty, kBlockEmpty, kBlockEmpty, kBlockPipeTl,
-     kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
+    {kBlockHillPeak, kBlockHillPeak, kBlockHillFill, kBlockHillSlopeL, kBlockHillPeak,
+     kBlockHillSlopeR, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
     {kBlockHillSlopeL, kBlockHillFill, kBlockHillSlopeR, kBlockBushL, kBlockBushM, kBlockBushR,
      kBlockPipeBodyL, kBlockPipeBodyR, kBlockCastleDoorTop, kBlockCastleWindow},
     {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
@@ -243,14 +245,15 @@ static uint8_t node_column(uint8_t node) {
     return (uint8_t)(kMapNodeFirstCol + node * kMapNodeStepCol);
 }
 
-// three legible states out of three block kinds the game already draws: a spent block for a level
-// that is done, a lit question block for the one still to do, and a plain brick for one world one
-// has not opened yet
-static uint8_t marker_kind(uint8_t node) {
+// three legible states, one round marker shape colored three ways: gray and settled for a level
+// that is done, bright and gold for the one still to do, and the castle's own brown for one world
+// one has not opened yet - the same three cgb slots the old square markers used (kCamPalSpent,
+// kCamPalQuestion, kCamPalBrick), so only the shape changed
+static uint8_t marker_palette(uint8_t node) {
     if (node < map_unlocked) {
-        return kBlockSpent;
+        return (uint8_t)kCamPalSpent;
     }
-    return (node == map_unlocked) ? (uint8_t)kBlockQuestion : (uint8_t)kBlockBrick;
+    return (node == map_unlocked) ? (uint8_t)kCamPalQuestion : (uint8_t)kCamPalBrick;
 }
 
 // one 16x16 block: four tiles under one cgb attribute, the same pairing terrain.c streams a level
@@ -309,6 +312,30 @@ static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
     }
 }
 
+// a round stop on the road, not a square block: one quadrant tile stamped four times with the cgb
+// flip bits, the same trick a mirrored hill slope or bush cap already uses for its other half. the
+// path drawn under it is left in place (put_cell already ran for this cell), so the marker reads as
+// sitting on the road rather than replacing a chunk of it - no more of the old square block's black
+// underside floating over the water where nothing sits below it to hide the seam
+static void put_marker(uint8_t bx, uint8_t by, uint8_t pal) {
+    uint8_t tiles[2];
+    uint8_t attr[2];
+    const uint8_t x = (uint8_t)(bx * kTilesPerBlock);
+    const uint8_t y = (uint8_t)(by * kTilesPerBlock);
+    const uint8_t base = (uint8_t)(pal | kCamAttrVram1);
+
+    tiles[0] = kTileMapMarker;
+    tiles[1] = kTileMapMarker;
+    attr[0] = base;
+    attr[1] = (uint8_t)(base | kCamAttrXFlip);
+    set_bkg_tiles(x, y, 2, 1, tiles);
+    set_bkg_attributes(x, y, 2, 1, attr);
+    attr[0] = (uint8_t)(base | kCamAttrYFlip);
+    attr[1] = (uint8_t)(base | kCamAttrXFlip | kCamAttrYFlip);
+    set_bkg_tiles(x, (uint8_t)(y + 1U), 2, 1, tiles);
+    set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attr);
+}
+
 // left-aligned text, the console cursor moved first; title.c's own helpers are all centered or
 // value-suffixed, neither of which the footer's two side-by-side pieces want
 static void puts_at(uint8_t x, uint8_t y, const char* text) {
@@ -348,59 +375,60 @@ static void map_draw_lives(void) {
     putchar((char)('0' + digits[1]));
 }
 
-static void map_draw_border(uint8_t row) {
-    uint8_t i;
+// the CLEAR LIST panel: drawn tiles rather than font punctuation, the way every other piece of
+// this screen is - a corner (reused by flip for the other three) and a straight edge for the top/
+// bottom and another for the sides, then a hollow or filled square for each of the four cells.
+// every one of these lives in bank 1 alongside the marker (see kTileMapListCorner in assets.h) and
+// is drawn under the header/footer's own black-band slot, kCamPalSky, the same white-on-black the
+// font itself uses here
+#define kMapListAttr (uint8_t)(kCamPalSky | kCamAttrVram1)
 
-    gotoxy(kMapListLeftCol, row);
-    putchar('+');
-    for (i = 0; i < (uint8_t)(kMapListWidth - 2U); ++i) {
-        putchar('-');
-    }
-    putchar('+');
+static void put_tile(uint8_t x, uint8_t y, uint8_t tile, uint8_t attr) {
+    set_bkg_tiles(x, y, 1, 1, &tile);
+    set_bkg_attributes(x, y, 1, 1, &attr);
 }
 
-// one interior line of the box, padded to its width so a shorter string never leaves a stale
-// glyph from whatever this cell held before
-static void map_list_line(uint8_t row, const char* text) {
-    uint8_t i;
-    uint8_t n = 0;
+// the panel's top or bottom edge: a corner at each end, y-flipped for the bottom so the same
+// bracket tile serves all four corners, an h-edge tile filling the run between them
+static void map_draw_border(uint8_t row, uint8_t flip_y) {
+    uint8_t x;
+    const uint8_t attr_l = (uint8_t)(kMapListAttr | (flip_y != 0U ? kCamAttrYFlip : 0U));
+    const uint8_t attr_r = (uint8_t)(attr_l | kCamAttrXFlip);
+    const uint8_t last = (uint8_t)(kMapListLeftCol + kMapListWidth - 1U);
 
-    gotoxy(kMapListLeftCol, row);
-    putchar('|');
-    for (i = 0; text[i] != '\0'; ++i) {
-        putchar(text[i]);
-        ++n;
+    put_tile(kMapListLeftCol, row, kTileMapListCorner, attr_l);
+    for (x = (uint8_t)(kMapListLeftCol + 1U); x < last; ++x) {
+        put_tile(x, row, kTileMapListHEdge, attr_l);
     }
-    for (; n < (uint8_t)(kMapListWidth - 2U); ++n) {
-        putchar(' ');
-    }
-    putchar('|');
+    put_tile(last, row, kTileMapListCorner, attr_r);
+}
+
+// one row's worth of the panel's left/right sides, between the top and bottom borders
+static void map_draw_sides(uint8_t row) {
+    const uint8_t last = (uint8_t)(kMapListLeftCol + kMapListWidth - 1U);
+
+    put_tile(kMapListLeftCol, row, kTileMapListVEdge, kMapListAttr);
+    put_tile(last, row, kTileMapListVEdge, (uint8_t)(kMapListAttr | kCamAttrXFlip));
 }
 
 // the four cells, one per level of world one: filled once its node is behind the file's furthest,
 // hollow while it is still ahead. no save-format change - world one is strictly linear, so "node i
 // is cleared" is already exactly what map_unlocked answers (see the comment on kSaveSlots)
-static void map_list_cells(uint8_t furthest) {
+static void map_draw_list(uint8_t furthest) {
     uint8_t i;
 
-    gotoxy(kMapListLeftCol, kMapListCellsRow);
-    putchar('|');
-    putchar(' ');
+    map_draw_border(kMapListTopRow, 0);
+    map_draw_sides(kMapListHeadRow);
+    map_draw_sides(kMapListCellsRow);
+    map_draw_border(kMapListBottomRow, 1);
+    // the label is still plain font text - a genuine SMB Deluxe UI element spelled out, which the
+    // font already draws cleanly; only the border and the cells read as ascii art drawn that way
+    puts_at((uint8_t)(kMapListLeftCol + 1U), kMapListHeadRow, "CLEAR LIST");
     for (i = 0; i < (uint8_t)kLevelCount; ++i) {
-        putchar(i < furthest ? '#' : '.');
-        if (i + 1U < (uint8_t)kLevelCount) {
-            putchar(' ');
-            putchar(' ');
-        }
+        const uint8_t col = (uint8_t)(kMapListLeftCol + 2U + i * 3U);
+        const uint8_t tile = i < furthest ? (uint8_t)kTileMapListCellFilled : (uint8_t)kTileMapListCellEmpty;
+        put_tile(col, kMapListCellsRow, tile, kMapListAttr);
     }
-    putchar('|');
-}
-
-static void map_draw_list(uint8_t furthest) {
-    map_draw_border(kMapListTopRow);
-    map_list_line(kMapListHeadRow, "CLEAR LIST");
-    map_list_cells(furthest);
-    map_draw_border(kMapListBottomRow);
 }
 
 // small mario, drawn straight rather than through player.c: he has no physics here, so the map
@@ -472,7 +500,7 @@ static void map_reset(uint8_t node) {
         }
     }
     for (bx = 0; bx < (uint8_t)kLevelCount; ++bx) {
-        put_block(node_column(bx), kMapMarkerRow, marker_kind(bx));
+        put_marker(node_column(bx), kMapMarkerRow, marker_palette(bx));
     }
     map_draw_world_label(map_node);
     map_draw_lives();

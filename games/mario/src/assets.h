@@ -52,13 +52,25 @@ void assets_load_enemy_palettes_castle(void) BANKED;
 // no palette loader beside this one
 void assets_load_digit_tiles(void) BANKED;
 
-// the world map screen's own two new tile kinds - water and path - in vram bank 1, at ids the
-// scenery run (0x20-0x5a) never claimed. assets_load_map_tiles loads the pixel data; the ids are
-// public so mapscreen.c can stamp bg quads out of them the way put_block stamps a reused kind
+// the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5a)
+// never claimed: water and path, a round node marker (one quadrant tile, stamped four times with
+// the cgb flip bits the way a mirrored hill/bush kind already is), and the CLEAR LIST panel's own
+// border/checkbox art - a corner and two straight edges, each reused by flip for the other three
+// corners/sides, plus a hollow and a filled cell. assets_load_map_tiles loads the pixel data; the
+// ids are public so mapscreen.c can stamp bg quads out of them the way put_block stamps a reused
+// kind
 #define kTileMapWaterTop 0x60U
 #define kTileMapWaterBody 0x61U
 #define kTileMapPathTop 0x62U
 #define kTileMapPathBody 0x63U
+// the round marker's one quadrant, circularly symmetric so put_marker gets the other three by
+// x/y-flipping this same tile rather than storing them separately
+#define kTileMapMarker 0x64U
+#define kTileMapListCorner 0x65U
+#define kTileMapListHEdge 0x66U
+#define kTileMapListVEdge 0x67U
+#define kTileMapListCellEmpty 0x68U
+#define kTileMapListCellFilled 0x69U
 void assets_load_map_tiles(void) BANKED;
 
 // the map screen's own eight cgb bg palettes - a card screen, never up during play, so it does not

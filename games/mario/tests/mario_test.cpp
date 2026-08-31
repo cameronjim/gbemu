@@ -112,7 +112,9 @@ void step_screen(gb::Gameboy& gameboy, gb::Button button) {
 // m19's world map, kMapSkyRgb in mario.h: the overworld sky lifted a shade so this one probe tells
 // the map apart from the two overworld levels that share every other color with it. it is declared
 // up here because leaving the map is what every entry into a level now waits on
-constexpr int kSkyMap = 8 | (20 << 5) | (31 << 10);
+// the map's rebuilt top/bottom bands are near-black (kMapSkyRgb in mario.h) rather than the old
+// placeholder's sky blue - a host probe still needs the eyedropper to land on it
+constexpr int kSkyMap = 1 | (1 << 5) | (1 << 10);
 int sky_color(const gb::Gameboy& gameboy);
 
 // mario is drawn on the map too, so "he is on screen" cannot say a level has loaded: what does is
@@ -6069,6 +6071,75 @@ TEST_CASE("mario_fireballs_kill") {
     REQUIRE(held_most == 1);
 }
 
+// the count of a fireball's own lit pixels, wherever it is on screen: a sprite pixel is only ever
+// recorded in framebuffer_tiles at all when it is not color 0 (transparent), so this is exactly
+// "how many of its 8x8 pixels are painted" - which the spin's two frames answer differently (a
+// circle vs. a rotated diamond), even though the emulator's tile-id probe cannot see which cgb vram
+// bank a sprite is reading (see kTileMapWaterTop's comment in assets.h for the same trick on the bg
+// side), so a raw tile-id compare would not show the swap the way this pixel count does
+int fireball_lit_pixels(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int n = 0;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= kTileFireballLo && tile <= kTileFireballHi) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+TEST_CASE("mario_fireball_spins_and_burns_orange") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    PlayerSim sim = lab_sim();
+    REQUIRE(become_fire(gameboy, sim));
+    REQUIRE(approach_lab_row(gameboy, sim) > 0);
+
+    press(gameboy, gb::Button::B, 1);
+    run(gameboy, 1);
+    REQUIRE(fireballs_on_screen(gameboy) >= 1);
+
+    // never the star's near-white cream any more - it is drawn from the coin's saturated gold/
+    // orange instead (kPalCoin in mario.h). fire mario's own outfit is deliberately this same
+    // pure white (roster.json's authentic cream/red), so the check is scoped to the fireball's own
+    // tile family, not mario_wears - his sprite legitimately wears kColorFireWhite right now
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    bool saw_white = false;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= kTileFireballLo && tile <= kTileFireballHi && colors[i] == kColorFireWhite) {
+            saw_white = true;
+        }
+    }
+    REQUIRE_FALSE(saw_white);
+
+    // the spin: the drawn shape changes every 4 frames (see powerup_draw's spin_bank), which this
+    // lit-pixel count picks up even though the tile id itself cannot
+    const int first = fireball_lit_pixels(gameboy);
+    REQUIRE(first > 0);
+    bool changed = false;
+    for (int i = 0; i < 8 && !changed; ++i) {
+        gameboy.run_frame();
+        if (fireballs_on_screen(gameboy) == 0) {
+            break;
+        }
+        changed = fireball_lit_pixels(gameboy) != first;
+    }
+    REQUIRE(changed);
+}
+
 TEST_CASE("mario_damage_chain") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -7704,6 +7775,120 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     // and the node he is on is 1-2
     map_play(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
+}
+
+// --- m20: the rebuilt map screen's three bands ----------------------------------------------
+
+namespace {
+// the map's own kMap* layout, mirrored from mario.h
+constexpr uint32_t kMapWorldRow = 1;
+constexpr uint32_t kMapLevelRow = 2;
+constexpr uint32_t kMapLivesTextRow = 14;
+constexpr uint32_t kMapLivesTextCol = 1;
+constexpr uint32_t kMapListLeftCol = 7;
+constexpr uint32_t kMapListCellsRow = 15;
+constexpr uint32_t kMapBandFirstTileRow = 4; // (kMapBandFirstRow=2) * kTilesPerBlock
+constexpr uint32_t kMapFooterFirstTileRow = 12;
+
+// the four CLEAR LIST cells, at kMapListLeftCol+2 stepping by 3
+bool clear_list_cell_filled(const gb::Gameboy& gameboy, int cell) {
+    const int col = static_cast<int>(kMapListLeftCol) + 2 + cell * 3;
+    return bg_tile_at(gameboy, kMapListCellsRow, static_cast<uint32_t>(col)) == font_tile('#');
+}
+} // namespace
+
+TEST_CASE("mario_map_world_label_tracks_the_cursor") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // seeded to 1-3 unlocked
+    seed_slot(gameboy.external_ram(), 0, 2, 0);
+    open_file(gameboy, 0);
+    // standing on node 2 (0-indexed), the header reads 1-3
+    REQUIRE(card_number(gameboy, kMapLevelRow) == 13);
+
+    // walking left updates the label the instant the walk starts, before he arrives
+    press(gameboy, gb::Button::Left, 2);
+    run(gameboy, 4);
+    REQUIRE(card_number(gameboy, kMapLevelRow) == 12);
+    run(gameboy, 60);
+    REQUIRE(card_number(gameboy, kMapLevelRow) == 12);
+}
+
+TEST_CASE("mario_map_lives_matches_the_hud") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    open_file(gameboy, 0);
+    // a freshly opened file starts a run, which resets the hud to the usual three lives
+    REQUIRE(card_number(gameboy, kMapLivesTextRow + 1) == kStartLives);
+}
+
+TEST_CASE("mario_map_clear_list_fills_with_progress") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // a fresh file: every cell hollow
+    open_file(gameboy, 0);
+    for (int i = 0; i < 4; ++i) {
+        REQUIRE_FALSE(clear_list_cell_filled(gameboy, i));
+    }
+
+    // seeded to 1-3 unlocked: 1-1 and 1-2 are cleared, 1-3/1-4 are not
+    gb::Gameboy seeded;
+    REQUIRE(seeded.load_rom(rom));
+    seed_slot(seeded.external_ram(), 0, 2, 0);
+    open_file(seeded, 0);
+    REQUIRE(clear_list_cell_filled(seeded, 0));
+    REQUIRE(clear_list_cell_filled(seeded, 1));
+    REQUIRE_FALSE(clear_list_cell_filled(seeded, 2));
+    REQUIRE_FALSE(clear_list_cell_filled(seeded, 3));
+
+    // and clearing 1-1 for real, straight off a played level rather than a seeded slot, fills its
+    // own cell exactly the same way
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+    gb::Gameboy played;
+    REQUIRE(played.load_rom(rom));
+    open_file(played, 0);
+    map_play(played);
+    replay(played, route.script, 0, route.script.size());
+    REQUIRE(wait_for_map(played, 900) >= 0);
+    run(played, kScreenSettleFrames);
+    REQUIRE(clear_list_cell_filled(played, 0));
+    REQUIRE_FALSE(clear_list_cell_filled(played, 1));
+}
+
+TEST_CASE("mario_map_bands_are_black_top_and_bottom") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    open_file(gameboy, 0);
+
+    // row 0 (top band) and row 17 (bottom band) read the map's own near-black; a row inside the
+    // map strip does not - it is the band's sky-blue backdrop or the art drawn over it
+    REQUIRE(family_color(gameboy, kTileSky, kTileSky) == kSkyMap);
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    const uint32_t strip_row = kMapBandFirstTileRow + 2;
+    bool saw_black_in_strip = false;
+    for (uint32_t cx = 0; cx < 20; ++cx) {
+        const size_t i = (strip_row * 8 + 3) * gb::kLcdWidth + cx * 8 + 3;
+        if ((ids[i] & 0x100u) != 0) {
+            continue; // mario himself, not the backdrop
+        }
+        if (colors[i] == kSkyMap) {
+            saw_black_in_strip = true;
+        }
+    }
+    REQUIRE_FALSE(saw_black_in_strip);
+    // the footer's own first row is black too, same as the header's
+    const size_t footer_i = (kMapFooterFirstTileRow * 8 + 3) * gb::kLcdWidth + 3;
+    REQUIRE(colors[footer_i] == kSkyMap);
 }
 
 // --- the front-end lockout, kFrontLockFrames in mario.h -----------------------------------------

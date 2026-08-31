@@ -7705,3 +7705,98 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     map_play(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
 }
+
+// --- the front-end lockout, kFrontLockFrames in mario.h -----------------------------------------
+
+namespace {
+
+// true once the backdrop names anything other than a front-end screen: the title/file/erase cards
+// all share the title's own sky and the map has its own, so the two of them together are exactly
+// the front end, and anything else means a level loaded
+bool sky_is_gameplay(int sky) {
+    return sky != kSkyTitle && sky != kSkyMap;
+}
+
+} // namespace
+
+TEST_CASE("mario_rapid_taps_cannot_skip_the_map") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+
+    // a real player mashing space rather than waiting for each card to settle: two frames down, two
+    // up, twelve times over (a probe against the pre-fix rom confirms this exact cadence is what it
+    // takes to reliably clear all three of a real GBC's per-frame joypad polls - fewer taps land too
+    // many of their edges inside the host's own multi-frame lcd-off drain to be reliable here, even
+    // though on real hardware a single quick tap is all the bug report needed). before the lockout
+    // this walks straight through the title, the file select and the map's own confirm well inside
+    // twelve taps - the bug report's "it just disappears after about a second"
+    for (int tap = 0; tap < 12; ++tap) {
+        gameboy.set_button(gb::Button::A, true);
+        run(gameboy, 2);
+        gameboy.set_button(gb::Button::A, false);
+        run(gameboy, 2);
+    }
+
+    // let any lcd-off repaint the last tap kicked off finish draining before the backdrop is read -
+    // the same settle every other test pays after a screen transition. without the fix this is
+    // already a level's own sky, not the map's
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+
+    // and it stays there: idling afterward with no further input never drifts on into a level
+    run(gameboy, 200);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+}
+
+TEST_CASE("mario_held_confirm_cannot_blow_past_the_map") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+
+    // the title's own lockout has long since run out by the time this presses, so the one legitimate
+    // edge opens the file select - and then, held for several real seconds without ever letting go,
+    // it never generates another: the button that was down when the file select opened has to be
+    // released before it can confirm anything, so holding through is stuck on that one screen
+    bool saw_gameplay = false;
+    gameboy.set_button(gb::Button::A, true);
+    for (int i = 0; i < 300; ++i) {
+        gameboy.run_frame();
+        saw_gameplay = saw_gameplay || sky_is_gameplay(sky_color(gameboy));
+    }
+    gameboy.set_button(gb::Button::A, false);
+
+    REQUIRE_FALSE(saw_gameplay);
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+    REQUIRE(sky_color(gameboy) != kSkyMap);
+}
+
+TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+
+    // one settled press on the title opens the file select
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(sky_color(gameboy) == kSkyTitle); // the card shares the title's own sky
+    REQUIRE(file_cursor(gameboy) == 0);       // proves the file card, not the title, is the one up
+
+    // one more, on the file select, opens the map
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+
+    // and one more, on the map, past its own lockout, starts the level mario is standing on
+    step_screen(gameboy, gb::Button::Start);
+    run(gameboy, kScreenSettleFrames);
+    REQUIRE(sky_is_gameplay(sky_color(gameboy)));
+}

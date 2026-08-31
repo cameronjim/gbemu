@@ -34,27 +34,51 @@
 // then file select, then the map) drop the player straight into a level before the map is even seen
 #define kFrontLockFrames 20U
 
-// the world one map (games/mario/src/mapscreen.c), a single static 20x18 screen = 10x9 blocks.
-// nothing scrolls, so every position here is a block cell
+// the world one map (games/mario/src/mapscreen.c), a single static 20x18-cell screen, three bands
+// stacked top to bottom: a solid-black WORLD/1-N header, a 10-block-wide map strip, then a solid-
+// black lives/CLEAR LIST footer. nothing scrolls, so every position is either a tile row (the bands)
+// or a block cell (the map strip)
 #define kMapBlockCols 10U
-#define kMapBlockRows 9U
+// the header is rows 0-3; the map strip starts at tile row 4, i.e. block row 2 (put_block's `by`
+// is a tile-row-pair index, same units the level's own put_block uses)
+#define kMapBandFirstRow 2U
+#define kMapBandBlockRows 4U
+// the footer starts right after the strip: (2 + 4) * 2 = tile row 12, leaving rows 12-17 for it
+#define kMapFooterFirstTileRow ((kMapBandFirstRow + kMapBandBlockRows) * kTilesPerBlock)
 // the four level nodes: columns 1, 3, 5 and 7, with the castle filling 8-9
 #define kMapNodeFirstCol 1U
 #define kMapNodeStepCol 2U
-// the marker block floats two rows above the ground; mario walks the row between them
-#define kMapMarkerRow 3U
-#define kMapWalkRow 5U
-#define kMapGroundRow 6U
+// markers and mario share the strip's third block row (tile rows 8-9): the path runs under both,
+// the way the reference's round stops sit right on the road rather than floating above it
+#define kMapMarkerRow (kMapBandFirstRow + 2U)
+#define kMapWalkRow kMapMarkerRow
 // a node step is kMapNodeStepCol blocks = 32 px, walked a pixel a frame: 32 frames, about half a
 // second, which is a walk rather than a teleport
 #define kMapWalkPx 1
 #define kMapWalkAnimFrames 8U
-// the map's own backdrop, the overworld sky lifted a shade so a host probe can name the screen the
-// same way kSkyRgb/kUndergroundRgb/kCastleRgb name a level type. it is written over color 0 of
-// every bg palette whose color 0 is kSkyRgb - seven of the eight - because a block's transparent
-// half is drawn out of its OWN palette, so recoloring the sky slot alone would leave a visible
-// rectangle of level-blue behind every hill, bush, cloud, marker and castle cell
-#define kMapSkyRgb RGB(8, 20, 31)
+// the header text: "WORLD" then "1-N", one padding row above and below across the 4-row band
+#define kMapWorldRow 1U
+#define kMapLevelRow 2U
+
+// the footer, rows 12-17: row 12 is padding, 13-16 hold the lives readout and the bordered CLEAR
+// LIST panel side by side (cols 0-6 and 7-19), 17 is padding. the lives readout is plain text, not
+// a mario-shaped icon: a host probe finds mario anywhere on screen by his sprite tile family alone,
+// so a second mario-family sprite here would feed into every test that reads his position off the
+// map (see map_draw_lives in mapscreen.c)
+#define kMapLivesTextRow 14U
+#define kMapLivesTextCol 1U
+#define kMapListLeftCol 7U
+#define kMapListWidth 13U
+#define kMapListTopRow 13U
+#define kMapListHeadRow 14U
+#define kMapListCellsRow 15U
+#define kMapListBottomRow 16U
+
+// color 0 of the map's own "black band" slot (kCamPalSky, repurposed - see
+// assets_load_map_bg_palettes). near-black rather than literal (0,0,0) only so a host probe can
+// tell "the map is up, showing its band" apart from "the lcd is off" without relying on an exact
+// zero; the eye cannot tell the difference from true black
+#define kMapSkyRgb RGB(1, 1, 1)
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f
 #define kFontFirstChar 0x20U
@@ -410,8 +434,9 @@
 #define kPalCoin 4U
 #define kPalGoomba 5U
 #define kPalKoopa 6U
-// the last free slot, spent on fire mario's white-and-red outfit. the flower and the fireball have
-// none left, so both borrow the star's white/yellow set
+// the last free slot, spent on fire mario's white-and-red outfit. the flower item has none left, so
+// it borrows the star's white/yellow set; the fireball projectile borrows kPalCoin's gold/orange
+// instead, which is what it wants and the star's near-white set is not (see powerup_draw)
 #define kPalFire 7U
 
 // gbdk's move_sprite takes oam coordinates; the visible screen starts at (8, 16)

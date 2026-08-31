@@ -1092,6 +1092,58 @@ void assets_load_bg_palettes_castle(void) BANKED {
     set_bkg_palette(kCamPalCoin, 1, lava);
 }
 
+// the world map screen (mapscreen.c) is a card, never up during play, so it gets its own eight
+// slots instead of the level's: kCamPalSky becomes the black band behind WORLD/1-1 and the lives/
+// CLEAR LIST text (color 3 is the white ink font_color draws with), kCamPalGround becomes the map
+// band's sky-blue backdrop, kCamPalBrick/kCamPalQuestion/kCamPalSpent keep coloring the same three
+// reused block kinds they always have (the castle, and the locked/current/cleared node markers),
+// kCamPalPipe keeps coloring the reused hill/bush greens, and kCamPalNeutral/kCamPalCoin - which no
+// kind this screen draws is pinned to - are repurposed for the two brand new kinds, water and path
+void assets_load_map_bg_palettes(void) BANKED {
+    palette_color_t black[4] = {kMapSkyRgb, kMapSkyRgb, kMapSkyRgb, RGB(31, 31, 31)};
+    palette_color_t sky[4] = {RGB(16, 22, 31), RGB(31, 31, 31), RGB(9, 15, 28), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {RGB(10, 7, 5), RGB(24, 18, 12), RGB(16, 11, 7), RGB(0, 0, 0)};
+    palette_color_t question[4] = {RGB(10, 6, 2), RGB(31, 20, 4), RGB(31, 31, 20), RGB(0, 0, 0)};
+    palette_color_t pipe[4] = {RGB(4, 14, 2), RGB(20, 31, 10), RGB(8, 22, 4), RGB(0, 0, 0)};
+    palette_color_t water[4] = {RGB(4, 10, 28), RGB(20, 28, 31), RGB(8, 16, 31), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {RGB(8, 8, 10), RGB(18, 18, 20), RGB(12, 12, 14), RGB(0, 0, 0)};
+    palette_color_t path[4] = {RGB(24, 18, 8), RGB(31, 27, 16), RGB(28, 22, 12), RGB(0, 0, 0)};
+    set_bkg_palette(kCamPalSky, 1, black);
+    set_bkg_palette(kCamPalGround, 1, sky);
+    set_bkg_palette(kCamPalBrick, 1, brick);
+    set_bkg_palette(kCamPalQuestion, 1, question);
+    set_bkg_palette(kCamPalPipe, 1, pipe);
+    set_bkg_palette(kCamPalNeutral, 1, water);
+    set_bkg_palette(kCamPalSpent, 1, spent);
+    set_bkg_palette(kCamPalCoin, 1, path);
+}
+
+// water (foam top edge, then a plain body) and path (a dark edge where it meets the grass, then
+// plain sand), the only tile art this screen adds that the level never draws. bank 0's tile table
+// is exactly full (see the kTile* ids in mario.h), so these ride in bank 1 like the scenery does,
+// at ids nothing in that bank ever claimed (the scenery run stops at 0x5a). the four ids are
+// declared in assets.h so mapscreen.c can build bg quads out of them directly
+static const uint8_t kMapTiles[64] = {
+    // water top: a foam line over the first wave of body
+    0xFF, 0xB6, 0xB6, 0x49, 0x00, 0xFF, 0x22, 0xDD,
+    0x00, 0xFF, 0x44, 0xBB, 0x00, 0xFF, 0x10, 0xEF,
+    // water body: a plain sheet with a few darker ripples
+    0x10, 0xEF, 0x00, 0xFF, 0x42, 0xBD, 0x00, 0xFF,
+    0x08, 0xF7, 0x00, 0xFF, 0x82, 0x7D, 0x00, 0xFF,
+    // path top: a dark line against the grass above, then a speckled start to the sand
+    0xFF, 0xFF, 0x22, 0xDD, 0x00, 0xFF, 0x88, 0x77,
+    0x00, 0xFF, 0x44, 0xBB, 0x00, 0xFF, 0x10, 0xEF,
+    // path body: plain sand, speckled the same way
+    0x20, 0xDF, 0x02, 0xFD, 0x80, 0x7F, 0x08, 0xF7,
+    0x00, 0xFF, 0x10, 0xEF, 0x02, 0xFD, 0x20, 0xDF,
+};
+
+void assets_load_map_tiles(void) BANKED {
+    VBK_REG = VBK_BANK_1;
+    set_bkg_data(kTileMapWaterTop, 4, kMapTiles);
+    VBK_REG = VBK_BANK_0;
+}
+
 void assets_load_sprite_palettes(void) BANKED {
     // warm family: 1 skin, 2 the cap/shirt/overall red, 3 the dark his hair, shoes, straps and
     // outline accents are drawn in. color 0 is the sprite's transparency
@@ -1264,15 +1316,36 @@ static const uint8_t kItemTiles[256] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    // fireball bottom
+    // fireball bottom, spin frame A: an orange/red body (color 2), a two-pixel bright gold core
+    // (color 1) dead center, and a black outline (color 3) - drawn under kPalCoin, not the star's
+    // near-white set, which is the fix for "the fire should be more prominent and not just white"
     0x3C, 0x3C, // ..####..
     0x42, 0x7E, // .#++++#.
+    0x81, 0xFF, // #++++++#
     0x99, 0xE7, // #++--++#
-    0xA5, 0xDB, // #+-++-+#
-    0xA5, 0xDB, // #+-++-+#
     0x99, 0xE7, // #++--++#
+    0x81, 0xFF, // #++++++#
     0x42, 0x7E, // .#++++#.
     0x3C, 0x3C, // ..####..
+};
+
+// the fireball's spin frame B, a 45-degree-rotated silhouette of the same body/core/outline
+// coloring. it lives at the same tile id as frame A (kTileFireball/+1) but in CGB VRAM bank 1 -
+// bank 0's tile table is exactly full end to end (see the kTile* ids in mario.h), so a second
+// fireball frame has nowhere to go there. powerup_draw toggles the sprite's S_BANK attribute to
+// pick this frame instead, the same way a bg tile picks bank 1 for scenery
+static const uint8_t kFireballFrameBTiles[32] = {
+    // top, blank
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // bottom, rotated
+    0x18, 0x18, // ...##...
+    0x24, 0x3C, // ..#++#..
+    0x42, 0x7E, // .#++++#.
+    0x99, 0xE7, // #++--++#
+    0x99, 0xE7, // #++--++#
+    0x42, 0x7E, // .#++++#.
+    0x24, 0x3C, // ..#++#..
+    0x18, 0x18, // ...##...
 };
 
 // small mario, drawn as two 8x16 sprites. colors: 1 his skin - face, bare forearms and hands - 2
@@ -1972,6 +2045,11 @@ void assets_load_sprite_tiles(void) BANKED {
 void assets_load_item_tiles(void) BANKED {
     set_sprite_data(kTileItemFirst, kItemTileCount, kItemTiles);
     set_sprite_data(kTileFlowerFirst, kFlowerTileCount, kFlowerTiles);
+    // the fireball's second spin frame rides in bank 1 at the same id as the first, since bank 0's
+    // tile table has no room left; see the comment on kFireballFrameBTiles
+    VBK_REG = VBK_BANK_1;
+    set_sprite_data(kTileFireball, 2, kFireballFrameBTiles);
+    VBK_REG = VBK_BANK_0;
 }
 
 // m8a's four actors, one 8x16 pair each: a piranha head over its stem, a firebar flame in the top

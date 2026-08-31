@@ -52,6 +52,20 @@ void assets_load_enemy_palettes_castle(void) BANKED;
 // no palette loader beside this one
 void assets_load_digit_tiles(void) BANKED;
 
+// the world map screen's own two new tile kinds - water and path - in vram bank 1, at ids the
+// scenery run (0x20-0x5a) never claimed. assets_load_map_tiles loads the pixel data; the ids are
+// public so mapscreen.c can stamp bg quads out of them the way put_block stamps a reused kind
+#define kTileMapWaterTop 0x60U
+#define kTileMapWaterBody 0x61U
+#define kTileMapPathTop 0x62U
+#define kTileMapPathBody 0x63U
+void assets_load_map_tiles(void) BANKED;
+
+// the map screen's own eight cgb bg palettes - a card screen, never up during play, so it does not
+// share the level's. see the comment on the function body for which of the level's eight slots
+// each map kind now colors
+void assets_load_map_bg_palettes(void) BANKED;
+
 // stages the six per-kind tables below into ram. m18 took the block kinds from eighteen to
 // thirty-eight and six tables of that length is 228 bytes bank 0 does not have, so they ride in
 // the asset bank and are copied out at a level load - the same trade level.c makes for the level

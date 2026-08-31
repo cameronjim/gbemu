@@ -41,6 +41,41 @@ static char line[kFileLineWidth + 1U];
 static uint8_t map_unlocked;
 static uint8_t screen;
 
+// --- the confirm/back lockout -------------------------------------------------------------------
+
+// guards every screen against a start/a/b edge landing on the very frame it opens. lock_timer counts
+// the window down; lock_held remembers which of the three were already down when the screen went
+// live (or got pressed during the window) so a button that is simply held through the window cannot
+// confirm the instant the timer runs out either - it has to be seen released first, like every other
+// edge. left/right are never gated: walking mario the moment the map shows up plays fine, and gating
+// it too would only cost the front end some of its responsiveness for nothing
+static uint8_t lock_timer;
+static uint8_t lock_held;
+#define kLockGuardedKeys (uint8_t)(J_START | J_A | J_B)
+
+// called the instant a screen becomes live, before its first frame is ever dispatched
+static void lock_begin(void) {
+    lock_timer = (uint8_t)kFrontLockFrames;
+    lock_held = (uint8_t)(joypad() & kLockGuardedKeys);
+}
+
+// called once a frame, ahead of whichever screen is up, to strip the edges the lockout still owns
+static uint8_t lock_gate(uint8_t pressed) {
+    const uint8_t keys = joypad();
+    uint8_t gated;
+
+    if (lock_timer != 0U) {
+        --lock_timer;
+        // a press that lands inside the window is voided the same way an already-held button is:
+        // added to the release-pending mask rather than let through
+        lock_held = (uint8_t)(lock_held | (keys & kLockGuardedKeys));
+    }
+    gated = (uint8_t)(pressed & (uint8_t)~(lock_held & kLockGuardedKeys));
+    // a button lets go of its guard the moment it is actually released, not before
+    lock_held = (uint8_t)(lock_held & keys);
+    return gated;
+}
+
 // --- SELECT FILE -------------------------------------------------------------------------------
 
 static uint8_t cursor;
@@ -120,6 +155,7 @@ static void file_reset(void) {
     cursor = 0;
     confirming = 0;
     file_show();
+    lock_begin();
 }
 
 static uint8_t file_frame(uint8_t pressed, uint8_t* level) {
@@ -321,6 +357,7 @@ static void map_reset(uint8_t node) {
     SHOW_BKG;
     SHOW_SPRITES;
     DISPLAY_ON;
+    lock_begin();
 }
 
 static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
@@ -383,6 +420,7 @@ void front_title(void) BANKED {
     map_unlocked = 0;
     screen = kScreenTitle;
     title_reset();
+    lock_begin();
 }
 
 void front_cleared(uint8_t* level) BANKED {
@@ -399,6 +437,10 @@ void front_cleared(uint8_t* level) BANKED {
 
 uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED {
     uint8_t action;
+
+    // one gate ahead of all three screens: whichever is up, its confirm/back edges are the lockout's
+    // to strip until the window has passed and any button that was down when it opened has let go
+    pressed = lock_gate(pressed);
 
     if (screen == (uint8_t)kScreenTitle) {
         action = title_frame(pressed, level);

@@ -28,6 +28,12 @@
 // the erase confirm is its own card over the same machinery
 #define kEraseRow 5U
 
+// the front end lockout (games/mario/src/mapscreen.c). a fresh screen ignores start/a/b for this
+// many frames, and a button already held when it opens stays ignored until it is released - without
+// it every screen confirms on its own first live frame, so three quick taps of the space bar (title,
+// then file select, then the map) drop the player straight into a level before the map is even seen
+#define kFrontLockFrames 20U
+
 // the world one map (games/mario/src/mapscreen.c), a single static 20x18 screen = 10x9 blocks.
 // nothing scrolls, so every position here is a block cell
 #define kMapBlockCols 10U

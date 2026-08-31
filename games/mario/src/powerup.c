@@ -41,6 +41,10 @@ typedef struct {
     int8_t dy;
     uint8_t x_force;
     uint8_t y_accum;
+    // the spin: counts every frame the ball is alive. bit 2 (every 4 frames) picks which of the two
+    // drawn tiles is shown, bit 3 (every 8 frames) flips the sprite both ways - the disassembly's
+    // own cadence for smb's fireball, see powerup_draw
+    uint8_t anim;
 } Fireball;
 
 // packed into [0, live) the way the enemy pool is, so an empty pool costs one compare a frame
@@ -174,6 +178,7 @@ static void throw_ball(uint16_t player_px, int16_t player_py, uint8_t facing_lef
     f->dy = (int8_t)kFireballLaunchDy;
     f->x_force = 0;
     f->y_accum = 0;
+    f->anim = 0;
 }
 
 // MoveObjectHorizontally again: high nibble whole px, low nibble sixteenths through a 1/256 carry
@@ -200,6 +205,7 @@ static uint8_t step_ball(Fireball* f, uint16_t cam_x) {
     int16_t lead;
     int16_t row;
 
+    ++f->anim;
     move_ball_x(f);
     lead = (int16_t)(f->dir > 0 ? (int16_t)(f->pos_x + kFireballPx - 1) : (int16_t)f->pos_x);
     if (terrain_solid_at((int16_t)(lead >> 4), row_of(f->pos_y)) != 0U) {
@@ -285,9 +291,15 @@ void powerup_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         const int16_t sx = (int16_t)((int16_t)f->pos_x - (int16_t)cam_x);
         // the pair's top tile is blank, so the sprite is drawn a tile higher than the ball itself
         const int16_t sy = (int16_t)(f->pos_y - (int16_t)cam_y - kFireballPx);
+        // the disassembly's spin: the drawn tile alternates every 4 frames (S_BANK picks bank 1's
+        // frame B in place of bank 0's frame A) and the sprite is flipped both ways every 8 - two
+        // independent cadences that together read as a tumbling ball, drawn from kPalCoin's
+        // saturated gold/orange rather than the star's near-white set
+        const uint8_t spin_bank = ((f->anim >> 2) & 1U) != 0U ? (uint8_t)S_BANK : 0U;
+        const uint8_t spin_flip = ((f->anim >> 3) & 1U) != 0U ? (uint8_t)(S_FLIPX | S_FLIPY) : 0U;
 
         set_sprite_tile(oam, (uint8_t)kTileFireball);
-        set_sprite_prop(oam, (uint8_t)kPalStar);
+        set_sprite_prop(oam, (uint8_t)(kPalCoin | spin_bank | spin_flip));
         move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
     }
     for (; i < shown; ++i) {

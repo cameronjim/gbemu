@@ -256,7 +256,7 @@ def load_bible(path):
 def feature_max_x(bible):
     max_x = 0
     for t in bible.get("terrain", []):
-        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform"):
+        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform", "ceiling_gap"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
@@ -332,6 +332,17 @@ def apply_ceiling(grid):
     for col in grid:
         for row in range(CEILING_ROWS):
             col[row] = BLOCK_GROUND
+
+
+def apply_ceiling_gap(grid, x0, x1):
+    # 1-2's measured real map cuts two deliberate holes in its otherwise-solid underground roof: the
+    # entry shaft the player drops through, and the lift shaft that carries a rider up past the
+    # ceiling to the walkable roof-top over the warp zone. apply_ceiling() has no way to say "except
+    # here", so this is the smallest terrain primitive that can carve one back out
+    x0, x1 = clamp_span(grid, x0, x1)
+    for x in range(x0, x1 + 1):
+        for row in range(CEILING_ROWS):
+            grid[x][row] = BLOCK_EMPTY
 
 
 def apply_pipe(grid, x, height):
@@ -613,6 +624,10 @@ def compile_grid(bible, level_type):
             probes.append((t["x1"], GROUND_ROW, gap_fill))
             if level_type == TYPE_CASTLE and t["x1"] - t["x0"] >= CASTLE_LIFT_GAP:
                 objects.append((t["x0"] + 1, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, lift_span(t["x0"], t["x1"])))
+        elif t["kind"] == "ceiling_gap":
+            apply_ceiling_gap(grid, t["x0"], t["x1"])
+            probes.append((t["x0"], 0, BLOCK_EMPTY))
+            probes.append((t["x1"], 0, BLOCK_EMPTY))
         elif t["kind"] == "pipe":
             if t["x"] == skip_pipe:
                 continue
@@ -824,13 +839,25 @@ def area_coin_count(area):
     return sum(1 for b in area.get("blocks", []) if b.get("contents") == "coin")
 
 
+# the sentinel a warp pipe's compiled kLevels index carries when the bible names a real world we do
+# not have a level table entry for. flow_warp_under_player() returns this value unchanged and
+# main.c's `if (target != 0xFF)` guard already treats it as "no warp here" - so the pipe still
+# stands in the room, correctly numbered, and pressing down on it is a polite no-op instead of a
+# jump into whatever level happened to be last in the table
+WARP_UNBUILT = 0xFF
+
+
 def warp_target(to_level, level_ids):
-    # the bible's warp targets are worlds 2-4, which do not exist yet, and the minus world is a
-    # clipping trick rather than a pipe. anything we cannot name clamps to the last level we have
+    # kLevelCount is 4 (world one only); the bible's own warp targets are worlds 2-4, which SMB1's
+    # real warp zone sends you to and which do not exist in this rom yet. earlier this clamped an
+    # unresolvable target to the last level of world one, which silently teleported a player who
+    # took the "world 4" pipe into 1-4 - never do that again. a name that parses as a world/level
+    # pair but is not in our table compiles to WARP_UNBUILT instead; the minus world is not a pipe
+    # at all (it is a wall-clip trick) so it stays out of the room's pipe list entirely
     if to_level in level_ids:
         return level_ids.index(to_level)
     if re.match(r"^\d+-\d+$", to_level or ""):
-        return len(level_ids) - 1
+        return WARP_UNBUILT
     return None
 
 
@@ -1271,7 +1298,7 @@ def write_probes(out_dir, slug, level, source_path):
         f.write("#endif\n")
 
 
-# the world we can actually warp into; anything else clamps to its last level
+# the levels we can actually warp into; anything else compiles to WARP_UNBUILT (see warp_target)
 LEVEL_IDS = ["1-1", "1-2", "1-3", "1-4"]
 
 

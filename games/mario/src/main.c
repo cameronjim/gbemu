@@ -343,8 +343,10 @@ void main(void) {
         if (state == kStatePipeDown) {
             if (player_pipe_update() != 0U) {
                 if (pending_warp != 0xFF) {
-                    // the bible's warp targets are worlds we do not have yet, so compile_level.py
-                    // clamped every one of them to the last level of world one
+                    // flow_warp_under_player() only ever hands back a real kLevels index here: a
+                    // pipe whose bible destination is a world we do not have yet compiles to
+                    // WARP_UNBUILT (0xFF, see compile_level.py), and the check above already
+                    // filtered that case out before pending_warp was ever set to it
                     level_number = pending_warp;
                     enter_play();
                     state = kStatePlay;

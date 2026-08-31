@@ -2,10 +2,12 @@
 
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
-**1-1 is measured.** its terrain, blocks, enemies, decor, flagpole, castle and bonus room were
-extracted pixel by pixel from the official nes 1-1 map image and carry
+**1-1 and 1-2 are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and bonus
+room, and 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
+castle), were extracted pixel by pixel from the official nes map images and carry
 `"confidence": "measured"`; see "measured levels" below. everything written about
-sequence-derived positions applies to 1-2, 1-3 and 1-4 only.
+sequence-derived positions applies to 1-2's finer detail (coins/blocks/enemies, `"approx"`), and
+to 1-3 and 1-4 in full.
 
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
@@ -139,7 +141,11 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 
 ## enums
 
-- `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`
+- `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`,
+  `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's `CEILING_ROWS`
+  rows over that span, the only way to carve a hole back out of the solid roof `apply_ceiling()`
+  otherwise stamps across every column - 1-2 needs one for the entry shaft and one for the lift
+  shaft that carries a rider up to the walkable roof over the warp zone)
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
@@ -150,12 +156,32 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
   (position is sequence-derived, see above; or a count/detail is a reasonable paraphrase of
   source text), `unknown` (no source data at all — placeholder only)
 
+## warp destinations that do not exist yet
+
+`kLevelCount` is 4 (world one only). a `warps[].to_level` naming a level in that table compiles to
+that level's index and works. one that parses as a `world-level` pair but is not in the table
+(1-2's real warp zone sends the player to worlds 2, 3 and 4) compiles to `WARP_UNBUILT` (0xFF) in
+`compile_level.py`: the pipe is still built at its real column, in its real left-to-right order,
+and the room's signage still names the real destination in the bible - only the jump itself is
+inert. `flow_warp_under_player()` returns `WARP_UNBUILT` like any other "no warp here" result and
+`main.c`'s existing `!= 0xFF` guard already treats it that way, so standing on the pipe and
+pressing down is a polite no-op, never a crash and never a silent teleport into a level that
+happens to already exist (an earlier version of this compiler clamped an unresolvable target to
+the last level of world one, which is exactly the bug this replaces). a `to_level` that is not a
+`world-level` pair at all (1-2's minus-world entry, `"-1"`, a wall-clip trick rather than a pipe)
+compiles to nothing and never gets a pipe.
+
 ## measured levels
 
-1-1 is no longer sequence-derived. every terrain run, block, enemy, decor shape, the flagpole
-and the castle were extracted from the official nes 1-1 map image by classifying each 16x16
-cell against a tile sheet cut from the same image, and carry `"confidence": "measured"`. the
-fields a measured level uses that a prose-derived one does not:
+1-1 and 1-2 are no longer sequence-derived. every terrain run, block, enemy, decor shape, the
+flagpole and the castle were extracted from the official nes map images by classifying each 16x16
+cell against a tile sheet cut from the same image, and carry `"confidence": "measured"` wherever
+the extraction is solid (1-2's skeleton: floor pits, ceiling runs, pipe columns, the warp zone's
+order and destinations, the closing staircase, the flagpole and the castle). 1-2's finer detail -
+individual coin/block/enemy placement inside the underground run and its bonus room - remains
+`"approx"`: the tile classifier that produced the measurement is reliable on the skeleton and
+rough on small objects (see `confidence_notes` in `level-1-2.json`). the fields a measured level
+uses that a prose-derived one does not:
 
 - `length_columns` is honoured rather than derived. when it is an integer the compiler builds
   exactly that many columns; when it is null the length is still the last positioned feature

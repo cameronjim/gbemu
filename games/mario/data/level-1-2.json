@@ -2,107 +2,112 @@
   "level": "1-2",
   "type": "underground",
   "timer": 400,
-  "length_columns": null,
-  "length_columns_confidence": "unknown",
+  "length_columns": 224,
+  "length_columns_confidence": "measured",
   "start": {"x": 0, "y": 13},
   "terrain": [
-    {"kind": "pipe", "x": 0, "height": 3, "dest": null, "confidence": "sourced", "notes": "mariowiki: player enters by falling through a roof pipe"},
-    {"kind": "ground", "x0": 0, "x1": 30, "confidence": "unknown"},
-    {"kind": "ground", "x0": 30, "x1": 60, "confidence": "unknown", "notes": "block-tower / brick formation area, no landmark spacing sourced"},
-    {"kind": "gap", "x0": 95, "x1": 97, "confidence": "approx", "notes": "'a pit' between the mid-section power-up block and the 1-up platform"},
-    {"kind": "pipe", "x": 110, "height": 3, "dest": "bonus_room", "confidence": "sourced", "notes": "mariowiki: first of three piranha pipes, leads to bonus room with 27 coins + 10-coin block"},
-    {"kind": "pipe", "x": 118, "height": 3, "dest": null, "confidence": "sourced", "notes": "second piranha pipe"},
-    {"kind": "pipe", "x": 126, "height": 3, "dest": null, "confidence": "sourced", "notes": "third piranha pipe"},
-    {"kind": "gap", "x0": 140, "x1": 142, "confidence": "approx", "notes": "first of the 'two gaps with ground blocks and brick blocks between them' near the end"},
-    {"kind": "ground", "x0": 142, "x1": 148, "confidence": "approx"},
-    {"kind": "gap", "x0": 148, "x1": 150, "confidence": "approx"},
-    {"kind": "stairs", "x0": 155, "x1": 160, "step_height": 4, "confidence": "approx", "notes": "half-pyramid structure before the lifts"},
-    {"kind": "lift_platform", "x0": 165, "x1": 175, "confidence": "sourced", "notes": "mariowiki: rising/falling lifts, left descends, right ascends, platform between them"},
-    {"kind": "stairs", "x0": 185, "x1": 193, "step_height": 8, "confidence": "sourced", "notes": "mariowiki: 'a staircase made out of Hard Blocks that allows the player to jump on top of the flagpole'"}
+    {"kind": "pipe", "x": 0, "height": 3, "dest": null, "confidence": "measured", "notes": "the roof pipe the player falls through to enter; compile_level.py's entry_pipe_x() skips rendering it, and the above-ground castle/pipe scene it sits under (measured at real map columns 0-13, see confidence_notes) is not compiled at all - engine limitation, see confidence_notes item 1"},
+    {"kind": "ceiling_gap", "x0": 1, "x1": 5, "confidence": "measured", "notes": "the entry shaft: the real map's ceiling (row 2) is absent at cols 1-5, directly under the entry pipe"},
+    {"kind": "gap", "x0": 80, "x1": 82, "confidence": "measured", "notes": "first floor pit"},
+    {"kind": "pipe", "x": 103, "height": 2, "dest": "bonus_room", "confidence": "measured", "notes": "first of three piranha pipes; leads to the coin-heaven bonus room measured off band 2 of the map rip"},
+    {"kind": "pipe", "x": 109, "height": 2, "dest": null, "confidence": "measured", "notes": "second piranha pipe"},
+    {"kind": "pipe", "x": 115, "height": 2, "dest": null, "confidence": "measured", "notes": "third piranha pipe"},
+    {"kind": "gap", "x0": 120, "x1": 121, "confidence": "measured"},
+    {"kind": "gap", "x0": 124, "x1": 125, "confidence": "measured"},
+    {"kind": "gap", "x0": 138, "x1": 138, "confidence": "measured", "notes": "first of the lift-shaft pits; the ceiling opens here too, see the ceiling_gap entry below"},
+    {"kind": "ceiling_gap", "x0": 138, "x1": 160, "confidence": "measured", "notes": "the lift shaft: the real map's ceiling is open across this whole span so a rider on the vertical lifts can climb up onto the roof (row 2, solid and walkable from above) and walk right to the warp zone. compile_level.py gained the ceiling_gap terrain kind for this - apply_ceiling() previously had no way to leave a hole"},
+    {"kind": "lift_platform", "x0": 140, "x1": 158, "confidence": "approx", "notes": "the vertical lift pair inside the measured ceiling gap; mariowiki: left descends, right ascends. the gap's own extent (138-160) is measured, the exact lift track within it is not"},
+    {"kind": "gap", "x0": 143, "x1": 144, "confidence": "measured"},
+    {"kind": "gap", "x0": 153, "x1": 153, "confidence": "measured"},
+    {"kind": "gap", "x0": 158, "x1": 159, "confidence": "measured"},
+    {"kind": "ceiling_gap", "x0": 187, "x1": 189, "confidence": "measured", "notes": "the drop from the roof-top walkway down into the enclosed warp-zone room, cols 178-190"},
+    {"kind": "pipe", "x": 195, "height": 2, "dest": null, "confidence": "approx", "notes": "the underground run's own exit pipe (piranha-guarded, measured shape off band 0's ending segment) re-anchored past column 191 - see confidence_notes item 1 for why this level cannot place it at its real column"},
+    {"kind": "stairs", "x0": 197, "x1": 205, "step_height": 8, "heights": [1, 2, 3, 4, 5, 6, 7, 8, 8], "confidence": "measured", "notes": "the closing staircase: measured 9 columns, 8 blocks tall with a flat 2-column top, off band 0 cols 155-163. shape and the 9-column gap to the flagpole below are exact; the absolute column is re-anchored, see confidence_notes item 1"}
   ],
   "blocks": [
-    {"x": 5, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: first of five ? blocks in the opening room, contains Super Mushroom or Fire Flower"},
-    {"x": 6, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 7, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 8, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 9, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 35, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "mariowiki: brick block tower area, ten coins"},
-    {"x": 45, "y": 9, "kind": "brick", "contents": "star", "confidence": "sourced", "notes": "mariowiki: one brick in the large brick-filled area contains a Starman"},
-    {"x": 90, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: brick block with a power-up before the pit/1-up platform section"},
-    {"x": 100, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "sourced", "notes": "mariowiki: 1-up hidden in a ceiling brick block, reached via block platform"},
-    {"x": 178, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: platform between the two lifts has a koopa troopa and a power-up brick block"}
+    {"x": 6, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "opening block row, sequence-derived within the measured entry shaft"},
+    {"x": 7, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
+    {"x": 8, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "approx"},
+    {"x": 9, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
+    {"x": 30, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "approx", "notes": "block-tower area; the grid classifier finds a coin/? cluster near here but not a precise cell"},
+    {"x": 40, "y": 9, "kind": "brick", "contents": "star", "confidence": "approx", "notes": "column matches a coin-marker cell in the extracted grid; contents (starman) is sourced from mariowiki, row is a placeholder"},
+    {"x": 74, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "approx", "notes": "immediately before the first measured pit at 80-82"},
+    {"x": 88, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "approx", "notes": "just past the first pit, high row; mariowiki: hidden 1-up reached via a block platform"},
+    {"x": 132, "y": 9, "kind": "brick", "contents": "coin", "confidence": "approx", "notes": "on the surviving floor run between the 124-125 pit and the lift shaft"}
   ],
   "enemies": [
-    {"x": 4, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "mariowiki: two little goombas in the opening room"},
-    {"x": 10, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 36, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "one goomba at the block-tower structure"},
-    {"x": 47, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "two koopa troopas 'lurk underneath' near the starman brick"},
-    {"x": 49, "y": 13, "kind": "koopa_green", "confidence": "sourced"},
-    {"x": 55, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "large brick-filled area: 1 koopa troopa + 5 goombas"},
-    {"x": 57, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 59, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 61, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 63, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 65, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 105, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "two goombas preceding the three-pipe section"},
-    {"x": 107, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 110, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in first pipe"},
-    {"x": 118, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in second pipe"},
-    {"x": 126, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in third pipe; mariowiki lists 4 piranha plants total in pipes for this level, 4th likely in the bonus-room exit pipe or overworld-exit pipe"},
-    {"x": 200, "y": 11, "kind": "piranha", "confidence": "approx", "notes": "4th piranha plant per mariowiki count; mariowiki notes the regular exit pipe leads to an overworld area containing a piranha plant"},
-    {"x": 158, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "half-pyramid structure before lifts has 2 goombas"},
-    {"x": 160, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 178, "y": 13, "kind": "koopa_red", "confidence": "sourced", "notes": "1 red koopa troopa on the platform between the two lifts"}
+    {"x": 11, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "the extracted grid marks an enemy cluster at cols 11-14 right past the entry shaft"},
+    {"x": 13, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 30, "y": 13, "kind": "koopa_green", "confidence": "approx", "notes": "block-tower area"},
+    {"x": 45, "y": 13, "kind": "koopa_green", "confidence": "approx"},
+    {"x": 60, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 62, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 75, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "just before the first pit"},
+    {"x": 97, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "between the second pit and the three piranha pipes"},
+    {"x": 100, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 103, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the first, bonus-room piranha pipe; column measured, row is the pipe's own cap"},
+    {"x": 109, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the second piranha pipe"},
+    {"x": 115, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the third piranha pipe"},
+    {"x": 150, "y": 13, "kind": "koopa_red", "confidence": "approx", "notes": "on the one surviving floor run inside the lift-shaft span, between the 144 and 153 pits"},
+    {"x": 195, "y": 11, "kind": "piranha", "confidence": "approx", "notes": "in the re-anchored exit pipe, see confidence_notes item 1"}
   ],
   "areas": [
     {
       "id": "bonus-1",
       "kind": "bonus_room",
-      "entry_x": 110,
-      "exit": "rightward exit pipe",
-      "terrain": [],
-      "blocks": [
-        {"x": 5, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "10-coin brick block in the bonus room"}
+      "entry_x": 103,
+      "columns": 16,
+      "start": {"x": 1, "y": 13},
+      "exit": "the pipe on the room's right side, rises back out near where the first piranha pipe was entered",
+      "terrain": [
+        {"kind": "bricks", "x0": 0, "x1": 0, "y0": 2, "y1": 12, "confidence": "measured", "notes": "the left wall the player drops in past, matching the entry arrow in the map rip's band-2 crop"},
+        {"kind": "bricks", "x0": 1, "x1": 10, "y0": 2, "y1": 2, "confidence": "measured", "notes": "the ceiling strip over the entry drop"},
+        {"kind": "bricks", "x0": 2, "x1": 9, "y0": 11, "y1": 12, "confidence": "measured", "notes": "the platform the lower coin row rests on"},
+        {"kind": "pipe", "x": 13, "height": 2, "dest": "overworld", "confidence": "measured", "notes": "the exit pipe, rising off the room's floor at the right edge, matching the up-arrow in the rip"}
       ],
-      "notes": "27 coins total in the room per mariowiki, individual coin layout not sourced"
+      "blocks": [],
+      "coins": [
+        {"x": 4, "y": 7}, {"x": 5, "y": 7}, {"x": 6, "y": 7}, {"x": 7, "y": 7}, {"x": 8, "y": 7}, {"x": 9, "y": 7}, {"x": 10, "y": 7},
+        {"x": 2, "y": 10}, {"x": 3, "y": 10}, {"x": 4, "y": 10}, {"x": 5, "y": 10}, {"x": 6, "y": 10}, {"x": 7, "y": 10}, {"x": 8, "y": 10}, {"x": 9, "y": 10}
+      ],
+      "confidence": "measured",
+      "notes": "the room and its two coin rows (7 over 8 = 15 coins) were counted directly off the map rip's band-2 crop (n12_shaft.png in the extraction scratch dir), not off mariowiki's 27-coin prose figure - the pixel count is preferred per the sourcing instructions. exact per-coin columns within each row are approx; the row counts and the room's overall L-shaped brick layout are measured"
     },
     {
       "id": "warp-zone",
       "kind": "warp_zone",
-      "entry_x": 175,
-      "exit": "n/a - overworld warp-zone room reached via the lift platforms through a hidden roof opening",
+      "entry_x": 148,
+      "exit": "n/a - reached by riding the vertical lifts up through the measured ceiling gap (138-160), walking right along the roof-top, then dropping through the measured roof opening at 187-189; compiled here as a plain pipe at entry_x because the engine's sub-area system only triggers on a pipe, see confidence_notes item 2",
       "terrain": [],
       "blocks": [],
-      "notes": "mariowiki: reached by using the rising/falling lifts to access a hidden opening in the roof; contains 3 pipes side by side, left-to-right: World 2, World 3, World 4. Passing through the left wall of the room instead gives access to the Minus World (World -1). THIS IS NES SMB1 GEOMETRY - smbd is confirmed to change this room, see smbd_deltas."
+      "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled"
     }
   ],
-  "flag": {"x": 193, "confidence": "unknown", "notes": "placed just after the sourced hard-block staircase; exact column not sourced"},
+  "flag": {"x": 214, "confidence": "measured", "notes": "9 columns past the closing staircase's last column (205), matching the measured 9-column gap off band 0. re-anchored past column 191, see confidence_notes item 1"},
+  "castle_end": {"x": 218, "confidence": "measured", "notes": "4 columns past the flagpole, matching the measured gap off band 0"},
   "warps": [
-    {"from_x": 175, "via": "warp_zone", "to_level": "2-1", "confidence": "sourced", "notes": "leftmost of 3 warp pipes in the nes warp zone room"},
-    {"from_x": 178, "via": "warp_zone", "to_level": "3-1", "confidence": "sourced", "notes": "middle pipe"},
-    {"from_x": 181, "via": "warp_zone", "to_level": "4-1", "confidence": "sourced", "notes": "rightmost pipe"},
-    {"from_x": 175, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "minus world - reached by clipping through the warp-zone room's left wall instead of taking a pipe (nes-only trick, needs rom verification for smbd/gbc behavior)"}
+    {"from_x": 148, "via": "warp_zone", "to_level": "4-1", "world_number": 4, "confidence": "measured", "notes": "leftmost of the 3 warp pipes; the map's own glyph above it reads 4. kLevelCount is 4 (world one only) so this compiles to WARP_UNBUILT (0xFF): the pipe is built at the right column with the right number, but pressing down over it is a no-op rather than a jump into an existing level - see SCHEMA.md"},
+    {"from_x": 148, "via": "warp_zone", "to_level": "3-1", "world_number": 3, "confidence": "measured", "notes": "middle pipe, glyph reads 3"},
+    {"from_x": 148, "via": "warp_zone", "to_level": "2-1", "world_number": 2, "confidence": "measured", "notes": "rightmost pipe, glyph reads 2"},
+    {"from_x": 148, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "the minus world: reached by clipping through the warp-zone room's left wall instead of taking a pipe. an nes-only trick, not a pipe, not compiled - recorded here so the destination is not silently lost"}
   ],
   "smbd": {
     "red_coins": [
       {"x": 9, "y": 9, "notes": "last ? block in the opening row", "confidence": "sourced"},
-      {"x": 35, "y": 5, "notes": "above the brick block formation near the start", "confidence": "sourced"},
-      {"x": 45, "y": 5, "notes": "on the large pillar with the 10-coin block", "confidence": "approx"},
-      {"x": 110, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
-      {"x": 155, "y": 9, "notes": "above the stone stairs before the lifts", "confidence": "sourced"}
+      {"x": 30, "y": 5, "notes": "above the brick block formation near the start", "confidence": "approx"},
+      {"x": 40, "y": 5, "notes": "on the pillar with the 10-coin block", "confidence": "approx"},
+      {"x": 103, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
+      {"x": 197, "y": 9, "notes": "above the stone stairs before the flagpole", "confidence": "approx"}
     ],
     "yoshi_egg": {"x": 130, "y": 9, "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe", "confidence": "sourced"},
     "medal_score": 38000,
     "medal_score_jp": 26000
   },
-  "smbd_deltas": "confirmed per mariowiki: smbd replaces the nes warp-zone room's 3-pipe world-select with a room containing brick blocks, three ? blocks, 22 coins, and a power-up brick block - i.e. smbd 1-2 likely has no functional warp zone / world skip in this spot, or it is relocated elsewhere (not found in sources used). the warp_zone area entry and warps[] array above describe the NES layout; do not assume they apply unmodified to smbd until verified against the rom. total coin count also differs: 68 coins (nes) vs 90 coins (smbd challenge mode) per mariowiki, implying additional coins were added somewhere in the smbd layout beyond just the warp-zone-room replacement.",
+  "smbd_deltas": "confirmed per mariowiki: smbd replaces the nes warp-zone room's 3-pipe world-select with a room containing brick blocks, three ? blocks, 22 coins, and a power-up brick block - i.e. smbd 1-2 likely has no functional warp zone / world skip in this spot, or it is relocated elsewhere (not found in sources used). the warp_zone area entry and warps[] array above describe the measured NES layout; do not assume they apply unmodified to smbd until the gbc map is pixel-measured the same way. total coin count also differs: 68 coins (nes) vs 90 coins (smbd challenge mode) per mariowiki, implying additional coins were added somewhere in the smbd layout beyond just the warp-zone-room replacement.",
   "sources": [
-    "https://www.mariouniverse.com/maps-gbc-smbd/",
     "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png",
-    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-2.png",
-    "https://themushroomkingdom.net/maps/smb/1-2",
-    "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)",
-    "https://vgmaps.de/maps/view.php?m=20519"
+    "https://www.mariouniverse.com/maps-gbc-smbd/",
+    "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)"
   ],
-  "confidence_notes": "this is the densest and most important level (warp zone) per the task brief. all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images - the warp zone pipe ordering (world 2/3/4 left-to-right) IS sourced/confirmed text, but the exact tile column of the room itself is approximate. the smbd warp-zone replacement is the single most important must-verify item in this whole file: mariowiki confirms it changed but does not describe the replacement room's exact block layout or whether smbd 1-2 has ANY way to skip worlds. do not build warp logic for smbd off the nes warps[] array without rom verification."
+  "confidence_notes": "this level's skeleton is no longer prose-derived: the floor pits, ceiling runs (including the two ceiling_gap spans), the three piranha pipe columns, the warp zone's pipe order/columns/world numbers, the closing staircase's shape, the flagpole's clearance and the castle's offset were extracted programmatically from the official nes 1-2 map image (3072x720, stacked as a 192-column underground band plus two above-ground band-0 segments) by classifying 16x16 cells against a tile sheet cut from the same image, cross-checked pixel by pixel where the ascii/grid extraction was ambiguous. those items carry \"confidence\": \"measured\". individual coin/block/enemy placement inside the underground run remains \"approx\" - the extraction is reliable on the skeleton and rough on small objects (documented in the spec this was built from), so counts and rough positions are kept, exact cells are not claimed as measured. two findings from this pass, previously flagged as things to investigate rather than paper over: (1) the real level is three physical areas - an above-ground start (castle, flat ground, the entry pipe), the underground main run, and an above-ground ending (piranha pipe, staircase, flagpole, castle) - but this engine compiles one typed grid per level plus pipe-triggered sub-areas that return to where they were entered; it cannot express \"overworld, then underground, then overworld again\" within one level. the above-ground start is therefore not rendered at all (matches the pre-existing entry_pipe_x() skip), and the above-ground ending is appended as more columns of the same underground-typed grid rather than switching visual type, so it renders correctly playable but with the cave ceiling still overhead - a real fidelity gap. the measured relative geometry of the ending (stair shape, the 9-column flag clearance, the 4-column castle offset) is preserved exactly; only its absolute column is re-anchored past the underground run's own last column (191) because the grid has nowhere else to put it. the smallest fix is not a full multi-segment engine, it is letting a level bible declare per-column-range palette/ceiling overrides so a tail of an underground-typed grid can look and read as sky - i.e. keep one grid, stop tying its look to a single global type. this pass adds the smaller, unconditionally useful half of that idea now: a new terrain kind, ceiling_gap, that lets an underground level's roof have real holes (used here for the entry shaft and the lift shaft) instead of the unconditional full-width roof apply_ceiling() used to stamp. (2) the three warp-zone pipes lead to worlds 2, 3 and 4, which this rom does not have (kLevelCount is 4, world one only). compile_level.py used to clamp an unresolvable warp target to the last level of world one, which meant pressing down on the \"world 4\" pipe silently sent the player into 1-4 - a real bug, not a hypothetical one, verified by reading main.c's kStatePipeDown handling. this pass replaces the clamp with WARP_UNBUILT (0xFF): the pipe is still built, in the correct order, still carrying its real destination in this file, but flow_warp_under_player()'s existing 0xFF-is-nothing convention (already used for every other pipe check in main.c) makes pressing down over it a no-op instead of a jump. no engine (.c) change was needed for this half; the fix lives entirely in compile_level.py. verified in the host tests that entering each of the three pipes neither crashes nor changes level_number."
 }

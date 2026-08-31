@@ -2114,25 +2114,32 @@ void assets_load_item_tiles(void) BANKED {
 
 // m8a's four actors, one 8x16 pair each: a piranha head over its stem, a firebar flame in the top
 // half of its pair, a lift plank in the top half of its own, and the fake bowser
+//
+// the piranha is one mirrored 8x16 column (left_tile drawn normal, the same bitmap redrawn
+// S_FLIPX for the right half, see enemies.c's draw loop), so column 7 below is the sprite's own
+// centreline: it sits adjacent to its own mirror image, not the outer edge. the jaws start wide
+// apart at the top (col7 empty = an open gap down the middle), a tooth block ('-') rides the inner
+// edge where the gap is still open, then the gap closes into a solid taper that narrows to a thin
+// stem and flares back out into two leaf tips at the base, right above the pipe cap
 static const uint8_t kHazardTiles[128] = {
-    // piranha top
-    0x07, 0x07, // .....###
-    0x18, 0x1F, // ...##+++
-    0x20, 0x3F, // ..#+++++
+    // piranha top - two scalloped jaw lobes opening around a gap that narrows going down
+    0x20, 0x30, // ..#+....
+    0x40, 0x78, // .#+++...
+    0x80, 0xF8, // #++++...
+    0x40, 0x7E, // .#+++++.
+    0x80, 0xFC, // #+++++..
+    0x44, 0x78, // .#+++-..
+    0x82, 0xFC, // #+++++-.
+    0x44, 0x78, // .#+++-..
+    // piranha bottom - teeth flank the gap as it closes, then the jaws taper to a stem and leaves
+    0x82, 0xFD, // #+++++-+
     0x40, 0x7F, // .#++++++
-    0x40, 0x7F, // .#++++++
-    0x40, 0x7F, // .#++++++
-    0x7F, 0x7F, // .#######
-    0x7F, 0x40, // .#------
-    // piranha bottom
-    0x7F, 0x55, // .#-#-#-#
-    0x7F, 0x40, // .#------
-    0x7F, 0x7F, // .#######
     0x20, 0x3F, // ..#+++++
     0x10, 0x1F, // ...#++++
     0x08, 0x0F, // ....#+++
     0x04, 0x07, // .....#++
-    0x04, 0x07, // .....#++
+    0x42, 0x63, // .#+...#+
+    0x85, 0xF7, // #+++.#+#
     0x18, 0x18, 0x3C, 0x24, 0x7E, 0x5A, 0x7E, 0x42,
     0x7E, 0x42, 0x3C, 0x24, 0x18, 0x18, 0x00, 0x00, // flame, upper half of the pair
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

@@ -601,6 +601,18 @@
 #define kPlantRisePx 16
 #define kPlantHoldFrames 60U
 #define kPlantCycleFrames (2U * kPlantRisePx + 2U * kPlantHoldFrames) // 152
+// the centering bug: compile_level.py's bible entry for a piranha names the same column as the
+// pipe it sits in (roster.json measures pipes and plants together off the map rip), which is the
+// pipe's left of its two 16px-wide columns. the plant's own box is one enemy width (16px), so
+// enemies.c's spawn() places it flush on that column - hugging the pipe's left lip - instead of
+// centred; adding this to its pos_x (spawn time) or to its screen x (draw time) would centre a
+// 16px box across the pipe's full 32px span. NOT wired up: enemies.c is out of this pass's owned
+// files, and both places it would go are documented as already sitting near this engine's per-
+// frame budget - even a single extra add in either spot was enough, tried and reverted, to push
+// two unrelated frame-exact host tests (mario_star_invincibility, mario_autopilot_completes_1_2)
+// past their tolerances. whoever owns enemies.c should apply this, and check both of those tests
+#define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
+#define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
 // must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
 // 60fps. no disassembly line for it was found in the bible, so the count is ours until one is
 #define kShellWakeFrames 600U

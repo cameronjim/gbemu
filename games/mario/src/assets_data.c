@@ -1172,9 +1172,13 @@ static const uint8_t kMapTiles[160] = {
 // slope or bush cap already uses for its other side. each mound's silhouette widens fast off the
 // flat top - never a single-pixel peak - then holds a level plateau before the ragged run near the
 // bottom of every base tile breaks the green/sand line into a scalloped fringe instead of a ruled
-// one. field fill is a plain, shapeless tile, stamped unmirrored at both quad halves the way
-// put_new_quad already stamps water and path
-static const uint8_t kFoliageTiles[112] = {
+// one. field fill is a plain, shapeless top/base pair - but not a flat one: each half carries its
+// own small, asymmetric scatter of mid-green specks (no two specks in either half share a row or
+// column), and the two halves use different scatters so a block's base never mirrors its own top.
+// drawn through put_dome_quad exactly like the hedges (mirrored on its right half too), the mix of
+// a different top/base and the x-flip keeps a long run of field cells from lining every speck up
+// into a visible grid the way one symmetric, unmirrored tile would
+static const uint8_t kFoliageTiles[128] = {
     // hedge tall top: field above, the mound's flat-wide crown emerging low in the tile
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x17, 0x60, 0x5F, 0xC0, 0xBF, 0xC0, 0xBF,
     // hedge tall base: full body, scalloped where it meets the sand
@@ -1187,14 +1191,16 @@ static const uint8_t kFoliageTiles[112] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     // hedge low base: the shortest mound, crown and scalloped fringe both inside one tile
     0x00, 0x00, 0x00, 0x00, 0x10, 0x17, 0x40, 0x5F, 0x80, 0xBF, 0x80, 0xBD, 0x80, 0xA7, 0x80, 0x99,
-    // field fill: flat, no shape, doubles as the plain dark backdrop above the hedge line
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // field fill top: a sparse, asymmetric scatter of specks over the plain dark field
+    0x00, 0x00, 0x00, 0x20, 0x00, 0x04, 0x00, 0x00, 0x00, 0x80, 0x00, 0x02, 0x00, 0x00, 0x00, 0x10,
+    // field fill base: a different scatter, so it never mirrors the top half it sits under
+    0x00, 0x08, 0x00, 0x00, 0x00, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x20, 0x00, 0x04, 0x00, 0x80,
 };
 
 void assets_load_map_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileMapWaterTop, 10, kMapTiles);
-    set_bkg_data(kTileMapHedgeTallTop, 7, kFoliageTiles);
+    set_bkg_data(kTileMapHedgeTallTop, 8, kFoliageTiles);
     VBK_REG = VBK_BANK_0;
 }
 

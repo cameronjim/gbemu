@@ -76,16 +76,21 @@ void assets_load_digit_tiles(void) BANKED;
 // hedge row: three flat-topped mounds, each wider than it is tall (a top+base pair, the right
 // half of the 16x16 quad the mirror of the left the same way a hill peak's right slope is), sized
 // tall/medium/low so a run of them reads as one bumpy, uneven canopy rather than a repeated
-// silhouette, each meeting the sand path with a scalloped fringe instead of a ruled line. a plain
-// field fill sits above them and reuses the same tile for both quad halves, since it carries no
-// shape of its own. see put_dome_quad in mapscreen.c
+// silhouette, each meeting the sand path with a scalloped fringe instead of a ruled line. hedges
+// scatter across both the strip's block rows, offset from row to row, so the green band reads as
+// dense wooded terrain rather than a thin fringe of bumps under a blank field. that field itself -
+// the ground showing between hedges - is a lightly speckled top/base pair, not a flat single tile:
+// two different speck scatters, so a block's top half never mirrors its own base the way a single
+// reused tile would, and (drawn mirrored through put_dome_quad, same as the hedges) a long run of
+// it does not tile into a visible grid. see put_dome_quad in mapscreen.c
 #define kTileMapHedgeTallTop 0x6AU
 #define kTileMapHedgeTallBase 0x6BU
 #define kTileMapHedgeMedTop 0x6CU
 #define kTileMapHedgeMedBase 0x6DU
 #define kTileMapHedgeLowTop 0x6EU
 #define kTileMapHedgeLowBase 0x6FU
-#define kTileMapFieldFill 0x70U
+#define kTileMapFieldFillTop 0x70U
+#define kTileMapFieldFillBase 0x71U
 void assets_load_map_tiles(void) BANKED;
 
 // the map screen's own eight cgb bg palettes - a card screen, never up during play, so it does not

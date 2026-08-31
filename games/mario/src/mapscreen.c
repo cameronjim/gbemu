@@ -225,22 +225,24 @@ static uint16_t map_x;
 // level itself draws (reused straight through put_block); the four sentinels past it are this
 // screen's own new art added by put_new_quad/put_dome_quad - water and path, then the low hedge row
 // that replaced the level's 45-degree hill slopes (see kTileMapHedgeTallTop in assets.h): three
-// flat-topped mounds at three heights, plus a plain field fill for the block above a mound that
-// meets the sand's a single tile below the strip's top edge (a mound is never itself the top block
-// of the two-block foliage column - the field always is), so the canopy line comes out irregular
-// rather than a repeated silhouette. row by row: plain field over a pipe's lip and the castle's
-// crenels, filling the strip's top edge end to end; the hedge row itself (tall, low, medium - no two
-// alike side by side), a bush and the pipe's body under the castle's window; the path mario and the
-// four markers stand on, running under the castle's door; and, below that, a low hedge at the pond's
-// bank, more path, and the castle's wall
+// flat-topped mounds at three heights, plus a plain field fill (itself lightly textured, not a flat
+// tone - see kFoliageTiles in assets_data.c) for the ground between them. the top block row is not
+// left as an unbroken field rectangle: it carries its own scatter of hedges at offset columns and
+// heights from the row below, so the two rows together read as dense, uneven foliage rather than a
+// thin fringe of bumps under a blank green wall. row by row: a scatter of hedges and field over a
+// pipe's lip and the castle's crenels, filling the strip's top edge end to end, offset from the row
+// beneath so no column stacks the same height twice; the lower hedge row itself (tall, low, medium -
+// no two alike side by side), a bush and the pipe's body under the castle's window; the path mario
+// and the four markers stand on, running under the castle's door; and, below that, a low hedge at
+// the pond's bank, more path, and the castle's wall
 #define W (uint8_t)(kBlockKindCount)
 #define P (uint8_t)(kBlockKindCount + 1U)
-#define N (uint8_t)(kBlockKindCount + 2U) // plain field fill, no shape
+#define N (uint8_t)(kBlockKindCount + 2U) // plain field fill, textured but shapeless
 #define T (uint8_t)(kBlockKindCount + 3U) // hedge, tall
 #define E (uint8_t)(kBlockKindCount + 4U) // hedge, medium
 #define L (uint8_t)(kBlockKindCount + 5U) // hedge, low
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
-    {N, N, N, N, N, N, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
+    {E, N, L, T, N, E, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
     {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR,
      kBlockCastleDoorTop, kBlockCastleWindow},
     {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
@@ -346,7 +348,10 @@ static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
         put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody,
                      (uint8_t)(kCamPalCoin | kCamAttrVram1));
     } else if (kind == (uint8_t)(kBlockKindCount + 2U)) {
-        put_new_quad(bx, by, kTileMapFieldFill, kTileMapFieldFill, foliage_attr);
+        // x-flipped the same way the hedges are, and top/base are two different speck scatters
+        // (not the same tile twice): between the mirror and the mismatched halves, a run of field
+        // cells does not line every speckle up into an obvious grid
+        put_dome_quad(bx, by, kTileMapFieldFillTop, kTileMapFieldFillBase, foliage_attr);
     } else if (kind == (uint8_t)(kBlockKindCount + 3U)) {
         put_dome_quad(bx, by, kTileMapHedgeTallTop, kTileMapHedgeTallBase, foliage_attr);
     } else if (kind == (uint8_t)(kBlockKindCount + 4U)) {

@@ -6554,6 +6554,63 @@ TEST_CASE("mario_autopilot_completes_1_2") {
     REQUIRE(settle_into(gameboy, kSkyOverworld, 900) >= 0);
 }
 
+// the facts a pixel extraction of the official nes 1-2 map settled that the old prose-derived
+// bible had wrong: the three piranha pipes' columns, the seven floor pits, and the two deliberate
+// holes in the underground roof (the entry shaft and the lift shaft). see level-1-2.json's
+// confidence_notes and SCHEMA.md's ceiling_gap entry
+TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
+    std::vector<uint16_t> pipe_caps;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel12Grid[column][row] == kBlockPipeTl) {
+                pipe_caps.push_back(column);
+            }
+        }
+    }
+    // the three piranha pipes (measured at 103/109/115), the synthesized pipe compile_level.py
+    // stands up for the warp-zone sub-area's entry_x (148, inside the measured lift shaft - the
+    // area system only triggers on a pipe, see level-1-2.json's warp-zone area notes), and the
+    // re-anchored ending pipe (195, see confidence_notes item 1 - its real column could not be
+    // kept in a single-grid level)
+    REQUIRE(pipe_caps == std::vector<uint16_t>{103, 109, 115, 148, 195});
+
+    // a pit is a column with no ground at either of the two floor rows
+    std::vector<int> pits;
+    bool in_pit = false;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        const bool floorless = kLevel12Grid[column][LEVEL_1_2_START_ROW] != kBlockGround &&
+                                kLevel12Grid[column][LEVEL_1_2_START_ROW] != kBlockGroundFill;
+        if (floorless && !in_pit) {
+            pits.push_back(column);
+            in_pit = true;
+        } else if (!floorless) {
+            in_pit = false;
+        }
+    }
+    // the seven measured pits' left edges: 80-82, 120-121, 124-125, 138, 143-144, 153, 158-159
+    REQUIRE(pits == std::vector<int>{80, 120, 124, 138, 143, 153, 158});
+
+    // the roof (rows 0-1) is solid everywhere except the two measured ceiling_gap spans
+    const auto roof_open = [](uint16_t column) {
+        return kLevel12Grid[column][0] != kBlockGround && kLevel12Grid[column][1] != kBlockGround;
+    };
+    for (uint16_t column = 1; column <= 5; ++column) {
+        REQUIRE(roof_open(column));
+    }
+    for (uint16_t column = 138; column <= 160; ++column) {
+        REQUIRE(roof_open(column));
+    }
+    for (uint16_t column = 187; column <= 189; ++column) {
+        REQUIRE(roof_open(column));
+    }
+    // and the roof is solid again on both sides of the lift-shaft gap
+    REQUIRE(!roof_open(6));
+    REQUIRE(!roof_open(137));
+    REQUIRE(!roof_open(161));
+    REQUIRE(!roof_open(186));
+    REQUIRE(!roof_open(190));
+}
+
 TEST_CASE("mario_autopilot_completes_1_3") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -6859,14 +6916,23 @@ TEST_CASE("mario_axe_ends_1_4") {
 }
 
 TEST_CASE("mario_warp_zone_compiles") {
-    // the bible's warp-zone room: three pipes side by side, one per destination world. every one of
-    // its targets is a world that does not exist yet, so compile_level.py clamped all three to 1-4
+    // the bible's warp-zone room: three pipes side by side, measured off the real nes map at
+    // columns 178-179/182-183/186-187, ordered left to right by the glyph the map draws above each
+    // one - 4, 3, 2. every one of those worlds is real in smb1 but does not exist in this rom
+    // (kLevelCount is 4, world one only), so each compiles to WARP_UNBUILT (0xFF) rather than being
+    // clamped onto a level that does exist: the pipe is still built, still in the right order, but
+    // pressing down over it is a no-op. see SCHEMA.md and level-1-2.json's confidence_notes
+    constexpr uint8_t kWarpUnbuilt = 0xFF;
     const HostArea* warp = warp_room();
     REQUIRE(warp != nullptr);
     REQUIRE(warp->warp_count == 3);
     for (int i = 0; i < warp->warp_count; ++i) {
-        REQUIRE(warp->warps[i].level == kLevel14);
+        REQUIRE(warp->warps[i].level == kWarpUnbuilt);
     }
+    // the room lays its three pipes out left to right in the bible's own warps[] order - world 4,
+    // then 3, then 2 - so the compiled columns still climb left to right even though none opens
+    REQUIRE(warp->warps[0].column < warp->warps[1].column);
+    REQUIRE(warp->warps[1].column < warp->warps[2].column);
 
     // the pipe into the room, read out of the compiled object list rather than placed by hand
     const HostLevel& lv = kHostLevels[kLevel12];
@@ -6878,7 +6944,10 @@ TEST_CASE("mario_warp_zone_compiles") {
     }
     REQUIRE(entry != nullptr);
 
-    const Route approach = plan_level(kLevel12, 6000, static_cast<uint16_t>((entry->column - 6) * kBlockPx));
+    // the pipe stands on the 145-152 ledge inside the measured lift shaft, one column short of
+    // the 153 pit; aiming for column 147 keeps the approach on that ledge instead of the much
+    // narrower 139-142 island the usual six-column margin would land him on
+    const Route approach = plan_level(kLevel12, 6000, static_cast<uint16_t>((entry->column - 1) * kBlockPx));
     REQUIRE(approach.reached);
     const Route climb = plan_stand_on_pipe(approach.end, entry->column, entry->row, 600);
     REQUIRE(climb.reached);
@@ -6892,6 +6961,55 @@ TEST_CASE("mario_warp_zone_compiles") {
     const Route across =
         plan_stand_on_pipe(inside, warp->warps[0].column, static_cast<uint8_t>(warp->exit_top_row), 900);
     REQUIRE(across.reached);
+}
+
+TEST_CASE("mario_unbuilt_warp_pipe_is_a_polite_no_op") {
+    // the rom-level guarantee behind the WARP_UNBUILT sentinel above: standing on one of the three
+    // unbuilt warp pipes and holding down neither crashes nor changes what level is loaded. this is
+    // the fix for a real bug - compile_level.py used to clamp an unresolvable warp target to the
+    // last level of world one, so this exact input (stand on the "world 4" pipe, hold down) used to
+    // silently load 1-4
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const HostArea* warp = warp_room();
+    REQUIRE(warp != nullptr);
+    REQUIRE(warp->warp_count == 3);
+
+    const HostLevel& lv = kHostLevels[kLevel12];
+    const LevelObject* entry = nullptr;
+    for (int i = 0; i < lv.object_count; ++i) {
+        if (lv.objects[i].kind == kObjPipe && lv.objects[i].param == 1) {
+            entry = &lv.objects[i];
+        }
+    }
+    REQUIRE(entry != nullptr);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+
+    const Route approach = plan_level(kLevel12, 6000, static_cast<uint16_t>((entry->column - 1) * kBlockPx));
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, entry->column, entry->row, 600);
+    REQUIRE(climb.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
+    // now inside the warp-zone sub-area; still 1-2's underground palette, not a jump anywhere yet
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+
+    // walk onto the first (world 4) pipe and hold down for a couple of seconds. nothing should
+    // happen: the sky never changes, the emulator never stops responding
+    static const HostLevel room = as_level(*warp);
+    PlayerSim inside;
+    inside.load_host(room);
+    const Route across = plan_stand_on_pipe(inside, warp->warps[0].column,
+                                             static_cast<uint8_t>(warp->exit_top_row), 900);
+    REQUIRE(across.reached);
+    replay(gameboy, across.script, 0, across.script.size());
+    press(gameboy, gb::Button::Down, 120);
+    run(gameboy, 30);
+
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
 }
 
 // --- sub-milestone 8b: hud, lives, cards and the battery slot ----------------------------------

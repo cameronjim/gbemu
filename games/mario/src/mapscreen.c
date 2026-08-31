@@ -18,7 +18,10 @@
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
+#include <gbdk/console.h>
+#include <gbdk/font.h>
 #include <stdint.h>
+#include <stdio.h>
 
 // the three screens' own answers, private to this module now that one dispatcher drives them all
 #define kFileStay 0U
@@ -215,35 +218,26 @@ static uint8_t map_anim;
 static uint8_t map_anim_timer;
 static uint16_t map_x;
 
-// the backdrop, one row of ten block kinds per screen row. only the four node markers are left out
-// of it, because what they are drawn as depends on how far the file has got.
-//
-// row 1/2  a cloud over the middle of the world
-// row 3    the marker row (columns 1, 3, 5, 7) and the castle's crenels
-// row 4    the hill's peak, and the castle's door head and window
-// row 5    the hill's base, a bush, the castle's door - and the row mario walks along, in front of
-//          every one of them, exactly the way he walks past 1-1's scenery
-// row 6    the ground, with a hard block under each node so the four stops read on the path itself
-// row 7-8  the fill under it
-//
-// every kind here is already in the game's own tile set: this map adds no art at all
-#define E kBlockEmpty
-#define F kBlockGroundFill
-static const uint8_t kMapRows[kMapBlockRows][kMapBlockCols] = {
-    {E, E, E, E, E, E, E, E, E, E},
-    {E, E, E, E, E, kBlockCloudTl, kBlockCloudT, kBlockCloudTr, E, E},
-    {E, E, E, E, E, kBlockCloudBl, kBlockCloudB, kBlockCloudBr, E, E},
-    {E, E, E, E, E, E, E, E, kBlockCastleCrenel, kBlockCastleCrenel},
-    {E, kBlockHillPeak, E, E, E, E, E, E, kBlockCastleDoorTop, kBlockCastleWindow},
-    {kBlockHillSlopeL, kBlockHillFill, kBlockHillSlopeR, E, kBlockBushL, kBlockBushM, kBlockBushR, E,
-     kBlockCastleDoor, kBlockCastle},
-    {kBlockGround, kBlockHard, kBlockGround, kBlockHard, kBlockGround, kBlockHard, kBlockGround,
-     kBlockHard, kBlockGround, kBlockGround},
-    {F, F, F, F, F, F, F, F, F, F},
-    {F, F, F, F, F, F, F, F, F, F},
+// the map strip's backdrop, four block rows (local 0-3, absolute kMapBandFirstRow+0..3) of ten
+// columns. kBlockEmpty leaves a cell as the band's plain sky-blue; every other value under
+// kBlockKindCount is a kind the level itself draws (reused straight through put_block); the two
+// sentinels past it are this screen's own new art, water and path, added by put_new_quad. row by
+// row: the hill's peak, a pipe's lip and the castle's crenels; the hill's base, a bush and the
+// pipe's body under the castle's window; the path mario and the four markers stand on, running
+// under the castle's door; and, below that, the hill trailing into a pond, more path, and the
+// castle's wall
+#define W (uint8_t)(kBlockKindCount)
+#define P (uint8_t)(kBlockKindCount + 1U)
+static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
+    {kBlockEmpty, kBlockHillPeak, kBlockEmpty, kBlockEmpty, kBlockEmpty, kBlockEmpty, kBlockPipeTl,
+     kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
+    {kBlockHillSlopeL, kBlockHillFill, kBlockHillSlopeR, kBlockBushL, kBlockBushM, kBlockBushR,
+     kBlockPipeBodyL, kBlockPipeBodyR, kBlockCastleDoorTop, kBlockCastleWindow},
+    {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
+    {kBlockHillFill, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
 };
-#undef E
-#undef F
+#undef W
+#undef P
 
 static uint8_t node_column(uint8_t node) {
     return (uint8_t)(kMapNodeFirstCol + node * kMapNodeStepCol);
@@ -279,6 +273,136 @@ static void put_block(uint8_t bx, uint8_t by, uint8_t kind) {
     set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attr);
 }
 
+// the same 16x16 shape as put_block, for the map's own two new kinds: `top` fills the upper tile
+// row (water's foam, path's grass edge), `body` the lower (plain water, plain sand), both under one
+// attribute that carries kCamAttrVram1 - this screen's new tiles live in bank 1, same as scenery
+static void put_new_quad(uint8_t bx, uint8_t by, uint8_t top, uint8_t body, uint8_t attr) {
+    uint8_t tiles[2];
+    uint8_t attrp[2];
+    const uint8_t x = (uint8_t)(bx * kTilesPerBlock);
+    const uint8_t y = (uint8_t)(by * kTilesPerBlock);
+
+    attrp[0] = attr;
+    attrp[1] = attr;
+    tiles[0] = top;
+    tiles[1] = top;
+    set_bkg_tiles(x, y, 2, 1, tiles);
+    set_bkg_attributes(x, y, 2, 1, attrp);
+    tiles[0] = body;
+    tiles[1] = body;
+    set_bkg_tiles(x, (uint8_t)(y + 1U), 2, 1, tiles);
+    set_bkg_attributes(x, (uint8_t)(y + 1U), 2, 1, attrp);
+}
+
+static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
+    if (kind == (uint8_t)kBlockEmpty) {
+        return; // the band paint underneath is already this cell's answer
+    }
+    if (kind < (uint8_t)kBlockKindCount) {
+        put_block(bx, by, kind);
+    } else if (kind == (uint8_t)kBlockKindCount) {
+        put_new_quad(bx, by, kTileMapWaterTop, kTileMapWaterBody,
+                     (uint8_t)(kCamPalNeutral | kCamAttrVram1));
+    } else {
+        put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody,
+                     (uint8_t)(kCamPalCoin | kCamAttrVram1));
+    }
+}
+
+// left-aligned text, the console cursor moved first; title.c's own helpers are all centered or
+// value-suffixed, neither of which the footer's two side-by-side pieces want
+static void puts_at(uint8_t x, uint8_t y, const char* text) {
+    uint8_t i;
+
+    gotoxy(x, y);
+    for (i = 0; text[i] != '\0'; ++i) {
+        putchar(text[i]);
+    }
+}
+
+// "WORLD" then "1-N", centered the way every other card banner is, tracking whichever node is
+// current - the cursor's target the instant a walk starts, so the label answers "what am I about
+// to enter" rather than lagging a whole walk behind
+static void map_draw_world_label(uint8_t node) {
+    const uint8_t lvl = (node < (uint8_t)kLevelCount) ? node : (uint8_t)(kLevelCount - 1U);
+
+    puts_at((uint8_t)((kScreenCols - 5U) / 2U), kMapWorldRow, "WORLD");
+    gotoxy((uint8_t)((kScreenCols - 3U) / 2U), kMapLevelRow);
+    putchar('1');
+    putchar('-');
+    putchar((char)('1' + lvl));
+}
+
+// "MARIO x NN". a host probe finds mario anywhere on screen by his tile family alone (any sprite
+// drawn from kTileMarioFirst's range, not just the walking figure's own oam slots), which a second
+// mario-shaped icon sprite here would feed into and break every test that reads his position off
+// the map - so the lives readout stays plain text, the word rather than the little head
+static void map_draw_lives(void) {
+    uint8_t digits[2];
+
+    hud_split(hud_lives, digits, 2);
+    puts_at(kMapLivesTextCol, kMapLivesTextRow, "LIVES");
+    gotoxy(kMapLivesTextCol, (uint8_t)(kMapLivesTextRow + 1U));
+    putchar('x');
+    putchar((char)('0' + digits[0]));
+    putchar((char)('0' + digits[1]));
+}
+
+static void map_draw_border(uint8_t row) {
+    uint8_t i;
+
+    gotoxy(kMapListLeftCol, row);
+    putchar('+');
+    for (i = 0; i < (uint8_t)(kMapListWidth - 2U); ++i) {
+        putchar('-');
+    }
+    putchar('+');
+}
+
+// one interior line of the box, padded to its width so a shorter string never leaves a stale
+// glyph from whatever this cell held before
+static void map_list_line(uint8_t row, const char* text) {
+    uint8_t i;
+    uint8_t n = 0;
+
+    gotoxy(kMapListLeftCol, row);
+    putchar('|');
+    for (i = 0; text[i] != '\0'; ++i) {
+        putchar(text[i]);
+        ++n;
+    }
+    for (; n < (uint8_t)(kMapListWidth - 2U); ++n) {
+        putchar(' ');
+    }
+    putchar('|');
+}
+
+// the four cells, one per level of world one: filled once its node is behind the file's furthest,
+// hollow while it is still ahead. no save-format change - world one is strictly linear, so "node i
+// is cleared" is already exactly what map_unlocked answers (see the comment on kSaveSlots)
+static void map_list_cells(uint8_t furthest) {
+    uint8_t i;
+
+    gotoxy(kMapListLeftCol, kMapListCellsRow);
+    putchar('|');
+    putchar(' ');
+    for (i = 0; i < (uint8_t)kLevelCount; ++i) {
+        putchar(i < furthest ? '#' : '.');
+        if (i + 1U < (uint8_t)kLevelCount) {
+            putchar(' ');
+            putchar(' ');
+        }
+    }
+    putchar('|');
+}
+
+static void map_draw_list(uint8_t furthest) {
+    map_draw_border(kMapListTopRow);
+    map_list_line(kMapListHeadRow, "CLEAR LIST");
+    map_list_cells(furthest);
+    map_draw_border(kMapListBottomRow);
+}
+
 // small mario, drawn straight rather than through player.c: he has no physics here, so the map
 // owns his two 8x16 sprites itself and player.c keeps knowing nothing about this screen
 static void draw_mario(void) {
@@ -299,10 +423,6 @@ static void draw_mario(void) {
 }
 
 static void map_reset(uint8_t node) {
-    // the seven bg palettes whose color 0 is the level's sky. the ground's is a dark green inside
-    // its own art, so it is the one slot left alone
-    static const uint8_t kSkySlots[7] = {kCamPalSky,     kCamPalBrick,   kCamPalQuestion, kCamPalPipe,
-                                         kCamPalNeutral, kCamPalSpent,   kCamPalCoin};
     uint8_t bx;
     uint8_t by;
 
@@ -326,33 +446,37 @@ static void map_reset(uint8_t node) {
     assets_load_block_tables();
     assets_load_bg_tiles();
     assets_load_scenery_tiles();
-    assets_load_bg_palettes();
-    // only color 0 of each, so every other shade of the terrain art is exactly the level's
-    for (bx = 0; bx < 7U; ++bx) {
-        set_bkg_palette_entry(kSkySlots[bx], 0, kMapSkyRgb);
-    }
+    assets_load_map_tiles();
+    // a card screen, never up during play: its own eight bg palettes, not the level's - see the
+    // comment on the function body for why sharing them left level-blue rectangles behind
+    assets_load_map_bg_palettes();
     assets_load_sprite_tiles();
     assets_load_sprite_palettes();
     SPRITES_8x16;
-    // card_clear_map blanks all 32x32 cells to the font's space glyph under palette 0, which is
-    // the sky slot here too, so everything the 10x9 layout leaves out is simply sky
+    // card_clear_map blanks all 32x32 cells to the font's space glyph under palette 0 (this
+    // screen's black band slot), so the header and footer bands are already answered; only the
+    // map strip's rows need repainting to the band's sky-blue before the strip itself is drawn
     card_clear_map();
+    font_color(kFontFore, kFontBack);
+    card_paint_band((uint8_t)(kMapBandFirstRow * kTilesPerBlock),
+                     (uint8_t)(kMapBandBlockRows * kTilesPerBlock), kCamPalGround);
     // the level left its own oam behind - mario's lower row, the five hud digits, items, enemies -
-    // and SHOW_SPRITES below would put every one of them back on screen. the map draws two sprites
-    // and owns all forty, so the rest are parked above the visible area first
+    // and SHOW_SPRITES below would put every one of them back on screen. the map draws four sprites
+    // (mario, and the lives icon) and owns all forty, so the rest are parked above the visible area
     for (bx = 0; bx < (uint8_t)kOamSlots; ++bx) {
         move_sprite(bx, 0, 0);
     }
-    for (by = 0; by < (uint8_t)kMapBlockRows; ++by) {
+    for (by = 0; by < (uint8_t)kMapBandBlockRows; ++by) {
         for (bx = 0; bx < (uint8_t)kMapBlockCols; ++bx) {
-            if (kMapRows[by][bx] != (uint8_t)kBlockEmpty) {
-                put_block(bx, by, kMapRows[by][bx]);
-            }
+            put_cell(bx, (uint8_t)(kMapBandFirstRow + by), kMapRows[by][bx]);
         }
     }
     for (bx = 0; bx < (uint8_t)kLevelCount; ++bx) {
         put_block(node_column(bx), kMapMarkerRow, marker_kind(bx));
     }
+    map_draw_world_label(map_node);
+    map_draw_lives();
+    map_draw_list(map_unlocked);
     draw_mario();
     SHOW_BKG;
     SHOW_SPRITES;
@@ -403,6 +527,9 @@ static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
     map_walking = 1;
     map_anim = kFrameWalk0;
     map_anim_timer = 0;
+    // the label answers for wherever the walk is headed, updated the instant it starts rather than
+    // once he arrives - the reference's own header reacts on the first step, not the last
+    map_draw_world_label(map_target);
     draw_mario();
     return kMapStay;
 }

@@ -612,7 +612,6 @@
 // two unrelated frame-exact host tests (mario_star_invincibility, mario_autopilot_completes_1_2)
 // past their tolerances. whoever owns enemies.c should apply this, and check both of those tests
 #define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
-#define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
 // must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
 // 60fps. no disassembly line for it was found in the bible, so the count is ours until one is
 #define kShellWakeFrames 600U

@@ -142,10 +142,11 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 ## enums
 
 - `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`,
-  `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's `CEILING_ROWS`
-  rows over that span, the only way to carve a hole back out of the solid roof `apply_ceiling()`
-  otherwise stamps across every column - 1-2 needs one for the entry shaft and one for the lift
-  shaft that carries a rider up to the walkable roof over the warp zone)
+  `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's one solid row
+  (`CEILING_ROW`) over that span, the only way to carve a hole back out of the roof `apply_ceiling()`
+  otherwise stamps across every underground-typed column - 1-2 needs one for the entry shaft, one
+  for the lift shaft that carries a rider up to the walkable roof over the warp zone, and one for a
+  narrow annotation-only notch just past it)
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`

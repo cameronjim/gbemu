@@ -204,10 +204,15 @@ DECOR_BASE_ROW = GROUND_ROW - 1
 DECOR_BUSH_MIN_WIDTH = 2
 DECOR_CLOUD_MIN_WIDTH = 2
 
-# an underground level gets a two-row roof the bible never describes: SCHEMA.md's grid has rows
-# above the playfield and mariowiki calls 1-2 an enclosed cave, but no source places the ceiling.
-# compiler-invented, must-verify
-CEILING_ROWS = 2
+# an underground level's roof: the pixel extraction of the real nes 1-2 map (see n12_kinds.json in
+# the extraction scratch dir) settled this - the solid cave ceiling is exactly one row of brick, at
+# row 2, not the two-row slab of ground this compiler used to stamp at rows 0-1. rows 0-1 above it
+# render nothing (open space the camera never fully reveals); a non-measured underground level with
+# no bible-supplied roof still gets this same one row via apply_ceiling() as a placeholder
+CEILING_ROW = 2
+# rows a floor scan must skip before it can land on real ground: 0-1 are empty and row CEILING_ROW
+# is the roof itself, solid but nobody's floor
+CEILING_ROWS = CEILING_ROW + 1
 
 # a firebar's pivot is a hard block; the roster calls the short bar "about 6 fireball segments"
 FIREBAR_SEGMENTS = 6
@@ -360,19 +365,18 @@ def apply_ground(grid, x0, x1):
 
 def apply_ceiling(grid):
     for col in grid:
-        for row in range(CEILING_ROWS):
-            col[row] = BLOCK_GROUND
+        col[CEILING_ROW] = BLOCK_BRICK
 
 
 def apply_ceiling_gap(grid, x0, x1):
-    # 1-2's measured real map cuts two deliberate holes in its otherwise-solid underground roof: the
-    # entry shaft the player drops through, and the lift shaft that carries a rider up past the
-    # ceiling to the walkable roof-top over the warp zone. apply_ceiling() has no way to say "except
-    # here", so this is the smallest terrain primitive that can carve one back out
+    # 1-2's measured real map cuts deliberate holes in its otherwise-solid underground roof: the
+    # entry shaft the player drops through, the lift shaft that carries a rider up past the ceiling
+    # to the walkable roof-top over the warp zone, and the drop into the warp-zone room. apply_
+    # ceiling() has no way to say "except here", so this is the smallest terrain primitive that can
+    # carve one back out
     x0, x1 = clamp_span(grid, x0, x1)
     for x in range(x0, x1 + 1):
-        for row in range(CEILING_ROWS):
-            grid[x][row] = BLOCK_EMPTY
+        grid[x][CEILING_ROW] = BLOCK_EMPTY
 
 
 def apply_pipe(grid, x, height):
@@ -643,24 +647,26 @@ def compile_grid(bible, level_type):
         if segments:
             # a segmented level (1-2) only wears a ceiling inside its underground ranges; the
             # overworld ranges at each end must read as open sky, not cave with the roof carved
-            # away column by column the way ceiling_gap would have to fake it
+            # away column by column the way ceiling_gap would have to fake it. the roof itself is
+            # one row of brick (CEILING_ROW), not the old two-row ground slab; the bible's own
+            # ceiling_gap entries (processed later, in the terrain loop) carve the real map's
+            # deliberate holes back out of this blanket stamp
             for x in range(length_columns):
                 if type_at(bible, x, level_type) == TYPE_UNDERGROUND:
-                    for row in range(CEILING_ROWS):
-                        grid[x][row] = BLOCK_GROUND
+                    grid[x][CEILING_ROW] = BLOCK_BRICK
             # golden probes against the middle of an underground range and the middle of an
             # overworld one, rather than column 0/length-1 which a segmented level may have
             # re-typed to open sky
             for x0, x1, seg_type in segments:
                 mid = (x0 + x1) // 2
                 if seg_type == TYPE_UNDERGROUND:
-                    probes.append((mid, 0, BLOCK_GROUND))
+                    probes.append((mid, CEILING_ROW, BLOCK_BRICK))
                 else:
-                    probes.append((mid, 0, BLOCK_EMPTY))
+                    probes.append((mid, CEILING_ROW, BLOCK_EMPTY))
         else:
             apply_ceiling(grid)
-            probes.append((0, 0, BLOCK_GROUND))
-            probes.append((length_columns - 1, CEILING_ROWS - 1, BLOCK_GROUND))
+            probes.append((0, CEILING_ROW, BLOCK_BRICK))
+            probes.append((length_columns - 1, CEILING_ROW, BLOCK_BRICK))
 
     for t in terrain:
         if t["kind"] == "ground":

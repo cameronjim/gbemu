@@ -17,8 +17,18 @@ void flow_enter_sub_area(uint8_t index) BANKED;
 // reloads the main grid with its spent blocks intact and starts him rising out of the link pipe
 void flow_leave_sub_area(void) BANKED;
 
-// the sub-area index of the enterable pipe mario is standing squarely on, or 0xff
+// the sub-area index of the enterable pipe mario is standing squarely on, or 0xff. also answers
+// for 1-2's entrance/exit pipes - a same-grid segment teleport rather than a sub-area - with
+// kJumpAreaFlag set on the low bits; flow_enter_sub_area is what actually tells the two apart, so
+// main.c's state machine can carry the value forward exactly like it already carries an area index
 uint8_t flow_pipe_under_player(void) BANKED;
+
+// (re)loads the bg palette set for the camera's current column: level.c's segment table (empty on
+// every level but 1-2) can make that a different kLevelType than the level's own. lives here,
+// banked, rather than in terrain.c, which is bank 0 and has no room to spare for it - terrain_init
+// calls it through the banked trampoline once at every load, and flow_enter_sub_area's same-grid
+// jump path calls it again after landing in what may be a different segment
+void terrain_sync_palette(void) BANKED;
 
 // and the warp room's own pipes, which name a level to load rather than a room to enter
 uint8_t flow_warp_under_player(void) BANKED;

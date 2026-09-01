@@ -58,7 +58,19 @@ void level_load(uint8_t next_area) {
     SWITCH_ROM_MBC5(caller_bank);
 }
 
-uint8_t level_palette_set(void) {
+uint8_t level_palette_set(uint16_t column) {
+    uint8_t i;
+
     // every sub-area smb has is a room underground, whatever the level holding it looks like
-    return (level_sub != 0) ? (uint8_t)kLevelTypeUnderground : active.type;
+    if (level_sub != 0) {
+        return (uint8_t)kLevelTypeUnderground;
+    }
+    // 1-2's segment table: the level is typed underground for its long middle run, but the two
+    // ends the map rip shows above ground override that back to overworld for their own columns
+    for (i = 0; i < active.segment_count; ++i) {
+        if (column >= active.segment_x0[i] && column <= active.segment_x1[i]) {
+            return active.segment_type[i];
+        }
+    }
+    return active.type;
 }

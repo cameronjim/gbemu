@@ -605,12 +605,12 @@
 // pipe it sits in (roster.json measures pipes and plants together off the map rip), which is the
 // pipe's left of its two 16px-wide columns. the plant's own box is one enemy width (16px), so
 // enemies.c's spawn() places it flush on that column - hugging the pipe's left lip - instead of
-// centred; adding this to its pos_x (spawn time) or to its screen x (draw time) would centre a
-// 16px box across the pipe's full 32px span. NOT wired up: enemies.c is out of this pass's owned
-// files, and both places it would go are documented as already sitting near this engine's per-
-// frame budget - even a single extra add in either spot was enough, tried and reverted, to push
-// two unrelated frame-exact host tests (mario_star_invincibility, mario_autopilot_completes_1_2)
-// past their tolerances. whoever owns enemies.c should apply this, and check both of those tests
+// centred; adding this to its pos_x centres a 16px box across the pipe's full 32px span. this is
+// wired up in spawn()'s existing `if (e->kind == kEnemyPiranha)` branch, right after pos_y is set
+// from foot_col - that branch runs once per plant, as the camera reaches it, not once a frame, so
+// it is nowhere near the engine's per-frame instruction budget. moving the plant is a real gameplay
+// change, though, so it retuned two frame-exact host tests that depended on the old off-centre
+// position: mario_star_invincibility and mario_autopilot_completes_1_2
 #define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
 // must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
 // 60fps. no disassembly line for it was found in the bible, so the count is ours until one is

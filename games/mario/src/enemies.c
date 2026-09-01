@@ -331,6 +331,10 @@ static void spawn(uint16_t cam_x) {
             e->state = kEnemyPlantHidden;
             e->foot_col = roster_row[cursor];
             e->pos_y = (int16_t)((int16_t)e->foot_col << 4);
+            // roster.json names the pipe's left of its two 16px columns; the plant's own box is one
+            // enemy width (16px), so recentre it across the pipe's full 32px span - see
+            // kPlantCenterOffsetPx in mario.h
+            e->pos_x = (uint16_t)(e->pos_x + kPlantCenterOffsetPx);
         }
         ++cursor;
         note_next_spawn();

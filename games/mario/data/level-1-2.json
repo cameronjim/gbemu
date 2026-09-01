@@ -2,60 +2,69 @@
   "level": "1-2",
   "type": "underground",
   "timer": 400,
-  "length_columns": 224,
+  "length_columns": 258,
   "length_columns_confidence": "measured",
-  "start": {"x": 0, "y": 13},
+  "start": {"x": 6, "y": 13},
+  "segments": [
+    {"x0": 0, "x1": 23, "type": "overworld", "confidence": "measured", "notes": "band 0 cols 0-23 of the real map rip: the above-ground start - castle, flat ground, the entry pipe"},
+    {"x0": 24, "x1": 215, "type": "underground", "confidence": "measured", "notes": "band 1 cols 0-191 of the real map rip, shifted +24 columns to make room for the start segment ahead of it. the underground main run"},
+    {"x0": 216, "x1": 257, "type": "overworld", "confidence": "measured", "notes": "band 0 cols 150-191 of the real map rip, re-anchored to start right after the underground run. the above-ground ending - piranha pipe, staircase, flagpole, castle"}
+  ],
   "terrain": [
-    {"kind": "pipe", "x": 0, "height": 3, "dest": null, "confidence": "measured", "notes": "the roof pipe the player falls through to enter; compile_level.py's entry_pipe_x() skips rendering it, and the above-ground castle/pipe scene it sits under (measured at real map columns 0-13, see confidence_notes) is not compiled at all - engine limitation, see confidence_notes item 1"},
-    {"kind": "ceiling_gap", "x0": 1, "x1": 5, "confidence": "measured", "notes": "the entry shaft: the real map's ceiling (row 2) is absent at cols 1-5, directly under the entry pipe"},
-    {"kind": "gap", "x0": 80, "x1": 82, "confidence": "measured", "notes": "first floor pit"},
-    {"kind": "pipe", "x": 103, "height": 2, "dest": "bonus_room", "confidence": "measured", "notes": "first of three piranha pipes; leads to the coin-heaven bonus room measured off band 2 of the map rip"},
-    {"kind": "pipe", "x": 109, "height": 2, "dest": null, "confidence": "measured", "notes": "second piranha pipe"},
-    {"kind": "pipe", "x": 115, "height": 2, "dest": null, "confidence": "measured", "notes": "third piranha pipe"},
-    {"kind": "gap", "x0": 120, "x1": 121, "confidence": "measured"},
-    {"kind": "gap", "x0": 124, "x1": 125, "confidence": "measured"},
-    {"kind": "gap", "x0": 138, "x1": 138, "confidence": "measured", "notes": "first of the lift-shaft pits; the ceiling opens here too, see the ceiling_gap entry below"},
-    {"kind": "ceiling_gap", "x0": 138, "x1": 160, "confidence": "measured", "notes": "the lift shaft: the real map's ceiling is open across this whole span so a rider on the vertical lifts can climb up onto the roof (row 2, solid and walkable from above) and walk right to the warp zone. compile_level.py gained the ceiling_gap terrain kind for this - apply_ceiling() previously had no way to leave a hole"},
-    {"kind": "lift_platform", "x0": 140, "x1": 158, "confidence": "approx", "notes": "the vertical lift pair inside the measured ceiling gap; mariowiki: left descends, right ascends. the gap's own extent (138-160) is measured, the exact lift track within it is not"},
-    {"kind": "gap", "x0": 143, "x1": 144, "confidence": "measured"},
-    {"kind": "gap", "x0": 153, "x1": 153, "confidence": "measured"},
-    {"kind": "gap", "x0": 158, "x1": 159, "confidence": "measured"},
-    {"kind": "ceiling_gap", "x0": 187, "x1": 189, "confidence": "measured", "notes": "the drop from the roof-top walkway down into the enclosed warp-zone room, cols 178-190"},
-    {"kind": "pipe", "x": 195, "height": 2, "dest": null, "confidence": "approx", "notes": "the underground run's own exit pipe (piranha-guarded, measured shape off band 0's ending segment) re-anchored past column 191 - see confidence_notes item 1 for why this level cannot place it at its real column"},
-    {"kind": "stairs", "x0": 197, "x1": 205, "step_height": 8, "heights": [1, 2, 3, 4, 5, 6, 7, 8, 8], "confidence": "measured", "notes": "the closing staircase: measured 9 columns, 8 blocks tall with a flat 2-column top, off band 0 cols 155-163. shape and the 9-column gap to the flagpole below are exact; the absolute column is re-anchored, see confidence_notes item 1"}
+    {"kind": "castle", "x0": 0, "confidence": "measured", "notes": "the above-ground start's decorative castle, measured off band 0 cols 0-4/rows8-12 of the real map rip - no flag beside it, nothing to touch"},
+    {"kind": "pipe", "x": 10, "height": 2, "dest": null, "confidence": "measured", "notes": "the short decorative pipe standing left of the entrance pipe, measured off band 0 rows11-12"},
+    {"kind": "pipe", "x": 12, "height": 4, "dest": null, "jump_to": 27, "confidence": "measured", "notes": "the entrance pipe mario descends, measured off band 0 rows9-12 (top_row 9, height 4). jump_to is the segment-teleport target: column 27 lands him inside the underground segment's own measured entry shaft (old pre-rebuild column 3, +24 for the new segment offset). this is compile_level.py's new kind:pipe/jump_to field - a same-grid segment teleport, distinct from dest (which switches to a sub-area's own grid); see mario.h's kObjPipeJump"},
+    {"kind": "elevation", "x0": 24, "x1": 24, "y": 0, "confidence": "measured", "notes": "the wall between the above-ground start and the underground run: full-height so he cannot simply walk from one segment into the other and must take the entrance pipe. the real map has no such wall because the two segments are not adjacent tiles on real hardware - this is the compiler-invented seam that one concatenated grid needs instead"},
+    {"kind": "ceiling_gap", "x0": 25, "x1": 29, "confidence": "measured", "notes": "the entry shaft: the real map's ceiling (row 2) is absent at cols 1-5 of the underground run, here at +24. jump_to 27 above lands in the middle of it"},
+    {"kind": "gap", "x0": 104, "x1": 106, "confidence": "measured", "notes": "first floor pit (real underground col 80-82, +24)"},
+    {"kind": "pipe", "x": 127, "height": 2, "dest": "bonus_room", "confidence": "measured", "notes": "first of three piranha pipes (real col 103, +24); leads to the coin-heaven bonus room measured off band 2 of the map rip"},
+    {"kind": "pipe", "x": 133, "height": 2, "dest": null, "confidence": "measured", "notes": "second piranha pipe (real col 109, +24)"},
+    {"kind": "pipe", "x": 139, "height": 2, "dest": null, "confidence": "measured", "notes": "third piranha pipe (real col 115, +24)"},
+    {"kind": "gap", "x0": 144, "x1": 145, "confidence": "measured", "notes": "real col 120-121, +24"},
+    {"kind": "gap", "x0": 148, "x1": 149, "confidence": "measured", "notes": "real col 124-125, +24"},
+    {"kind": "gap", "x0": 162, "x1": 162, "confidence": "measured", "notes": "first of the lift-shaft pits (real col 138, +24); the ceiling opens here too, see the ceiling_gap entry below"},
+    {"kind": "ceiling_gap", "x0": 162, "x1": 184, "confidence": "measured", "notes": "the lift shaft (real col 138-160, +24): the real map's ceiling is open across this whole span so a rider on the vertical lifts can climb up onto the roof (row 2, solid and walkable from above) and walk right to the warp zone"},
+    {"kind": "lift_platform", "x0": 164, "x1": 182, "confidence": "approx", "notes": "the vertical lift pair inside the measured ceiling gap (real col 140-158, +24); mariowiki: left descends, right ascends. the gap's own extent is measured, the exact lift track within it is not"},
+    {"kind": "gap", "x0": 167, "x1": 168, "confidence": "measured", "notes": "real col 143-144, +24"},
+    {"kind": "gap", "x0": 177, "x1": 177, "confidence": "measured", "notes": "real col 153, +24"},
+    {"kind": "gap", "x0": 182, "x1": 183, "confidence": "measured", "notes": "real col 158-159, +24"},
+    {"kind": "ceiling_gap", "x0": 211, "x1": 213, "confidence": "measured", "notes": "the drop from the roof-top walkway down into the enclosed warp-zone room (real col 187-189, +24)"},
+    {"kind": "pipe", "x": 190, "height": 2, "dest": null, "jump_to": 218, "confidence": "approx", "notes": "the underground run's own exit pipe, leading to the above-ground ending. its 2-tall shape is measured off band 0's ending segment, but its column within the underground run (real col 166, +24) is a compiler judgement call - the map rip does not clearly distinguish this pipe from the warp-zone room's own approach, placed here just past the lift shaft and before the warp zone's roof-top corridor. jump_to 218 lands him in the above-ground ending, just left of its own piranha pipe at 219. unlike the other main-grid pipes this one carries no piranha of its own - the map rip gives no basis to place one on it, and standing on its cap to press down is the only way through this level's own segment boundary, so an unmeasured hazard timed to guard exactly that cell would make the level occasionally uncompletable rather than just harder"},
+    {"kind": "elevation", "x0": 216, "x1": 216, "y": 0, "confidence": "measured", "notes": "the wall between the underground run and the above-ground ending, the same compiler-invented seam as column 24"},
+    {"kind": "pipe", "x": 219, "height": 2, "dest": null, "confidence": "measured", "notes": "the above-ground ending own piranha pipe, standing just before the staircase - measured off band 0 rows11-12 (real col 153, ending-segment local col 3, +216)"},
+    {"kind": "stairs", "x0": 221, "x1": 229, "step_height": 8, "heights": [1, 2, 3, 4, 5, 6, 7, 8, 8], "confidence": "measured", "notes": "the closing staircase: measured 9 columns, 8 blocks tall with a flat 2-column top, off band 0 cols 155-163 (ending-segment local col 5-13, +216). shape and the 9-column gap to the flagpole (238) are exact"}
   ],
   "blocks": [
-    {"x": 6, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "opening block row, sequence-derived within the measured entry shaft"},
-    {"x": 7, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
-    {"x": 8, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "approx"},
-    {"x": 9, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
-    {"x": 30, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "approx", "notes": "block-tower area; the grid classifier finds a coin/? cluster near here but not a precise cell"},
-    {"x": 40, "y": 9, "kind": "brick", "contents": "star", "confidence": "approx", "notes": "column matches a coin-marker cell in the extracted grid; contents (starman) is sourced from mariowiki, row is a placeholder"},
-    {"x": 74, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "approx", "notes": "immediately before the first measured pit at 80-82"},
-    {"x": 88, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "approx", "notes": "just past the first pit, high row; mariowiki: hidden 1-up reached via a block platform"},
-    {"x": 132, "y": 9, "kind": "brick", "contents": "coin", "confidence": "approx", "notes": "on the surviving floor run between the 124-125 pit and the lift shaft"}
+    {"x": 30, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx", "notes": "opening block row, sequence-derived within the measured entry shaft (real col 6, +24)"},
+    {"x": 31, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
+    {"x": 32, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "approx"},
+    {"x": 33, "y": 9, "kind": "question", "contents": "coin", "confidence": "approx"},
+    {"x": 54, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "approx", "notes": "block-tower area; the grid classifier finds a coin/? cluster near here but not a precise cell"},
+    {"x": 64, "y": 9, "kind": "brick", "contents": "star", "confidence": "approx", "notes": "column matches a coin-marker cell in the extracted grid; contents (starman) is sourced from mariowiki, row is a placeholder"},
+    {"x": 98, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "approx", "notes": "immediately before the first measured pit"},
+    {"x": 112, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "approx", "notes": "just past the first pit, high row; mariowiki: hidden 1-up reached via a block platform"},
+    {"x": 156, "y": 9, "kind": "brick", "contents": "coin", "confidence": "approx", "notes": "on the surviving floor run between the 148-149 pit and the lift shaft"}
   ],
   "enemies": [
-    {"x": 11, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "the extracted grid marks an enemy cluster at cols 11-14 right past the entry shaft"},
-    {"x": 13, "y": 13, "kind": "goomba", "confidence": "approx"},
-    {"x": 30, "y": 13, "kind": "koopa_green", "confidence": "approx", "notes": "block-tower area"},
-    {"x": 45, "y": 13, "kind": "koopa_green", "confidence": "approx"},
-    {"x": 60, "y": 13, "kind": "goomba", "confidence": "approx"},
-    {"x": 62, "y": 13, "kind": "goomba", "confidence": "approx"},
-    {"x": 75, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "just before the first pit"},
-    {"x": 97, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "between the second pit and the three piranha pipes"},
-    {"x": 100, "y": 13, "kind": "goomba", "confidence": "approx"},
-    {"x": 103, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the first, bonus-room piranha pipe; column measured, row is the pipe's own cap"},
-    {"x": 109, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the second piranha pipe"},
-    {"x": 115, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the third piranha pipe"},
-    {"x": 150, "y": 13, "kind": "koopa_red", "confidence": "approx", "notes": "on the one surviving floor run inside the lift-shaft span, between the 144 and 153 pits"},
-    {"x": 195, "y": 11, "kind": "piranha", "confidence": "approx", "notes": "in the re-anchored exit pipe, see confidence_notes item 1"}
+    {"x": 35, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "the extracted grid marks an enemy cluster right past the entry shaft"},
+    {"x": 37, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 54, "y": 13, "kind": "koopa_green", "confidence": "approx", "notes": "block-tower area"},
+    {"x": 69, "y": 13, "kind": "koopa_green", "confidence": "approx"},
+    {"x": 84, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 86, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 99, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "just before the first pit"},
+    {"x": 121, "y": 13, "kind": "goomba", "confidence": "approx", "notes": "between the second pit and the three piranha pipes"},
+    {"x": 124, "y": 13, "kind": "goomba", "confidence": "approx"},
+    {"x": 127, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the first, bonus-room piranha pipe; column measured, row is the pipe's own cap"},
+    {"x": 133, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the second piranha pipe"},
+    {"x": 139, "y": 11, "kind": "piranha", "confidence": "measured", "notes": "in the third piranha pipe"},
+    {"x": 174, "y": 13, "kind": "koopa_red", "confidence": "approx", "notes": "on the one surviving floor run inside the lift-shaft span"}
   ],
   "areas": [
     {
       "id": "bonus-1",
       "kind": "bonus_room",
-      "entry_x": 103,
+      "entry_x": 127,
       "columns": 16,
       "start": {"x": 1, "y": 13},
       "exit": "the pipe on the room's right side, rises back out near where the first piranha pipe was entered",
@@ -71,35 +80,44 @@
         {"x": 2, "y": 10}, {"x": 3, "y": 10}, {"x": 4, "y": 10}, {"x": 5, "y": 10}, {"x": 6, "y": 10}, {"x": 7, "y": 10}, {"x": 8, "y": 10}, {"x": 9, "y": 10}
       ],
       "confidence": "measured",
-      "notes": "the room and its two coin rows (7 over 8 = 15 coins) were counted directly off the map rip's band-2 crop (n12_shaft.png in the extraction scratch dir), not off mariowiki's 27-coin prose figure - the pixel count is preferred per the sourcing instructions. exact per-coin columns within each row are approx; the row counts and the room's overall L-shaped brick layout are measured"
+      "notes": "the room and its two coin rows (7 over 8 = 15 coins) were counted directly off the map rip's band-2 crop (n12_shaft.png in the extraction scratch dir), not off mariowiki's 27-coin prose figure - the pixel count is preferred per the sourcing instructions. exact per-coin columns within each row are approx; the row counts and the room's overall L-shaped brick layout are measured. the room's own local grid is unaffected by the main level's segment rebuild - only entry_x (the main-grid pipe it is entered from) shifted with it"
     },
     {
       "id": "warp-zone",
       "kind": "warp_zone",
-      "entry_x": 148,
-      "exit": "n/a - reached by riding the vertical lifts up through the measured ceiling gap (138-160), walking right along the roof-top, then dropping through the measured roof opening at 187-189; compiled here as a plain pipe at entry_x because the engine's sub-area system only triggers on a pipe, see confidence_notes item 2",
+      "entry_x": 172,
+      "exit": "n/a - reached by riding the vertical lifts up through the measured ceiling gap, walking right along the roof-top, then dropping through the measured roof opening; compiled here as a plain pipe at entry_x because the engine's sub-area system only triggers on a pipe, see confidence_notes item 2",
       "terrain": [],
       "blocks": [],
       "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled"
     }
   ],
-  "flag": {"x": 214, "confidence": "measured", "notes": "9 columns past the closing staircase's last column (205), matching the measured 9-column gap off band 0. re-anchored past column 191, see confidence_notes item 1"},
-  "castle_end": {"x": 218, "confidence": "measured", "notes": "4 columns past the flagpole, matching the measured gap off band 0"},
+  "flag": {"x": 238, "confidence": "measured", "notes": "the above-ground ending's flagpole, measured directly off band 0: pole column 172 (real map), +24+... see segment note - 216 (ending segment offset) + (172-150) = 238. the pole spans rows 4-11 with a pink stair-cap pedestal at row 12, matching FLAG_POLE_TOP_ROW/FLAG_POLE_BOTTOM_ROW exactly. 9 columns past the closing staircase's last column (229), matching the measured gap between real map cols 163 and 172"},
+  "castle_end": {"x": 242, "confidence": "measured", "notes": "the above-ground ending's castle, measured off band 0 cols 176-180/rows8-12: 216 + (176-150) = 242. 4 columns past the flagpole, matching the measured gap"},
   "warps": [
-    {"from_x": 148, "via": "warp_zone", "to_level": "4-1", "world_number": 4, "confidence": "measured", "notes": "leftmost of the 3 warp pipes; the map's own glyph above it reads 4. kLevelCount is 4 (world one only) so this compiles to WARP_UNBUILT (0xFF): the pipe is built at the right column with the right number, but pressing down over it is a no-op rather than a jump into an existing level - see SCHEMA.md"},
-    {"from_x": 148, "via": "warp_zone", "to_level": "3-1", "world_number": 3, "confidence": "measured", "notes": "middle pipe, glyph reads 3"},
-    {"from_x": 148, "via": "warp_zone", "to_level": "2-1", "world_number": 2, "confidence": "measured", "notes": "rightmost pipe, glyph reads 2"},
-    {"from_x": 148, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "the minus world: reached by clipping through the warp-zone room's left wall instead of taking a pipe. an nes-only trick, not a pipe, not compiled - recorded here so the destination is not silently lost"}
+    {"from_x": 172, "via": "warp_zone", "to_level": "4-1", "world_number": 4, "confidence": "measured", "notes": "leftmost of the 3 warp pipes; the map's own glyph above it reads 4. kLevelCount is 4 (world one only) so this compiles to WARP_UNBUILT (0xFF): the pipe is built at the right column with the right number, but pressing down over it is a no-op rather than a jump into an existing level - see SCHEMA.md"},
+    {"from_x": 172, "via": "warp_zone", "to_level": "3-1", "world_number": 3, "confidence": "measured", "notes": "middle pipe, glyph reads 3"},
+    {"from_x": 172, "via": "warp_zone", "to_level": "2-1", "world_number": 2, "confidence": "measured", "notes": "rightmost pipe, glyph reads 2"},
+    {"from_x": 172, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "the minus world: reached by clipping through the warp-zone room's left wall instead of taking a pipe. an nes-only trick, not a pipe, not compiled - recorded here so the destination is not silently lost"}
+  ],
+  "decor": [
+    {"kind": "cloud", "x": 4, "y": 3, "width": 2, "confidence": "approx", "notes": "above-ground start, near the castle"},
+    {"kind": "cloud", "x": 19, "y": 2, "width": 2, "confidence": "approx", "notes": "above-ground start, past the entrance pipe"},
+    {"kind": "small_hill", "x": 232, "confidence": "measured", "notes": "above-ground ending, real map col 166, +216-150"},
+    {"kind": "small_hill", "x": 248, "confidence": "measured", "notes": "above-ground ending, real map col 182-184, +216-150"},
+    {"kind": "bush", "x": 256, "width": 2, "confidence": "measured", "notes": "above-ground ending, far right edge, real map col 190"},
+    {"kind": "cloud", "x": 221, "y": 2, "width": 2, "confidence": "measured", "notes": "above-ground ending, over the piranha pipe/staircase"},
+    {"kind": "cloud", "x": 252, "y": 2, "width": 2, "confidence": "measured", "notes": "above-ground ending, over the castle"}
   ],
   "smbd": {
     "red_coins": [
-      {"x": 9, "y": 9, "notes": "last ? block in the opening row", "confidence": "sourced"},
-      {"x": 30, "y": 5, "notes": "above the brick block formation near the start", "confidence": "approx"},
-      {"x": 40, "y": 5, "notes": "on the pillar with the 10-coin block", "confidence": "approx"},
-      {"x": 103, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
-      {"x": 197, "y": 9, "notes": "above the stone stairs before the flagpole", "confidence": "approx"}
+      {"x": 33, "y": 9, "notes": "last ? block in the opening row", "confidence": "sourced"},
+      {"x": 54, "y": 5, "notes": "above the brick block formation near the start", "confidence": "approx"},
+      {"x": 64, "y": 5, "notes": "on the pillar with the 10-coin block", "confidence": "approx"},
+      {"x": 127, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
+      {"x": 224, "y": 5, "notes": "above the stone stairs before the flagpole", "confidence": "approx"}
     ],
-    "yoshi_egg": {"x": 130, "y": 9, "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe", "confidence": "sourced"},
+    "yoshi_egg": {"x": 154, "y": 9, "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe", "confidence": "sourced"},
     "medal_score": 38000,
     "medal_score_jp": 26000
   },
@@ -109,5 +127,5 @@
     "https://www.mariouniverse.com/maps-gbc-smbd/",
     "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)"
   ],
-  "confidence_notes": "this level's skeleton is no longer prose-derived: the floor pits, ceiling runs (including the two ceiling_gap spans), the three piranha pipe columns, the warp zone's pipe order/columns/world numbers, the closing staircase's shape, the flagpole's clearance and the castle's offset were extracted programmatically from the official nes 1-2 map image (3072x720, stacked as a 192-column underground band plus two above-ground band-0 segments) by classifying 16x16 cells against a tile sheet cut from the same image, cross-checked pixel by pixel where the ascii/grid extraction was ambiguous. those items carry \"confidence\": \"measured\". individual coin/block/enemy placement inside the underground run remains \"approx\" - the extraction is reliable on the skeleton and rough on small objects (documented in the spec this was built from), so counts and rough positions are kept, exact cells are not claimed as measured. two findings from this pass, previously flagged as things to investigate rather than paper over: (1) the real level is three physical areas - an above-ground start (castle, flat ground, the entry pipe), the underground main run, and an above-ground ending (piranha pipe, staircase, flagpole, castle) - but this engine compiles one typed grid per level plus pipe-triggered sub-areas that return to where they were entered; it cannot express \"overworld, then underground, then overworld again\" within one level. the above-ground start is therefore not rendered at all (matches the pre-existing entry_pipe_x() skip), and the above-ground ending is appended as more columns of the same underground-typed grid rather than switching visual type, so it renders correctly playable but with the cave ceiling still overhead - a real fidelity gap. the measured relative geometry of the ending (stair shape, the 9-column flag clearance, the 4-column castle offset) is preserved exactly; only its absolute column is re-anchored past the underground run's own last column (191) because the grid has nowhere else to put it. the smallest fix is not a full multi-segment engine, it is letting a level bible declare per-column-range palette/ceiling overrides so a tail of an underground-typed grid can look and read as sky - i.e. keep one grid, stop tying its look to a single global type. this pass adds the smaller, unconditionally useful half of that idea now: a new terrain kind, ceiling_gap, that lets an underground level's roof have real holes (used here for the entry shaft and the lift shaft) instead of the unconditional full-width roof apply_ceiling() used to stamp. (2) the three warp-zone pipes lead to worlds 2, 3 and 4, which this rom does not have (kLevelCount is 4, world one only). compile_level.py used to clamp an unresolvable warp target to the last level of world one, which meant pressing down on the \"world 4\" pipe silently sent the player into 1-4 - a real bug, not a hypothetical one, verified by reading main.c's kStatePipeDown handling. this pass replaces the clamp with WARP_UNBUILT (0xFF): the pipe is still built, in the correct order, still carrying its real destination in this file, but flow_warp_under_player()'s existing 0xFF-is-nothing convention (already used for every other pipe check in main.c) makes pressing down over it a no-op instead of a jump. no engine (.c) change was needed for this half; the fix lives entirely in compile_level.py. verified in the host tests that entering each of the three pipes neither crashes nor changes level_number."
+  "confidence_notes": "this pass fixes the fidelity gap the previous one knowingly shipped: 1-2 began directly underground with no above-ground start and its ending was appended as more columns of the same underground-typed grid, so the flagpole and castle stood under a cave ceiling. the engine still models a level as one typed grid plus pipe-triggered sub-areas that return to their entry point, which cannot express \"overworld, then underground, then overworld again\" on its own - so this pass extends the bible/compiler with the smaller of the two options considered: a `segments` list of column ranges, each with its own type, layered on top of the level's single base type (compile_level.py's compiled_segments()/type_at()/first_row_at()). apply_ceiling() now stamps the roof only inside underground-typed ranges when segments are present, and the roof-dependent row skip (piranha pipe caps, start/jump landing rows) is now looked up per column instead of once for the whole level. the palette equivalent lives at runtime: level_palette_set() takes the current camera column and consults the same segment table (empty on every level but 1-2), and terrain.c's new terrain_sync_palette() re-loads the bg palette set whenever that answer can have changed - once at every terrain_init() and again after any same-grid jump. the three ranges are walled off from each other with a full-height 'elevation' block at each seam (columns 24 and 216) so a player cannot simply walk from one into the next; the only crossing is a new terrain kind on a pipe, `jump_to`, compiled to a new object kind (kObjPipeJump) and a small jump_target_column/row table on LevelInfo - pressing down over one of these cuts to the target column with the lcd off (main.c's jump_to_segment(), mirroring the existing enter_sub_area()/leave_sub_area() pattern) without any level_load, because level_grid already holds the whole level (every segment) at once; only the vram ring and the bg palette catch up. a second new terrain kind, `castle`, places a decorative castle (apply_castle with no flag beside it) for the start segment's own castle. rejected alternative: a real area graph where a sub-area's exit could target another named area instead of always returning to the entry point - more faithful and more reusable for a future world 2, but it would touch blocks.c/enemies.c's per-area state reset and the flagpole/end-of-level logic that only reads the main level's own fields today; not worth it for one level's fix. capacity impact: length_columns grows 224 -> 258 (+34 columns), which becomes the new LEVEL_GRID_COLUMNS (the WRAM level_grid ring is sized to the longest level or widest sub-area, whichever is bigger) - +34*16 = 544 bytes of WRAM. LEVEL_MAX_OBJECTS grows by the two new kObjPipeJump entries this level adds (self-adjusting, gen_levels.py already takes the max across levels). the compiled grid array itself grows the same 544 bytes in 1-2's own rom bank (bank 2), comfortably inside a 16kb bank. two judgement calls worth flagging: (1) the underground run's own exit pipe column (166 in the old, pre-rebuild coordinate space) is not clearly distinguishable from the warp-zone room's approach in the map rip, so its exact column is a compiler choice, not a measurement - placed just past the lift shaft and before the warp-zone corridor, which is the right neighborhood per mariowiki's prose description of the route; (2) both segment transitions (down the entrance pipe, down the exit pipe) play the same 'sink then cut' beat main.c already uses for entering a sub-area, rather than a 'rise up out of a pipe' beat on arrival (which the real game's exit pipe does) - reusing the engine's own existing arrival convention (enter_sub_area never plays an arrival animation either) rather than adding a second one. neither takes away from the acceptance test: mario starts under open sky with the castle behind him, goes down a real pipe to reach the cave, and the flagpole/castle at the end have sky above them, not rock."
 }

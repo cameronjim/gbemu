@@ -6678,13 +6678,13 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
         }
     }
     // above-ground start: the short decorative pipe (10) and the entrance pipe (12). underground
-    // run (+24 from the old numbers): the three piranha pipes (127/133/139), the synthesized pipe
-    // for the warp-zone sub-area's entry_x (172, inside the measured lift shaft), the run's own exit
+    // run (+24 from the old numbers): the three piranha pipes (127/133/139), the run's own exit
     // pipe (190, a compiler judgement call - see level-1-2.json), and the three real, measured
-    // warp-room pipes the map draws directly in-band (202/206/210) - decorative only (dest: null):
-    // the room is still entered through the 172 auto-pipe above, there is no measured basis to
-    // retarget that trigger at one of these instead. above-ground ending: its own piranha pipe (219)
-    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 172, 190, 202, 206, 210, 219});
+    // warp-room pipes the map draws directly in-band (202/206/210) - decorative only (dest: null).
+    // above-ground ending: its own piranha pipe (219). there is deliberately NO pipe at 172: a
+    // synthetic one used to be stamped there for the warp-zone sub-area's entry_x and rendered as a
+    // lone cap standing on open floor, which the map has nothing at - see level-1-2.json's warp-zone
+    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 190, 202, 206, 210, 219});
 
     // a pit is a column with no ground at either of the two floor rows
     std::vector<int> pits;
@@ -7062,38 +7062,18 @@ TEST_CASE("mario_warp_zone_compiles") {
     REQUIRE(warp->warps[0].column < warp->warps[1].column);
     REQUIRE(warp->warps[1].column < warp->warps[2].column);
 
-    // the pipe into the room, read out of the compiled object list rather than placed by hand
+    // there is deliberately no synthetic entry pipe: the room's three numbered pipes are drawn
+    // in-band at 202/206/210, and the auto-pipe that used to be stamped at the bible's entry_x
+    // showed up in play as a lone pipe cap sitting on open floor with nothing under it, which is
+    // not on the map. the real route in is riding the lifts up and walking the roof, which the
+    // engine cannot express yet - so the room is unreachable for now, and its pipes are
+    // WARP_UNBUILT no-ops regardless. this asserts the artifact stays gone
     const HostLevel& lv = kHostLevels[kLevel12];
-    const LevelObject* entry = nullptr;
     for (int i = 0; i < lv.object_count; ++i) {
-        if (lv.objects[i].kind == kObjPipe && lv.objects[i].param == 1) {
-            entry = &lv.objects[i];
-        }
+        REQUIRE_FALSE((lv.objects[i].kind == kObjPipe && lv.objects[i].param == 1));
     }
-    REQUIRE(entry != nullptr);
 
-    // 1-2's above-ground start is walled off from this underground run (see level-1-2.json's
-    // segments[]), so plan_level's own planner - which starts from the level's compiled start
-    // column, in that above-ground segment - can never reach here on its own. it also cannot solve
-    // the full 145-column walk from the entrance pipe's own jump target any more: now that the
-    // interior between them is the real map's dense platforming (block towers, hard-block stairs,
-    // narrow floor-adjacent gaps) rather than the near-empty placeholder this test was written
-    // against, plan_level's short-lookahead greedy search gets stuck the same way
-    // mario_autopilot_completes_1_2's own comment already says a synthetic host twin cannot reliably
-    // walk this run live (enemy/lift phase drift over 160-odd columns) - so, like that test, this one
-    // plants the twin much closer to what it actually verifies (that the compiled pipe object is
-    // real and standable), on the short solid floor island right past the lift shaft rather than at
-    // the entrance 145 columns back
-    const PlayerSim start = sim_at_level(kLevel12, 170, 13);
-    const Route approach =
-        plan_level(kLevel12, 2000, static_cast<uint16_t>((entry->column - 1) * kBlockPx), &start);
-    REQUIRE(approach.reached);
-    const Route climb = plan_stand_on_pipe(approach.end, entry->column, entry->row, 600);
-    REQUIRE(climb.reached);
-
-    // The twin can stand on a destination cap in the compiled room. Runtime pipe entry/exit is
-    // exercised frame-for-frame by both 1-1 round-trip tests; this probe stays structural because
-    // 1-2's long input replay is intentionally no longer frame-exact after the camera redesign.
+    // the twin can still stand on a destination cap inside the compiled room itself
     static const HostLevel room = as_level(*warp);
     PlayerSim inside;
     inside.load_host(room);

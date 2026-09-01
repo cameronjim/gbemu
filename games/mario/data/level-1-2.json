@@ -1637,12 +1637,13 @@
     {
       "id": "warp-zone",
       "kind": "warp_zone",
-      "entry_x": 172,
-      "exit": "n/a - reached by riding the vertical lifts up through the measured ceiling gap, walking right along the roof-top, then dropping through the measured roof opening; compiled here as a plain pipe at entry_x because the engine's sub-area system only triggers on a pipe, see confidence_notes item 2",
+      "entry_x": null,
+      "exit": "n/a - the real route is riding the vertical lifts up through the ceiling gap and walking the roof, which the engine cannot express. the room's three numbered pipes are drawn in-band at cols 202/206/210, so no synthetic entry pipe is compiled: one used to be stamped at col 172 and showed up as a lone pipe cap sitting on open floor, which is not on the map. unreachable until moving lifts exist; its pipes are WARP_UNBUILT no-ops regardless",
       "terrain": [],
       "blocks": [],
       "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled",
-      "entry_height": 1
+      "entry_height": null,
+      "confidence": "measured"
     }
   ],
   "flag": {

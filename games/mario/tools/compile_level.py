@@ -143,6 +143,10 @@ OBJ_LIFT_V = 2
 OBJ_FIREBAR = 3
 OBJ_BOWSER = 4
 OBJ_AXE = 5
+# a pipe with "jump_to" instead of "dest" teleports within the SAME main grid to another column -
+# 1-2's above-ground/underground/above-ground segments, walled off from each other so the only way
+# from one to the next is through one of these. the contract with mario.h's kObjPipeJump
+OBJ_PIPE_JUMP = 6
 
 OBJ_NAMES = {
     OBJ_PIPE: "PIPE",
@@ -151,6 +155,7 @@ OBJ_NAMES = {
     OBJ_FIREBAR: "FIREBAR",
     OBJ_BOWSER: "BOWSER",
     OBJ_AXE: "AXE",
+    OBJ_PIPE_JUMP: "PIPE_JUMP",
 }
 
 # level types, the contract with games/mario/src/mario.h's kLevelType*
@@ -253,13 +258,38 @@ def load_bible(path):
         return json.load(f)
 
 
+# segments: an optional bible list of {"x0", "x1", "type"} column ranges that override the level's
+# own single type for ceiling stamping and (at runtime) the bg palette set. 1-2 is the level this
+# exists for: one "underground" bible type with an "overworld" range at each end so the start and
+# the ending render as open sky instead of cave, without a second grid or a second area system.
+# ranges are walled off from each other in the bible's own terrain (a full-height "elevation" wall
+# at each seam) so a player can only cross between them through a kind:"pipe"/"jump_to" teleport
+def compiled_segments(bible):
+    return [(s["x0"], s["x1"], TYPE_MAP.get(s["type"], TYPE_UNDERGROUND)) for s in bible.get("segments", [])]
+
+
+def type_at(bible, x, default_type):
+    for x0, x1, seg_type in compiled_segments(bible):
+        if x0 <= x <= x1:
+            return seg_type
+    return default_type
+
+
+def first_row_at(bible, x, default_type):
+    return CEILING_ROWS if type_at(bible, x, default_type) == TYPE_UNDERGROUND else 0
+
+
 def feature_max_x(bible):
     max_x = 0
+    for s in bible.get("segments", []):
+        max_x = max(max_x, s["x1"])
     for t in bible.get("terrain", []):
         if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform", "ceiling_gap"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
+        elif t["kind"] == "castle":
+            max_x = max(max_x, t["x0"] + CASTLE_WIDTH - 1)
     for b in bible.get("blocks", []):
         if b.get("x") is not None:
             max_x = max(max_x, b["x"])
@@ -602,15 +632,35 @@ def compile_grid(bible, level_type):
     grid = new_grid(length_columns, base_ground=not has_islands)
     probes = []
     objects = []
+    jumps = []  # each entry is a target column; the target row is resolved after the grid settles
     skip_pipe = entry_pipe_x(bible, level_type)
     gap_fill = BLOCK_LAVA if level_type == TYPE_CASTLE else BLOCK_EMPTY
     ground_runs = []
 
     first_row = CEILING_ROWS if level_type == TYPE_UNDERGROUND else 0
+    segments = compiled_segments(bible)
     if level_type == TYPE_UNDERGROUND:
-        apply_ceiling(grid)
-        probes.append((0, 0, BLOCK_GROUND))
-        probes.append((length_columns - 1, CEILING_ROWS - 1, BLOCK_GROUND))
+        if segments:
+            # a segmented level (1-2) only wears a ceiling inside its underground ranges; the
+            # overworld ranges at each end must read as open sky, not cave with the roof carved
+            # away column by column the way ceiling_gap would have to fake it
+            for x in range(length_columns):
+                if type_at(bible, x, level_type) == TYPE_UNDERGROUND:
+                    for row in range(CEILING_ROWS):
+                        grid[x][row] = BLOCK_GROUND
+            # golden probes against the middle of an underground range and the middle of an
+            # overworld one, rather than column 0/length-1 which a segmented level may have
+            # re-typed to open sky
+            for x0, x1, seg_type in segments:
+                mid = (x0 + x1) // 2
+                if seg_type == TYPE_UNDERGROUND:
+                    probes.append((mid, 0, BLOCK_GROUND))
+                else:
+                    probes.append((mid, 0, BLOCK_EMPTY))
+        else:
+            apply_ceiling(grid)
+            probes.append((0, 0, BLOCK_GROUND))
+            probes.append((length_columns - 1, CEILING_ROWS - 1, BLOCK_GROUND))
 
     for t in terrain:
         if t["kind"] == "ground":
@@ -635,6 +685,18 @@ def compile_grid(bible, level_type):
             top_row = GROUND_ROW - t["height"]
             probes.append((t["x"], top_row, BLOCK_PIPE_TL))
             probes.append((t["x"] + 1, top_row, BLOCK_PIPE_TR))
+            if t.get("jump_to") is not None:
+                # a same-grid segment teleport (1-2's entrance and exit pipes): recorded now, the
+                # target row is filled in once the whole grid - including the segment the target
+                # column lands in - has finished settling
+                objects.append((t["x"], top_row, OBJ_PIPE_JUMP, len(jumps)))
+                jumps.append(t["jump_to"])
+        elif t["kind"] == "castle":
+            # a decorative castle with no flag beside it - 1-2's above-ground start stands one at
+            # its own left edge, the way the real map does, with nothing to touch or clear
+            placed = apply_castle(grid, t["x0"])
+            if placed is not None:
+                probes.append(placed)
         elif t["kind"] == "stairs":
             # the bible calls a level's closing staircase its "final stone platform": on an island
             # level, where nothing is solid unless the bible places it, the staircase and the run
@@ -744,6 +806,14 @@ def compile_grid(bible, level_type):
     probes.extend(apply_decor(grid, bible))
     settle_ground(grid, probes)
 
+    # a jump's landing row can only be read off the grid once every terrain run - including
+    # whatever segment the target column falls in - has finished settling
+    jump_targets = []
+    for target_x in jumps:
+        target_row = surface_row(grid, target_x, first_row_at(bible, target_x, level_type))
+        jump_targets.append((target_x, target_row))
+        probes.append((target_x, target_row, BLOCK_GROUND))
+
     return {
         "grid": grid,
         "columns": length_columns,
@@ -752,6 +822,8 @@ def compile_grid(bible, level_type):
         "objects": objects,
         "bridge": bridge,
         "axe_column": axe_column,
+        "jumps": jump_targets,
+        "segments": segments,
     }
 
 
@@ -783,7 +855,7 @@ def compile_block_list(bible):
     return out
 
 
-def compile_enemy_list(bible, grid, first_row):
+def compile_enemy_list(bible, grid, level_type):
     # the spawn list the rom walks with a single advancing cursor, so it must be sorted by column:
     # the engine only ever compares the cursor's own entry against the camera's right edge. the
     # bible's count_only entries carry no position and are dropped rather than invented
@@ -796,8 +868,10 @@ def compile_enemy_list(bible, grid, first_row):
             continue
         row = e["y"]
         if e["kind"] == "piranha":
-            # the plant lives in a pipe: the roster's rise/sink runs out of the cap it sits on
-            row = surface_row(grid, e["x"], first_row)
+            # the plant lives in a pipe: the roster's rise/sink runs out of the cap it sits on. a
+            # segmented level (1-2) may place a piranha's pipe in either an underground or an
+            # overworld range, so the ceiling-row skip has to be looked up per enemy, not once
+            row = surface_row(grid, e["x"], first_row_at(bible, e["x"], level_type))
         out.append((e["x"], row, kind))
     out.sort(key=lambda entry: entry[0])
     return out
@@ -1093,6 +1167,21 @@ def write_header(out_dir, slug, level, source_path):
         f.write("extern const uint8_t %s_object_kind[];\n" % slug)
         f.write("extern const uint8_t %s_object_param[];\n\n" % slug)
 
+        f.write("// same-grid segment teleports (kObjPipeJump in the object list above): a pipe's\n")
+        f.write("// object_param indexes here for the column/row it cuts to, with the lcd off, no\n")
+        f.write("// level_load involved because the whole grid is already unpacked into ram\n")
+        f.write("#define %s_JUMP_COUNT %dU\n" % (upper, len(level["jumps"])))
+        f.write("extern const uint16_t %s_jump_target_column[];\n" % slug)
+        f.write("extern const uint8_t %s_jump_target_row[];\n\n" % slug)
+
+        f.write("// column-range overrides on the level's own type: which ranges of a segmented\n")
+        f.write("// level (1-2) render with the overworld palette instead of the level's underground\n")
+        f.write("// one, and get no ceiling stamped in their columns. empty for every non-segmented level\n")
+        f.write("#define %s_SEGMENT_COUNT %dU\n" % (upper, len(level["segments"])))
+        f.write("extern const uint16_t %s_segment_x0[];\n" % slug)
+        f.write("extern const uint16_t %s_segment_x1[];\n" % slug)
+        f.write("extern const uint8_t %s_segment_type[];\n\n" % slug)
+
         f.write("#define %s_AREA_COUNT %dU\n\n" % (upper, len(level["areas"])))
         for index, area in enumerate(level["areas"]):
             name = "%s_AREA%d" % (upper, index)
@@ -1149,6 +1238,13 @@ def write_objects(out_dir, slug, level, source_path):
         c_array(f, "const uint8_t %s_object_row" % slug, [o[1] for o in objects])
         c_array(f, "const uint8_t %s_object_kind" % slug, [o[2] for o in objects])
         c_array(f, "const uint8_t %s_object_param" % slug, [o[3] for o in objects])
+        jumps = level["jumps"]
+        c_array(f, "const uint16_t %s_jump_target_column" % slug, [j[0] for j in jumps])
+        c_array(f, "const uint8_t %s_jump_target_row" % slug, [j[1] for j in jumps])
+        segments = level["segments"]
+        c_array(f, "const uint16_t %s_segment_x0" % slug, [s[0] for s in segments])
+        c_array(f, "const uint16_t %s_segment_x1" % slug, [s[1] for s in segments])
+        c_array(f, "const uint8_t %s_segment_type" % slug, [s[2] for s in segments])
         for index, area in enumerate(level["areas"]):
             name = "%s_AREA%d" % (upper, index)
             c_array(f, "const uint8_t %s_area%d_coin_column" % (slug, index),
@@ -1219,6 +1315,8 @@ def write_grid(out_dir, slug, level, source_path):
         f.write("struct LevelObject {\n")
         f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t param;\n};\n")
         f.write("struct LevelWarp {\n    uint8_t column;\n    uint8_t level;\n};\n")
+        f.write("struct LevelJump {\n    uint16_t column;\n    uint8_t row;\n};\n")
+        f.write("struct LevelSegment {\n    uint16_t x0;\n    uint16_t x1;\n    uint8_t type;\n};\n")
         f.write("#endif\n\n")
 
         f.write("inline constexpr uint8_t k%sGrid[%d][%d] = {\n" % (camel, len(level["grid"]), LEVEL_ROWS))
@@ -1245,6 +1343,18 @@ def write_grid(out_dir, slug, level, source_path):
             f.write("    {%d, %d, %d, %d}, // %s\n" % (column, row, kind, param, OBJ_NAMES[kind]))
         f.write("    {0, 0, 0, 0},\n};\n")
         f.write("inline constexpr uint16_t k%sObjectCount = %d;\n\n" % (camel, len(level["objects"])))
+
+        f.write("inline constexpr LevelJump k%sJumps[] = {\n" % camel)
+        for column, row in level["jumps"]:
+            f.write("    {%d, %d},\n" % (column, row))
+        f.write("    {0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sJumpCount = %d;\n\n" % (camel, len(level["jumps"])))
+
+        f.write("inline constexpr LevelSegment k%sSegments[] = {\n" % camel)
+        for x0, x1, seg_type in level["segments"]:
+            f.write("    {%d, %d, %d},\n" % (x0, x1, seg_type))
+        f.write("    {0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sSegmentCount = %d;\n\n" % (camel, len(level["segments"])))
 
         for index, area in enumerate(level["areas"]):
             f.write(
@@ -1331,7 +1441,6 @@ def compile_level(bible, bank, area_bank):
     objects.sort(key=lambda o: (o[0], o[2]))
 
     start_column = bible["start"]["x"]
-    first_row = CEILING_ROWS if level_type == TYPE_UNDERGROUND else 0
     return {
         "type": level_type,
         "bank": bank,
@@ -1344,10 +1453,12 @@ def compile_level(bible, bank, area_bank):
         "bridge": built["bridge"],
         "axe_column": built["axe_column"],
         "start_column": start_column,
-        "start_row": surface_row(grid, start_column, first_row),
+        "start_row": surface_row(grid, start_column, first_row_at(bible, start_column, level_type)),
         "blocks": compile_block_list(bible),
-        "enemies": compile_enemy_list(bible, grid, first_row),
+        "enemies": compile_enemy_list(bible, grid, level_type),
         "objects": objects,
+        "jumps": built["jumps"],
+        "segments": built["segments"],
         "areas": areas,
     }
 

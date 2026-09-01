@@ -646,6 +646,20 @@
 #define kObjFirebar 3U
 #define kObjBowser 4U
 #define kObjAxe 5U
+// milestone 1-2 rebuild: a pipe that teleports within the SAME main grid to another column range
+// (a "segment") rather than switching to a sub-area's own banked grid. object_param indexes the
+// level's jump_target_column/jump_target_row arrays. used for 1-2's above-ground/underground/
+// above-ground three-segment layout: pressing down over one of these cuts to the target column
+// with the lcd off, exactly like entering a sub-area, but level_grid never reloads because the
+// whole level was already unpacked into it at level_load - only the vram ring and bg palette catch up
+#define kObjPipeJump 6U
+
+// flow_pipe_under_player()'s sub-area index and a same-grid jump index share one uint8_t return
+// value (0xff means neither): a jump index is this bit set over the low bits, kept well clear of
+// 0xff even with every low bit set, so main.c's state machine never has to know the difference -
+// it always just carries the value forward into enter_sub_area(), which is what actually branches
+// on this flag. no level ever comes close to 64 sub-areas or 64 jumps, so the split is free
+#define kJumpAreaFlag 0x40U
 
 // lifts (games/mario/src/hazards.c). physics.json platform_lift_speeds is must-measure: the
 // disassembly has a routine per lift type but the bible extracted no constant from any of them,

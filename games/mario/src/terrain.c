@@ -2,6 +2,7 @@
 
 #include "assets.h"
 #include "blocks.h"
+#include "flow.h"
 #include "level.h"
 #include "mario.h"
 
@@ -217,7 +218,6 @@ static void sync_window(uint16_t cam_block) {
 void terrain_init(uint8_t next_area) {
     uint16_t level_px;
     int16_t i;
-    uint8_t set_palettes;
 
     level_load(next_area);
     // every row, not just the first: the streamer repaints only the rows that differ from the
@@ -231,18 +231,14 @@ void terrain_init(uint8_t next_area) {
     // a respawn all arrive here with the lcd off and nothing loaded, so it is reloaded beside the
     // terrain rather than tracked
     assets_load_scenery_tiles();
-    set_palettes = level_palette_set();
-    if (set_palettes == (uint8_t)kLevelTypeUnderground) {
-        assets_load_bg_palettes_underground();
-    } else if (set_palettes == (uint8_t)kLevelTypeCastle) {
-        assets_load_bg_palettes_castle();
-    } else {
-        assets_load_bg_palettes();
-    }
 
     world_x = 0;
     world_y = 0;
     window_start = 0;
+    // column 0 of whatever just loaded - correct for the main grid's own opening segment and for
+    // every sub-area, which level_palette_set() always calls underground regardless of column.
+    // lives in flow.c/bank5 (banked call from here), not this file - bank0 has no room to spare
+    terrain_sync_palette();
 
     level_px = (uint16_t)(level_columns * kBlockPx);
     max_world_x = (level_px > kScreenWidthPx) ? (uint16_t)(level_px - kScreenWidthPx) : 0U;

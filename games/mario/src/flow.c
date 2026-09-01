@@ -4,6 +4,7 @@
 
 #include "flow.h"
 
+#include "assets.h"
 #include "blocks.h"
 #include "camera.h"
 #include "enemies.h"
@@ -130,7 +131,40 @@ void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED {
     SHOW_SPRITES;
 }
 
+void terrain_sync_palette(void) BANKED {
+    const uint8_t set_palettes = level_palette_set(terrain_camera_x() >> 4);
+
+    if (set_palettes == (uint8_t)kLevelTypeUnderground) {
+        assets_load_bg_palettes_underground();
+    } else if (set_palettes == (uint8_t)kLevelTypeCastle) {
+        assets_load_bg_palettes_castle();
+    } else {
+        assets_load_bg_palettes();
+    }
+}
+
+// a same-grid segment jump (1-2's entrance/exit pipes): current_area never changes and level_grid
+// never reloads (the whole level, every segment, is already unpacked into it), but the vram ring
+// and the bg palette still have to catch up to wherever he landed - the same lcd-off work a
+// sub-area swap pays, just reached through terrain's incremental scroll path since the grid
+// itself needs no work. called from flow_enter_sub_area below, never on its own: main.c's state
+// machine only ever sees the one pending_area value, kJumpAreaFlag and all
+static void pipe_jump(uint8_t index) {
+    const uint16_t column = level->jump_target_column[index];
+    const uint8_t row = level->jump_target_row[index];
+
+    terrain_set_scroll_x((uint16_t)(column << 4));
+    terrain_stream_window();
+    terrain_sync_palette();
+    player_place(column, row);
+    camera_init(player_x(), player_feet());
+}
+
 void flow_enter_sub_area(uint8_t index) BANKED {
+    if ((index & (uint8_t)kJumpAreaFlag) != 0U) {
+        pipe_jump((uint8_t)(index & (uint8_t)~kJumpAreaFlag));
+        return;
+    }
     // the room's own AreaInfo has to be in ram before anything reads it: blocks_enter_area takes
     // the coin table off level_sub, and level_sub is still null while the main level is loaded, so
     // without this the room's coin list was whatever bytes sat at address zero - which is why none
@@ -162,11 +196,17 @@ uint8_t flow_pipe_under_player(void) BANKED {
     uint8_t i;
 
     for (i = 0; i < level->object_count; ++i) {
-        if (level->object_kind[i] != (uint8_t)kObjPipe) {
-            continue;
-        }
-        if (player_over_pipe(level->object_column[i], level->object_row[i]) != 0U) {
-            return level->object_param[i];
+        if (level->object_kind[i] == (uint8_t)kObjPipe) {
+            if (player_over_pipe(level->object_column[i], level->object_row[i]) != 0U) {
+                return level->object_param[i];
+            }
+        } else if (level->object_kind[i] == (uint8_t)kObjPipeJump) {
+            // a same-grid segment teleport (1-2's entrance/exit pipes): folded into the same scan
+            // and the same return value as an ordinary sub-area pipe, flagged so
+            // flow_enter_sub_area can tell them apart - main.c's state machine never has to
+            if (player_over_pipe(level->object_column[i], level->object_row[i]) != 0U) {
+                return (uint8_t)(kJumpAreaFlag | level->object_param[i]);
+            }
         }
     }
     return 0xFF;

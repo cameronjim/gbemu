@@ -121,6 +121,17 @@ def write_header(gen_dir, levels, bank):
         f.write("    const uint8_t* object_row;\n")
         f.write("    const uint8_t* object_kind;\n")
         f.write("    const uint8_t* object_param;\n")
+        f.write("    // same-grid segment teleports: a kObjPipeJump's object_param indexes these\n")
+        f.write("    uint8_t jump_count;\n")
+        f.write("    const uint16_t* jump_target_column;\n")
+        f.write("    const uint8_t* jump_target_row;\n")
+        f.write("    // column-range type overrides on top of this level's own type; empty except on\n")
+        f.write("    // a segmented level (1-2), whose ends render overworld though the level is\n")
+        f.write("    // typed underground for its long middle run\n")
+        f.write("    uint8_t segment_count;\n")
+        f.write("    const uint16_t* segment_x0;\n")
+        f.write("    const uint16_t* segment_x1;\n")
+        f.write("    const uint8_t* segment_type;\n")
         f.write("    uint8_t area_count;\n")
         f.write("    const AreaInfo* areas;\n")
         f.write("} LevelInfo;\n\n")
@@ -170,7 +181,12 @@ def write_table(gen_dir, levels, bank):
                     % (upper, slug, slug, slug))
             f.write("     %s_OBJECT_COUNT, %s_object_column, %s_object_row, %s_object_kind,\n"
                     % (upper, slug, slug, slug))
-            f.write("     %s_object_param, %s_AREA_COUNT, %s},\n" % (slug, upper, areas))
+            f.write("     %s_object_param,\n" % slug)
+            f.write("     %s_JUMP_COUNT, %s_jump_target_column, %s_jump_target_row,\n"
+                    % (upper, slug, slug))
+            f.write("     %s_SEGMENT_COUNT, %s_segment_x0, %s_segment_x1, %s_segment_type,\n"
+                    % (upper, slug, slug, slug))
+            f.write("     %s_AREA_COUNT, %s},\n" % (upper, areas))
         f.write("};\n")
 
 
@@ -204,6 +220,8 @@ def write_host(gen_dir, levels):
         f.write("    const LevelBlock* blocks;\n    int block_count;\n")
         f.write("    const LevelEnemy* enemies;\n    int enemy_count;\n")
         f.write("    const LevelObject* objects;\n    int object_count;\n")
+        f.write("    const LevelJump* jumps;\n    int jump_count;\n")
+        f.write("    const LevelSegment* segments;\n    int segment_count;\n")
         f.write("    const LevelProbe* probes;\n    int probe_count;\n};\n\n")
 
         f.write("inline constexpr HostLevel kHostLevels[kHostLevelCount] = {\n")
@@ -218,8 +236,10 @@ def write_host(gen_dir, levels):
                     % (upper, upper, upper, upper, upper))
             f.write("     %s_BRIDGE_ROW, k%sGrid, k%sBlocks, k%sBlockCount, k%sEnemies, k%sEnemyCount,\n"
                     % (upper, camel, camel, camel, camel, camel))
-            f.write("     k%sObjects, k%sObjectCount, k%sProbes, k%sProbeCount},\n"
-                    % (camel, camel, camel, camel))
+            f.write("     k%sObjects, k%sObjectCount, k%sJumps, k%sJumpCount, k%sSegments, k%sSegmentCount,\n"
+                    % (camel, camel, camel, camel, camel, camel))
+            f.write("     k%sProbes, k%sProbeCount},\n"
+                    % (camel, camel))
         f.write("};\n\n")
 
         rows = []

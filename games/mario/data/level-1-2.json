@@ -59,7 +59,7 @@
       "kind": "elevation",
       "x0": 24,
       "x1": 24,
-      "y": 0,
+      "y": 2,
       "confidence": "measured",
       "notes": "the wall between the above-ground start and the underground run: full-height so he cannot simply walk from one segment into the other and must take the entrance pipe. the real map has no such wall because the two segments are not adjacent tiles on real hardware - this is the compiler-invented seam that one concatenated grid needs instead"
     },
@@ -80,7 +80,7 @@
     {
       "kind": "pipe",
       "x": 127,
-      "height": 2,
+      "height": 3,
       "dest": "bonus_room",
       "confidence": "measured",
       "notes": "first of three piranha pipes (real col 103, +24); leads to the coin-heaven bonus room measured off band 2 of the map rip"
@@ -88,7 +88,7 @@
     {
       "kind": "pipe",
       "x": 133,
-      "height": 2,
+      "height": 4,
       "dest": null,
       "confidence": "measured",
       "notes": "second piranha pipe (real col 109, +24)"
@@ -118,9 +118,9 @@
     {
       "kind": "gap",
       "x0": 162,
-      "x1": 162,
+      "x1": 168,
       "confidence": "measured",
-      "notes": "first of the lift-shaft pits (real col 138, +24); the ceiling opens here too, see the ceiling_gap entry below"
+      "notes": "widened to the real map's full pit extent - n12_kinds.json shows the whole span as open/overlay-only (lift deck + rider/coin markers), not real brick/hard floor; see rebuild_1_2.py"
     },
     {
       "kind": "ceiling_gap",
@@ -130,32 +130,11 @@
       "notes": "the lift shaft (real col 138-160, +24): the real map's ceiling is open across this whole span so a rider on the vertical lifts can climb up onto the roof (row 2, solid and walkable from above) and walk right to the warp zone"
     },
     {
-      "kind": "lift_platform",
-      "x0": 164,
-      "x1": 182,
-      "confidence": "approx",
-      "notes": "the vertical lift pair inside the measured ceiling gap (real col 140-158, +24); mariowiki: left descends, right ascends. the gap's own extent is measured, the exact lift track within it is not"
-    },
-    {
-      "kind": "gap",
-      "x0": 167,
-      "x1": 168,
-      "confidence": "measured",
-      "notes": "real col 143-144, +24"
-    },
-    {
       "kind": "gap",
       "x0": 177,
-      "x1": 177,
-      "confidence": "measured",
-      "notes": "real col 153, +24"
-    },
-    {
-      "kind": "gap",
-      "x0": 182,
       "x1": 183,
       "confidence": "measured",
-      "notes": "real col 158-159, +24"
+      "notes": "widened to the real map's full pit extent - n12_kinds.json shows the whole span as open/overlay-only (lift deck + rider/coin markers), not real brick/hard floor; see rebuild_1_2.py"
     },
     {
       "kind": "ceiling_gap",
@@ -174,7 +153,7 @@
     {
       "kind": "pipe",
       "x": 190,
-      "height": 2,
+      "height": 5,
       "dest": null,
       "jump_to": 218,
       "confidence": "approx",
@@ -184,7 +163,7 @@
       "kind": "elevation",
       "x0": 216,
       "x1": 216,
-      "y": 0,
+      "y": 2,
       "confidence": "measured",
       "notes": "the wall between the underground run and the above-ground ending, the same compiler-invented seam as column 24"
     },
@@ -217,50 +196,34 @@
     },
     {
       "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 3,
+      "y1": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
       "x0": 78,
       "x1": 79,
       "y0": 3,
-      "y1": 4,
+      "y1": 3,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 82,
-      "x1": 85,
-      "y0": 3,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 86,
       "x1": 87,
       "y0": 3,
-      "y1": 9,
+      "y1": 3,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 90,
-      "x1": 90,
-      "y0": 3,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 91,
-      "x1": 91,
-      "y0": 3,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 92,
       "x1": 93,
       "y0": 3,
-      "y1": 4,
+      "y1": 3,
       "confidence": "measured"
     },
     {
@@ -268,7 +231,7 @@
       "x0": 100,
       "x1": 103,
       "y0": 3,
-      "y1": 4,
+      "y1": 3,
       "confidence": "measured"
     },
     {
@@ -276,7 +239,7 @@
       "x0": 194,
       "x1": 200,
       "y0": 3,
-      "y1": 12,
+      "y1": 3,
       "confidence": "measured"
     },
     {
@@ -284,7 +247,39 @@
       "x0": 214,
       "x1": 215,
       "y0": 3,
-      "y1": 12,
+      "y1": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 78,
+      "x1": 79,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 82,
+      "x1": 87,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 90,
+      "x1": 93,
+      "y0": 4,
+      "y1": 4,
       "confidence": "measured"
     },
     {
@@ -292,7 +287,39 @@
       "x0": 97,
       "x1": 97,
       "y0": 4,
-      "y1": 7,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 100,
+      "x1": 103,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 194,
+      "x1": 200,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 4,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 5,
+      "y1": 5,
       "confidence": "measured"
     },
     {
@@ -300,15 +327,111 @@
       "x0": 76,
       "x1": 77,
       "y0": 5,
-      "y1": 9,
+      "y1": 5,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 86,
+      "x1": 87,
+      "y0": 5,
+      "y1": 5,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 91,
+      "x1": 91,
+      "y0": 5,
+      "y1": 5,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 96,
-      "x1": 96,
+      "x1": 97,
       "y0": 5,
-      "y1": 9,
+      "y1": 5,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 194,
+      "x1": 200,
+      "y0": 5,
+      "y1": 5,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 5,
+      "y1": 5,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 76,
+      "x1": 77,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 86,
+      "x1": 87,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 91,
+      "x1": 91,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 96,
+      "x1": 97,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 194,
+      "x1": 200,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 7,
+      "y1": 7,
       "confidence": "measured"
     },
     {
@@ -316,31 +439,47 @@
       "x0": 63,
       "x1": 63,
       "y0": 7,
-      "y1": 9,
+      "y1": 7,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 65,
-      "x1": 65,
-      "y0": 7,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 66,
-      "x1": 67,
+      "x1": 68,
       "y0": 7,
       "y1": 7,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 68,
-      "x1": 68,
+      "x0": 76,
+      "x1": 77,
       "y0": 7,
-      "y1": 9,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 86,
+      "x1": 87,
+      "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 91,
+      "x1": 91,
+      "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 96,
+      "x1": 97,
+      "y0": 7,
+      "y1": 7,
       "confidence": "measured"
     },
     {
@@ -348,6 +487,54 @@
       "x0": 108,
       "x1": 113,
       "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 194,
+      "x1": 200,
+      "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 63,
+      "x1": 63,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 65,
+      "x1": 65,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 68,
+      "x1": 68,
+      "y0": 8,
       "y1": 8,
       "confidence": "measured"
     },
@@ -356,7 +543,39 @@
       "x0": 70,
       "x1": 70,
       "y0": 8,
-      "y1": 9,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 76,
+      "x1": 77,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 86,
+      "x1": 87,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 91,
+      "x1": 91,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 96,
+      "x1": 96,
+      "y0": 8,
+      "y1": 8,
       "confidence": "measured"
     },
     {
@@ -364,7 +583,15 @@
       "x0": 100,
       "x1": 100,
       "y0": 8,
-      "y1": 9,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 108,
+      "x1": 113,
+      "y0": 8,
+      "y1": 8,
       "confidence": "measured"
     },
     {
@@ -377,58 +604,79 @@
     },
     {
       "kind": "bricks",
-      "material": "hard",
+      "x0": 194,
+      "x1": 200,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
       "x0": 47,
       "x1": 47,
       "y0": 9,
-      "y1": 12,
+      "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "material": "hard",
       "x0": 49,
       "x1": 49,
       "y0": 9,
-      "y1": 12,
+      "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 64,
-      "x1": 64,
+      "x0": 63,
+      "x1": 65,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 69,
-      "x1": 69,
+      "x0": 68,
+      "x1": 70,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 78,
+      "x0": 76,
       "x1": 79,
       "y0": 9,
-      "y1": 10,
-      "confidence": "approx",
-      "notes": "the real map's classified cell also has row 11 solid here (a floor-to-block gap of exactly one 16px row, tight enough that a big mario cannot fit and an automated route planner cannot solve it), which would need pixel-perfect vertical alignment to ever cross - shaved one row off the bottom of this stack so the passage is a comfortable two rows, matching every other floor-adjacent gap in this same interior rather than singling this one column pair out as an uncrossable pinch. judgement call, must-verify against real hardware"
+      "y1": 9,
+      "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 82,
-      "x1": 85,
+      "x1": 87,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 92,
+      "x0": 91,
       "x1": 93,
       "y0": 9,
       "y1": 9,
@@ -436,7 +684,7 @@
     },
     {
       "kind": "bricks",
-      "x0": 97,
+      "x0": 96,
       "x1": 97,
       "y0": 9,
       "y1": 9,
@@ -444,7 +692,7 @@
     },
     {
       "kind": "bricks",
-      "x0": 101,
+      "x0": 100,
       "x1": 103,
       "y0": 9,
       "y1": 9,
@@ -453,45 +701,86 @@
     {
       "kind": "bricks",
       "x0": 159,
-      "x1": 159,
+      "x1": 161,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "material": "hard",
-      "x0": 160,
-      "x1": 161,
+      "x0": 194,
+      "x1": 200,
       "y0": 9,
-      "y1": 12,
+      "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "material": "hard",
+      "x0": 214,
+      "x1": 215,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
       "x0": 45,
       "x1": 45,
       "y0": 10,
-      "y1": 12,
-      "confidence": "measured"
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
-      "material": "hard",
+      "x0": 47,
+      "x1": 47,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 49,
+      "x1": 49,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
       "x0": 51,
       "x1": 51,
       "y0": 10,
-      "y1": 12,
-      "confidence": "measured"
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
-      "material": "hard",
       "x0": 55,
       "x1": 55,
       "y0": 10,
-      "y1": 12,
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 78,
+      "x1": 79,
+      "y0": 10,
+      "y1": 10,
       "confidence": "measured"
     },
     {
@@ -499,33 +788,48 @@
       "x0": 146,
       "x1": 147,
       "y0": 10,
-      "y1": 12,
+      "y1": 10,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "material": "hard",
       "x0": 159,
-      "x1": 159,
+      "x1": 161,
       "y0": 10,
-      "y1": 12,
-      "confidence": "measured"
+      "y1": 10,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
       "x0": 184,
       "x1": 189,
       "y0": 10,
-      "y1": 12,
-      "confidence": "measured",
-      "notes": "split around columns 190-191, the underground run's own exit pipe (a compiler judgement-call column, not a measured one - see that terrain entry's own notes) so this real brick fill does not paint over its cap"
+      "y1": 10,
+      "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 192,
-      "x1": 193,
+      "x1": 200,
       "y0": 10,
-      "y1": 12,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 11,
+      "y1": 11,
       "confidence": "measured"
     },
     {
@@ -538,28 +842,121 @@
     },
     {
       "kind": "bricks",
-      "material": "hard",
       "x0": 43,
       "x1": 43,
       "y0": 11,
-      "y1": 12,
-      "confidence": "measured"
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
-      "material": "hard",
+      "x0": 45,
+      "x1": 45,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 47,
+      "x1": 47,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 49,
+      "x1": 49,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 51,
+      "x1": 51,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 55,
+      "x1": 55,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
       "x0": 57,
       "x1": 57,
       "y0": 11,
-      "y1": 12,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 78,
+      "x1": 79,
+      "y0": 11,
+      "y1": 11,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "material": "hard",
-      "x0": 158,
-      "x1": 158,
+      "x0": 146,
+      "x1": 147,
       "y0": 11,
+      "y1": 11,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 158,
+      "x1": 161,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 184,
+      "x1": 189,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 192,
+      "x1": 200,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
+      "y0": 11,
+      "y1": 11,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 12,
       "y1": 12,
       "confidence": "measured"
     },
@@ -573,12 +970,57 @@
     },
     {
       "kind": "bricks",
-      "material": "hard",
       "x0": 41,
       "x1": 41,
       "y0": 12,
       "y1": 12,
-      "confidence": "measured"
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 43,
+      "x1": 43,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 45,
+      "x1": 45,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 47,
+      "x1": 47,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 49,
+      "x1": 49,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 51,
+      "x1": 51,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
@@ -587,6 +1029,24 @@
       "y0": 12,
       "y1": 12,
       "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 55,
+      "x1": 55,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 57,
+      "x1": 57,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
     },
     {
       "kind": "bricks",
@@ -630,9 +1090,41 @@
     },
     {
       "kind": "bricks",
-      "material": "hard",
+      "x0": 146,
+      "x1": 147,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
       "x0": 157,
-      "x1": 157,
+      "x1": 161,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured",
+      "material": "hard"
+    },
+    {
+      "kind": "bricks",
+      "x0": 184,
+      "x1": 189,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 192,
+      "x1": 200,
+      "y0": 12,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 214,
+      "x1": 215,
       "y0": 12,
       "y1": 12,
       "confidence": "measured"
@@ -836,46 +1328,33 @@
       "y1": 8,
       "confidence": "measured",
       "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
+    },
+    {
+      "kind": "pipe",
+      "x": 202,
+      "height": 3,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "decorative: the real map's own leftmost warp-room pipe, drawn in-band (real col 178, +24). the room itself is still reached via the entry_x=172 auto-pipe (see the warp-zone area's own notes) - the engine's sub-area system only triggers on a pipe, and there is no measured basis to point that trigger at this column instead"
+    },
+    {
+      "kind": "pipe",
+      "x": 206,
+      "height": 3,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "decorative: the real map's middle warp-room pipe, drawn in-band (real col 182, +24)"
+    },
+    {
+      "kind": "pipe",
+      "x": 210,
+      "height": 3,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "decorative: the real map's rightmost warp-room pipe, drawn in-band (real col 186, +24); its cap sits one column inside the existing ceiling_gap 211-213 (the roof-top drop into the room), matching how tightly they sit together on the real map"
     }
   ],
   "blocks": [
-    {
-      "x": 30,
-      "y": 9,
-      "kind": "question",
-      "contents": "coin",
-      "confidence": "approx",
-      "notes": "opening block row, sequence-derived within the measured entry shaft (real col 6, +24)"
-    },
-    {
-      "x": 31,
-      "y": 9,
-      "kind": "question",
-      "contents": "coin",
-      "confidence": "approx"
-    },
-    {
-      "x": 32,
-      "y": 9,
-      "kind": "question",
-      "contents": "mushroom_fire",
-      "confidence": "approx"
-    },
-    {
-      "x": 33,
-      "y": 9,
-      "kind": "question",
-      "contents": "coin",
-      "confidence": "approx"
-    },
-    {
-      "x": 54,
-      "y": 9,
-      "kind": "brick",
-      "contents": "multicoin",
-      "confidence": "approx",
-      "notes": "block-tower area; the grid classifier finds a coin/? cluster near here but not a precise cell"
-    },
     {
       "x": 64,
       "y": 9,
@@ -883,30 +1362,6 @@
       "contents": "star",
       "confidence": "approx",
       "notes": "column matches a coin-marker cell in the extracted grid; contents (starman) is sourced from mariowiki, row is a placeholder"
-    },
-    {
-      "x": 98,
-      "y": 9,
-      "kind": "brick",
-      "contents": "mushroom_fire",
-      "confidence": "approx",
-      "notes": "immediately before the first measured pit"
-    },
-    {
-      "x": 112,
-      "y": 5,
-      "kind": "hidden",
-      "contents": "oneup",
-      "confidence": "approx",
-      "notes": "just past the first pit, high row; mariowiki: hidden 1-up reached via a block platform"
-    },
-    {
-      "x": 156,
-      "y": 9,
-      "kind": "brick",
-      "contents": "coin",
-      "confidence": "approx",
-      "notes": "on the surviving floor run between the 148-149 pit and the lift shaft"
     },
     {
       "x": 179,
@@ -967,62 +1422,67 @@
   ],
   "enemies": [
     {
-      "x": 35,
-      "y": 13,
+      "x": 34,
+      "y": 9,
       "kind": "goomba",
-      "confidence": "approx",
-      "notes": "the extracted grid marks an enemy cluster right past the entry shaft"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+    },
+    {
+      "x": 35,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+    },
+    {
+      "x": 36,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
       "x": 37,
-      "y": 13,
+      "y": 9,
       "kind": "goomba",
-      "confidence": "approx"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
-      "x": 54,
-      "y": 13,
+      "x": 38,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+    },
+    {
+      "x": 68,
+      "y": 12,
       "kind": "koopa_green",
-      "confidence": "approx",
-      "notes": "block-tower area"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
       "x": 69,
-      "y": 13,
+      "y": 12,
       "kind": "koopa_green",
-      "confidence": "approx"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
-      "x": 84,
-      "y": 13,
+      "x": 83,
+      "y": 12,
       "kind": "goomba",
-      "confidence": "approx"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
-      "x": 86,
-      "y": 13,
+      "x": 93,
+      "y": 8,
       "kind": "goomba",
-      "confidence": "approx"
-    },
-    {
-      "x": 99,
-      "y": 13,
-      "kind": "goomba",
-      "confidence": "approx",
-      "notes": "just before the first pit"
-    },
-    {
-      "x": 121,
-      "y": 13,
-      "kind": "goomba",
-      "confidence": "approx",
-      "notes": "between the second pit and the three piranha pipes"
-    },
-    {
-      "x": 124,
-      "y": 13,
-      "kind": "goomba",
-      "confidence": "approx"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     },
     {
       "x": 127,
@@ -1046,11 +1506,18 @@
       "notes": "in the third piranha pipe"
     },
     {
+      "x": 170,
+      "y": 12,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+    },
+    {
       "x": 174,
-      "y": 13,
+      "y": 8,
       "kind": "koopa_red",
-      "confidence": "approx",
-      "notes": "on the one surviving floor run inside the lift-shaft span"
+      "confidence": "measured",
+      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
     }
   ],
   "areas": [
@@ -1174,7 +1641,8 @@
       "exit": "n/a - reached by riding the vertical lifts up through the measured ceiling gap, walking right along the roof-top, then dropping through the measured roof opening; compiled here as a plain pipe at entry_x because the engine's sub-area system only triggers on a pipe, see confidence_notes item 2",
       "terrain": [],
       "blocks": [],
-      "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled"
+      "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled",
+      "entry_height": 1
     }
   ],
   "flag": {

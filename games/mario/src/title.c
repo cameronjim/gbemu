@@ -190,7 +190,7 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
 #endif
 #if kDebugCamera
     if ((pressed & J_B) != 0U) {
-        debug_camera_enter();
+        debug_camera_enter(*level);
         return kTitleCamera;
     }
 #endif
@@ -232,10 +232,10 @@ void card_clear_refresh(void) {
 
 #if kDebugCamera
 // bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
-void debug_camera_enter(void) BANKED {
+void debug_camera_enter(uint8_t level) BANKED {
     DISPLAY_OFF;
     HIDE_SPRITES;
-    level_select(0);
+    level_select(level);
     blocks_load_level();
     blocks_enter_area(kAreaMain);
     terrain_init(kAreaMain);

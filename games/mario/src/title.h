@@ -39,7 +39,7 @@ void card_clear_refresh(void);
 
 // the m2 debug camera: no player, no physics, just d-pad scroll and pan over the compiled terrain.
 // banked for the same reason the title card is - it is never entered from a frame of play
-void debug_camera_enter(void) BANKED;
+void debug_camera_enter(uint8_t level) BANKED;
 void debug_camera_frame(uint8_t keys) BANKED;
 
 #endif

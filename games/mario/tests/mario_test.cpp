@@ -6679,10 +6679,12 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     }
     // above-ground start: the short decorative pipe (10) and the entrance pipe (12). underground
     // run (+24 from the old numbers): the three piranha pipes (127/133/139), the synthesized pipe
-    // for the warp-zone sub-area's entry_x (172, inside the measured lift shaft), and the run's own
-    // exit pipe (190, a compiler judgement call - see level-1-2.json). above-ground ending: its own
-    // piranha pipe (219)
-    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 172, 190, 219});
+    // for the warp-zone sub-area's entry_x (172, inside the measured lift shaft), the run's own exit
+    // pipe (190, a compiler judgement call - see level-1-2.json), and the three real, measured
+    // warp-room pipes the map draws directly in-band (202/206/210) - decorative only (dest: null):
+    // the room is still entered through the 172 auto-pipe above, there is no measured basis to
+    // retarget that trigger at one of these instead. above-ground ending: its own piranha pipe (219)
+    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 172, 190, 202, 206, 210, 219});
 
     // a pit is a column with no ground at either of the two floor rows
     std::vector<int> pits;
@@ -6697,8 +6699,12 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
             in_pit = false;
         }
     }
-    // the seven measured pits' left edges, +24: 104-106, 144-145, 148-149, 162, 167-168, 177, 182-183
-    REQUIRE(pits == std::vector<int>{104, 144, 148, 162, 167, 177, 182});
+    // five measured pits' left edges, +24: 104-106, 144-145, 148-149, then the lift-shaft's two full
+    // pits, 162-168 and 177-183 - n12_kinds.json's per-cell classification shows the "floor islands"
+    // this bible used to carve out of those two spans (163-166, 178-181) are not real floor at all:
+    // every cell there is either open or an 'other'/'enemy'/'coin' overlay marker for the lift decks
+    // and their riders/loose coins, not brick/hard/question ground. see level-1-2.json's terrain
+    REQUIRE(pits == std::vector<int>{104, 144, 148, 162, 177});
 
     // the roof is one row of brick at row 2 (not the two-row ground slab this test used to check -
     // the pixel extraction of the real map settled that the cave ceiling is exactly one row, and
@@ -6877,18 +6883,14 @@ TEST_CASE("mario_lift_carries") {
     REQUIRE(rode > 0);
     REQUIRE(carried > 20);
 
-    // 1-2's pair runs the other way: the bible has those rising and falling rather than sliding
+    // 1-2's lift shaft used to carry a bible-approximated vertical pair, but the real map gives no
+    // measured track for them (mariowiki only says "left descends, right ascends", not where) and
+    // the old approx span stamped static pipe-body blocks into cells the real map leaves open - the
+    // user-reported "blue bricks too close to the ground" bug. transcribing the real map instead
+    // means leaving this shaft empty rather than inventing a track: no vertical lifts in 1-2 today.
     PlayerSim vertical;
     vertical.load_level(kLevel12);
-    REQUIRE(vertical.lift_count == 2);
-    REQUIRE(vertical.lifts[0].vertical == 1);
-    const int16_t before = vertical.lifts[0].y;
-    const uint16_t held = vertical.lifts[0].x;
-    for (int i = 0; i < 8; ++i) {
-        vertical.hazards_step();
-    }
-    REQUIRE(vertical.lifts[0].y != before);
-    REQUIRE(vertical.lifts[0].x == held);
+    REQUIRE(vertical.lift_count == 0);
 
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));

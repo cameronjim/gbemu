@@ -929,8 +929,14 @@ def find_pipe_entries(bible, areas):
             continue
         # the bible's warp-zone room is reached "via the lift platforms through a hidden roof
         # opening" and smbd is confirmed to have changed the room entirely, so the entry is
-        # compiled as a plain ground pipe at the bible's entry_x. must-verify against the rom
-        out.append((area["entry_x"], GROUND_ROW - AREA_EXIT_PIPE_HEIGHT, index))
+        # compiled as a plain ground pipe at the bible's entry_x. must-verify against the rom.
+        # an area may override the default 2-tall cap+body with its own "entry_height" - 1-2's own
+        # warp-zone uses this to shrink to a cap-only stub (no body row at all): the real map's
+        # per-cell classification shows entry_x's column is genuinely open air at every row a taller
+        # synthetic pipe would otherwise stamp, so the shortest shape that still gives the engine's
+        # sub-area trigger somewhere to stand is the one that costs the map fidelity the least
+        height = area.get("entry_height", AREA_EXIT_PIPE_HEIGHT)
+        out.append((area["entry_x"], GROUND_ROW - height, index))
         claimed.add(index)
     out.sort(key=lambda entry: entry[0])
     return out

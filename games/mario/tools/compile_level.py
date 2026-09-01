@@ -289,7 +289,8 @@ def feature_max_x(bible):
     for s in bible.get("segments", []):
         max_x = max(max_x, s["x1"])
     for t in bible.get("terrain", []):
-        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform", "ceiling_gap"):
+        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform", "ceiling_gap",
+                         "bricks"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
@@ -674,6 +675,31 @@ def compile_grid(bible, level_type):
             ground_runs.append((t["x0"], t["x1"]))
             probes.append((t["x0"], GROUND_ROW, BLOCK_GROUND))
             probes.append((t["x1"], GROUND_ROW, BLOCK_GROUND))
+        elif t["kind"] == "bricks":
+            # a solid rectangle of terrain, stamped straight into the compiled grid with no
+            # per-cell interactive state - the same primitive an area's own "bricks" kind already
+            # uses (compile_measured_area), now available to a main level's terrain list too. this
+            # is how 1-2's underground interior (stair-step hard blocks, brick platforms, the
+            # coin-room walls) gets built without inflating LEVEL_MAX_BLOCKS: a terrain-fill brick
+            # is solid and walkable-on like any other brick, but is not in the blocks[] list, so it
+            # cannot be bumped, cannot break, and never pays out contents - correct for the ~450
+            # cells of pure background structure the real map has that nothing there ever needs to
+            # hit. "material" is "brick" (default), "hard", or "question" - the last one a real
+            # ? block rendered where the map has one but with no interactive state behind it, used
+            # when a level's own per-level block list (level_N_objects.c, unbanked - see the bank
+            # note on LEVEL_MAX_BLOCKS in blocks.c) has no more room: home bank is a hard shared rom
+            # ceiling across every level's block/enemy/object/jump/segment/area-coin list, measured
+            # empirically at build time (a handful more bytes there and lcc's linker starts bleeding
+            # bank 0 into bank 1's level data - silently corrupting an unrelated level, not just
+            # failing to link), and it is far tighter than LEVEL_MAX_BLOCKS's own raw ram headroom
+            material_map = {"hard": BLOCK_HARD, "question": BLOCK_QUESTION, "coin": BLOCK_COIN}
+            material = material_map.get(t.get("material"), BLOCK_BRICK)
+            x0, x1 = clamp_span(grid, t["x0"], t["x1"])
+            for column in range(x0, x1 + 1):
+                for row in range(t["y0"], t["y1"] + 1):
+                    grid[column][row] = material
+            probes.append((x0, t["y0"], material))
+            probes.append((x1, t["y1"], material))
         elif t["kind"] == "gap":
             apply_gap(grid, t["x0"], t["x1"], gap_fill)
             probes.append((t["x0"], GROUND_ROW, gap_fill))

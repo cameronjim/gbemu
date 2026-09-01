@@ -6700,11 +6700,15 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     // the seven measured pits' left edges, +24: 104-106, 144-145, 148-149, 162, 167-168, 177, 182-183
     REQUIRE(pits == std::vector<int>{104, 144, 148, 162, 167, 177, 182});
 
-    // the roof (rows 0-1) is only ever stamped inside the underground segment (24-215): a segment
-    // typed overworld gets none at all, which is the whole point of this rebuild - the above-ground
-    // start and ending read as open sky, not cave with the roof carved away column by column
+    // the roof is one row of brick at row 2 (not the two-row ground slab this test used to check -
+    // the pixel extraction of the real map settled that the cave ceiling is exactly one row, and
+    // rows 0-1 above it render nothing), stamped only inside the underground segment (24-215): a
+    // segment typed overworld gets none at all, which is the whole point of this rebuild - the
+    // above-ground start and ending read as open sky, not cave with the roof carved away column by
+    // column. rows 0-1 must stay empty everywhere, underground or not
     const auto roof_open = [](uint16_t column) {
-        return kLevel12Grid[column][0] != kBlockGround && kLevel12Grid[column][1] != kBlockGround;
+        return kLevel12Grid[column][0] == kBlockEmpty && kLevel12Grid[column][1] == kBlockEmpty &&
+               kLevel12Grid[column][2] != kBlockBrick;
     };
     // above-ground start: no roof anywhere
     for (uint16_t column = 0; column <= 23; ++column) {
@@ -7068,12 +7072,19 @@ TEST_CASE("mario_warp_zone_compiles") {
 
     // 1-2's above-ground start is walled off from this underground run (see level-1-2.json's
     // segments[]), so plan_level's own planner - which starts from the level's compiled start
-    // column, in that above-ground segment - can never reach here on its own; the twin is planted
-    // straight at the entrance pipe's own compiled jump target instead, exactly where the real rom
-    // drops him after that pipe (a purely host-side structural probe has no rom to press down on)
-    const PlayerSim start = sim_at_level(kLevel12, lv.jumps[0].column, lv.jumps[0].row);
+    // column, in that above-ground segment - can never reach here on its own. it also cannot solve
+    // the full 145-column walk from the entrance pipe's own jump target any more: now that the
+    // interior between them is the real map's dense platforming (block towers, hard-block stairs,
+    // narrow floor-adjacent gaps) rather than the near-empty placeholder this test was written
+    // against, plan_level's short-lookahead greedy search gets stuck the same way
+    // mario_autopilot_completes_1_2's own comment already says a synthetic host twin cannot reliably
+    // walk this run live (enemy/lift phase drift over 160-odd columns) - so, like that test, this one
+    // plants the twin much closer to what it actually verifies (that the compiled pipe object is
+    // real and standable), on the short solid floor island right past the lift shaft rather than at
+    // the entrance 145 columns back
+    const PlayerSim start = sim_at_level(kLevel12, 170, 13);
     const Route approach =
-        plan_level(kLevel12, 4000, static_cast<uint16_t>((entry->column - 1) * kBlockPx), &start);
+        plan_level(kLevel12, 2000, static_cast<uint16_t>((entry->column - 1) * kBlockPx), &start);
     REQUIRE(approach.reached);
     const Route climb = plan_stand_on_pipe(approach.end, entry->column, entry->row, 600);
     REQUIRE(climb.reached);

@@ -142,10 +142,19 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 ## enums
 
 - `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`,
-  `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's `CEILING_ROWS`
-  rows over that span, the only way to carve a hole back out of the solid roof `apply_ceiling()`
-  otherwise stamps across every column - 1-2 needs one for the entry shaft and one for the lift
-  shaft that carries a rider up to the walkable roof over the warp zone)
+  `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's one solid row
+  (`CEILING_ROW`) over that span, the only way to carve a hole back out of the roof `apply_ceiling()`
+  otherwise stamps across every underground-typed column - 1-2 needs one for the entry shaft, one
+  for the lift shaft that carries a rider up to the walkable roof over the warp zone, and one for a
+  narrow annotation-only notch just past it), `bricks` (a solid rectangle stamped straight into the
+  compiled grid - `{"x0": .., "x1": .., "y0": .., "y1": .., "material": "brick" | "hard" |
+  "question"}`, `material` defaults to `"brick"`. this is terrain, not a `blocks[]` entry: no
+  interactive state, so it cannot be bumped or broken and pays out nothing - the right primitive
+  for the ~450 cells of pure background structure a measured underground interior has that nothing
+  there ever needs to hit, without inflating `LEVEL_MAX_BLOCKS`, and also for a `?` block a level's
+  own per-level block list has no more room left for (see the bank note in level-1-2.json's
+  confidence_notes). the same primitive an `areas[].terrain` entry's own `"bricks"` kind already
+  used, now available to a main level's terrain list too)
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`

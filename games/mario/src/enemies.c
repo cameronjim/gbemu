@@ -725,6 +725,13 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
         }
         prop = (tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa : (uint8_t)kPalGoomba;
+        if (tile == kTilePiranha) {
+            // OAM background-priority: the hardware draws this sprite behind bg colors 1-3 and only
+            // over color 0. every bg palette keeps color 0 as the level's plain backdrop hue (see
+            // assets_load_bg_palettes) and the pipe's own colors 1-3 are its opaque body, so as the
+            // plant sinks the pipe tiles progressively cover it instead of it sitting on top
+            prop = (uint8_t)(prop | (uint8_t)S_PRIORITY);
+        }
         if (tile == kTilePiranha || tile < kTileKoopaWalk0) {
             // a symmetric frame is one 8x16 pair; the right half is the same tile drawn flipped
             left_tile = tile;

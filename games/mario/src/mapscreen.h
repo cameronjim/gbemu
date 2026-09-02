@@ -22,6 +22,10 @@ void front_title(void) BANKED;
 // `level` (clamped to the last one when world one is finished) and paints the map
 void front_cleared(uint8_t* level) BANKED;
 
+// back to the world map from a level the player quit out of: nothing is opened and nothing is
+// recorded, so his lives and score stand and the node he left is the one he is put back on
+void front_map(uint8_t level) BANKED;
+
 // one frame of whichever of the three screens is up; a level it enters is written through `level`
 uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED;
 

@@ -15,6 +15,14 @@
 // lives, footer) than the title/game-over/clear cards do, so it sits higher to leave the footer
 // some breathing room above the bottom of the 18-row screen
 #define kPauseRow 4U
+// its RESUME/QUIT menu, on the same two-row pitch the readout above it uses, and the footer hint
+// on the last row of the screen. the widest entry plus the cursor column is 7 glyphs, and both
+// lines are padded to it so the cursor does not shift the text when it moves
+#define kPauseMenuRow 13U
+#define kPauseItemStep 2U
+#define kPauseItemCount 2U
+#define kPauseItemWidth 7U
+#define kPauseHintRow 17U
 
 // the SELECT FILE card (games/mario/src/mapscreen.c). its heading sits high because the three
 // slots each take two rows - the slot line and its score - and three hint lines close the screen
@@ -61,12 +69,15 @@
 #define kMapLevelRow 2U
 
 // the footer, rows 12-17: row 12 is padding, 13-16 hold the lives readout and the bordered CLEAR
-// LIST panel side by side (cols 0-6 and 7-19), 17 is padding. the lives readout is plain text, not
-// a mario-shaped icon: a host probe finds mario anywhere on screen by his sprite tile family alone,
-// so a second mario-family sprite here would feed into every test that reads his position off the
-// map (see map_draw_lives in mapscreen.c)
+// LIST panel side by side (cols 0-6 and 7-19), 17 carries the button hint. the lives readout is
+// plain text, not a mario-shaped icon: a host probe finds mario anywhere on screen by his sprite tile family
+// alone, so a second mario-family sprite here would feed into every test that reads his position off the map
+// (see map_draw_lives in mapscreen.c)
 #define kMapLivesTextRow 14U
 #define kMapLivesTextCol 1U
+// the footer's button hint, on the last row of the black band under the CLEAR LIST panel
+#define kMapHintRow 17U
+#define kMapHintCol 1U
 #define kMapListLeftCol 7U
 #define kMapListWidth 13U
 #define kMapListTopRow 13U

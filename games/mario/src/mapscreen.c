@@ -164,18 +164,20 @@ static void file_reset(void) {
 static uint8_t file_frame(uint8_t pressed, uint8_t* level) {
     if (confirming != 0U) {
         // a file the player can never clear is a worse annoyance than the one accidental erase
-        // this second press is here to prevent, so erase ships - behind a card of its own
-        if ((pressed & (J_START | J_A)) != 0U) {
+        // this second press is here to prevent, so erase ships - behind a card of its own. a is
+        // the only confirm on the front end now, and start is one more way to back out: the sdl
+        // frontend maps esc to start, and esc is "back" everywhere it is not "pause"
+        if ((pressed & J_A) != 0U) {
             save_erase(cursor);
             confirming = 0;
             file_show();
-        } else if ((pressed & J_B) != 0U) {
+        } else if ((pressed & (J_START | J_B)) != 0U) {
             confirming = 0;
             file_show();
         }
         return kFileStay;
     }
-    if ((pressed & (J_START | J_A)) != 0U) {
+    if ((pressed & J_A) != 0U) {
         save_select(cursor);
         // an untouched NEW slot becomes a real file the moment it is opened, so the player can see
         // which of the three they are in even before a level is cleared
@@ -189,7 +191,7 @@ static uint8_t file_frame(uint8_t pressed, uint8_t* level) {
         flow_begin_run(*level);
         return kFileMap;
     }
-    if ((pressed & J_B) != 0U) {
+    if ((pressed & (J_START | J_B)) != 0U) {
         return kFileTitle;
     }
     if ((pressed & J_SELECT) != 0U && save_slot_used(cursor) != 0U) {
@@ -549,6 +551,7 @@ static void map_reset(uint8_t node) {
         put_marker(node_column(bx), kMapMarkerRow, marker_palette(bx));
     }
     map_draw_world_label(map_node);
+    puts_at(kMapHintCol, kMapHintRow, "A ENTERS  B BACK");
     map_draw_lives();
     map_draw_list(map_unlocked);
     draw_mario();
@@ -579,11 +582,11 @@ static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
         draw_mario();
         return kMapStay;
     }
-    if ((pressed & (J_START | J_A)) != 0U) {
+    if ((pressed & J_A) != 0U) {
         *level = map_node;
         return kMapPlay;
     }
-    if ((pressed & J_B) != 0U) {
+    if ((pressed & (J_START | J_B)) != 0U) {
         return kMapBack;
     }
     // a node past the file's furthest is not walkable at all: the path simply refuses, which is
@@ -633,6 +636,17 @@ void front_cleared(uint8_t* level) BANKED {
     }
     screen = kScreenMap;
     map_reset(*level);
+}
+
+void front_map(uint8_t level) BANKED {
+    // quitting out of a level, so nothing is opened and nothing is recorded - but a run that
+    // started from the title's own level select never opened a file at all, and its map_unlocked
+    // is still 0: the node he is standing on has to be walkable, so it counts as reached
+    if (level > map_unlocked) {
+        map_unlocked = level;
+    }
+    screen = kScreenMap;
+    map_reset(level);
 }
 
 uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED {

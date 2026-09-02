@@ -69,12 +69,11 @@ void powerup_init(void) BANKED {
     powerup_reset();
 }
 
-void powerup_reset(void) BANKED {
-    power = kPowerSmall;
+void powerup_enter_level(void) BANKED {
     star_timer = 0;
     injury_timer = 0;
     anim_timer = 0;
-    anim_target = kPowerSmall;
+    anim_target = power;
     anim_from_big = 0;
     anim_to_big = 0;
     phase = 0;
@@ -84,6 +83,11 @@ void powerup_reset(void) BANKED {
     // the new one has to write every slot off screen
     shown = (uint8_t)kFireballSlots;
     publish();
+}
+
+void powerup_reset(void) BANKED {
+    power = kPowerSmall;
+    powerup_enter_level();
 }
 
 uint8_t powerup_state(void) BANKED {

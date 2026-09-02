@@ -62,16 +62,21 @@ static void scan_grid_coins(void) {
 }
 
 uint8_t flow_enter_level(uint8_t index) BANKED {
-    powerup_reset();
+    powerup_enter_level();
     level_select(index);
     blocks_load_level();
-    blocks_player_big = 0;
+    // the form carries between levels, so the dispenser rule sees it on the first frame rather
+    // than a frame later, when the play loop's own copy catches up
+    blocks_player_big = (uint8_t)((powerup_flags & kPowerFlagBig) != 0U ? 1U : 0U);
     blocks_enter_area(kAreaMain);
     terrain_init(kAreaMain);
     scan_grid_coins();
     scan_side_pipes();
     hazards_load_level();
     player_init();
+    // player_init always stands him up small; a carried form has to be his own height before the
+    // first frame is drawn, or the play loop grows him in place on frame one and he pops upward
+    player_set_big(powerup_pose);
     enemies_load_level();
     camera_init(player_x(), player_feet());
     hud_enter_level(level->timer);
@@ -79,6 +84,8 @@ uint8_t flow_enter_level(uint8_t index) BANKED {
 }
 
 uint8_t flow_begin_run(uint8_t selected) {
+    // a fresh run is small mario, whatever the last one ended as
+    powerup_reset();
     // systems.md: the english build resets the form and the score on a reload, so picking a file
     // carries the level it saved and nothing else - three fresh lives and a score of zero. the
     // levels a run walks between on the map share those, which is why nothing resets them again
@@ -116,7 +123,23 @@ void flow_score_flag(int16_t feet) BANKED {
 // how long the card on screen has been up; the states that own one all live here
 static uint8_t card_timer;
 
+// which of the three bg palette sets is on screen, so a card resume can put the same one back
+static uint8_t palette_set;
+
+static void load_palette_set(uint8_t set_palettes) {
+    palette_set = set_palettes;
+    if (set_palettes == (uint8_t)kLevelTypeUnderground) {
+        assets_load_bg_palettes_underground();
+    } else if (set_palettes == (uint8_t)kLevelTypeCastle) {
+        assets_load_bg_palettes_castle();
+    } else {
+        assets_load_bg_palettes();
+    }
+}
+
 uint8_t flow_after_death(void) BANKED {
+    // the form is the one thing a level clear carries and a death does not
+    powerup_reset();
     if (hud_lives != 0U) {
         --hud_lives;
     }
@@ -166,22 +189,21 @@ uint8_t flow_clear_frame(uint8_t* level) BANKED {
 // is refilled from column zero the way a level load does it and then streamed forward to where the
 // camera already stands, which is lcd-off work either way. nothing but the bg is touched
 void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED {
+    // terrain_init reloads the palette set for column zero, which on 1-2 is its above-ground start
+    // segment, and working it out again afterwards is no better: the camera stands a screen behind
+    // mario, so just past a segment boundary it names the segment he has already left. the set that
+    // was on screen when the card went up is the one that belongs back on it
+    const uint8_t was = palette_set;
+
     terrain_init(area);
     terrain_set_scroll_x(camera_x);
     terrain_stream_window();
+    load_palette_set(was);
     SHOW_SPRITES;
 }
 
 void terrain_sync_palette(void) BANKED {
-    const uint8_t set_palettes = level_palette_set(terrain_camera_x() >> 4);
-
-    if (set_palettes == (uint8_t)kLevelTypeUnderground) {
-        assets_load_bg_palettes_underground();
-    } else if (set_palettes == (uint8_t)kLevelTypeCastle) {
-        assets_load_bg_palettes_castle();
-    } else {
-        assets_load_bg_palettes();
-    }
+    load_palette_set(level_palette_set(terrain_camera_x() >> 4));
 }
 
 // a same-grid segment jump (1-2's entrance/exit pipes): current_area never changes and level_grid

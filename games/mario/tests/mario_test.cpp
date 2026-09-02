@@ -125,11 +125,14 @@ void wait_off_map(gb::Gameboy& gameboy) {
     }
 }
 
+// m20: a is the only confirm on the front end - start is "back" there now, so that esc (which the
+// sdl frontend maps to start) walks the screens backwards the way the player asked for. start off
+// the title is the exception: there is nothing behind it to go back to
 void enter_play(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
     press(gameboy, gb::Button::Start, 2);
-    step_screen(gameboy, gb::Button::Start);
-    step_screen(gameboy, gb::Button::Start);
+    step_screen(gameboy, gb::Button::A);
+    step_screen(gameboy, gb::Button::A);
     wait_off_map(gameboy);
     run(gameboy, 64);
 }
@@ -3121,7 +3124,7 @@ int wait_for_map(gb::Gameboy& gameboy, int cap) {
 
 void map_enter_level(gb::Gameboy& gameboy) {
     run(gameboy, kScreenSettleFrames);
-    press(gameboy, gb::Button::Start, 2);
+    press(gameboy, gb::Button::A, 2);
     wait_off_map(gameboy);
 }
 
@@ -6305,11 +6308,20 @@ TEST_CASE("mario_star_invincibility") {
     const int goombas_before = goombas_on_screen(gameboy);
     REQUIRE(goombas_before > 0);
 
-    // the twin calls this contact fatal; with the star running it takes the goomba instead
-    run(gameboy, 4);
-    elapsed += 4;
-    REQUIRE(!at_start_cell(gameboy));
-    REQUIRE(goombas_on_screen(gameboy) < goombas_before);
+    // the twin calls this contact fatal; with the star running it takes the goomba instead. which
+    // frame the squash lands on is not pinned: the level load is an lcd-off burst the host measures
+    // in whole frames, so any engine change that lengthens it slides the rom's roster a frame or two
+    // against the twin. what is asserted is that a goomba goes and he does not
+    int squashed = -1;
+    for (int i = 0; i < 20 && squashed < 0; ++i) {
+        gameboy.run_frame();
+        ++elapsed;
+        REQUIRE(!at_start_cell(gameboy));
+        if (goombas_on_screen(gameboy) < goombas_before) {
+            squashed = i;
+        }
+    }
+    REQUIRE(squashed >= 0);
 
     // nothing else can reach him with the camera parked, so the rest of the window just runs out
     REQUIRE(elapsed < kStarFrames);
@@ -7276,9 +7288,9 @@ constexpr int kHudTimeDigits = 3;
 
 // the card rows title.c prints on; the pause card is measured off its own kPauseRow (it sits
 // higher than the title/game-over/clear cards to leave its footer some room), the rest off kTitleRow
-constexpr uint32_t kCardWorldRow = kPauseRow + 2;
-constexpr uint32_t kCardPauseScoreRow = kPauseRow + 4;
-constexpr uint32_t kCardLivesRow = kPauseRow + 6;
+constexpr uint32_t kCardWorldRow = kPauseRow + 3;
+constexpr uint32_t kCardPauseScoreRow = kPauseRow + 5;
+constexpr uint32_t kCardLivesRow = kPauseRow + 7;
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
 constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
 constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
@@ -7711,6 +7723,167 @@ TEST_CASE("mario_pause_restores_the_scenery") {
     REQUIRE(count_family(0x45, 0x50) == hills);
 }
 
+// m20's first bug: flow_resume_from_card refills the ring from column zero, which reloads the
+// palette set for column zero too - and on 1-2 that is its above-ground start segment, so
+// unpausing underground used to come back painted like the overworld. the resume now re-syncs the
+// palette against the camera it has just put back, and nothing else about the frozen level moves
+TEST_CASE("mario_pause_keeps_the_underground_palette") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    enter_1_2_underground(gameboy);
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+    // the entrance is an eleven row drop, so he is still falling when it hands back
+    run(gameboy, 120);
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+
+    const Mario before = mario_at(gameboy);
+    REQUIRE(before.found);
+
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(on_card(gameboy));
+    run(gameboy, kCardSettleFrames);
+
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    run(gameboy, 8);
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+    // and the grid and his place in it came back untouched, the way an overworld resume already did
+    const Mario after = mario_at(gameboy);
+    REQUIRE(after.found);
+    REQUIRE(after.left == before.left);
+    REQUIRE(after.top == before.top);
+}
+
+// the pause card is a two entry menu now: down puts the cursor on QUIT and a hands the run back to
+// the world map, at the node of the level he walked out of, with nothing recorded and nothing spent
+TEST_CASE("mario_pause_menu_quits_to_the_map") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    gameboy.set_button(gb::Button::Right, true);
+    run(gameboy, 60);
+    gameboy.set_button(gb::Button::Right, false);
+    run(gameboy, 30);
+
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(on_card(gameboy));
+    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
+    run(gameboy, kCardSettleFrames);
+
+    // resume is lit first, so one press of down is what moves onto quit; the move repaints the
+    // whole card with the lcd off, which outruns a host frame the same way every other card does
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, kCardSettleFrames);
+    press(gameboy, gb::Button::A, 2);
+    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    run(gameboy, kScreenSettleFrames);
+    // it is the real map, walkable mario and all, not just a screen the palette matches
+    REQUIRE(mario_at(gameboy).found);
+
+    // and it is live: the node he quit out of still opens the level behind it
+    map_enter_level(gameboy);
+    REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
+}
+
+// smb1 carries mario's form from level to level and only a death takes it away, which is what
+// flow_enter_level's powerup_reset used to break: he arrived at every level small. the carry is
+// proven across the map hand-off rather than across a live autopilot clear, because a frame-matched
+// route cannot be replayed as super mario: the grow waits an unknown number of frames for the
+// mushroom to walk back, so the rom's enemies are a different phase from the twin's by the time
+// the route starts and he takes a hit the planner did not see (measured at frame 678 of 1460). the
+// path being proven is the same one either way - the map's own enter_play into flow_enter_level,
+// which is exactly what front_cleared hands to
+TEST_CASE("mario_powerup_carries_into_the_next_level") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    PlayerSim sim;
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+    REQUIRE(mario_at(gameboy).big);
+
+    // out to the map through the pause menu's QUIT, which records nothing and spends nothing
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(on_card(gameboy));
+    run(gameboy, kCardSettleFrames);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, kCardSettleFrames);
+    press(gameboy, gb::Button::A, 2);
+    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+
+    // and back in through the node he was standing on: a whole level load, grid, blocks, enemies
+    // and mario, with no powerup_reset in it any more
+    map_enter_level(gameboy);
+    REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
+    for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
+        gameboy.run_frame();
+    }
+
+    // still super, and standing rather than sunk into or popped out of the start cell: the level
+    // load gives him his own height before the first frame is drawn
+    const Mario m = mario_at(gameboy);
+    REQUIRE(m.found);
+    REQUIRE(m.big);
+    REQUIRE(m.height() == kPlayerBigBoxPx);
+    REQUIRE(m.top == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
+    run(gameboy, 30);
+    REQUIRE(mario_at(gameboy).top == m.top);
+}
+
+// ...and the death path is what does take it away: the reset moved onto flow_after_death, so the
+// life that follows a pit starts small again
+TEST_CASE("mario_death_takes_the_powerup_away") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const uint16_t gap = first_gap_column();
+    REQUIRE(gap > 0u);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    PlayerSim sim;
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+    REQUIRE(mario_at(gameboy).big);
+
+    const Route approach = plan_route(static_cast<uint16_t>((gap - 6) * kBlockPx), false, 4000, sim);
+    REQUIRE(approach.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+
+    // then simply walk off the edge, the way mario_pits_swallow_him_at_the_first_gap does
+    bool fell = false;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < 240 && !fell; ++i) {
+        gameboy.run_frame();
+        fell = !mario_at(gameboy).found;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(fell);
+
+    // the respawn is small mario on the bible's start cell, which is exactly what at_start_cell says
+    for (int i = 0; i < 300 && !at_start_cell(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(at_start_cell(gameboy));
+}
+
 TEST_CASE("mario_flag_scoring") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -7814,13 +7987,13 @@ void open_file(gb::Gameboy& gameboy, int slot) {
     for (int i = 0; i < slot; ++i) {
         step_screen(gameboy, gb::Button::Down);
     }
-    step_screen(gameboy, gb::Button::Start);
+    step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
 }
 
 // walks into the level mario is standing on and waits for him to be drawn in it
 void map_play(gb::Gameboy& gameboy) {
-    step_screen(gameboy, gb::Button::Start);
+    step_screen(gameboy, gb::Button::A);
     wait_off_map(gameboy);
     for (int i = 0; i < 300 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
@@ -7904,8 +8077,8 @@ TEST_CASE("mario_file_select_cursor_and_confirm") {
     run(gameboy, kScreenSettleFrames);
     REQUIRE(file_cursor(gameboy) == 0);
 
-    // start confirms: the map comes up, and the file is stamped in use even before a level is won
-    step_screen(gameboy, gb::Button::Start);
+    // a confirms: the map comes up, and the file is stamped in use even before a level is won
+    step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_color(gameboy) == kSkyMap);
     REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotUsed] == 1);
@@ -7961,7 +8134,7 @@ TEST_CASE("mario_save_survives_a_power_cycle") {
     // the file is still there after the power cycle, and opening it puts mario on 1-2's node
     enter_file_select(second);
     REQUIRE(card_number(second, file_row(0)) == 112);
-    step_screen(second, gb::Button::Start);
+    step_screen(second, gb::Button::A);
     run(second, kScreenSettleFrames);
     REQUIRE(sky_color(second) == kSkyMap);
     REQUIRE(mario_at(second).left == map_node_left(1));
@@ -8345,13 +8518,13 @@ TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
     REQUIRE(sky_color(gameboy) == kSkyTitle); // the card shares the title's own sky
     REQUIRE(file_cursor(gameboy) == 0);       // proves the file card, not the title, is the one up
 
-    // one more, on the file select, opens the map
-    step_screen(gameboy, gb::Button::Start);
+    // a on the file select opens the map
+    step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_color(gameboy) == kSkyMap);
 
-    // and one more, on the map, past its own lockout, starts the level mario is standing on
-    step_screen(gameboy, gb::Button::Start);
+    // and a on the map, past its own lockout, starts the level mario is standing on
+    step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_is_gameplay(sky_color(gameboy)));
 }

@@ -597,6 +597,9 @@
 #define kItemGravitySubpx 24U
 #define kItemMaxFallPx 4
 #define kStarBouncePx -4
+// the star's own gravity: smb1's star hops about two blocks, not the mushroom's much longer arc, so
+// it falls back to earth faster than kItemGravitySubpx would let it (apex ~32px, ~16 frames up)
+#define kStarGravitySubpx 64U
 // the coin a block pays out pops straight up and falls back over kCoinPopFrames; smb's own arc
 // length is unsourced in the bible, so this cadence is ours
 #define kCoinPopFrames 30U

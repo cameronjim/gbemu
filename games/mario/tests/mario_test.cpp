@@ -894,6 +894,8 @@ constexpr uint8_t kTileBowserLo = 0x8A;
 constexpr uint8_t kTileBowserHi = 0x8B;
 constexpr uint8_t kTileBridge = 0xBA;
 [[maybe_unused]] constexpr uint8_t kTileAxe = 0xBB;
+// hazards.c's lift deck plank, mirrored from mario.h's kTileLiftDeck
+constexpr uint8_t kTileLiftDeck = 0x88;
 
 constexpr uint8_t kHazardNone = 0;
 constexpr uint8_t kHazardDamage = 1;
@@ -907,6 +909,8 @@ constexpr int kItemWalkPx = 1;
 constexpr int kItemGravitySubpx = 24;
 constexpr int kItemMaxFallPx = 4;
 constexpr int kStarBouncePx = -4;
+// the star's own faster gravity: mario.h's kStarGravitySubpx
+constexpr int kStarGravitySubpx = 64;
 constexpr int kItemDespawnMarginPx = 32;
 // the frames a level-select entry lets run after mario first appears, which both sides idle out
 constexpr int kLevelSettleFrames = 8;
@@ -1563,7 +1567,8 @@ struct PlayerSim {
                 }
                 item_grounded = 0;
             }
-            const unsigned sum = static_cast<unsigned>(item_accum) + kItemGravitySubpx;
+            const unsigned sum = static_cast<unsigned>(item_accum) +
+                                 (item_kind == 3 ? kStarGravitySubpx : kItemGravitySubpx);
 
             item_accum = static_cast<uint8_t>(sum);
             if (sum > 0xFFu) {
@@ -7702,6 +7707,61 @@ TEST_CASE("mario_lift_carries") {
     REQUIRE(match.broke_at == -1);
     REQUIRE(match.hits > 400);
     REQUIRE(match.drops <= kMaxVsyncMisses);
+}
+
+// hazards_draw only runs while hazard_near, so a level load that landed the respawn far from every
+// lift used to leave the last life's deck sitting in the same oam slots forever - hazards_load_level
+// now parks every slot it owns up front, on every load, regardless of hazard_near. 1-3's own pit
+// (mario_lift_carries above) is the one route-planner-friendly stretch with a lift over a drop, so
+// it stands in for "died near the platform": ride the deck out over the gap, then step off its edge
+// while it is right beside him, into a fall the planner never has to reason about
+TEST_CASE("mario_lift_deck_does_not_linger_after_a_respawn") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the same full route mario_lift_carries validates against the real rom; the first frame it has
+    // him riding is where the deck is guaranteed to be right under his feet and on screen
+    const Route route = plan_level(kLevel13, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel13);
+    size_t rode = 0;
+    for (size_t i = 1; i < states.size(); ++i) {
+        if (states[i].riding != 0xFFU) {
+            rode = i;
+            break;
+        }
+    }
+    REQUIRE(rode > 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel13);
+    replay(gameboy, route.script, 0, rode);
+    REQUIRE(sprite_box(gameboy, kTileLiftDeck, kTileLiftDeck).found);
+
+    // walk off the deck's edge into the gap it is spanning: with nothing pulling him back onto it,
+    // a few steps carry him past its side and he falls clean through
+    bool fell = false;
+    gameboy.set_button(gb::Button::Left, true);
+    for (int i = 0; i < 240 && !fell; ++i) {
+        gameboy.run_frame();
+        fell = !mario_at(gameboy).found;
+    }
+    gameboy.set_button(gb::Button::Left, false);
+    REQUIRE(fell);
+
+    // the respawn puts him back on 1-3's own start cell, a long way from the lift
+    bool respawned = false;
+    for (int i = 0; i < 300 && !respawned; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        respawned = m.found && !m.big && m.top == kStandTop &&
+                    m.left == static_cast<int>(LEVEL_1_3_START_COLUMN) * kBlockPx + kMarioArtInset;
+    }
+    REQUIRE(respawned);
+
+    // and nothing left over from the last life's deck is still sitting in oam
+    run(gameboy, 4);
+    REQUIRE(!sprite_box(gameboy, kTileLiftDeck, kTileLiftDeck).found);
 }
 
 TEST_CASE("mario_firebar_damages_and_rotates") {

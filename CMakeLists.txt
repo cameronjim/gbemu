@@ -246,6 +246,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks_draw.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/debris.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
@@ -266,6 +267,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/player.c games/mario/src/player.h
                     games/mario/src/blocks.c games/mario/src/blocks.h
                     games/mario/src/blocks_draw.c
+                    games/mario/src/debris.c games/mario/src/debris.h
                     games/mario/src/powerup.c games/mario/src/powerup.h
                     games/mario/src/hazards.c games/mario/src/hazards.h
                     games/mario/src/title.c games/mario/src/title.h

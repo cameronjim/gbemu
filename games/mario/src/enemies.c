@@ -234,6 +234,32 @@ static void step_plant(Enemy* e, uint16_t player_px) {
     }
 }
 
+// smb's defeat animation for anything a fireball or a moving shell takes: the body flips over,
+// pops upward and falls out of the level instead of blinking away. it stops colliding with mario
+// and with the pool on this very frame, and its slot frees when despawn sees it leave the level
+static void flip_kill(Enemy* e) {
+    e->state = kEnemyFlipped;
+    e->dy = (int8_t)kEnemyFlipPopPx;
+    e->y_accum = 0;
+    e->grounded = 0;
+    e->grace = 0;
+}
+
+// the corpse's own fall: no terrain probe at all, so it drops straight through whatever it was
+// standing on the way smb's does
+static void step_flip(Enemy* e) {
+    const uint16_t sum = (uint16_t)((uint16_t)e->y_accum + (uint16_t)kEnemyFlipGravitySubpx);
+
+    e->y_accum = (uint8_t)sum;
+    if (sum > 0xFFU) {
+        e->dy = (int8_t)(e->dy + 1);
+        if (e->dy > kEnemyFlipMaxFallPx) {
+            e->dy = kEnemyFlipMaxFallPx;
+        }
+    }
+    e->pos_y = (int16_t)(e->pos_y + e->dy);
+}
+
 static void step_fall(Enemy* e) {
     const uint16_t sum = (uint16_t)((uint16_t)e->y_accum + (uint16_t)kEnemyGravitySubpx);
     int16_t row;
@@ -274,7 +300,8 @@ static uint8_t row_load(uint8_t top_row) {
     uint8_t n = 0;
 
     for (i = 0; i < live; ++i) {
-        if ((uint8_t)(pool[i].pos_y >> 4) == top_row) {
+        // a falling corpse is not on any row: it must not hold the scanline cap against a spawn
+        if (pool[i].state != kEnemyFlipped && (uint8_t)(pool[i].pos_y >> 4) == top_row) {
             ++n;
         }
     }
@@ -375,9 +402,8 @@ static void collide_enemies(void) {
 
     while ((uint8_t)(i + 1U) < live) {
         Enemy* a = &pool[i];
-        uint8_t died = 0;
 
-        if (a->state == kEnemySquashed || a->kind == kEnemyPiranha) {
+        if (a->state == kEnemySquashed || a->state == kEnemyFlipped || a->kind == kEnemyPiranha) {
             ++i;
             continue;
         }
@@ -387,19 +413,22 @@ static void collide_enemies(void) {
             Enemy* left;
             Enemy* right;
 
-            if (b->state == kEnemySquashed || b->kind == kEnemyPiranha || boxes_meet(a, b) == 0U) {
+            if (b->state == kEnemySquashed || b->state == kEnemyFlipped || b->kind == kEnemyPiranha ||
+                boxes_meet(a, b) == 0U) {
                 ++j;
                 continue;
             }
             if (a->state == kEnemyShellMove && b->state != kEnemyShellMove) {
-                remove_at(j);
+                // the kill leaves the body in its slot flipping out of the level, so the shell
+                // walks on over it rather than the pool closing up behind it
+                flip_kill(b);
                 award(kShellChain, kShellChainCount, &shell_chain);
+                ++j;
                 continue;
             }
             if (b->state == kEnemyShellMove && a->state != kEnemyShellMove) {
-                remove_at(i);
+                flip_kill(a);
                 award(kShellChain, kShellChainCount, &shell_chain);
-                died = 1;
                 break;
             }
             // two walkers meeting turn each other around; the nudge stops them flipping again
@@ -414,10 +443,7 @@ static void collide_enemies(void) {
             }
             ++j;
         }
-        // a killed slot now holds whichever enemy was moved into it, so it is walked again
-        if (died == 0U) {
-            ++i;
-        }
+        ++i;
     }
 }
 
@@ -466,8 +492,9 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
         uint8_t from_above;
         uint8_t code;
 
-        // a flattened goomba is scenery for the frames it has left
-        if (e->state == kEnemySquashed) {
+        // a flattened goomba is scenery for the frames it has left, and so is a body already
+        // falling out of the level: neither can hurt him and neither can be hit again
+        if (e->state == kEnemySquashed || e->state == kEnemyFlipped) {
             ++i;
             continue;
         }
@@ -542,7 +569,7 @@ uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED {
         Enemy* e = &pool[i];
         const uint16_t enemy_left = (uint16_t)(e->pos_x + kEnemyHitInsetPx);
 
-        if (e->state == kEnemySquashed) {
+        if (e->state == kEnemySquashed || e->state == kEnemyFlipped) {
             continue;
         }
         if ((uint16_t)(px + kFireballPx) <= enemy_left || (uint16_t)(enemy_left + kEnemyHitWidthPx) <= px) {
@@ -552,7 +579,7 @@ uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED {
             continue;
         }
         award_kill(e->kind);
-        remove_at(i);
+        flip_kill(e);
         return 1;
     }
     return 0;
@@ -636,6 +663,12 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
         if (e->grace != 0U) {
             --e->grace;
         }
+        // a corpse is checked before its kind is: a burned piranha falls out of its pipe too
+        if (e->state == kEnemyFlipped) {
+            step_flip(e);
+            ++i;
+            continue;
+        }
         if (e->kind == kEnemyPiranha) {
             step_plant(e, player_px);
             ++i;
@@ -703,6 +736,9 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         uint8_t left_tile;
         uint8_t right_tile;
         uint8_t right_prop;
+        // a defeated body is its own walk frame turned upside down. the hardware swaps the pair's
+        // two tiles as well as the rows inside them, so one flip bit is the whole animation
+        uint8_t flip_y = 0;
 
         if (sy <= -(int16_t)kEnemyHeightPx || sy >= (int16_t)kScreenHeightPx ||
             sx <= -(int16_t)kEnemyWidthPx || sx >= (int16_t)kScreenWidthPx) {
@@ -714,7 +750,14 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             }
             continue;
         }
-        if (e->kind == kEnemyPiranha) {
+        // the corpse is picked before the kind is, so a burned piranha falls out of its pipe
+        // upside down rather than staying tucked behind it
+        if (e->state == kEnemyFlipped) {
+            tile = e->kind == kEnemyGoomba
+                       ? (uint8_t)kTileGoombaWalk0
+                       : (e->kind == kEnemyPiranha ? (uint8_t)kTilePiranha : (uint8_t)kTileKoopaWalk0);
+            flip_y = (uint8_t)S_FLIPY;
+        } else if (e->kind == kEnemyPiranha) {
             // the plant is left-right symmetric, so it is one 8x16 pair like the goomba's
             tile = kTilePiranha;
         } else if (e->state == kEnemySquashed) {
@@ -724,8 +767,10 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         } else {
             tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
         }
-        prop = (tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa : (uint8_t)kPalGoomba;
-        if (tile == kTilePiranha) {
+        prop = (uint8_t)(((tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa
+                                                                      : (uint8_t)kPalGoomba) |
+                         flip_y);
+        if (tile == kTilePiranha && flip_y == 0U) {
             // OAM background-priority: the hardware draws this sprite behind bg colors 1-3 and only
             // over color 0. every bg palette keeps color 0 as the level's plain backdrop hue (see
             // assets_load_bg_palettes) and the pipe's own colors 1-3 are its opaque body, so as the

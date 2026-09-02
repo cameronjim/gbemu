@@ -437,8 +437,31 @@
 #define kTileBowser 0x8AU
 #define kHazardTileCount 8U // 0x84-0x8b
 
-// 0x8c-0x9f, twenty ids, is FREE: m8b's hud digit sprites lived there and the readout row draws
-// its own digits out of the bg font now (see kTileHudDigitFirst). left unclaimed on purpose
+// m19's throwaway animations take six of the twenty ids m8b's hud digit sprites left free at 0x8c
+// (the bar draws its own digits out of the bg font now, see kTileHudDigitFirst). each is an 8x16
+// pair whose lower half is blank, the way the fireball's own pair already is: one quarter-brick
+// fragment, drawn spinning by cycling its flip bits, and the fireball's two-frame puff.
+// 0x92-0x9f, fourteen ids, is still unclaimed
+#define kTileDebris 0x8CU // and 0x8d, its blank lower half
+#define kTilePuffA 0x8EU  // 0x8f blank
+#define kTilePuffB 0x90U  // 0x91 blank
+#define kDebrisTileCount 6U // 0x8c-0x91
+
+// the fragments a broken brick throws out (games/mario/src/debris.c). smb throws four quarter
+// bricks: one to each side of the upper half fast and high, one to each side of the lower half
+// slower, all under gravity and all spinning. one break is animated at a time - a second replaces
+// the first - so the whole effect is four oam slots and no per-slot bookkeeping.
+//
+// the counts are ours: the bible times neither the throw nor its arc. they are picked so the set
+// clears a mid-screen brick's view well inside the timer rather than winking out mid-air
+#define kDebrisCount 4U
+#define kDebrisFrames 60U
+#define kDebrisGravitySubpx 128U
+#define kDebrisGainCap 12
+// how many frames each of the four spin orientations holds for
+#define kDebrisSpinFrames 4U
+// and the fireball's puff, two frames of a widening burst
+#define kPuffFrames 8U
 
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
@@ -460,9 +483,10 @@
 // oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
 // small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is
 // 19 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below.
-// slots 4-8 are FREE: m8b's five hud digit sprites held them until the readout moved to the
-// window layer, and nothing claims them now - hud_enter_level parks them once and leaves them
-// alone
+// slots 4-8 are m19's: m8b's five hud digit sprites held them until the bar moved to the window
+// layer, and the throwaway animations took them over - the four brick fragments and the fireball's
+// puff, in that order (see debris.c). hud_enter_level still parks all five at a level load, which
+// is what clears whatever the last life left in them
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteMarioLowL 2U
@@ -641,6 +665,10 @@
 // to come up at all while the player is standing on or beside the cap
 #define kEnemyPlantHidden 5U
 #define kEnemyPlantUp 6U
+// a body defeated by a fireball or by a moving shell: smb turns it upside down, pops it upward and
+// drops it out of the level rather than blinking it away. it collides with nothing from the frame
+// of the hit on, and its pool slot frees the moment it leaves the level or the camera
+#define kEnemyFlipped 7U
 
 // the milestone doc's oam trap: five slots x 2 sprites plus mario's 2 is 12 on screen, but a
 // scanline crossing a row of 16x16 enemies pays 2 sprites for each of them, so four on one row is
@@ -668,6 +696,11 @@
 #define kEnemyGravitySubpx 24U
 #define kEnemyMaxFallPx 4
 #define kEnemyAnimFrames 8U
+// and the flip-fall's own arc, which is deliberately brisker than a walker's fall: the corpse is
+// scenery and wants to be off the screen quickly. smb gives it a small upward pop first
+#define kEnemyFlipPopPx -3
+#define kEnemyFlipGravitySubpx 160U
+#define kEnemyFlipMaxFallPx 8
 // the piranha's cycle: a whole block up, a bite, a whole block back down, then a wait. the bible
 // times none of it, so all four counts are ours
 #define kPlantRisePx 16

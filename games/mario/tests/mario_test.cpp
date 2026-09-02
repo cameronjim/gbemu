@@ -920,6 +920,12 @@ constexpr uint8_t kEnemyWalk = 1;
 constexpr uint8_t kEnemySquashed = 2;
 constexpr uint8_t kEnemyShellIdle = 3;
 constexpr uint8_t kEnemyShellMove = 4;
+// m19's defeat animation: a body a fireball or a moving shell took, upside down and falling out of
+// the level. mirrored here because a shell kill happens on both sides of the twin
+constexpr uint8_t kEnemyFlipped = 7;
+constexpr int kEnemyFlipPopPx = -3;
+constexpr int kEnemyFlipGravitySubpx = 160;
+constexpr int kEnemyFlipMaxFallPx = 8;
 constexpr uint8_t kEnemyHitNone = 0;
 constexpr uint8_t kEnemyHitDamage = 1;
 constexpr uint8_t kEnemyHitStomp = 2;
@@ -936,6 +942,10 @@ constexpr uint8_t kTileKoopaLo = 0xC8;
 constexpr uint8_t kTileKoopaHi = 0xCF;
 constexpr uint8_t kTileEnemyLo = kTileGoombaWalkLo;
 constexpr uint8_t kTileEnemyHi = kTileKoopaHi;
+// m19's brick fragment, in what used to be the free run past the hazard pairs. the fireball's puff
+// shares the run at 0x8e-0x91; nothing below scans for it (see kTileDebris in mario.h)
+constexpr uint8_t kTileDebrisLo = 0x8C;
+constexpr uint8_t kTileDebrisHi = 0x8D;
 
 // the point tables both sides read, generated from games/mario/research/roster.json
 constexpr uint16_t kStompChainTable[kStompChainCount] = kStompChainInit;
@@ -1293,6 +1303,28 @@ struct PlayerSim {
         }
     }
 
+    // enemies.c's flip_kill/step_flip: the body stops colliding, pops up and falls out of the
+    // level with no terrain probe at all, and its slot frees when despawn sees it leave
+    static void enemy_flip_kill(EnemySlot& e) {
+        e.state = kEnemyFlipped;
+        e.dy = static_cast<int8_t>(kEnemyFlipPopPx);
+        e.y_accum = 0;
+        e.grounded = 0;
+        e.grace = 0;
+    }
+
+    static void enemy_step_flip(EnemySlot& e) {
+        const unsigned sum = static_cast<unsigned>(e.y_accum) + kEnemyFlipGravitySubpx;
+        e.y_accum = static_cast<uint8_t>(sum);
+        if (sum > 0xFFu) {
+            e.dy = static_cast<int8_t>(e.dy + 1);
+            if (e.dy > kEnemyFlipMaxFallPx) {
+                e.dy = static_cast<int8_t>(kEnemyFlipMaxFallPx);
+            }
+        }
+        e.pos_y = static_cast<int16_t>(e.pos_y + e.dy);
+    }
+
     void enemy_step_fall(EnemySlot& e) const {
         const unsigned sum = static_cast<unsigned>(e.y_accum) + kEnemyGravitySubpx;
         e.y_accum = static_cast<uint8_t>(sum);
@@ -1317,7 +1349,7 @@ struct PlayerSim {
     uint8_t enemy_row_load(uint8_t top_row) const {
         uint8_t n = 0;
         for (uint8_t i = 0; i < live; ++i) {
-            if (static_cast<uint8_t>(pool[i].pos_y >> 4) == top_row) {
+            if (pool[i].state != kEnemyFlipped && static_cast<uint8_t>(pool[i].pos_y >> 4) == top_row) {
                 ++n;
             }
         }
@@ -1387,27 +1419,27 @@ struct PlayerSim {
         uint8_t i = 0;
         while (static_cast<uint8_t>(i + 1) < live) {
             EnemySlot& a = pool[i];
-            bool died = false;
-            if (a.state == kEnemySquashed || a.kind == kEnemyPiranha) {
+            if (a.state == kEnemySquashed || a.state == kEnemyFlipped || a.kind == kEnemyPiranha) {
                 ++i;
                 continue;
             }
             uint8_t j = static_cast<uint8_t>(i + 1);
             while (j < live) {
                 EnemySlot& b = pool[j];
-                if (b.state == kEnemySquashed || b.kind == kEnemyPiranha || !enemies_meet(a, b)) {
+                if (b.state == kEnemySquashed || b.state == kEnemyFlipped || b.kind == kEnemyPiranha ||
+                    !enemies_meet(a, b)) {
                     ++j;
                     continue;
                 }
                 if (a.state == kEnemyShellMove && b.state != kEnemyShellMove) {
-                    remove_at(j);
+                    enemy_flip_kill(b);
                     award(kShellChainTable, kShellChainCount, shell_chain);
+                    ++j;
                     continue;
                 }
                 if (b.state == kEnemyShellMove && a.state != kEnemyShellMove) {
-                    remove_at(i);
+                    enemy_flip_kill(a);
                     award(kShellChainTable, kShellChainCount, shell_chain);
-                    died = true;
                     break;
                 }
                 EnemySlot& left = (a.pos_x <= b.pos_x) ? a : b;
@@ -1421,9 +1453,7 @@ struct PlayerSim {
                 }
                 ++j;
             }
-            if (!died) {
-                ++i;
-            }
+            ++i;
         }
     }
 
@@ -1457,7 +1487,7 @@ struct PlayerSim {
 
         for (uint8_t i = 0; i < live; ++i) {
             EnemySlot& e = pool[i];
-            if (e.state == kEnemySquashed) {
+            if (e.state == kEnemySquashed || e.state == kEnemyFlipped) {
                 continue;
             }
             const uint16_t enemy_left = static_cast<uint16_t>(e.pos_x + kEnemyHitInsetPx);
@@ -1655,6 +1685,11 @@ struct PlayerSim {
             EnemySlot& e = pool[i];
             if (e.grace != 0) {
                 --e.grace;
+            }
+            if (e.state == kEnemyFlipped) {
+                enemy_step_flip(e);
+                ++i;
+                continue;
             }
             if (e.kind == kEnemyPiranha) {
                 step_plant(e);
@@ -2659,7 +2694,7 @@ uint8_t threats(const PlayerSim& sim) {
 bool threat_within(const PlayerSim& sim, int px) {
     for (uint8_t i = 0; i < sim.live; ++i) {
         const EnemySlot& e = sim.pool[i];
-        if (e.state != kEnemySquashed && e.pos_x > sim.x_pos &&
+        if (e.state != kEnemySquashed && e.state != kEnemyFlipped && e.pos_x > sim.x_pos &&
             e.pos_x - sim.x_pos < static_cast<uint16_t>(px)) {
             return true;
         }
@@ -2952,6 +2987,16 @@ Route plan_lab_koopa(const LevelEnemy& koopa) {
     return route;
 }
 
+// the slot a body defeated by a shell or a fireball is falling out of the level in, or -1
+int flipped_slot(const PlayerSim& sim) {
+    for (uint8_t i = 0; i < sim.live; ++i) {
+        if (sim.pool[i].state == kEnemyFlipped) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 // the slot a shell is sitting or sliding in, or -1
 int shell_slot(const PlayerSim& sim) {
     for (uint8_t i = 0; i < sim.live; ++i) {
@@ -3135,6 +3180,43 @@ SpriteBox sprite_box(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
         box.found = true;
     }
     return box;
+}
+
+// how far below its own topmost lit row the WIDEST lit row of the sprites in [lo, hi] sits, or -1
+// when none is drawn. a goomba tapers to a two-pixel scalp and runs full width across its body and
+// feet, so this offset lands in the bottom half of a live one and in the top half of an S_FLIPY
+// corpse - and it is the only witness available, since framebuffer_tiles carries tile ids and not
+// the oam attribute bits (the same limit kTileMapWaterTop's comment in assets.h notes for the bg)
+int widest_row_offset(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    std::array<int, gb::kLcdHeight> width{};
+    int first = -1;
+    int best = 0;
+    int best_row = -1;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile < lo || tile > hi) {
+            continue;
+        }
+        const int y = static_cast<int>(i / gb::kLcdWidth);
+        ++width[static_cast<size_t>(y)];
+        if (first < 0) {
+            first = y;
+        }
+    }
+    if (first < 0) {
+        return -1;
+    }
+    for (int y = first; y < static_cast<int>(gb::kLcdHeight); ++y) {
+        if (width[static_cast<size_t>(y)] > best) {
+            best = width[static_cast<size_t>(y)];
+            best_row = y;
+        }
+    }
+    return best_row - first;
 }
 
 // the rgb555 of the first visible pixel belonging to a bg tile in [lo, hi], or -1
@@ -5950,6 +6032,29 @@ TEST_CASE("mario_koopa_shell_chain") {
     }
     REQUIRE(kill_at > 1);
 
+    // m19: the shell's kill leaves the body in its pool slot, flipped and falling out of the level,
+    // rather than taking it off the pool on the hit frame - and the slot frees when it leaves. the
+    // probe is a copy, so none of this reaches the script the rom replays below
+    {
+        PlayerSim falling = sim;
+        int corpse = flipped_slot(falling);
+        REQUIRE(corpse >= 0);
+        const int16_t started = falling.pool[static_cast<size_t>(corpse)].pos_y;
+        int16_t deepest = started;
+        int fell = 0;
+        for (; fell < 200; ++fell) {
+            corpse = flipped_slot(falling);
+            if (corpse < 0) {
+                break;
+            }
+            deepest = std::max(deepest, falling.pool[static_cast<size_t>(corpse)].pos_y);
+            falling.step(0);
+        }
+        REQUIRE(flipped_slot(falling) < 0);
+        REQUIRE(deepest > started);
+        REQUIRE(fell > 4);
+    }
+
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_lab(gameboy);
@@ -5994,9 +6099,31 @@ TEST_CASE("mario_koopa_shell_chain") {
     }
     REQUIRE(most_goombas > 0);
     REQUIRE(with_shell > 0);
-    REQUIRE(busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi) < most_goombas);
-    // and nothing squashed it: a shell kill takes the goomba straight off the pool
+    // and nothing squashed it: a shell kill never flattens what it runs into
     REQUIRE(sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
+
+    // m19: the body is still drawn on the frame the shell reached it - upside down now, so the
+    // widest scanline of its silhouette has moved into the top half - and it only leaves once it
+    // has fallen out of the level. before this it blinked off the pool on the hit frame
+    REQUIRE(busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi) == most_goombas);
+    int flipped = -1;
+    for (int i = 0; i < 4 && flipped < 0; ++i) {
+        const int shape = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+
+        if (shape >= 0 && shape < 8) {
+            flipped = i;
+        }
+        gameboy.run_frame();
+    }
+    REQUIRE(flipped >= 0);
+    int cleared = -1;
+    for (int i = 0; i < 90 && cleared < 0; ++i) {
+        gameboy.run_frame();
+        if (busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi) < most_goombas) {
+            cleared = i;
+        }
+    }
+    REQUIRE(cleared >= 0);
 }
 
 TEST_CASE("mario_shell_wakes") {
@@ -6244,6 +6371,26 @@ TEST_CASE("mario_super_breaks_bricks") {
 
     // the cell is gone entirely, not spent: a broken brick leaves sky behind
     REQUIRE(bg_family_cells(gameboy, 0xA4, 0xA7) < bricks);
+
+    // and smb's four fragments are out of it, one pair thrown wide to each side, all spinning and
+    // all pulled back down. they are gone again well inside their own one-second timer
+    const SpriteBox chips = sprite_box(gameboy, kTileDebrisLo, kTileDebrisHi);
+    REQUIRE(chips.found);
+    REQUIRE(chips.right - chips.left > 16);
+    int lived = 0;
+    int lowest = chips.top;
+    for (int i = 0; i < 90; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTileDebrisLo, kTileDebrisHi);
+        if (!now.found) {
+            break;
+        }
+        ++lived;
+        lowest = std::max(lowest, now.top);
+    }
+    REQUIRE(lived > 8);
+    REQUIRE(lowest > chips.top);
+    REQUIRE(!sprite_box(gameboy, kTileDebrisLo, kTileDebrisHi).found);
 }
 
 TEST_CASE("mario_fireballs_kill") {
@@ -6336,6 +6483,68 @@ TEST_CASE("mario_fireballs_kill") {
     }
     gameboy.set_button(gb::Button::B, false);
     REQUIRE(held_most == 1);
+}
+
+TEST_CASE("mario_fireball_kill_flips_the_body_and_drops_it") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+
+    PlayerSim sim = lab_sim();
+    REQUIRE(become_fire(gameboy, sim));
+    REQUIRE(approach_lab_row(gameboy, sim) > 0);
+
+    // the same short trip mario_fireballs_kill plans: let the goomba walk most of the way in first
+    std::vector<uint8_t> approach;
+    for (int i = 0; i < 600; ++i) {
+        if (sim.live != 0 && sim.pool[0].pos_x < sim.x_pos + 5 * kBlockPx) {
+            break;
+        }
+        approach.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(sim.live != 0);
+    replay(gameboy, approach, 0, approach.size());
+    REQUIRE(goombas_on_screen(gameboy) > 0);
+
+    // a goomba on its feet wears its bulk low: the widest scanline of its silhouette is in the
+    // bottom half of the sprite
+    const int upright = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(upright >= 8);
+    const SpriteBox before = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(before.found);
+
+    // the hit no longer blinks it off the pool: it turns over, pops up and falls out of the level
+    press(gameboy, gb::Button::B, 1);
+    int flipped = -1;
+    int dropped = -1;
+    int gone = -1;
+    int deepest = before.top;
+    for (int i = 0; i < 90; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+        if (!now.found) {
+            gone = i;
+            break;
+        }
+        const int shape = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+        if (flipped < 0 && shape >= 0 && shape < 8) {
+            flipped = i;
+        }
+        if (flipped >= 0 && now.top > deepest) {
+            dropped = i;
+        }
+        deepest = std::max(deepest, now.top);
+    }
+    // it was still drawn after the ball landed, upside down, and it went down before it went away
+    REQUIRE(flipped > 0);
+    REQUIRE(dropped > flipped);
+    REQUIRE(gone > flipped);
+    REQUIRE(gone < 60);
+    // and the slot really freed: nothing of the enemy family is left where it fell
+    REQUIRE(goombas_on_screen(gameboy) == 0);
 }
 
 // the count of a fireball's own lit pixels, wherever it is on screen: a sprite pixel is only ever

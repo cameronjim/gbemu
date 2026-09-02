@@ -5,6 +5,7 @@
 
 #include "powerup.h"
 
+#include "debris.h"
 #include "enemies.h"
 #include "hud.h"
 #include "mario.h"
@@ -213,7 +214,9 @@ static uint8_t step_ball(Fireball* f, uint16_t cam_x) {
     move_ball_x(f);
     lead = (int16_t)(f->dir > 0 ? (int16_t)(f->pos_x + kFireballPx - 1) : (int16_t)f->pos_x);
     if (terrain_solid_at((int16_t)(lead >> 4), row_of(f->pos_y)) != 0U) {
-        return 1; // a wall ends it; smb's fireball only bounces off floors
+        // a wall ends it; smb's fireball only bounces off floors, and leaves a puff where it went
+        debris_poof(f->pos_x, f->pos_y);
+        return 1;
     }
 
     sum = (uint16_t)((uint16_t)f->y_accum + (uint16_t)kFireballGravity);

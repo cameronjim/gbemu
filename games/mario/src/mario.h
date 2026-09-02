@@ -531,6 +531,12 @@
 #define kPlayerBigHeightPx 32
 #define kCrouchInsetPx 16
 #define kPlayerCrouchHeightPx (kPlayerBigHeightPx - kCrouchInsetPx) // 16
+// ours, not the bible's: smb gives a ducking mario no walk at all, which leaves a big mario who
+// came to a stop flush against 1-2's brick pillar at 78/79 no way into the one block of crawl
+// space under it - the slide needs momentum he no longer has, and standing back up only puts him
+// against the same brick. half the walk cap: a crawl, and slow enough that the duck-slide out of a
+// run is still all momentum for as long as it lasts
+#define kMarioCrouchWalkSubpx 12
 // the horizontal hitbox is 12 px centered in the 16 px sprite, so a 2 px shoulder overhangs each
 // wall before it bites; feet/head spans stay the full sprite height. must-measure: the inset is
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible

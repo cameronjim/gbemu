@@ -435,18 +435,11 @@
     {
       "kind": "bricks",
       "x0": 100,
-      "x1": 100,
-      "y0": 9,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 103,
       "x1": 103,
       "y0": 9,
       "y1": 9,
-      "confidence": "measured"
+      "confidence": "measured",
+      "notes": "the fourth hanging platform (real cols 76-79). the first pass read this as two lone bricks at its ends because the two goombas standing on it hash over the middle two cells; both map rips draw four bricks in a row, and the goomba at 102 had nothing under it"
     },
     {
       "kind": "bricks",

@@ -195,7 +195,14 @@ constexpr uint8_t kBlockPipeSideBodyB = 41;
 // the keep's battlement row, whose notches are the castle's black rather than sky so the
 // three-wide tower reads as standing on it. scenery, like every other castle kind
 constexpr uint8_t kBlockCastleCrenelInner = 42;
-constexpr uint8_t kBlockKindCount = 43;
+// 1-3's tree: a one-block canopy in three pieces over a column of trunk. the canopy is solid on
+// all four sides like any smb1 tree top, the trunk is scenery - and both were appended past the
+// decor range because the terrain pass stamps them, not the decor stamper
+constexpr uint8_t kBlockTreeTopL = 43;
+constexpr uint8_t kBlockTreeTopM = 44;
+constexpr uint8_t kBlockTreeTopR = 45;
+constexpr uint8_t kBlockTrunk = 46;
+constexpr uint8_t kBlockKindCount = 47;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -371,6 +378,12 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile >= 0x51 && tile <= 0x52;
     case kBlockBushM:
         return tile >= 0x55 && tile <= 0x56;
+    case kBlockTreeTopL:
+    case kBlockTreeTopM:
+    case kBlockTreeTopR:
+        return tile >= 0x0A && tile <= 0x0F;
+    case kBlockTrunk:
+        return tile == 0x11;
     case kBlockSpent:
         return tile >= kTileSpentLo && tile <= kTileSpentHi;
     case kBlockCoin:
@@ -764,7 +777,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    0,
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -846,6 +859,11 @@ constexpr uint8_t kEnemyGoomba = 0;
 constexpr uint8_t kEnemyKoopa = 1;
 constexpr uint8_t kEnemyKoopaRed = 2;
 constexpr uint8_t kEnemyPiranha = 3;
+// 1-3's red paratroopa: no horizontal motion at all, and it slides up and down around its spawn
+// row a pixel a frame instead of falling. mirrored from games/mario/src/mario.h
+constexpr uint8_t kEnemyKoopaParaRed = 4;
+constexpr int kParaBandPx = 24;
+constexpr int kParaSpanPx = 2 * kParaBandPx;
 constexpr uint8_t kEnemyPlantHidden = 5;
 constexpr uint8_t kEnemyPlantUp = 6;
 // the piranha's cycle, mirrored from games/mario/src/mario.h
@@ -1311,6 +1329,19 @@ struct PlayerSim {
         }
     }
 
+    // enemies.c's step_fly: the paratroopa holds its column, probes no terrain, and slides a pixel
+    // a frame between spawn_y - kParaBandPx and spawn_y + kParaBandPx. y_accum is its offset into
+    // that band and dy the direction, exactly as the rom carries them
+    static void enemy_step_fly(EnemySlot& e) {
+        e.pos_y = static_cast<int16_t>(e.pos_y + e.dy);
+        e.y_accum = static_cast<uint8_t>(static_cast<int16_t>(e.y_accum) + e.dy);
+        if (e.y_accum == 0) {
+            e.dy = 1;
+        } else if (e.y_accum >= kParaSpanPx) {
+            e.dy = -1;
+        }
+    }
+
     // enemies.c's flip_kill/step_flip: the body stops colliding, pops up and falls out of the
     // level with no terrain probe at all, and its slot frees when despawn sees it leave
     static void enemy_flip_kill(EnemySlot& e) {
@@ -1397,6 +1428,10 @@ struct PlayerSim {
                 slot->state = kEnemyPlantHidden;
                 slot->foot_col = roster[cursor].row;
                 slot->pos_y = static_cast<int16_t>(slot->foot_col << 4);
+            } else if (slot->kind == kEnemyKoopaParaRed) {
+                slot->grounded = 0;
+                slot->y_accum = static_cast<uint8_t>(kParaBandPx);
+                slot->dy = -1;
             }
             ++cursor;
         }
@@ -1450,6 +1485,11 @@ struct PlayerSim {
                     award(kShellChainTable, kShellChainCount, shell_chain);
                     break;
                 }
+                // a flyer holds its column: the nudge below must never shove it sideways
+                if (a.kind == kEnemyKoopaParaRed || b.kind == kEnemyKoopaParaRed) {
+                    ++j;
+                    continue;
+                }
                 EnemySlot& left = (a.pos_x <= b.pos_x) ? a : b;
                 EnemySlot& right = (&left == &a) ? b : a;
                 right.pos_x = static_cast<uint16_t>(left.pos_x + kEnemyBoxPx);
@@ -1475,6 +1515,17 @@ struct PlayerSim {
             return kEnemyHitShellStomp;
         }
         award(kStompChainTable, kStompChainCount, stomp_chain);
+        // enemies.c's stomp: a paratroopa loses its wings where it was hit and falls as a plain red
+        // koopa. the koopa's own points were already paid by the award above
+        if (e.kind == kEnemyKoopaParaRed) {
+            e.kind = kEnemyKoopaRed;
+            e.grounded = 0;
+            e.dy = 0;
+            e.y_accum = 0;
+            e.lead_col = e.lead();
+            e.foot_col = e.foot();
+            return kEnemyHitStomp;
+        }
         if (e.kind == kEnemyKoopa || e.kind == kEnemyKoopaRed) {
             e.state = kEnemyShellIdle;
             e.timer = kShellWakeFrames;
@@ -1702,6 +1753,11 @@ struct PlayerSim {
             }
             if (e.kind == kEnemyPiranha) {
                 step_plant(e);
+                ++i;
+                continue;
+            }
+            if (e.kind == kEnemyKoopaParaRed) {
+                enemy_step_fly(e);
                 ++i;
                 continue;
             }
@@ -7974,6 +8030,190 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
     REQUIRE(mario_at(gameboy).height() == kPlayerBoxPx);
     REQUIRE(slid > needed);
     REQUIRE(slid > crawled * 40 / 120);
+}
+
+// the four table rows assets.c appends for 1-3's canopy and trunk. the canopy is a plain solid
+// block on all four sides the way smb1's tree tops are, the trunk is walk-through scenery, and
+// neither may drift into the decor range: the terrain pass stamps both, so the decor stamper's
+// "only ever over sky" rule and every decor probe in this suite would take them for clouds if
+// they had. what the canopy actually looks like is pinned by whatever level stamps it
+TEST_CASE("mario_tree_kinds_are_consistent") {
+    REQUIRE(kBlockKindCount == 47);
+    REQUIRE(kBlockTreeTopL == 43);
+    REQUIRE(kBlockTreeTopM == 44);
+    REQUIRE(kBlockTreeTopR == 45);
+    REQUIRE(kBlockTrunk == 46);
+
+    // the floor table is the whole of terrain.c's answer for a cell
+    for (uint8_t kind : {kBlockTreeTopL, kBlockTreeTopM, kBlockTreeTopR}) {
+        REQUIRE(kBlockFloorTable[kind] == kFloorSolid);
+    }
+    REQUIRE(kBlockFloorTable[kBlockTrunk] == 0);
+    for (uint8_t kind : {kBlockTreeTopL, kBlockTreeTopM, kBlockTreeTopR, kBlockTrunk}) {
+        REQUIRE((kind < kBlockFirstDecor || kind > kBlockLastDecor));
+    }
+
+    // the canopy's three kinds share one bank-1 tile run and the trunk sits past it, so a cell's
+    // top-left tile alone still says which kind painted it. both runs are inside the range this
+    // suite already accepts as terrain art
+    REQUIRE(is_known_terrain_family(0x0A));
+    REQUIRE(is_known_terrain_family(0x11));
+    REQUIRE(tile_in_kind_family(0x0A, kBlockTreeTopL));
+    REQUIRE(tile_in_kind_family(0x0B, kBlockTreeTopM));
+    REQUIRE(tile_in_kind_family(0x0B, kBlockTreeTopR));
+    REQUIRE(tile_in_kind_family(0x11, kBlockTrunk));
+    REQUIRE(!tile_in_kind_family(0x11, kBlockTreeTopM));
+    REQUIRE(!tile_in_kind_family(0x0B, kBlockTrunk));
+}
+
+// the flyer 1-3's bible names. compile_level.py maps koopa_para_red to its own kind now, and the
+// twin below steps exactly what enemies.c steps - the autopilot test replays the twin against the
+// rom frame for frame, so pinning the motion here pins both sides of it
+TEST_CASE("mario_paratroopa_flies_in_place") {
+    const LevelEnemy* entry = nullptr;
+    for (uint16_t i = 0; i < kLevel13EnemyCount; ++i) {
+        if (kLevel13Enemies[i].kind == kEnemyKoopaParaRed) {
+            entry = &kLevel13Enemies[i];
+            break;
+        }
+    }
+    REQUIRE(entry != nullptr);
+    // the roster names the row it flies around; its box top is the row above, like any walker's
+    const uint16_t held_x = static_cast<uint16_t>(entry->column * kBlockPx);
+    const int16_t band_y = static_cast<int16_t>((entry->row - 1) * kBlockPx);
+
+    const auto para_slot = [](const PlayerSim& s) -> int {
+        for (uint8_t i = 0; i < s.live; ++i) {
+            if (s.pool[i].kind == kEnemyKoopaParaRed) {
+                return i;
+            }
+        }
+        return -1;
+    };
+    // the planned route is what walks the camera out to it past 1-3's pits; from there he stands
+    // still, which freezes the camera and leaves the flyer holding its pool slot
+    const Route route = plan_level(kLevel13, 6000);
+    REQUIRE(route.reached);
+    PlayerSim sim = PlayerSim{};
+    sim.load_level(kLevel13);
+    int slot = -1;
+    for (size_t i = 0; i < route.script.size() && slot < 0; ++i) {
+        sim.step(route.script[i]);
+        slot = para_slot(sim);
+    }
+    REQUIRE(slot >= 0);
+    // it came in on its own column, off the ground, already a pixel into its climb
+    REQUIRE(sim.pool[slot].pos_x == held_x);
+    REQUIRE(sim.pool[slot].grounded == 0);
+    REQUIRE(sim.pool[slot].dy == -1);
+    REQUIRE(sim.pool[slot].pos_y == static_cast<int16_t>(band_y - 1));
+
+    // a round trip is 4 * kParaBandPx frames, so this window crosses the band both ways twice
+    int16_t low = band_y;
+    int16_t high = band_y;
+    for (int i = 0; i < 4 * kParaSpanPx; ++i) {
+        sim.step(0);
+        slot = para_slot(sim);
+        REQUIRE(slot >= 0);
+        const EnemySlot& e = sim.pool[slot];
+
+        // no horizontal motion at all, and never outside the band
+        REQUIRE(e.pos_x == held_x);
+        REQUIRE(e.pos_y >= static_cast<int16_t>(band_y - kParaBandPx));
+        REQUIRE(e.pos_y <= static_cast<int16_t>(band_y + kParaBandPx));
+        low = std::min(low, e.pos_y);
+        high = std::max(high, e.pos_y);
+    }
+    // and it uses the whole of it rather than hovering somewhere inside
+    REQUIRE(low == static_cast<int16_t>(band_y - kParaBandPx));
+    REQUIRE(high == static_cast<int16_t>(band_y + kParaBandPx));
+}
+
+// roster.json's line: a paratroopa stomps down into a plain koopa. 1-3's own flyer hangs over a
+// pit, so this hangs one over 1-1's long flat run instead - the same slot fields enemies.c's
+// spawn() gives it - and watches the koopa the stomp leaves fall onto the ground and walk off it
+TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
+    PlayerSim sim;
+    sim.load_level(kLevel11);
+    for (int i = 0; i < 240; ++i) {
+        sim.step(kInRight);
+    }
+    // clear 1-1's own walkers out and stop the cursor: 1-1 has red koopas of its own, and the
+    // watch below has to be following the one this test hung in the air
+    sim.live = 0;
+    sim.cursor = sim.roster_count;
+    // a column just ahead of him with nothing between the flyer's band and the ground
+    uint16_t column = 0;
+    for (uint16_t c = static_cast<uint16_t>((sim.x_pos >> 4) + 4);
+         c <= static_cast<uint16_t>((sim.x_pos >> 4) + 9) && column == 0; ++c) {
+        bool clear = solid_at(*sim.lv, c, 13);
+        for (int row = 4; row <= 12 && clear; ++row) {
+            clear = !solid_at(*sim.lv, c, row);
+        }
+        if (clear) {
+            column = c;
+        }
+    }
+    REQUIRE(column != 0);
+    EnemySlot& e = sim.pool[0];
+    sim.live = 1;
+    e = EnemySlot{};
+    e.state = kEnemyWalk;
+    e.kind = kEnemyKoopaParaRed;
+    e.pos_x = static_cast<uint16_t>(column << 4);
+    e.pos_y = static_cast<int16_t>(6 * kBlockPx);
+    e.grounded = 0;
+    e.y_accum = static_cast<uint8_t>(kParaBandPx);
+    e.dy = -1;
+    e.lead_col = e.lead();
+    e.foot_col = e.foot();
+
+    const uint16_t held_x = e.pos_x;
+    const int16_t hit_y = e.pos_y;
+    REQUIRE(sim.enemy_stomp(e) == kEnemyHitStomp);
+    // the wings are gone and it is a plain red koopa where it was hit, falling rather than tucked
+    // into its shell - a second stomp is what puts it in one
+    REQUIRE(e.kind == kEnemyKoopaRed);
+    REQUIRE(e.state == kEnemyWalk);
+    REQUIRE(e.grounded == 0);
+    REQUIRE(e.pos_x == held_x);
+    REQUIRE(e.pos_y == hit_y);
+
+    const auto koopa_slot = [](const PlayerSim& s) -> int {
+        for (uint8_t i = 0; i < s.live; ++i) {
+            if (s.pool[i].kind == kEnemyKoopaRed) {
+                return i;
+            }
+        }
+        return -1;
+    };
+    int16_t last_y = hit_y;
+    int landed = -1;
+    for (int i = 0; i < 240 && landed < 0; ++i) {
+        sim.step(0);
+        const int slot = koopa_slot(sim);
+        REQUIRE(slot >= 0);
+        if (sim.pool[slot].grounded != 0) {
+            landed = i;
+            break;
+        }
+        // it falls under the walker's own gravity, never back up the way it flew
+        REQUIRE(sim.pool[slot].pos_y >= last_y);
+        last_y = sim.pool[slot].pos_y;
+    }
+    REQUIRE(landed >= 0);
+    const int rest = koopa_slot(sim);
+    REQUIRE(rest >= 0);
+    REQUIRE(sim.pool[rest].pos_y > hit_y);
+    REQUIRE(solid_at(*sim.lv, sim.pool[rest].foot_col, (sim.pool[rest].pos_y + kEnemyBoxPx) >> 4));
+
+    // and once it is down it walks, which the flyer never did
+    const uint16_t grounded_x = sim.pool[rest].pos_x;
+    for (int i = 0; i < 60; ++i) {
+        sim.step(0);
+        REQUIRE(koopa_slot(sim) >= 0);
+    }
+    REQUIRE(sim.pool[koopa_slot(sim)].pos_x != grounded_x);
 }
 
 TEST_CASE("mario_autopilot_completes_1_3") {

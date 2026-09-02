@@ -56,6 +56,10 @@ static void present(void) {
     terrain_set_scroll_x(camera_pos_x);
     terrain_set_pan_y(camera_pos_y);
     terrain_apply_scroll();
+    // the hud strip is a layer of every frame that draws the level and of no card's; raising it
+    // here rather than inside terrain_apply_scroll is what keeps it off the debug camera, whose
+    // whole point is an unobstructed look at the terrain
+    terrain_bar_on = 1U;
     player_draw(camera_pos_x, camera_pos_y, powerup_prop);
     if (blocks_busy != 0U) {
         blocks_draw(camera_pos_x, camera_pos_y);
@@ -81,6 +85,8 @@ static void enter_play(void) {
     hazard_active = flow_enter_level(level_number);
     hazard_near = hazard_active;
     present();
+    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
+    terrain_commit_scroll();
     SHOW_BKG;
     SHOW_SPRITES;
     DISPLAY_ON;
@@ -92,6 +98,8 @@ static void leave_card(void) {
     DISPLAY_OFF;
     flow_resume_from_card(current_area, camera_pos_x);
     present();
+    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
+    terrain_commit_scroll();
     SHOW_BKG;
     DISPLAY_ON;
 }
@@ -110,6 +118,8 @@ static uint8_t enter_sub_area(uint8_t index) {
     current_area = ((index & (uint8_t)kJumpAreaFlag) != 0U) ? (uint8_t)kAreaMain : index;
     rising = flow_enter_sub_area(index);
     present();
+    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
+    terrain_commit_scroll();
     SHOW_BKG;
     DISPLAY_ON;
     return rising;
@@ -120,6 +130,8 @@ static void leave_sub_area(void) {
     current_area = kAreaMain;
     flow_leave_sub_area();
     present();
+    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
+    terrain_commit_scroll();
     SHOW_BKG;
     DISPLAY_ON;
 }
@@ -144,6 +156,9 @@ void main(void) {
 
     font_init();
     font_set(font_load(font_ibm));
+    // the vbl handler that lands the camera and the lyc one that clips the hud strip, both before
+    // anything turns the lcd on
+    terrain_install_isrs();
     powerup_init();
     save_init();
     level_number = 0;
@@ -185,7 +200,7 @@ void main(void) {
                 state = kStatePause;
                 continue;
             }
-            // the countdown and the coin rollover, and the five digit sprites they move
+            // the countdown and the coin rollover, and whichever cells of the strip they move
             if (hud_frame() != 0U) {
                 state = begin_death(kDeathFromHit);
                 present();

@@ -59,7 +59,25 @@ void terrain_clear_cell(int16_t column, int16_t row);
 void terrain_bump_block(int16_t column, int16_t row);
 void terrain_restore_block(int16_t column, int16_t row);
 
-// writes the camera's current position to scx/scy; call once per frame, after any scroll/pan
+// hands the camera's current position to the vbl handler, which is the only thing that writes
+// scx/scy: present() runs mid-frame and a scroll written there tears the picture. call once per
+// frame, after any scroll/pan
 void terrain_apply_scroll(void);
+
+// pushes the shadowed camera into scx/scy at once, for the lcd-off paths that cannot wait for a
+// vblank - a level load, a pipe, a card being left
+void terrain_commit_scroll(void);
+
+// parks the camera at (0,0), registers and all, and drops the hud strip: what a card wants before
+// it paints the 0x9800 map with the lcd off. present() raises the strip again on the next play frame
+void terrain_park_scroll(void);
+
+// installs the vbl/lyc handlers that land the camera and clip the hud strip to its top 16 px, and
+// points the window at the 0x9c00 map. called once at boot, before the lcd is ever on
+void terrain_install_isrs(void);
+
+// 1 while the hud strip is one of the frame's layers. present() raises it, a card drops it: an isr
+// has to be resident in bank 0 and this is the only byte it needs from bank 5's side
+extern uint8_t terrain_bar_on;
 
 #endif

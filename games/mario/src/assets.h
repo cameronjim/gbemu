@@ -48,9 +48,10 @@ void assets_load_enemy_palettes(void) BANKED;
 void assets_load_hazard_tiles(void) BANKED;
 void assets_load_enemy_palettes_castle(void) BANKED;
 
-// m8b's ten hud digit pairs at 0x8c; they borrow the coin and star sprite palettes, so there is
-// no palette loader beside this one
-void assets_load_digit_tiles(void) BANKED;
+// the hud strip's glyphs: the resident ibm font re-encoded white-on-black into vram bank 1 at
+// kTileHudDigitFirst, plus the bar's one gold coin tile. no palette loader beside it - the strip
+// borrows kCamPalQuestion, whose white and black are the same in all three level sets
+void assets_load_hud_font(void) BANKED;
 
 // the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5a)
 // never claimed: water and path, a round node marker (one quadrant tile, stamped four times with

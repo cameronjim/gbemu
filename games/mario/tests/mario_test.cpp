@@ -3768,10 +3768,18 @@ int approach_lab_row(gb::Gameboy& gameboy, PlayerSim& sim) {
     return static_cast<int>(script.size());
 }
 
-// every visible cell is one of the families the terrain may legitimately render as
+// every visible cell is one of the families the terrain may legitimately render as. the top two
+// rows are the hud strip, a window layer over the level rather than terrain (games/mario/src/
+// hud.c), so the scan starts under it
+constexpr uint32_t kHudBarRows = 2;
+// and the scanline the strip's lyc handler turns the window off at. the handler is entered a few
+// dots into that line, after the ppu has already fetched it, so the line itself is still bar: the
+// first level scanline is the one after it, which is why the rom paints a third row of blanks
+constexpr int kHudBarLines = 16;
+
 void require_no_garbage(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    for (uint32_t ty = 0; ty < 18; ++ty) {
+    for (uint32_t ty = kHudBarRows; ty < 18; ++ty) {
         for (uint32_t tx = 0; tx < 20; ++tx) {
             const uint16_t id = ids[(ty * 8 + 3) * gb::kLcdWidth + tx * 8 + 3];
             if ((id & 0x100u) != 0) {
@@ -4498,7 +4506,10 @@ TEST_CASE("mario_camera_manual_pan") {
 
     // that target is bounded: leaning on up for another two seconds cannot scroll past it
     const int panned_row = first_tile_row(gameboy, 0xA8, 0xAB);
-    REQUIRE(panned_row == 5 * kBlockPx - (kScyMax - kCamLookUpPx));
+    // the pan puts the row 5 block's own top line under the hud strip, so what the probe finds is
+    // the first line the strip leaves alone rather than the block's top edge
+    REQUIRE(5 * kBlockPx - (kScyMax - kCamLookUpPx) <= kHudBarLines);
+    REQUIRE(panned_row == kHudBarLines + 1);
     REQUIRE(panned_row < grounded_row);
     run(gameboy, 120);
     REQUIRE(play_scy(gameboy) == kPlayScy - kCamLookUpPx);
@@ -4522,6 +4533,63 @@ TEST_CASE("mario_camera_manual_pan") {
     run(gameboy, 60);
     REQUIRE(play_scy(gameboy) == kPlayScy);
     REQUIRE(first_tile_row(gameboy, 0xA8, 0xAB) == grounded_row);
+}
+
+// the x of the first bg cell boundary on one scanline, mod the 8 px cell. every bg row of a frame
+// is drawn from the same scx, so on a tear-free frame this is the same number on every row that
+// has a boundary at all; -1 when the row is one flat run and says nothing
+static int row_phase(const std::span<const uint16_t>& ids, int row) {
+    for (int x = 1; x < static_cast<int>(gb::kLcdWidth); ++x) {
+        const size_t i = static_cast<size_t>(row) * gb::kLcdWidth + static_cast<size_t>(x);
+        if ((ids[i] & 0x100u) != 0 || (ids[i - 1] & 0x100u) != 0) {
+            continue;
+        }
+        if (ids[i] != ids[i - 1]) {
+            return x % 8;
+        }
+    }
+    return -1;
+}
+
+// scx/scy are written from the vbl handler, not from present(): present() runs while the ppu is
+// already drawing, so the scanlines it had passed kept the old camera and the rest took the new
+// one - a few px of sideways shift through the middle of the picture on any frame he was moving.
+// this probe caught it on 43% of a 400 frame run, splitting the picture somewhere around scanline
+// 30-60 (wherever the frame's logic happened to end); the strip's own rows are skipped because the
+// window layer does not scroll with the level at all
+TEST_CASE("mario_scroll_lands_at_vblank") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    int measured = 0;
+    std::set<int> phases;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int frame = 0; frame < 400; ++frame) {
+        gameboy.run_frame();
+        const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+        int first = -1;
+        for (int y = kHudBarLines + 1; y < static_cast<int>(gb::kLcdHeight); ++y) {
+            const int phase = row_phase(ids, y);
+            if (phase < 0) {
+                continue;
+            }
+            if (first < 0) {
+                first = phase;
+                phases.insert(phase);
+                ++measured;
+            }
+            REQUIRE(phase == first);
+        }
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    // and the probe had something to read on nearly every frame, of a view that really did move:
+    // a level standing still would prove nothing. the phase is where the camera sits inside a
+    // cell, so a run that scrolls at all walks it through every one of the eight
+    REQUIRE(measured > 300);
+    REQUIRE(phases.size() == 8);
 }
 
 // the redesign's headline: a hop onto something knee-high must not move the view at all. the old
@@ -7578,14 +7646,22 @@ TEST_CASE("mario_axe_ends_1_4") {
 
 namespace {
 
-// the hud's five digit sprites, at the tile ids and screen columns games/mario/src/mario.h pins
-constexpr uint8_t kTileDigitLo = 0x8C;
-constexpr uint8_t kTileDigitHi = 0x9F;
-constexpr int kHudRowY = 8;
-constexpr int kHudCoinX = 8;
-constexpr int kHudTimeX = 128;
+// the hud is a window-layer strip across the top two tile rows now, not five sprites: its digits
+// are bg cells whose tile ids come out of vram bank 1 at kTileHudDigitFirst (games/mario/src/
+// mario.h). framebuffer_tiles reports the id byte and the bank is not part of it, which is why the
+// strip's run sits clear of every terrain family - see the comment on kTileHudDigitFirst
+constexpr uint8_t kTileHudDigitLo = 0xE0;
+constexpr uint8_t kTileHudDigitHi = 0xE9;
+// the two rows' glyph bands in screen px, and each readout's leftmost column, per mario.h's layout
+constexpr int kHudLabelRowY = 0;
+constexpr int kHudValueRowY = 8;
+constexpr int kHudCoinX = 8 * 8;
+constexpr int kHudScoreX = 0;
+constexpr int kHudTimeX = 17 * 8;
 constexpr int kHudCoinDigits = 2;
 constexpr int kHudTimeDigits = 3;
+// hud_score counts tens: the strip prints five of its digits and a fixed trailing zero
+constexpr int kHudScoreDigits = 5;
 
 // the card rows title.c prints on; the pause card is measured off its own kPauseRow (it sits
 // higher than the title/game-over/clear cards to leave its footer some room), the rest off kTitleRow
@@ -7608,28 +7684,29 @@ constexpr int kTimerFramesPerTick = 60;
 // the kContent* contract again, for the one entry the earlier mirrors did not need
 constexpr uint8_t kContentOneup = 4;
 
-// the digit drawn in the 8 px sprite column starting at screen x, or -1 when none is
-int hud_digit(const gb::Gameboy& gameboy, int x0) {
+// the digit in the strip's cell at (x0, y0), or -1 when that cell holds no digit. a sprite over
+// the bar is skipped rather than read: the strip is bg, and mario's own art can overlap it
+int hud_digit(const gb::Gameboy& gameboy, int x0, int y0) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    for (int y = kHudRowY; y < kHudRowY + 8; ++y) {
+    for (int y = y0; y < y0 + 8; ++y) {
         for (int x = x0; x < x0 + 8; ++x) {
             const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
-            if ((id & 0x100u) == 0) {
+            if ((id & 0x100u) != 0) {
                 continue;
             }
             const uint8_t tile = static_cast<uint8_t>(id);
-            if (tile >= kTileDigitLo && tile <= kTileDigitHi) {
-                return (tile - kTileDigitLo) / 2;
+            if (tile >= kTileHudDigitLo && tile <= kTileHudDigitHi) {
+                return tile - kTileHudDigitLo;
             }
         }
     }
     return -1;
 }
 
-int hud_number(const gb::Gameboy& gameboy, int x0, int digits) {
+int hud_number(const gb::Gameboy& gameboy, int x0, int y0, int digits) {
     int value = 0;
     for (int i = 0; i < digits; ++i) {
-        const int digit = hud_digit(gameboy, x0 + i * 8);
+        const int digit = hud_digit(gameboy, x0 + i * 8, y0);
         if (digit < 0) {
             return -1;
         }
@@ -7639,11 +7716,17 @@ int hud_number(const gb::Gameboy& gameboy, int x0, int digits) {
 }
 
 int hud_coins(const gb::Gameboy& gameboy) {
-    return hud_number(gameboy, kHudCoinX, kHudCoinDigits);
+    return hud_number(gameboy, kHudCoinX, kHudLabelRowY, kHudCoinDigits);
 }
 
 int hud_time(const gb::Gameboy& gameboy) {
-    return hud_number(gameboy, kHudTimeX, kHudTimeDigits);
+    return hud_number(gameboy, kHudTimeX, kHudValueRowY, kHudTimeDigits);
+}
+
+// the score as the strip prints it: five digits and the trailing zero hud_score does not carry
+int hud_score_shown(const gb::Gameboy& gameboy) {
+    const int tens = hud_number(gameboy, kHudScoreX, kHudValueRowY, kHudScoreDigits);
+    return tens < 0 ? -1 : tens * 10;
 }
 
 // the decimal number printed across one card row in the bg font, or -1 when the row holds no digits
@@ -7706,12 +7789,14 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
 // wait for the burst to drain or the edge lands while nothing is reading
 constexpr int kCardSettleFrames = 60;
 
-int paused_lives(gb::Gameboy& gameboy) {
-    int lives = -1;
+// pauses, reads one of the card's numeric lines and resumes; the card is the second place every
+// counter shows, which is what lets the strip be checked against it
+int paused_number(gb::Gameboy& gameboy, uint32_t row) {
+    int value = -1;
     press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && lives < 0; ++i) {
+    for (int i = 0; i < 200 && value < 0; ++i) {
         gameboy.run_frame();
-        lives = card_number(gameboy, kCardLivesRow);
+        value = card_number(gameboy, row);
     }
     run(gameboy, kCardSettleFrames);
     press(gameboy, gb::Button::Start, 2);
@@ -7719,7 +7804,11 @@ int paused_lives(gb::Gameboy& gameboy) {
         gameboy.run_frame();
     }
     run(gameboy, 8);
-    return lives;
+    return value;
+}
+
+int paused_lives(gb::Gameboy& gameboy) {
+    return paused_number(gameboy, kCardLivesRow);
 }
 
 // the pole, taken two ways. the measured 1-1 leaves nine clear columns between the top of the
@@ -7795,6 +7884,8 @@ TEST_CASE("mario_hud_shows_coins_and_timer") {
 
     // the level's own countdown, straight out of the bible json through the compiler
     REQUIRE(hud_coins(gameboy) == 0);
+    // the score is on the strip now rather than only on the cards, and a fresh run opens at zero
+    REQUIRE(hud_score_shown(gameboy) == 0);
     const int start = hud_time(gameboy);
     REQUIRE(start > 0);
     REQUIRE(start <= static_cast<int>(kHostLevels[kLevel11].timer));
@@ -7812,6 +7903,73 @@ TEST_CASE("mario_hud_shows_coins_and_timer") {
     run(gameboy, 40);
     REQUIRE(hud_coins(gameboy) == 1);
     REQUIRE(hud_time(gameboy) < later);
+
+    // the coin pays its points onto the strip's score as well. the walk in can have stomped a
+    // goomba on the way, so the coin's own figure is a floor rather than the whole total - and
+    // whatever the total is, it is the same number the pause card prints from the same counter
+    const int scored = hud_score_shown(gameboy);
+    REQUIRE(scored >= kCoinPoints);
+    REQUIRE(paused_number(gameboy, kCardPauseScoreRow) == scored);
+    // resuming repaints the strip, and the score is still there rather than blank
+    REQUIRE(hud_score_shown(gameboy) == scored);
+}
+
+namespace {
+
+// the strip is black cells with white ink under kCamPalQuestion, whose colors 2 and 3 are the same
+// white and black in all three of the level palette sets (see kTileHudDigitFirst in mario.h). so
+// whichever set is loaded, the top 16 px hold both of those exact colors and nothing else has to
+// be checked to know the bar is readable
+bool bar_reads(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> px = gameboy.framebuffer_color();
+    bool black = false;
+    bool white = false;
+    for (int y = 0; y < kHudBarLines; ++y) {
+        for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
+            const uint16_t c = px[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
+            if (c == 0) {
+                black = true;
+            } else if (c == 0x7FFF) {
+                white = true;
+            }
+        }
+    }
+    return black && white;
+}
+
+} // namespace
+
+// the bar borrows one of the level's own eight bg palettes rather than moving a single color, so
+// the three palette sets are each checked with the strip up
+TEST_CASE("mario_hud_bar_reads_in_every_palette_set") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_play(gameboy);
+        REQUIRE(sky_color(gameboy) == kSkyOverworld);
+        REQUIRE(bar_reads(gameboy));
+        REQUIRE(hud_time(gameboy) > 0);
+    }
+    {
+        // 1-2's interior, reached the way the level itself is played: through its entrance pipe
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_level(gameboy, kLevel12);
+        enter_1_2_underground(gameboy);
+        REQUIRE(sky_color(gameboy) == kSkyUnderground);
+        REQUIRE(bar_reads(gameboy));
+        REQUIRE(hud_time(gameboy) > 0);
+    }
+    {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_level(gameboy, kLevel14);
+        REQUIRE(sky_color(gameboy) == kSkyCastle);
+        REQUIRE(bar_reads(gameboy));
+        REQUIRE(hud_time(gameboy) > 0);
+    }
 }
 
 TEST_CASE("mario_timer_death") {

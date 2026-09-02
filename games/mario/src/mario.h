@@ -437,13 +437,8 @@
 #define kTileBowser 0x8AU
 #define kHazardTileCount 8U // 0x84-0x8b
 
-// m8b's hud digits, which take the last of the run between the flower and the terrain families:
-// 0x8c-0x9f is exactly twenty tiles, and an 8x16 sprite digit costs two of them (the glyph, then a
-// blank lower half). ten digits fill it to the byte, which is also why there is no coin icon tile
-#define kTileDigitFirst 0x8CU
-#define kDigitTilesPerGlyph 2U
-#define kDigitCount 10U
-#define kDigitTileCount (kDigitCount * kDigitTilesPerGlyph) // 20, ids 0x8c-0x9f
+// 0x8c-0x9f, twenty ids, is FREE: m8b's hud digit sprites lived there and the bar draws its own
+// digits out of the bg font now (see kTileHudDigitFirst). left unclaimed on purpose
 
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
@@ -463,16 +458,16 @@
 #define kItemKindCount 5U
 
 // oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
-// small parks the lower row) + the hud's 5 + one item 2 + one coin pop 1 + two fireballs + five
-// enemies x 2 is 24 of the 40 slots; the per-scanline math is the enemy pool's problem, see
-// kEnemyRowCap below. m8b's hud sits directly behind mario because the hardware draws the first
-// ten sprites it meets in oam order: on a crowded scanline the thing that has to survive is mario,
-// then the hud, and whatever else is up there is what the hardware may drop
+// small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is
+// 19 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below.
+// slots 4-8 are FREE: m8b's five hud digit sprites held them until the bar moved to the window
+// layer, and nothing claims them now - hud_enter_level parks them once and leaves them alone
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteMarioLowL 2U
 #define kSpriteMarioLowR 3U
-#define kSpriteHudFirst 4U
+#define kSpriteFreeFirst 4U
+#define kSpriteFreeCount 5U
 #define kSpriteItemL 9U
 #define kSpriteItemR 10U
 #define kSpriteCoin 11U
@@ -793,22 +788,53 @@
 // on 1-2 that is the whole level bar the last forty columns
 #define kHazardMarginPx 64U
 
-// m8b's hud (games/mario/src/hud.c). systems.md: smbd's small screen shows score, coins and time
-// in a level and moves lives and the level name to the pause screen. ours is smaller again - oam is
-// exactly full at 40 sprites and the tile run left over held ten digits and nothing else - so the
-// in-level hud is the two counters that change while he plays, coins and time, and the score shows
-// on the pause and clear cards beside the lives. must-verify against the rom pass
+// the hud (games/mario/src/hud.c), smbd's own black status bar: the top two tile rows of the
+// WINDOW layer, whose map is 0x9c00 while the level's ring keeps 0x9800. sprites are not an option
+// - oam was exactly full at 40 slots - and the window costs no slot at all. the strip has to stop
+// after 16 px, so an lyc stat handler at scanline kHudBarLines drops LCDCF_WINON and the vbl
+// handler puts it back; both live in terrain.c beside the scroll shadows because an isr has to be
+// resident in bank 0 (see terrain_install_isrs)
+#define kHudBarRows 3U
+#define kHudBarLines 16U
+// the strip's two live rows, and the third the isr's own latency can leak onto (the stat interrupt
+// lands a few dots into scanline 16, so the ppu may already have fetched that line): painted with
+// blanks so the leak is one more black scanline rather than a stripe of sky
+#define kHudRowLabel 0U
+#define kHudRowValue 1U
+// the layout across the twenty columns. MARIO over its six score digits on the left, the coin
+// count beside it, WORLD's 1-N in the middle, TIME over its three digits on the right
+#define kHudLabelCol 0U
+#define kHudCoinIconCol 6U
+#define kHudCoinCol 8U
+#define kHudWorldCol 11U
+#define kHudTimeLabelCol 16U
+#define kHudScoreCol 0U
+#define kHudTimeCol 17U
 #define kHudCoinDigits 2U
 #define kHudTimeDigits 3U
-#define kHudDigits (kHudCoinDigits + kHudTimeDigits) // 5, one oam slot each
-// the band the digits sit in: screen y 8, which is scanlines 8-23 for an 8x16 sprite
-#define kHudRowY 8
-#define kHudCoinX 8
-#define kHudTimeX (kScreenWidthPx - 8 - (int)(kHudTimeDigits * 8U))
-// no icon fits, so the two counters are told apart by position and by palette: coins take the
-// world coin's yellow, time borrows the star's white
-#define kPalHudCoin kPalCoin
-#define kPalHudTime kPalStar
+// hud_score counts tens, so five digits and the trailing zero the cards also print
+#define kHudScoreDigits 5U
+
+// the bar's glyphs: the handful of ibm font characters it actually prints, re-encoded into vram
+// bank 1 with the ink on color 2 and the cell on color 3. kCamPalQuestion is (backdrop, gold,
+// white, black) in all three level palette sets - the question block's face needs the white and
+// the gold in every one of them - so one attribute byte gives a black band with white text
+// underground, overworld and castle alike, and not a single palette color has to move.
+//
+// the ids are 0xe0-0xf4 in vram BANK 1, where nothing has ever stored a tile: bank 0's own
+// 0xe0-0xf7 is mario's sprite family, and a sprite can never be confused with one of these
+// because the two banks are chosen per bg cell by the attribute byte. the run is kept short and
+// away from the terrain families on purpose - a bg id is all a host probe sees, so a bar glyph
+// sharing an id with a block face would count as that block on every row it sits above
+#define kTileHudDigitFirst 0xE0U // 0xe0-0xe9, '0' up
+#define kTileHudBlank 0xEAU      // the space glyph, which re-encodes to a solid black cell
+// a hand-drawn tile rather than a font one: a gold coin (color 1) with a white slot (color 2) on
+// the same black cell, which is what tells the coin count apart from the score
+#define kTileHudCoin 0xEBU
+// and one id per character of the list below, in that order
+#define kTileHudLetterFirst 0xECU // 0xec-0xf4
+#define kHudGlyphChars "MARIOTEx-"
+#define kHudBarAttr ((uint8_t)(kCamPalQuestion | kCamAttrVram1))
 
 // the countdown. the bible pins one tick every 24 frames, but that reads as a broken clock, so
 // ours ticks once per real second (60 frames), from the level json's timer field. hurrying up is

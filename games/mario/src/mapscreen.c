@@ -14,6 +14,7 @@
 #include "level.h"
 #include "mario.h"
 #include "save.h"
+#include "terrain.h"
 #include "title.h"
 
 #include <gb/cgb.h>
@@ -558,8 +559,7 @@ static void map_reset(uint8_t node) {
     // vram traffic than a vblank holds
     DISPLAY_OFF;
     HIDE_SPRITES;
-    SCX_REG = 0;
-    SCY_REG = 0;
+    terrain_park_scroll();
     assets_load_block_tables();
     assets_load_bg_tiles();
     assets_load_scenery_tiles();

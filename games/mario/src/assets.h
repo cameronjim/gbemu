@@ -91,6 +91,25 @@ void assets_load_digit_tiles(void) BANKED;
 #define kTileMapHedgeLowBase 0x6FU
 #define kTileMapFieldFillTop 0x70U
 #define kTileMapFieldFillBase 0x71U
+// and the strip's own castle icon, which no longer reuses the level's five castle block kinds: a
+// flat 2x4 wall of 8px bricks with a door in one corner and a window in the other read as a slab,
+// not as a castle. this is one drawn 4x6 tile icon instead - a narrow crenellated tower over a
+// wider crenellated keep, a centered arched door standing on the path row and an arched window
+// each side of it - and only its left two tile columns are stored: the right two are these
+// mirrored with the cgb x-flip bit, the same trick every other mirrored kind here uses. these ten
+// take the bottom of vram bank 1, which nothing else in the game has ever loaded (the scenery run
+// starts at 0x20 and the map's own kinds above at 0x60), and they are drawn under the map's brick
+// palette, whose color 3 is the black the door and windows want. see map_draw_castle in mapscreen.c
+#define kTileMapCastleTowerTop 0x00U
+#define kTileMapCastleTowerWall 0x01U
+#define kTileMapCastleMerlon 0x02U
+#define kTileMapCastleTowerBase 0x03U
+#define kTileMapCastleWallTop 0x04U
+#define kTileMapCastleCornice 0x05U
+#define kTileMapCastleWallMid 0x06U
+#define kTileMapCastleArch 0x07U
+#define kTileMapCastleWallFoot 0x08U
+#define kTileMapCastleDoor 0x09U
 void assets_load_map_tiles(void) BANKED;
 
 // the map screen's own eight cgb bg palettes - a card screen, never up during play, so it does not

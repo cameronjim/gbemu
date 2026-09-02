@@ -219,35 +219,38 @@ static uint8_t map_anim_timer;
 static uint16_t map_x;
 
 // the map strip's backdrop, four block rows (local 0-3, absolute kMapBandFirstRow+0..3) of ten
-// columns. every cell is landscape - no cell is left as the band's plain sky-blue backdrop, so no
-// sky shows between the black header and the path; the only blue in the strip is water. kBlockEmpty
-// is never used here any more (see below); every other value under kBlockKindCount is a kind the
-// level itself draws (reused straight through put_block); the four sentinels past it are this
-// screen's own new art added by put_new_quad/put_dome_quad - water and path, then the low hedge row
+// columns. every cell is landscape apart from the six kBlockEmpty ones at the right end, which the
+// castle icon is drawn over afterwards (map_draw_castle, below): no other cell is left as the
+// band's plain sky-blue backdrop, so no sky shows between the black header and the path except
+// where the castle's tower steps in, and the only blue in the strip is water. every value under
+// kBlockKindCount is a kind the level itself draws (reused straight through put_block); the six
+// sentinels past it are this screen's own new art added by put_new_quad/put_dome_quad - water and
+// path, then the low hedge row
 // that replaced the level's 45-degree hill slopes (see kTileMapHedgeTallTop in assets.h): three
 // flat-topped mounds at three heights, plus a plain field fill (itself lightly textured, not a flat
 // tone - see kFoliageTiles in assets_data.c) for the ground between them. the top block row is not
 // left as an unbroken field rectangle: it carries its own scatter of hedges at offset columns and
 // heights from the row below, so the two rows together read as dense, uneven foliage rather than a
 // thin fringe of bumps under a blank green wall. row by row: a scatter of hedges and field over a
-// pipe's lip and the castle's crenels, filling the strip's top edge end to end, offset from the row
-// beneath so no column stacks the same height twice; the lower hedge row itself (tall, low, medium -
-// no two alike side by side), a bush and the pipe's body under the castle's window; the path mario
-// and the four markers stand on, running under the castle's door; and, below that, a low hedge at
-// the pond's bank, more path, and the castle's wall
+// pipe's lip, offset from the row beneath so no column stacks the same height twice; the lower
+// hedge row itself (tall, low, medium - no two alike side by side), a bush and the pipe's body; the
+// path mario and the four markers stand on, which runs the whole width and out under the castle's
+// door; and, below that, a low hedge at the pond's bank, more path, and the sand the castle stands
+// on. the last two columns of the top three rows are the castle's own footprint
 #define W (uint8_t)(kBlockKindCount)
 #define P (uint8_t)(kBlockKindCount + 1U)
 #define N (uint8_t)(kBlockKindCount + 2U) // plain field fill, textured but shapeless
 #define T (uint8_t)(kBlockKindCount + 3U) // hedge, tall
 #define E (uint8_t)(kBlockKindCount + 4U) // hedge, medium
 #define L (uint8_t)(kBlockKindCount + 5U) // hedge, low
+#define C (uint8_t)(kBlockEmpty)          // the castle's footprint, painted by map_draw_castle
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
-    {E, N, L, T, N, E, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
-    {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR, kBlockCastleDoorTop,
-     kBlockCastleWindow},
-    {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
-    {L, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
+    {E, N, L, T, N, E, kBlockPipeTl, kBlockPipeTr, C, C},
+    {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR, C, C},
+    {P, P, P, P, P, P, P, P, C, C},
+    {L, W, W, P, P, P, P, W, P, P},
 };
+#undef C
 #undef W
 #undef P
 #undef N
@@ -435,6 +438,44 @@ static void put_tile(uint8_t x, uint8_t y, uint8_t tile, uint8_t attr) {
     set_bkg_attributes(x, y, 1, 1, &attr);
 }
 
+// the castle at the right end of the strip: one drawn icon four tile columns wide and six tile
+// rows tall, standing on the path row so its door meets the road mario walks up. only the left two
+// tile columns exist as art (kTileMapCastleTowerTop.. in assets.h); the right two are those two
+// mirrored with the cgb x-flip bit, so the whole thing is symmetric about its door for ten tiles of
+// vram rather than twenty. 0xff in the outer table is "leave this cell alone": the tower is only
+// the middle two columns wide, and the band's sky showing at its shoulders is what makes the
+// silhouette step in from keep to tower instead of reading as one slab
+#define kMapCastleTileRows 6U
+#define kMapCastleCol (uint8_t)(kMapBlockCols - 2U)
+#define kMapCastleSkip 0xFFU
+static const uint8_t kMapCastleOuter[kMapCastleTileRows] = {
+    kMapCastleSkip,        kMapCastleSkip,        kTileMapCastleMerlon,
+    kTileMapCastleWallTop, kTileMapCastleWallMid, kTileMapCastleWallFoot,
+};
+static const uint8_t kMapCastleInner[kMapCastleTileRows] = {
+    kTileMapCastleTowerTop, kTileMapCastleTowerWall, kTileMapCastleTowerBase,
+    kTileMapCastleCornice,  kTileMapCastleArch,      kTileMapCastleDoor,
+};
+
+static void map_draw_castle(uint8_t bx, uint8_t by) {
+    const uint8_t x = (uint8_t)(bx * kTilesPerBlock);
+    const uint8_t y = (uint8_t)(by * kTilesPerBlock);
+    const uint8_t attr = (uint8_t)(kCamPalBrick | kCamAttrVram1);
+    const uint8_t mirror = (uint8_t)(attr | kCamAttrXFlip);
+    uint8_t r;
+
+    for (r = 0; r < (uint8_t)kMapCastleTileRows; ++r) {
+        const uint8_t row = (uint8_t)(y + r);
+
+        if (kMapCastleOuter[r] != (uint8_t)kMapCastleSkip) {
+            put_tile(x, row, kMapCastleOuter[r], attr);
+            put_tile((uint8_t)(x + 3U), row, kMapCastleOuter[r], mirror);
+        }
+        put_tile((uint8_t)(x + 1U), row, kMapCastleInner[r], attr);
+        put_tile((uint8_t)(x + 2U), row, kMapCastleInner[r], mirror);
+    }
+}
+
 // the panel's top or bottom edge: a corner at each end, y-flipped for the bottom so the same
 // bracket tile serves all four corners, an h-edge tile filling the run between them
 static void map_draw_border(uint8_t row, uint8_t flip_y) {
@@ -545,6 +586,7 @@ static void map_reset(uint8_t node) {
             put_cell(bx, (uint8_t)(kMapBandFirstRow + by), kMapRows[by][bx]);
         }
     }
+    map_draw_castle(kMapCastleCol, kMapBandFirstRow);
     for (bx = 0; bx < (uint8_t)kLevelCount; ++bx) {
         put_marker(node_column(bx), kMapMarkerRow, marker_palette(bx));
     }

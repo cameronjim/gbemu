@@ -250,8 +250,11 @@ static const uint8_t kHardTiles[64] = {
 // clang-format on
 
 // pipe: a 32px lip over a 28px body inset 2px on each side. the shading runs in columns across
-// the whole width - a 4px light band near the left, dark green through the middle, then a 2px
-// checkered dither before the right outline - so the lip's middle 16px is one repeated tile
+// the whole width - a 4px light band just inside the left outline, dark green all the way to the
+// right outline - so the lip's middle 16px is one repeated tile. smb's pipes only ever have those
+// two greens: a first pass put a 2px light/dark dither in front of the right outline as a third
+// shade, and with the palette's light green being the bright one it read on screen as a checkered
+// rib rather than a shadow, which also made the lip's right half look like a plain body segment
 // clang-format off
 static const uint8_t kPipeTiles[144] = {
     // lip left, upper
@@ -274,13 +277,13 @@ static const uint8_t kPipeTiles[144] = {
     0x00, 0xFF, // ++++++++
     // lip right, upper
     0xFF, 0xFF, // ########
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     // lip left, lower
     0xF8, 0x87, // #----+++
     0xF8, 0x87, // #----+++
@@ -300,13 +303,13 @@ static const uint8_t kPipeTiles[144] = {
     0x00, 0xFF, // ++++++++
     0xFF, 0xFF, // ########
     // lip right, lower
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
-    0x05, 0xFB, // +++++-+#
-    0x09, 0xF7, // ++++-++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
     // body left edge
     0x3E, 0x21, // ..#----+
@@ -327,14 +330,14 @@ static const uint8_t kPipeTiles[144] = {
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
     // body right edge
-    0x24, 0xDC, // ++-++#..
-    0x14, 0xEC, // +++-+#..
-    0x24, 0xDC, // ++-++#..
-    0x14, 0xEC, // +++-+#..
-    0x24, 0xDC, // ++-++#..
-    0x14, 0xEC, // +++-+#..
-    0x24, 0xDC, // ++-++#..
-    0x14, 0xEC, // +++-+#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
+    0x04, 0xFC, // +++++#..
 };
 // clang-format on
 
@@ -343,9 +346,9 @@ static const uint8_t kPipeTiles[144] = {
 // wants rather than a plain rotation, because it keeps smb's light where smb keeps it - top left.
 // the cap's top outline becomes the rim line down the mouth's LEFT edge, its side outlines become
 // the pipe's roof and floor, and the 4px highlight that ran down the vertical pipe's left side now
-// runs along the TOP of the whole horizontal run, mouth and body alike, with the dark dithered rib
-// along the bottom. generated from the array above rather than drawn again, so the two cannot
-// disagree about a single pixel
+// runs along the TOP of the whole horizontal run, mouth and body alike, and the bottom is plain
+// green in to its outline the same way the vertical pipe's right side is. generated from the array
+// above rather than drawn again, so the two cannot disagree about a single pixel
 // clang-format off
 static const uint8_t kPipeSideTiles[144] = {
     // mouth top left: the cap's top outline transposed, so the rim faces left
@@ -389,8 +392,8 @@ static const uint8_t kPipeSideTiles[144] = {
     0x80, 0xFF, // #+++++++
     0x80, 0xFF, // #+++++++
     0x80, 0xFF, // #+++++++
-    0xAA, 0xD5, // #+-+-+-+
-    0xD5, 0xAA, // #-+-+-+-
+    0x80, 0xFF, // #+++++++
+    0x80, 0xFF, // #+++++++
     0x80, 0xFF, // #+++++++
     0xFF, 0xFF, // ########
     // mouth bottom right
@@ -398,8 +401,8 @@ static const uint8_t kPipeSideTiles[144] = {
     0x01, 0xFF, // +++++++#
     0x01, 0xFF, // +++++++#
     0x01, 0xFF, // +++++++#
-    0xAB, 0x55, // -+-+-+-#
-    0x55, 0xAB, // +-+-+-+#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
     // horizontal body, top edge: the vertical body's inset and highlight, now its roof
@@ -420,11 +423,11 @@ static const uint8_t kPipeSideTiles[144] = {
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
-    // horizontal body, bottom edge: the dark rib and the 2px inset under it
+    // horizontal body, bottom edge: plain green to its outline, then the 2px inset under it
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
-    0xAA, 0x55, // -+-+-+-+
-    0x55, 0xAA, // +-+-+-+-
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
     0xFF, 0xFF, // ########
     0x00, 0x00, // ........
@@ -1334,8 +1337,41 @@ static const uint8_t kFoliageTiles[128] = {
 };
 // clang-format on
 
+// the map strip's castle icon, left half only: four tile columns wide on screen, of which these
+// are the outer and inner left ones, and six tile rows tall. drawn under the map's brick palette,
+// so color 0 is its darkest brown (the merlon notches and the shadow inside a crenellation), 1 the
+// light brown of the pilaster highlights and the window sills, 2 the stone itself and 3 the black
+// of the door, the windows and every outline. the two cells beside the tower are not drawn at all,
+// so the band's own sky shows around it and the silhouette steps in at the tower - see
+// map_draw_castle in mapscreen.c, which mirrors these for the right half
+// clang-format off
+static const uint8_t kMapCastleTiles[160] = {
+    // tower merlons over the crenellation line
+    0xF3, 0xF3, 0xE3, 0x92, 0xE3, 0x92, 0xFF, 0xFF, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F,
+    // tower wall with its window
+    0xE7, 0x9F, 0xE7, 0x9F, 0xE7, 0x9F, 0xE7, 0x9F, 0xE7, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F,
+    // the keep's own merlons, at the shoulder beside the tower
+    0xE7, 0xE7, 0xC6, 0xA5, 0xC6, 0xA5, 0xFF, 0xFF, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F,
+    // tower wall, the run between the two crenellations
+    0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F,
+    // keep wall: the arched top of the window under the cornice
+    0xFF, 0xFF, 0xE0, 0x9F, 0xE0, 0x9F, 0xD8, 0xBF, 0xFC, 0xBF, 0xFC, 0xBF, 0xFC, 0xBF, 0xFC, 0xBF,
+    // the cornice the tower sinks into, then plain stone
+    0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
+    // keep wall: the window's lower half and its sill
+    0xFC, 0xBF, 0xFC, 0xBF, 0xFC, 0xBF, 0xFC, 0x83, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F,
+    // the door's arch
+    0x00, 0xFF, 0x03, 0xFF, 0x07, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF,
+    // keep wall down to the base line it stands on the path with
+    0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xE0, 0x9F, 0xFF, 0xFF,
+    // the door, open all the way to the path
+    0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0xFF, 0xFF,
+};
+// clang-format on
+
 void assets_load_map_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
+    set_bkg_data(kTileMapCastleTowerTop, 10, kMapCastleTiles);
     set_bkg_data(kTileMapWaterTop, 10, kMapTiles);
     set_bkg_data(kTileMapHedgeTallTop, 8, kFoliageTiles);
     VBK_REG = VBK_BANK_0;

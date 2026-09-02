@@ -6826,6 +6826,188 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     REQUIRE(find_object_nth(lv.objects, lv.object_count, kObjLiftV, 2) == nullptr);
 }
 
+// --- 1-2's two opening pipes, as they are drawn and as they are entered -------------------------
+
+namespace {
+
+// the pinned pipe tile ids from games/mario/src/mario.h: two rows of lip across the 32px cap, then
+// the body's own three columns (the middle one, 0xb7, is never named on its own here)
+constexpr uint8_t kTilePipeLipL = 0xB0;
+constexpr uint8_t kTilePipeLipM = 0xB1;
+constexpr uint8_t kTilePipeLipR = 0xB2;
+constexpr uint8_t kTilePipeLipLb = 0xB3;
+constexpr uint8_t kTilePipeLipMb = 0xB4;
+constexpr uint8_t kTilePipeLipRb = 0xB5;
+constexpr uint8_t kTilePipeBodyL = 0xB6;
+constexpr uint8_t kTilePipeBodyR = 0xB8;
+
+// the bg tile drawn at one screen pixel, or -1 where a sprite covers it: framebuffer_tiles sets
+// 0x100 on a sprite pixel and its low byte is then the sprite's own tile, not the map's
+int bg_tile_px(const gb::Gameboy& gameboy, int x, int y) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + x];
+    return (id & 0x100u) != 0 ? -1 : static_cast<int>(id & 0xFFu);
+}
+
+// every pipe cap on screen, counted whole or broken, without the probe having to know where the
+// camera is: a lip-left tile with neither the same tile to its left nor above it is a cap's own
+// top-left pixel, and from there the rest of the cap is fixed - lip middle twice and lip right
+// across the upper tile row, the four lower-lip tiles under them. a cap a sprite stands in front
+// of is skipped rather than judged. this is the shape the bug report saw broken: a cap whose right
+// half was drawn as a body segment would land in `broken`
+void scan_pipe_caps(const gb::Gameboy& gameboy, int* whole, int* broken) {
+    static const uint8_t upper[4] = {kTilePipeLipL, kTilePipeLipM, kTilePipeLipM, kTilePipeLipR};
+    static const uint8_t lower[4] = {kTilePipeLipLb, kTilePipeLipMb, kTilePipeLipMb, kTilePipeLipRb};
+
+    *whole = 0;
+    *broken = 0;
+    const int height = static_cast<int>(gb::kLcdHeight);
+    const int width = static_cast<int>(gb::kLcdWidth);
+
+    for (int y = 0; y + 16 <= height; ++y) {
+        for (int x = 1; x + 32 <= width; ++x) {
+            if (bg_tile_px(gameboy, x, y) != kTilePipeLipL ||
+                bg_tile_px(gameboy, x - 1, y) == kTilePipeLipL ||
+                (y > 0 && bg_tile_px(gameboy, x, y - 1) == kTilePipeLipL)) {
+                continue;
+            }
+            bool ok = true;
+            bool clear = true;
+            for (int i = 0; i < 4; ++i) {
+                const int top = bg_tile_px(gameboy, x + i * 8, y);
+                const int bottom = bg_tile_px(gameboy, x + i * 8, y + 8);
+                clear = clear && top >= 0 && bottom >= 0;
+                ok = ok && top == upper[i] && bottom == lower[i];
+            }
+            if (!clear) {
+                continue;
+            }
+            if (ok) {
+                ++*whole;
+            } else {
+                ++*broken;
+            }
+        }
+    }
+}
+
+// pixel rows inside a pipe body that differ from the row beneath them. a pipe's shading runs in
+// unbroken vertical columns - outline, a light band, then the dark green to the far outline - so
+// every such pair matches. the checkered rib a first pass drew in front of the right outline
+// alternated the palette's bright green with the body's dark one row by row, which is exactly what
+// this counts
+int pipe_body_dither_rows(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    int mismatches = 0;
+
+    const int height = static_cast<int>(gb::kLcdHeight);
+    const int width = static_cast<int>(gb::kLcdWidth);
+
+    for (int y = 0; y + 1 < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const size_t i = static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x);
+            const size_t j = i + gb::kLcdWidth;
+            if ((ids[i] & 0x100u) != 0 || (ids[j] & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t here = static_cast<uint8_t>(ids[i] & 0xFFu);
+            if (here != static_cast<uint8_t>(ids[j] & 0xFFu) || here < kTilePipeBodyL ||
+                here > kTilePipeBodyR) {
+                continue;
+            }
+            if (colors[i] != colors[j]) {
+                ++mismatches;
+            }
+        }
+    }
+    return mismatches;
+}
+
+} // namespace
+
+// the short decorative pipe at columns 10-11 and the tall entrance at 12-13 stand side by side, so
+// the two of them are four block columns of pipe in a row with nothing between - the case the bug
+// report showed drawn wrong. both caps come out whole, and no pipe body carries a dithered rib,
+// before and after streaming those columns out of the ring and back in
+TEST_CASE("mario_1_2_opening_pipes_draw_as_whole_pipes") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+
+    // up to the flat ground just short of the short pipe, which puts both caps on screen at once
+    const Route approach = plan_level(kLevel12, 2000, static_cast<uint16_t>(9 * kBlockPx));
+    REQUIRE(approach.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    run(gameboy, 8);
+
+    int whole = 0;
+    int broken = 0;
+    scan_pipe_caps(gameboy, &whole, &broken);
+    REQUIRE(broken == 0);
+    REQUIRE(whole >= 2);
+    REQUIRE(pipe_body_dither_rows(gameboy) == 0);
+
+    // and again after walking back to the level's left edge and returning, so every one of those
+    // columns has left the streamer's ring and been repainted into it from the other side
+    press(gameboy, gb::Button::Left, 220);
+    run(gameboy, 8);
+    press(gameboy, gb::Button::Right, 220);
+    run(gameboy, 8);
+    whole = 0;
+    broken = 0;
+    scan_pipe_caps(gameboy, &whole, &broken);
+    REQUIRE(broken == 0);
+    REQUIRE(whole >= 2);
+    REQUIRE(pipe_body_dither_rows(gameboy) == 0);
+}
+
+// only the tall pipe is a way underground. the short one beside it is grid cells and nothing else -
+// no object stands on its cap - so down on top of it is not a second entrance
+TEST_CASE("mario_1_2_short_pipe_is_not_a_way_underground") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const HostLevel& lv = kHostLevels[kLevel12];
+
+    // the tall pipe's cap is the level's one above-ground pipe object
+    const LevelObject* entrance = find_object_nth(lv.objects, lv.object_count, kObjPipeJump, 0);
+    REQUIRE(entrance != nullptr);
+    REQUIRE(entrance->column == 12);
+    REQUIRE(entrance->row == 9);
+    REQUIRE(kLevel12Grid[12][9] == kBlockPipeTl);
+    // and the short pipe's own two columns carry no object of any kind
+    REQUIRE(kLevel12Grid[10][11] == kBlockPipeTl);
+    REQUIRE(kLevel12Grid[11][11] == kBlockPipeTr);
+    for (uint16_t i = 0; i < lv.object_count; ++i) {
+        REQUIRE(lv.objects[i].column != 10);
+        REQUIRE(lv.objects[i].column != 11);
+    }
+
+    // standing on the short cap with down held stays above ground however long it is held
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    const Route approach = plan_level(kLevel12, 2000, static_cast<uint16_t>(8 * kBlockPx));
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, 10, 11, 400);
+    REQUIRE(climb.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
+    REQUIRE(sky_color(gameboy) == kSkyOverworld);
+    press(gameboy, gb::Button::Down, 150);
+    run(gameboy, 8);
+    REQUIRE(sky_color(gameboy) == kSkyOverworld);
+
+    // the same press on the tall pipe one column over does cross, so this is not a level that
+    // simply refuses every down press
+    gb::Gameboy under;
+    REQUIRE(under.load_rom(rom));
+    enter_level(under, kLevel12);
+    enter_1_2_underground(under);
+    REQUIRE(sky_color(under) == kSkyUnderground);
+}
+
 // the underground's loose coins, blocks and enemies, as the map draws them
 TEST_CASE("mario_1_2_coins_blocks_and_enemies_match_the_measured_map") {
     int coins = 0;
@@ -8259,6 +8441,49 @@ TEST_CASE("mario_map_bands_are_black_top_and_bottom") {
     // the footer's own first row is black too, same as the header's
     const size_t footer_i = (kMapFooterFirstTileRow * 8 + 3) * gb::kLcdWidth + 3;
     REQUIRE(colors[footer_i] == kSkyMap);
+}
+
+// the castle at the right end of the strip is one drawn icon now (kTileMapCastle* in assets.h,
+// map_draw_castle in mapscreen.c) rather than four block rows of the level's own reused castle
+// kinds, which read as a flat brick slab with a door in one corner. its right two tile columns are
+// its left two mirrored, its door stands on the path row mario walks up to, and the sand under it
+// runs on where the old version put another row of wall
+TEST_CASE("mario_map_castle_is_a_drawn_icon") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    open_file(gameboy, 0);
+
+    // (kMapBlockCols - 2) * kTilesPerBlock: the icon's own leftmost tile column
+    constexpr uint32_t castle_col = 16;
+    constexpr uint32_t path_row = kMapBandFirstTileRow + 4; // the row the markers and mario stand on
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+
+    // the tower is only the icon's middle two tile columns wide, so the band's own sky-blue is left
+    // showing at its shoulders and the silhouette steps in there. a tile id cannot say so - the
+    // tower's top tile is vram bank 1's 0x00 and the untouched cell beside it bank 0's, and both
+    // read back as 0x00 - but the color can
+    constexpr int kMapBandSky = 16 | (22 << 5) | (31 << 10); // assets_load_map_bg_palettes' sky slot
+    const size_t shoulder = (kMapBandFirstTileRow * 8 + 3) * gb::kLcdWidth + castle_col * 8 + 3;
+    REQUIRE(colors[shoulder] == kMapBandSky);
+    // the keep's merlons at that same shoulder two tile rows down, beside the tower's own wall
+    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 2, castle_col) == 0x02);
+    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 2, castle_col + 1) == 0x03);
+    // the door's two tile columns, the mirror pair, at the path row
+    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 1) == 0x09);
+    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 2) == 0x09);
+    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col) == 0x08);
+    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 3) == 0x08);
+
+    // and the door itself is dark: black is the map brick palette's color 3, the one this art wants
+    const size_t door = ((path_row + 1) * 8 + 4) * gb::kLcdWidth + (castle_col + 2) * 8 + 1;
+    REQUIRE(colors[door] == 0);
+
+    // below the path the strip is sand again, not a fifth row of castle - the tile the map's own
+    // path body is drawn from (kTileMapPathBody in assets.h)
+    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 7, castle_col) == 0x63);
+    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 7, castle_col + 3) == 0x63);
 }
 
 // --- the front-end lockout, kFrontLockFrames in mario.h -----------------------------------------

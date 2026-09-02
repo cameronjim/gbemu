@@ -184,7 +184,16 @@
 // tower and made the tower read as floating; this kind fills those notches with the castle's own
 // black instead, so the tower stands on masonry. scenery, like every other castle kind
 #define kBlockCastleCrenelInner 42U
-#define kBlockKindCount 43U
+// 1-3's trees, the platforms the whole level is built out of (see level-1-3.json): a canopy row of
+// a left cap, repeatable middles and a right cap - solid on every side, because smb has no one-way
+// platforms and its tree tops stop a head coming up from under them - over a trunk of pure scenery
+// that hangs from the canopy's middle column(s) down to the bottom row. the narrowest canopy the
+// real map draws is two wide, which is the two caps back to back with no middle between them
+#define kBlockTreeTopL 43U
+#define kBlockTreeTopM 44U
+#define kBlockTreeTopR 45U
+#define kBlockTrunk 46U
+#define kBlockKindCount 47U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -662,6 +671,9 @@
 #define kEnemyKoopa 1U
 #define kEnemyKoopaRed 2U
 #define kEnemyPiranha 3U
+// 1-3's red koopa paratroopa. the flyer itself is m9's; until it lands, spawn() drops it in as the
+// plain red koopa it stomps down into, at the cell the bible names
+#define kEnemyKoopaParaRed 4U
 
 // a pool slot's state. the pool is kept packed, so kEnemyOff never sits in a live slot: it is the
 // value a slot is cleared to and the one the host twin starts a fresh slot at

@@ -2,12 +2,13 @@
 
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
-**1-1 and 1-2 are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and bonus
-room, and 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
-castle), were extracted pixel by pixel from the official nes map images and carry
-`"confidence": "measured"`; see "measured levels" below. everything written about
-sequence-derived positions applies to 1-2's finer detail (coins/blocks/enemies, `"approx"`), and
-to 1-3 and 1-4 in full.
+**1-1, 1-2 and 1-3 are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and
+bonus room, 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
+castle), and the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
+lift rows, the staircase, the pole and the castle) were extracted pixel by pixel from the official
+nes and smbd map images and carry `"confidence": "measured"`; see "measured levels" below.
+everything written about sequence-derived positions applies to 1-2's finer detail
+(coins/blocks/enemies, `"approx"`), to 1-3's start column and lift travel, and to 1-4 in full.
 
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
@@ -33,7 +34,8 @@ game running in our emulator before any of this is trusted for level-building.
 
 `decor` is the background scenery a level paints behind its terrain: the hills, bushes and
 clouds that give an overworld its depth. it is optional — a level that omits the key gets no
-scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
+scenery, which is what 1-2 and 1-4 do, and a sub-area never gets any. 1-1 has hills, bushes and
+clouds; 1-3, which is trees over open air, has clouds only.
 
 - scenery never displaces anything. the compiler stamps it last and skips any cell that is
   already terrain, an object, or a hidden block's reserved cell, and clips anything past the
@@ -142,7 +144,7 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 ## enums
 
 - `terrain.kind`: `ground`, `gap`, `pipe`, `pipe_side`, `stairs`, `elevation`, `lift_platform`,
-  `lift_vertical`, `bricks`, `castle`, `island`,
+  `lift_vertical`, `bricks`, `castle`, `island`, `tree`,
   `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's one solid row
   (`CEILING_ROW`) over that span, the only way to carve a hole back out of the roof `apply_ceiling()`
   otherwise stamps across every underground-typed column - 1-2 needs one for the entry shaft, one
@@ -183,15 +185,19 @@ compiles to nothing and never gets a pipe.
 
 ## measured levels
 
-1-1 and 1-2 are no longer sequence-derived. every terrain run, block, enemy, decor shape, the
+1-1, 1-2 and 1-3 are no longer sequence-derived. every terrain run, block, enemy, decor shape, the
 flagpole and the castle were extracted from the official nes map images by classifying each 16x16
 cell against a tile sheet cut from the same image, and carry `"confidence": "measured"` wherever
 the extraction is solid (1-2's skeleton: floor pits, ceiling runs, pipe columns, the warp zone's
 order and destinations, the closing staircase, the flagpole and the castle). 1-2's finer detail -
 individual coin/block/enemy placement inside the underground run and its bonus room - remains
 `"approx"`: the tile classifier that produced the measurement is reliable on the skeleton and
-rough on small objects (see `confidence_notes` in `level-1-2.json`). the fields a measured level
-uses that a prose-derived one does not:
+rough on small objects (see `confidence_notes` in `level-1-2.json`). 1-3 was transcribed the same
+way from both rips at once - the nes one and the smbd challenge one, classified separately and
+diffed column by column - and the smbd geometry is what got built wherever they differ (see that
+file's `smbd_deltas`); what stays `approx` there is its start column, which no rip draws, and each
+lift's travel, because a rip catches a moving deck at one instant. the fields a measured level uses
+that a prose-derived one does not:
 
 - `length_columns` is honoured rather than derived. when it is an integer the compiler builds
   exactly that many columns; when it is null the length is still the last positioned feature
@@ -246,15 +252,45 @@ a handful of things the real level does needed bible fields nothing else uses:
   column 24 and the coin room's exit shaft at 215-216, both carried up to row 0 so the roof walk
   cannot leak across), not by a compiler-invented wall.
 
+## 1-3's own primitives
+
+1-3 is transcribed cell by cell from the nes and smbd 1-3 map rips (see `level-1-3.json`'s
+`confidence_notes`), and the level is built out of one shape nothing else uses:
+
+- `terrain[].kind = "tree"`: `{"x0", "x1", "y"}` is a tree. row `y` from `x0` to `x1` is the canopy
+  - a left cap, `x1 - x0 - 1` middles, a right cap (`kBlockTreeTopL/M/R`) - and the columns
+  `x0 + 1` to `x1 - 1` carry a trunk (`kBlockTrunk`) from `y + 1` down to the bottom row, which is
+  the inset the real map draws at every canopy width from three up (a two-wide canopy is the two
+  caps back to back and has no trunk at all). the canopy is **solid on every side**: smb has no
+  one-way platform, and its tree tops stop a head coming up from underneath, which is what
+  separates them from the `island` kind's `kBlockThin` deck. the trunk is scenery and only ever
+  fills sky, so a tall tree whose trunk hangs down through a shorter tree's canopy (1-3 stacks two
+  at columns 59-63 and two more at 24-31) leaves that canopy standing.
+- a level with any `tree` run is an athletic level exactly as one with an `island` run is: the
+  default ground is dropped and every column the bible does not place is open air.
+- `terrain[].kind = "lift_platform"` with a `y`: the measured form of a horizontal deck. `x0`/`x1`
+  are the travel the deck's own width rides between and `y` is its row, instead of the older form's
+  "carve a pit and put a pair of decks in it". a map rip catches a moving platform at one instant,
+  so the row and the drawn columns are measured and the travel is the pit it has to bridge.
+  `"live": false` records a deck the map draws that the engine has no slot left for - `kLiftSlots`
+  is two - so it is documented and not compiled.
+- 1-3's decor is clouds and nothing else. over open air there is no ground for a hill or a bush to
+  stand on, and neither rip draws one. two of its clouds have their lower row behind a canopy in
+  both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire.
+
 ## smbd-specific notes (apply to all 4 files)
 
 - challenge mode adds exactly 5 red coins and 1 hidden yoshi egg per level, plus a
   score-based medal (bronze/silver/gold tiers keyed off `medal_score`), per
   mariowiki/strategywiki's Super Mario Bros. Deluxe/Challenge coverage. medal score
   targets and jp variants are recorded per-level where sourced.
-- the smbd maps differ from the nes ones in two measured ways, both built here: 1-2's warp
+- the smbd maps differ from the nes ones in several measured ways, all built here: 1-2's warp
   zone room is a coin room (brick platforms, three question blocks, coins, its own sideways
-  exit pipe) instead of the three-pipe warp select, and every closing staircase is eight
-  columns and seven blocks tall with the flagpole eight columns past it, where the nes has
-  nine and eight and nine. 1-1 and 1-2 follow the smbd geometry; 1-3 and 1-4 are still
+  exit pipe) instead of the three-pipe warp select, and a closing staircase is shorter with the
+  flagpole eight columns past its last column instead of nine (1-1 and 1-2: eight columns and
+  seven blocks tall against the nes's nine and eight; 1-3, whose staircase is three two-column
+  tiers rather than one-column steps: six columns and seven blocks tall at 136-141 against the
+  nes's six and eight at 138-143). 1-3 also moves every platform past its lift pit two columns
+  left, raises one tree three rows and drops one of the nes map's four lift decks - the full list
+  is in `level-1-3.json`'s `smbd_deltas`. 1-1, 1-2 and 1-3 follow the smbd geometry; 1-4 is still
   prose-derived.

@@ -342,6 +342,11 @@ static void spawn(uint16_t cam_x) {
         ++live;
         e->state = kEnemyWalk;
         e->kind = roster_kind[cursor];
+        // the flyer is m9's: until it lands, 1-3's red paratroopas spawn as the plain red koopa they
+        // stomp down into, on the cell the bible names, so nothing here meets an unknown kind
+        if (e->kind == kEnemyKoopaParaRed) {
+            e->kind = kEnemyKoopaRed;
+        }
         e->pos_x = px;
         e->pos_y = (int16_t)((int16_t)top_row << 4);
         e->dir = -1; // smb starts every walker off to the left

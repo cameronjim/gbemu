@@ -437,8 +437,8 @@
 #define kTileBowser 0x8AU
 #define kHazardTileCount 8U // 0x84-0x8b
 
-// 0x8c-0x9f, twenty ids, is FREE: m8b's hud digit sprites lived there and the bar draws its own
-// digits out of the bg font now (see kTileHudDigitFirst). left unclaimed on purpose
+// 0x8c-0x9f, twenty ids, is FREE: m8b's hud digit sprites lived there and the readout row draws
+// its own digits out of the bg font now (see kTileHudDigitFirst). left unclaimed on purpose
 
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
@@ -460,8 +460,9 @@
 // oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
 // small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is
 // 19 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below.
-// slots 4-8 are FREE: m8b's five hud digit sprites held them until the bar moved to the window
-// layer, and nothing claims them now - hud_enter_level parks them once and leaves them alone
+// slots 4-8 are FREE: m8b's five hud digit sprites held them until the readout moved to the
+// window layer, and nothing claims them now - hud_enter_level parks them once and leaves them
+// alone
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteMarioLowL 2U
@@ -789,53 +790,65 @@
 // on 1-2 that is the whole level bar the last forty columns
 #define kHazardMarginPx 64U
 
-// the hud (games/mario/src/hud.c), smbd's own black status bar: the top two tile rows of the
-// WINDOW layer, whose map is 0x9c00 while the level's ring keeps 0x9800. sprites are not an option
-// - oam was exactly full at 40 slots - and the window costs no slot at all. the strip has to stop
-// after 16 px, so an lyc stat handler at scanline kHudBarLines drops LCDCF_WINON and the vbl
-// handler puts it back; both live in terrain.c beside the scroll shadows because an isr has to be
-// resident in bank 0 (see terrain_install_isrs)
-#define kHudBarRows 3U
-#define kHudBarLines 16U
-// the strip's two live rows, and the third the isr's own latency can leak onto (the stat interrupt
-// lands a few dots into scanline 16, so the ppu may already have fetched that line): painted with
-// blanks so the leak is one more black scanline rather than a stripe of sky
-#define kHudRowLabel 0U
-#define kHudRowValue 1U
-// the layout across the twenty columns. MARIO over its six score digits on the left, the coin
-// count beside it, WORLD's 1-N in the middle, TIME over its three digits on the right
-#define kHudLabelCol 0U
-#define kHudCoinIconCol 6U
-#define kHudCoinCol 8U
-#define kHudWorldCol 11U
-#define kHudTimeLabelCol 16U
-#define kHudScoreCol 0U
+// the hud (games/mario/src/hud.c): one tile row of the WINDOW layer drawn straight over the sky,
+// whose map is 0x9c00 while the level's ring keeps 0x9800. sprites are not an option - oam was
+// exactly full at 40 slots - and the window costs no slot at all. the row has to stop after 8 px,
+// so an lyc stat handler at scanline kHudBarLines drops LCDCF_WINON and the vbl handler puts it
+// back; both live in terrain.c beside the scroll shadows because an isr has to be resident in
+// bank 0 (see terrain_install_isrs).
+//
+// there is no black bar: every cell of the row carries kHudBarAttr, whose color 0 is the level's
+// own sky, so an unlit cell is the backdrop and the readout floats on it rather than on a band.
+// at the camera the game actually plays at (kPlayScy, and kCamLookUpPx above it at most) the top
+// 8 px of the view are open sky in all four levels - compile_level.py's highest solid rows are
+// the underground roof at block row 2, the flag ball at row 2 and a brick platform at row 5, and
+// the view opens on block rows 6-14. the two things the row can pass in front of are the top half
+// of a block row 6 cloud and, with the vertical window pushed to its limit, the underground roof;
+// either way it hides 8 px of them, which is what smb's own bar does to the same tiles
+#define kHudBarRows 2U
+#define kHudBarLines 8U
+// the one live row, and the second the isr's own latency can leak onto (the stat interrupt lands a
+// few dots into scanline 8, so the ppu may already have fetched that line): painted with blanks,
+// which are sky, so the leak is invisible
+#define kHudRow 0U
+// the layout across the twenty columns: coin icon, an x and the two coin digits on the left, the
+// six score digits centred, the three time digits on the right. no labels - the user wants the
+// numbers and nothing else
+#define kHudCoinIconCol 0U
+#define kHudCoinXCol 1U
+#define kHudCoinCol 2U
+#define kHudScoreCol 7U
 #define kHudTimeCol 17U
 #define kHudCoinDigits 2U
 #define kHudTimeDigits 3U
 // hud_score counts tens, so five digits and the trailing zero the cards also print
 #define kHudScoreDigits 5U
 
-// the bar's glyphs: the handful of ibm font characters it actually prints, re-encoded into vram
-// bank 1 with the ink on color 2 and the cell on color 3. kCamPalQuestion is (backdrop, gold,
-// white, black) in all three level palette sets - the question block's face needs the white and
-// the gold in every one of them - so one attribute byte gives a black band with white text
-// underground, overworld and castle alike, and not a single palette color has to move.
+// the row's glyphs: the digits and the one x it prints, re-encoded into vram bank 1 with the ink
+// on color 1 and the cell left on color 0. kCamPalSky's color 0 is the backdrop in all three level
+// palette sets and its color 1 is white in each of them - the overworld's clouds and pennant are
+// what put white there, and no underground or castle tile draws the sky slot's color 1 at all
+// (clouds and the pennant only ever stand in an overworld segment), so assets_data.c sets those
+// two sets' color 1 to the same white the overworld already had. color 0 of the sky slot is never
+// touched: it is what the host tests read to name the palette set.
 //
 // the ids are 0x80-0x94 in vram BANK 1. a bg id past 0x7f reads out of 0x8800.. (lcdc bit 4 is
 // clear), the same bytes bank 1's sprite ids 0x80.. name, so the run has to dodge the bank-1
 // sprite art too: the climb poses at kTileClimbSmall (0xe0..) and the fireball's spin frame at
 // kTileFireball. 0x80-0x94 collides with none of them and with no terrain family - a bg id is
-// all a host probe sees, so a bar glyph sharing an id with a block face would count as that block
+// all a host probe sees, so a hud glyph sharing an id with a block face would count as that block
 #define kTileHudDigitFirst 0x80U // 0x80-0x89, '0' up
-#define kTileHudBlank 0x8AU      // the space glyph, which re-encodes to a solid black cell
-// a hand-drawn tile rather than a font one: a gold coin (color 1) with a white slot (color 2) on
-// the same black cell, which is what tells the coin count apart from the score
+#define kTileHudBlank 0x8AU      // the space glyph, which re-encodes to an all-sky cell
+// a hand-drawn tile rather than a font one: a gold coin (color 1) with a darker slot (color 2) on
+// a transparent cell, which is what tells the coin count apart from the score. it wears
+// kHudCoinAttr instead of kHudBarAttr: kCamPalCoin also keeps the sky in color 0, and its colors
+// 1 and 2 are the gold ramp in the overworld and underground and the lava ramp in the castle
 #define kTileHudCoin 0x8BU
 // and one id per character of the list below, in that order
-#define kTileHudLetterFirst 0x8CU // 0x8c-0x94
-#define kHudGlyphChars "MARIOTEx-"
-#define kHudBarAttr ((uint8_t)(kCamPalQuestion | kCamAttrVram1))
+#define kTileHudLetterFirst 0x8CU // 0x8c, just the x
+#define kHudGlyphChars "x"
+#define kHudBarAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
+#define kHudCoinAttr ((uint8_t)(kCamPalCoin | kCamAttrVram1))
 
 // the countdown. the bible pins one tick every 24 frames, but that reads as a broken clock, so
 // ours ticks once per real second (60 frames), from the level json's timer field. hurrying up is

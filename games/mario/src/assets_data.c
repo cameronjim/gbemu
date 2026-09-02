@@ -1185,6 +1185,7 @@ void assets_load_scenery_tiles(void) BANKED {
 // the ground's color 0 is the grass instead: its blocks cover their whole 16x16 cell, and the two
 // rows of grass along the top of a surface block are the one place it shows
 void assets_load_bg_palettes(void) BANKED {
+    // color 1 of the sky slot is the clouds' and the pennant's white, and the hud row's ink
     palette_color_t sky[4] = {kSkyRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
     palette_color_t ground[4] = {RGB(2, 17, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
     palette_color_t brick[4] = {kSkyRgb, RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
@@ -1207,7 +1208,10 @@ void assets_load_bg_palettes_underground(void) BANKED {
     // the same eight slots and the same art: only the colors say the room is below ground. the
     // backdrop goes to a near-black navy, the masonry from brown to blue and the pipes to teal,
     // and the two warm slots keep their gold so a coin still reads as one
-    palette_color_t sky[4] = {kUndergroundRgb, RGB(20, 24, 31), RGB(6, 14, 26), RGB(0, 0, 0)};
+    // color 1 is the hud row's ink (see kHudBarAttr): white here as in the overworld set, which
+    // costs nothing because the only tiles pinned to this slot are the clouds and the pennant and
+    // neither ever stands in an underground segment
+    palette_color_t sky[4] = {kUndergroundRgb, RGB(31, 31, 31), RGB(6, 14, 26), RGB(0, 0, 0)};
     palette_color_t ground[4] = {RGB(8, 14, 28), RGB(14, 20, 31), RGB(5, 9, 22), RGB(0, 0, 0)};
     palette_color_t brick[4] = {kUndergroundRgb, RGB(12, 18, 31), RGB(6, 10, 26), RGB(0, 0, 0)};
     palette_color_t question[4] = {kUndergroundRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
@@ -1228,7 +1232,8 @@ void assets_load_bg_palettes_underground(void) BANKED {
 void assets_load_bg_palettes_castle(void) BANKED {
     // the same eight slots again, drained to castle stone. lava takes the coin slot, which no
     // castle grid paints a world coin with, so the one warm ramp on screen is the pit
-    palette_color_t sky[4] = {kCastleRgb, RGB(20, 20, 22), RGB(11, 11, 13), RGB(0, 0, 0)};
+    // color 1 is the hud row's ink again, and a castle grid paints no cloud and no pennant either
+    palette_color_t sky[4] = {kCastleRgb, RGB(31, 31, 31), RGB(11, 11, 13), RGB(0, 0, 0)};
     palette_color_t ground[4] = {RGB(9, 9, 11), RGB(21, 20, 19), RGB(12, 11, 11), RGB(0, 0, 0)};
     palette_color_t brick[4] = {kCastleRgb, RGB(20, 19, 18), RGB(12, 11, 11), RGB(0, 0, 0)};
     palette_color_t question[4] = {kCastleRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
@@ -2546,30 +2551,29 @@ void assets_load_hazard_tiles(void) BANKED {
     set_sprite_data(kTileHazardFirst, kHazardTileCount, kHazardTiles);
 }
 
-// the bar's coin: a gold (color 1) oval with a white (color 2) slot down the middle, on the same
-// color 3 cell the glyphs sit on. gold is the low plane alone and white the high plane alone, so
-// the rows read lo = everything but the slot, hi = everything but the body
+// the hud row's coin: a gold (color 1) oval with a darker slot (color 2) down the middle, on a
+// color 0 cell, which under kHudCoinAttr is the level's own sky. gold is the low plane alone and
+// the slot the high plane alone, so a row reads lo = the body, hi = the slot
 // clang-format off
 static const uint8_t kHudCoinTile[16] = {
-    0xFF, 0xFF, // ........
-    0xFF, 0xC3, // ..oooo..
-    0xE7, 0x99, // .oo##oo.
-    0xEF, 0x91, // .oo#ooo.
-    0xEF, 0x91, // .oo#ooo.
-    0xE7, 0x99, // .oo##oo.
-    0xFF, 0xC3, // ..oooo..
-    0xFF, 0xFF, // ........
+    0x00, 0x00, // ........
+    0x3C, 0x00, // ..oooo..
+    0x66, 0x18, // .oo##oo.
+    0x6E, 0x10, // .oo#ooo.
+    0x6E, 0x10, // .oo#ooo.
+    0x66, 0x18, // .oo##oo.
+    0x3C, 0x00, // ..oooo..
+    0x00, 0x00, // ........
 };
 // clang-format on
 
-// the hud bar's own copy of the ibm font, in vram bank 1. the resident glyphs at 0x00-0x5f draw
-// their ink on color 3 over color 0, which no level palette set can turn into white-on-black
-// (color 3 is the art's black outline in all eight slots and color 0 of the sky slot is the sky
-// itself). so each glyph is read back out of bank 0 and re-encoded: ink on color 2, cell on color
-// 3, which under kCamPalQuestion is white on black in every set. a 2bpp row is (lo, hi), so a cell
-// pixel is both planes set and an ink pixel is the hi plane only - and taking the ink mask as
-// lo|hi keeps this right whatever shade the font itself was expanded with. the space glyph carries
-// no ink at all, which is what makes a blank cell of the bar solid black
+// the hud row's own copy of the ibm font, in vram bank 1. the resident glyphs at 0x00-0x5f draw
+// their ink on color 3, which is the art's black outline in all eight level slots. so each glyph
+// is read back out of bank 0 and re-encoded: ink on color 1, cell left on color 0, which under
+// kHudBarAttr is white text standing on the level's own sky in every set. a 2bpp row is (lo, hi),
+// so an ink pixel is the lo plane only and a cell pixel is neither plane - and taking the ink mask
+// as lo|hi keeps this right whatever shade the font itself was expanded with. the space glyph
+// carries no ink at all, which is what leaves a blank cell as pure backdrop
 static void hud_glyph(uint8_t id, char c) {
     // gbdk leaves lcdc bit 4 clear, so a bg tile id is signed indexing from 0x9000 (pan docs,
     // "bg and window tile data"): the font's own 0x00-0x5f sit at 0x9000 up, which is the half of
@@ -2582,8 +2586,8 @@ static void hud_glyph(uint8_t id, char c) {
     for (r = 0; r < 16U; r = (uint8_t)(r + 2U)) {
         const uint8_t ink = (uint8_t)(src[r] | src[r + 1U]);
 
-        glyph[r] = (uint8_t)~ink;
-        glyph[r + 1U] = 0xFFU;
+        glyph[r] = ink;
+        glyph[r + 1U] = 0;
     }
     VBK_REG = VBK_BANK_1;
     set_bkg_data(id, 1, glyph);
@@ -2591,7 +2595,7 @@ static void hud_glyph(uint8_t id, char c) {
 
 void assets_load_hud_font(void) BANKED {
     // the same list hud.c maps a character to an id with, expanded here so the copy order and the
-    // ids cannot drift apart
+    // ids cannot drift apart. it is one character long now: the row prints digits and an x
     static const char kLetters[] = kHudGlyphChars;
     uint8_t i;
 

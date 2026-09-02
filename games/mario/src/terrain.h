@@ -72,7 +72,7 @@ void terrain_commit_scroll(void);
 // it paints the 0x9800 map with the lcd off. present() raises the strip again on the next play frame
 void terrain_park_scroll(void);
 
-// installs the vbl/lyc handlers that land the camera and clip the hud strip to its top 16 px, and
+// installs the vbl/lyc handlers that land the camera and clip the hud row to the top 8 px, and
 // points the window at the 0x9c00 map. called once at boot, before the lcd is ever on
 void terrain_install_isrs(void);
 

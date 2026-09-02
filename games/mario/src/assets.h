@@ -48,9 +48,10 @@ void assets_load_enemy_palettes(void) BANKED;
 void assets_load_hazard_tiles(void) BANKED;
 void assets_load_enemy_palettes_castle(void) BANKED;
 
-// the hud strip's glyphs: the resident ibm font re-encoded white-on-black into vram bank 1 at
-// kTileHudDigitFirst, plus the bar's one gold coin tile. no palette loader beside it - the strip
-// borrows kCamPalQuestion, whose white and black are the same in all three level sets
+// the hud row's glyphs: the resident ibm font re-encoded as white ink on a transparent cell into
+// vram bank 1 at kTileHudDigitFirst, plus the row's one gold coin tile. no palette loader beside
+// it - the row borrows kCamPalSky, whose color 0 is the level's own backdrop and whose color 1 is
+// white in all three level sets
 void assets_load_hud_font(void) BANKED;
 
 // the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5a)

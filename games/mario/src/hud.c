@@ -25,7 +25,7 @@ static uint8_t coin_digit[kHudCoinDigits];
 static uint8_t time_digit[kHudTimeDigits];
 static uint8_t last_coins;
 static uint16_t last_score;
-// what each cell of the strip currently carries; never a digit, so the first frame of a level
+// what each cell of the row currently carries; never a digit, so the first frame of a level
 // writes all ten
 static uint8_t shown[kHudScoreDigits + kHudCoinDigits + kHudTimeDigits];
 #define kHudSlotScore 0U
@@ -56,13 +56,13 @@ void hud_split(uint16_t value, uint8_t* out, uint8_t count) {
 }
 
 // straight into the window map rather than through set_win_tiles, for put_face's reason in
-// terrain.c: the strip is three rows of the map's first columns, so nothing can wrap off an edge
-// and none of that generality has to be paid for
+// terrain.c: the row is the map's first columns, so nothing can wrap off an edge and none of that
+// generality has to be paid for
 static void put_cell(uint8_t row, uint8_t col, uint8_t tile) {
     kWinMapBase[((uint16_t)row << 5) + col] = tile;
 }
 
-// the bar prints nine letters and ten digits and no more, so a character is looked up in the same
+// the row prints ten digits and one letter and no more, so a character is looked up in the same
 // list assets_load_hud_font copied in rather than costing an id per ascii code
 static uint8_t glyph(char c) {
     static const char kLetters[] = kHudGlyphChars;
@@ -79,25 +79,19 @@ static uint8_t glyph(char c) {
     return kTileHudBlank;
 }
 
-static void put_text(uint8_t row, uint8_t col, const char* text) {
-    uint8_t i;
-
-    for (i = 0; text[i] != '\0'; ++i) {
-        put_cell(row, (uint8_t)(col + i), glyph(text[i]));
-    }
-}
-
-static void put_digit(uint8_t slot, uint8_t row, uint8_t col, uint8_t value) {
+static void put_digit(uint8_t slot, uint8_t col, uint8_t value) {
     if (shown[slot] == value) {
         return;
     }
     shown[slot] = value;
-    put_cell(row, col, glyph((char)('0' + value)));
+    put_cell(kHudRow, col, glyph((char)('0' + value)));
 }
 
-// the whole strip, with the lcd off: every cell of all three rows tagged for the one palette and
-// blanked to solid black, then the labels that never move again
-static void paint_bar(uint8_t level) {
+// the whole row, with the lcd off: every cell tagged for the sky palette and blanked, which leaves
+// it reading as the backdrop rather than as a bar, then the coin icon and its x, which never move
+// again. the second row is the isr latency's own leak (see kHudBarRows) and gets the same
+// treatment, so a leaked scanline is one more line of sky
+static void paint_row(void) {
     uint8_t row;
     uint8_t col;
     uint8_t i;
@@ -108,23 +102,19 @@ static void paint_bar(uint8_t level) {
             put_cell(row, col, kHudBarAttr);
         }
     }
+    // the coin keeps its gold: kCamPalCoin's color 0 is the same sky, so only the ink differs
+    put_cell(kHudRow, kHudCoinIconCol, kHudCoinAttr);
     VBK_REG = VBK_TILES;
     for (row = 0; row < (uint8_t)kHudBarRows; ++row) {
         for (col = 0; col < (uint8_t)kScreenCols; ++col) {
             put_cell(row, col, glyph(' '));
         }
     }
-    put_text(kHudRowLabel, kHudLabelCol, "MARIO");
-    put_cell(kHudRowLabel, kHudCoinIconCol, kTileHudCoin);
-    put_text(kHudRowLabel, (uint8_t)(kHudCoinIconCol + 1U), "x");
-    put_text(kHudRowLabel, kHudTimeLabelCol, "TIME");
-    // world one is all there is, so the label is the level's own number rather than a WORLD line
-    // there is no room for; the pause card still carries the spelled-out one
-    put_text(kHudRowLabel, kHudWorldCol, "1-");
-    put_cell(kHudRowLabel, (uint8_t)(kHudWorldCol + 2U), glyph((char)('1' + level)));
-    // smb's score is always a multiple of ten and hud_score counts tens, so the strip prints the
+    put_cell(kHudRow, kHudCoinIconCol, kTileHudCoin);
+    put_cell(kHudRow, kHudCoinXCol, glyph('x'));
+    // smb's score is always a multiple of ten and hud_score counts tens, so the row prints the
     // zero the counter does not carry, exactly as the cards do
-    put_cell(kHudRowValue, (uint8_t)(kHudScoreCol + kHudScoreDigits), glyph('0'));
+    put_cell(kHudRow, (uint8_t)(kHudScoreCol + kHudScoreDigits), glyph('0'));
     for (i = 0; i < (uint8_t)(kHudScoreDigits + kHudCoinDigits + kHudTimeDigits); ++i) {
         shown[i] = 0xFFU;
     }
@@ -140,9 +130,12 @@ void hud_set_short_timer(uint8_t on) {
     short_timer = on;
 }
 
+// the level number the old bar printed is the pause card's business now: the row carries numbers
+// only, and no label to tell one from another
 void hud_enter_level(uint16_t ticks, uint8_t level) {
     uint8_t i;
 
+    (void)level;
     assets_load_hud_font();
     hud_time = (short_timer != 0U) ? (uint16_t)kShortTimerTicks : ticks;
     if (hud_time > (uint16_t)kTimerMax) {
@@ -154,7 +147,7 @@ void hud_enter_level(uint16_t ticks, uint8_t level) {
     hud_split(hud_time, time_digit, (uint8_t)kHudTimeDigits);
     hud_split(hud_coins, coin_digit, (uint8_t)kHudCoinDigits);
     hud_split(hud_score, score_digit, (uint8_t)kHudScoreDigits);
-    paint_bar(level);
+    paint_row();
     // m8b's five digit sprites are gone from oam; the slots are parked above the visible area once
     // here so nothing they last drew can linger, and left free (see kSpriteFreeFirst in mario.h)
     for (i = 0; i < (uint8_t)kSpriteFreeCount; ++i) {
@@ -211,13 +204,13 @@ uint8_t hud_frame(void) BANKED {
         }
     }
     for (i = 0; i < (uint8_t)kHudScoreDigits; ++i) {
-        put_digit((uint8_t)(kHudSlotScore + i), kHudRowValue, (uint8_t)(kHudScoreCol + i), score_digit[i]);
+        put_digit((uint8_t)(kHudSlotScore + i), (uint8_t)(kHudScoreCol + i), score_digit[i]);
     }
     for (i = 0; i < (uint8_t)kHudCoinDigits; ++i) {
-        put_digit((uint8_t)(kHudSlotCoin + i), kHudRowLabel, (uint8_t)(kHudCoinCol + i), coin_digit[i]);
+        put_digit((uint8_t)(kHudSlotCoin + i), (uint8_t)(kHudCoinCol + i), coin_digit[i]);
     }
     for (i = 0; i < (uint8_t)kHudTimeDigits; ++i) {
-        put_digit((uint8_t)(kHudSlotTime + i), kHudRowValue, (uint8_t)(kHudTimeCol + i), time_digit[i]);
+        put_digit((uint8_t)(kHudSlotTime + i), (uint8_t)(kHudTimeCol + i), time_digit[i]);
     }
     return timeout;
 }

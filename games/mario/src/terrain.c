@@ -426,7 +426,7 @@ static void commit_scroll(void) {
 }
 
 // both handlers run every frame, so both are three instructions: the vbl one lands the camera and
-// raises the strip, the lyc one drops it again after its 16 px
+// raises the readout row, the lyc one drops it again after its 8 px
 static void scroll_vbl(void) {
     commit_scroll();
     if (terrain_bar_on != 0U) {
@@ -445,7 +445,7 @@ void terrain_install_isrs(void) {
     add_VBL(scroll_vbl);
     add_LCD(bar_lcd);
     // gbdk's default chain terminator spins until the ppu reaches mode 0 or 1 before returning,
-    // which from a scanline-16 interrupt is most of a scanline of cpu the engine's own frame wants.
+    // which from a scanline-8 interrupt is most of a scanline of cpu the engine's own frame wants.
     // this handler writes one register and touches neither vram nor oam, so it has nothing to wait
     // for; nowait_int_handler has to be added last to replace the terminator
     add_LCD(nowait_int_handler);

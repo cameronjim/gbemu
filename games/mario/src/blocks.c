@@ -435,7 +435,7 @@ static void item_fall(void) {
         item_grounded = 0;
     }
 
-    sum = (uint16_t)((uint16_t)item_accum + (uint16_t)kItemGravitySubpx);
+    sum = (uint16_t)((uint16_t)item_accum + (uint16_t)(blocks_item_kind == kItemStar ? kStarGravitySubpx : kItemGravitySubpx));
     item_accum = (uint8_t)sum;
     if (sum > 0xFFU) {
         item_dy = (int8_t)(item_dy + 1);

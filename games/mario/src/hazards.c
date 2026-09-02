@@ -124,6 +124,8 @@ static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t aw, uint8_t ah, ui
     return ((int16_t)(ay + ah) > by && (int16_t)(by + bh) > ay) ? 1U : 0U;
 }
 
+static void park(uint8_t slot);
+
 void hazards_load_level(void) BANKED {
     uint8_t i;
     uint8_t span;
@@ -142,6 +144,18 @@ void hazards_load_level(void) BANKED {
     lift_sprites_shown = 0;
     bowser_shown = 0;
     live_bar = 0xFFU;
+
+    // hazards_draw only runs once a hazard is back in range (kHazardMarginPx), so a level load far
+    // from any of them would otherwise leave the last life's lift/flame/bowser sprites sitting in
+    // oam forever. park every slot this module owns up front, regardless of hazard_near
+    for (i = 0; i < (uint8_t)(kLiftSlots * 4U); ++i) {
+        park((uint8_t)(kSpriteLiftFirst + i));
+    }
+    for (i = 0; i < (uint8_t)kFlameSlots; ++i) {
+        park((uint8_t)(kSpriteFlameFirst + i));
+    }
+    park((uint8_t)kSpriteBowser);
+    park((uint8_t)(kSpriteBowser + 1U));
 
     for (i = 0; i < level->object_count; ++i) {
         const uint16_t column = level->object_column[i];

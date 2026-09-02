@@ -189,9 +189,15 @@ constexpr uint8_t kBlockPipeSideTl = 38;
 constexpr uint8_t kBlockPipeSideBl = 39;
 constexpr uint8_t kBlockPipeSideBodyT = 40;
 constexpr uint8_t kBlockPipeSideBodyB = 41;
-constexpr uint8_t kBlockKindCount = 42;
-// the first purely decorative kind; everything from here up is non-solid scenery
+// the keep's battlement row, whose notches are the castle's black rather than sky so the
+// three-wide tower reads as standing on it. scenery, like every other castle kind
+constexpr uint8_t kBlockCastleCrenelInner = 42;
+constexpr uint8_t kBlockKindCount = 43;
+// the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
+// games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
+// appended past them, so a decor test has to take the range and not everything from here up
 constexpr uint8_t kBlockFirstDecor = kBlockCloudTl;
+constexpr uint8_t kBlockLastDecor = kBlockBushR;
 
 // sub-milestone 5's own mirrors: the reaction list's kinds, the contents enum, and the two tile
 // families the spent block and the world coin take inside the pinned 0xa8/0xbc blocks
@@ -324,6 +330,8 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile == 0x22;
     case kBlockCastleCrenel:
         return tile == 0x23;
+    case kBlockCastleCrenelInner:
+        return tile == 0x5B;
     case kBlockCastleWindow:
         return tile >= 0x24 && tile <= 0x27;
     case kBlockCastleDoorTop:
@@ -722,6 +730,9 @@ inline uint8_t cam_ease(uint8_t cam_y, uint8_t want, uint8_t on_ground) {
     return static_cast<uint8_t>(want > cam_y ? cam_y + step : cam_y - step);
 }
 constexpr int kClearSlidePx = 2;
+// mario.h kClearPoleOffsetPx: the clear parks his box this far left of the flag block so the
+// climb pose's gripping hand lands on the shaft, which is painted in that block's left 3 px
+constexpr int kClearPoleOffsetPx = 12;
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
 constexpr int kLevelHeightPx = 240;
@@ -746,6 +757,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -2204,6 +2216,9 @@ constexpr int kFlagTakeoffColumns = 12;
 // physics.json timers.powerup_emergence: how long a dispensed item spends rising out of its block
 constexpr int kStarRiseFrames = 72;
 // and how long a hop the star chase spends on a goomba that walks into it
+// how long the rom's goomba is given to finish walking into a standing, starred mario after the
+// twin's own damage frame; the star window itself is far longer, so this cannot mask an expiry
+constexpr int kStarContactWaitFrames = 40;
 constexpr int kStarStompHold = 16;
 // and how long a hop the lab sweep spends on one
 [[maybe_unused]] constexpr int kLabSweepHold = 16;
@@ -3766,6 +3781,39 @@ void require_no_garbage(const gb::Gameboy& gameboy) {
 
 } // namespace
 
+// the topmost and bottommost screen rows carrying a pennant bg pixel, or {-1,-1}. the pennant is
+// repainted bg cells and not a sprite (oam is full), so it is read out of the tile map like terrain
+std::pair<int, int> cloth_rows(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int top = -1;
+    int bottom = -1;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile < 0x31 || tile > 0x34) {
+            continue;
+        }
+        const int y = static_cast<int>(i / gb::kLcdWidth);
+        if (top < 0) {
+            top = y;
+        }
+        bottom = y;
+    }
+    return {top, bottom};
+}
+
+// the bg tile id under one screen pixel, or 0xff where a sprite is drawn over it
+uint8_t bg_tile_at(const gb::Gameboy& gameboy, int x, int y) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    if (x < 0 || x >= static_cast<int>(gb::kLcdWidth) || y < 0 || y >= static_cast<int>(gb::kLcdHeight)) {
+        return 0xFFu;
+    }
+    const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
+    return (id & 0x100u) != 0 ? uint8_t{0xFFu} : static_cast<uint8_t>(id);
+}
+
 TEST_CASE("mario_rom_declares_a_cgb_mbc5_cart") {
     const std::vector<uint8_t> rom = read_mario_rom();
     REQUIRE(rom.size() == 131072u);
@@ -3868,7 +3916,7 @@ TEST_CASE("mario_scenery_lands_where_the_bible_puts_it") {
         for (int row = 0; row < kLevelRows; ++row) {
             const uint8_t kind = lv.grid[column][row];
 
-            if (kind < kBlockFirstDecor) {
+            if (kind < kBlockFirstDecor || kind > kBlockLastDecor) {
                 continue;
             }
             REQUIRE(kBlockFloorTable[kind] == 0);
@@ -3921,7 +3969,7 @@ TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
         for (int row = 0; row < kLevelRows; ++row) {
             const uint8_t kind = lv.grid[column][row];
 
-            if (kind < kBlockFirstDecor || seen.count(kind) != 0) {
+            if (kind < kBlockFirstDecor || kind > kBlockLastDecor || seen.count(kind) != 0) {
                 continue;
             }
             seen.insert(kind);
@@ -4765,10 +4813,11 @@ TEST_CASE("mario_autopilot_completes_1_1") {
         }
         const int pole = pole_face(gameboy, m);
         if (i >= 2) {
-            // snapped onto the pole: mario's sprite box is the pole block, so his art (one column
-            // in) starts exactly one pixel right of the block the pole is painted in. he only
-            // leaves that alignment when the hop carries him off the base
-            if (pole < 0 || m.left - pole != kMarioArtInset) {
+            // holding the pole: the clear stands him beside the shaft rather than straddling it
+            // (kClearPoleOffsetPx), so his art starts that far left of the pole's own lit column,
+            // less the one column of transparent art. he only leaves that alignment on the frame
+            // the slide ends and he flips across to the pole's far side
+            if (pole < 0 || pole - m.left != kClearPoleOffsetPx - kMarioArtInset) {
                 break;
             }
             ++held_pole;
@@ -4806,6 +4855,74 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     // unlocked under him; start off it opens 1-2, which now begins above ground (see 1-2's
     // segments[]) rather than underground
     REQUIRE(clear_into(gameboy, kSkyOverworld, 900) >= 0);
+}
+
+// the clear sequence smb actually plays: he grabs the pole, the pennant comes down it alongside him
+// and ends level with him at its base, he flips to the pole's far side, hops off, walks to the
+// castle and steps into its door. every position here is read relative to something else on the
+// same frame - the pennant against mario, mario against the door cell he vanishes into - so the
+// camera's own easing never enters into it
+TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    // the pennant starts up at the top of the shaft, well above where he caught it
+    const std::pair<int, int> cloth0 = cloth_rows(gameboy);
+    const Mario grabbed = mario_at(gameboy);
+    REQUIRE(grabbed.found);
+    REQUIRE(cloth0.first >= 0);
+    REQUIRE(cloth0.second < grabbed.top);
+
+    // then it comes down with him. the sequence is watched to the frame he steps out of sight, and
+    // what is kept is the closest the pennant's bottom ever came to his feet and the bg cell he was
+    // standing in on the last frame he was drawn
+    int closest = 1000;
+    int last_left = -1;
+    int last_bottom = -1;
+    int gone_at = -1;
+    for (int i = 0; i < 600 && gone_at < 0; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (!m.found) {
+            gone_at = i;
+            break;
+        }
+        last_left = m.left;
+        last_bottom = m.bottom;
+        const std::pair<int, int> cloth = cloth_rows(gameboy);
+        if (cloth.first >= 0) {
+            closest = std::min(closest, std::abs(cloth.second - m.bottom));
+        }
+    }
+    // the pennant finished the slide beside him rather than staying up the pole: its bottom edge
+    // came within a block of his feet, which it never is while it is still at kFlagTopRow
+    REQUIRE(closest <= kBlockPx);
+    REQUIRE(gone_at > 0);
+
+    // and where he went is the castle's own doorway: the bg cell under his last drawn frame is the
+    // door, not the wall beside it or the ground short of it
+    REQUIRE(last_left >= 0);
+    const uint8_t under = bg_tile_at(gameboy, last_left + kHitInsetPx, last_bottom - 1);
+    REQUIRE(tile_in_kind_family(under, kBlockCastleDoor));
+
+    // he stays out of sight from there: the card, not a mario standing in front of the castle
+    for (int i = 0; i < 30; ++i) {
+        gameboy.run_frame();
+        REQUIRE(!mario_at(gameboy).found);
+    }
+
+    // and the whole beat, pole contact to the card taking over, is the four to six seconds smb
+    // spends on it: what is watched above plus the doorway pause and the hold behind it
+    // (mario.h kClearDoorFrames + kClearHoldFrames)
+    const int sequence = gone_at + 24 + 60;
+    REQUIRE(sequence >= 4 * 60);
+    REQUIRE(sequence <= 6 * 60);
 }
 
 // --- sub-milestone 5: block reactions, items and the pipe sub-area ------------------------------
@@ -5218,7 +5335,8 @@ TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_200") {
 
     const auto castle_cell = [](uint8_t kind) {
         return kind == kBlockCastle || kind == kBlockCastleCrenel || kind == kBlockCastleWindow ||
-               kind == kBlockCastleDoorTop || kind == kBlockCastleDoor;
+               kind == kBlockCastleDoorTop || kind == kBlockCastleDoor ||
+               kind == kBlockCastleCrenelInner;
     };
     int first = -1;
     int last = -1;
@@ -6305,11 +6423,21 @@ TEST_CASE("mario_star_invincibility") {
     const int goombas_before = goombas_on_screen(gameboy);
     REQUIRE(goombas_before > 0);
 
-    // the twin calls this contact fatal; with the star running it takes the goomba instead
-    run(gameboy, 4);
-    elapsed += 4;
-    REQUIRE(!at_start_cell(gameboy));
-    REQUIRE(goombas_on_screen(gameboy) < goombas_before);
+    // the twin calls this contact fatal; with the star running it takes the goomba instead. the
+    // twin's damage frame is when a goomba would have reached ITS model of the row, and the rom's
+    // own goomba can be a few frames behind that - mario is standing perfectly still by now and
+    // bit-identical between builds, so the wait is on the goomba walking the last pixels in, not on
+    // anything about him. what is asserted is the outcome: the goomba goes and he never respawns
+    int killed = -1;
+    for (int i = 0; i < kStarContactWaitFrames && killed < 0; ++i) {
+        gameboy.run_frame();
+        ++elapsed;
+        REQUIRE(!at_start_cell(gameboy));
+        if (goombas_on_screen(gameboy) < goombas_before) {
+            killed = i;
+        }
+    }
+    REQUIRE(killed >= 0);
 
     // nothing else can reach him with the camera parked, so the rest of the window just runs out
     REQUIRE(elapsed < kStarFrames);

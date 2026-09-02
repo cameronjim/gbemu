@@ -86,6 +86,33 @@ uint8_t flow_begin_run(uint8_t selected) {
     return selected;
 }
 
+// the pennant's row as it comes down the pole, and its own step timer. they live in this bank with
+// the code that walks them; nothing outside it ever reads either
+static uint8_t flag_row;
+static uint8_t flag_timer;
+
+void flow_flag_arm(void) BANKED {
+    flag_row = level->flag_top_row;
+    flag_timer = 0;
+}
+
+uint8_t flow_flag_step(void) BANKED {
+    if (level->has_flag == 0U || flag_row >= level->flag_base_row) {
+        return 1;
+    }
+    ++flag_timer;
+    if (flag_timer >= (uint8_t)kClearFlagStepFrames) {
+        flag_timer = 0;
+        // the old cell back to sky, the pennant one row lower: the cloth hangs left of the shaft
+        terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row,
+                         (uint8_t)kBlockEmpty);
+        ++flag_row;
+        terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row,
+                         (uint8_t)kBlockFlagCloth);
+    }
+    return (uint8_t)(flag_row >= level->flag_base_row ? 1U : 0U);
+}
+
 // roster.json: "contact height determines the score bonus", in five bands from the pole's base to
 // its top. the shaft's own span is split evenly between them - the bible gives no pixel boundaries
 void flow_score_flag(int16_t feet) BANKED {

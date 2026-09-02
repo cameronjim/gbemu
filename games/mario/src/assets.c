@@ -39,6 +39,7 @@ static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTileHillSlopeTl,    kTileHillSlopeTr,     kTileHillFillTl,    kTileBushCapTl,
     kTileBushMidTl,      kTileBushCapTr,
     kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
+    kTileCastleCrenelInner,
 };
 // clang-format on
 // clang-format off
@@ -54,6 +55,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileHillSlopeTr,    kTileHillSlopeTl,     kTileHillFillTr,    kTileBushCapTr,
     kTileBushMidTr,      kTileBushCapTl,
     kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
+    kTileCastleCrenelInner,
 };
 // clang-format on
 // clang-format off
@@ -69,6 +71,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTileHillSlopeBl,    kTileHillSlopeBr,     kTileHillFillBl,    kTileBushCapBl,
     kTileBushMidBl,      kTileBushCapBr,
     kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileCastleWall,
 };
 // clang-format on
 // clang-format off
@@ -84,6 +87,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileHillSlopeBr,    kTileHillSlopeBl,     kTileHillFillBr,    kTileBushCapBr,
     kTileBushMidBr,      kTileBushCapBl,
     kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileCastleWall,
 };
 // clang-format on
 // sky, the flag's three cells, a world coin, the axe, lava and every scenery kind are all
@@ -99,6 +103,7 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,
     0,           0,
     kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    0,
 };
 // clang-format on
 // lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge, the
@@ -125,6 +130,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
+    kScenBrick,
 };
 // clang-format on
 

@@ -2,6 +2,7 @@
 
 #include "assets.h"
 #include "blocks.h"
+#include "flow.h"
 #include "hazards.h"
 #include "level.h"
 #include "mario.h"
@@ -50,6 +51,12 @@ static uint8_t clear_phase;
 static uint8_t clear_timer;
 // a castle has no pole to slide down, so its clear walks him off from the axe
 static uint8_t clear_axe;
+// 1 while he is holding the pole, which is the one pose that comes out of vram bank 1
+static uint8_t climbing;
+// and 1 once he has stepped into the castle door, which draws him nowhere at all
+static uint8_t clear_gone;
+// 1 once the pennant flow_flag_step is walking down the pole has reached its base
+static uint8_t clear_flag_done;
 
 // the box top before this frame's vertical step: a thin platform is solid only to feet that
 // crossed its deck line, so the collision needs where they were as well as where they are
@@ -456,6 +463,8 @@ void player_place(uint16_t column, uint8_t surface_row) {
     behind_bg = 0;
     clear_phase = kClearSlide;
     clear_timer = 0;
+    climbing = 0;
+    clear_gone = 0;
 }
 
 void player_init(void) {
@@ -627,7 +636,8 @@ uint8_t player_death_update(void) {
 void player_begin_clear(uint8_t from) {
     clear_axe = (from == (uint8_t)kClearFromAxe) ? 1U : 0U;
     if (clear_axe == 0U) {
-        x_pos = (uint16_t)((uint16_t)level->flag_column << 4);
+        // beside the shaft rather than straddling it, so the climb pose's hand lands on the pole
+        x_pos = (uint16_t)(((uint16_t)level->flag_column << 4) - (uint16_t)kClearPoleOffsetPx);
     }
     stop_x();
     y_speed = 0;
@@ -637,10 +647,16 @@ void player_begin_clear(uint8_t from) {
     skidding = 0;
     riding = 0xFF;
     walk_step = 0;
-    // a castle's clear has no pole to come down, so it starts at the walk-off the slide feeds into
+    clear_gone = 0;
+    // he grabs the pole on contact and holds it all the way down; a castle has no pole to come
+    // down, so its clear starts at the walk-off the slide would have fed into
+    climbing = (uint8_t)(clear_axe != 0U ? 0U : 1U);
     anim_frame = clear_axe != 0U ? (uint8_t)kFrameWalk0 : (uint8_t)kFrameJump;
     clear_phase = clear_axe != 0U ? (uint8_t)kClearWalk : (uint8_t)kClearSlide;
     clear_timer = 0;
+    // the pennant comes down with him, out of bank 5; a castle's clear has none to bring down
+    clear_flag_done = clear_axe;
+    flow_flag_arm();
 }
 
 // the pole's base: the row under the shaft's last cell is the ground mario's feet come to rest on
@@ -648,11 +664,18 @@ static int16_t clear_base_y(void) {
     return (int16_t)((int16_t)((int16_t)(level->flag_base_row + 1U) << 4) - (int16_t)foot_h());
 }
 
-// the column the walk-off ends at, kept inside the compiled level however short its tail is
+// the column the walk-off ends at: the castle's door when the level closes with one, and otherwise
+// the old fixed walk along the closing ground. kept inside the compiled level however short its
+// tail is
 static uint16_t clear_walk_x(void) {
-    uint16_t column =
-        (uint16_t)((clear_axe != 0U ? level->axe_column : level->flag_column) + (uint16_t)kClearWalkBlocks);
+    uint16_t column;
 
+    if (clear_axe == 0U && level->has_castle != 0U) {
+        column = (uint16_t)(level->castle_column + (uint16_t)kCastleDoorOffset);
+    } else {
+        column = (uint16_t)((clear_axe != 0U ? level->axe_column : level->flag_column) +
+                            (uint16_t)kClearWalkBlocks);
+    }
     if (column > (uint16_t)(level_columns - 1U)) {
         column = (uint16_t)(level_columns - 1U);
     }
@@ -664,15 +687,37 @@ uint8_t player_clear_update(void) {
 
     switch (clear_phase) {
     case kClearSlide:
+        // down the pole in the climb pose, the pennant coming down the column beside him
+        if (clear_flag_done == 0U) {
+            clear_flag_done = flow_flag_step();
+        }
         y_pos = (int16_t)(y_pos + kClearSlidePx);
         if (y_pos >= base_y) {
             y_pos = base_y;
+            // smb's beat: at the bottom he swings round to the pole's far side and faces back at it
+            x_pos = (uint16_t)(x_pos + kClearFlipPx);
+            facing_left = 1;
+            clear_phase = kClearFlip;
+            clear_timer = 0;
+        }
+        break;
+    case kClearFlip:
+        // and waits there while the flag finishes coming down, which is what holds this phase open
+        if (clear_flag_done == 0U) {
+            clear_flag_done = flow_flag_step();
+        }
+        ++clear_timer;
+        if (clear_timer >= (uint8_t)kClearFlipFrames && clear_flag_done != 0U) {
+            climbing = 0;
+            facing_left = 0;
+            anim_frame = kFrameJump;
             clear_phase = kClearHop;
             clear_timer = 0;
         }
         break;
     case kClearHop:
-        // a token hop off the pole: up for the first half of the window, back down for the second
+        // he lets go and hops off to the right: up for the first half of the window, down for the
+        // second
         y_pos =
             (int16_t)(y_pos + (clear_timer < (uint8_t)(kClearHopFrames / 2U) ? -kClearHopPx : kClearHopPx));
         x_pos = (uint16_t)(x_pos + kClearWalkPx);
@@ -693,12 +738,21 @@ uint8_t player_clear_update(void) {
         }
         if (x_pos >= clear_walk_x()) {
             anim_frame = kFrameIdle;
+            // he steps into the doorway and is drawn nowhere from here on
+            clear_gone = 1;
+            clear_phase = kClearDoor;
+            clear_timer = 0;
+        }
+        break;
+    case kClearDoor:
+        ++clear_timer;
+        if (clear_timer >= (uint8_t)kClearDoorFrames) {
             clear_phase = kClearHold;
             clear_timer = 0;
         }
         break;
     default:
-        // the level-clear beat: mario stands at the castle column while the state holds
+        // the level-clear beat: the empty castle holds the screen while the state runs out
         ++clear_timer;
         if (clear_timer >= (uint8_t)kClearHoldFrames) {
             return 1;
@@ -739,9 +793,27 @@ void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
     const uint8_t prop = (uint8_t)(palette | (facing_left != 0U ? (uint8_t)S_FLIPX : 0U) |
                                    (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
 
-    if (palette == (uint8_t)kSpriteHidden || sy <= -(int16_t)foot_h() || sy >= (int16_t)kScreenHeightPx ||
-        sx <= -(int16_t)kPlayerWidthPx || sx >= (int16_t)kScreenWidthPx) {
+    if (palette == (uint8_t)kSpriteHidden || clear_gone != 0U || sy <= -(int16_t)foot_h() ||
+        sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx ||
+        sx >= (int16_t)kScreenWidthPx) {
         player_hide();
+        return;
+    }
+    // the climb and jump poses live in vram bank 1, so their rows carry S_BANK in the prop. the
+    // slot cache compares (tile, prop) and the prop is what tells the two banks apart, so a pose
+    // that shares an id with a bank-0 one still reads as a change
+    if (climbing != 0U) {
+        const uint8_t climb_prop = (uint8_t)(prop | (uint8_t)S_BANK);
+
+        if (big == 0U) {
+            draw_row(kSpriteMarioL, (uint8_t)kTileClimbSmall, climb_prop, sx, sy);
+            move_sprite(kSpriteMarioLowL, 0, 0);
+            move_sprite(kSpriteMarioLowR, 0, 0);
+            return;
+        }
+        draw_row(kSpriteMarioL, (uint8_t)kTileClimbBigUpper, climb_prop, sx, sy);
+        draw_row(kSpriteMarioLowL, (uint8_t)kTileClimbBigLower, climb_prop, sx,
+                 (int16_t)(sy + kPlayerHeightPx));
         return;
     }
     if (big == 0U) {
@@ -751,10 +823,15 @@ void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
         move_sprite(kSpriteMarioLowR, 0, 0);
         return;
     }
-    // the upper slab is shared by every pose; crouching drops it 8 px so the legs overlap it and
-    // the body reads 24 px tall without costing its own tiles
-    draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx,
-             (int16_t)(sy + (crouched != 0U ? kCrouchInsetPx : 0)));
+    // every pose but the jump shares one upper slab, which is why the jump could not raise an arm:
+    // its own slab is the one thing bank 1 holds for him. crouching drops the shared slab 8 px so
+    // the legs overlap it and the body reads 24 px tall without costing its own tiles
+    if (anim_frame == (uint8_t)kFrameJump) {
+        draw_row(kSpriteMarioL, (uint8_t)kTileSuperJumpUpper, (uint8_t)(prop | (uint8_t)S_BANK), sx, sy);
+    } else {
+        draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx,
+                 (int16_t)(sy + (crouched != 0U ? kCrouchInsetPx : 0)));
+    }
     draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + (uint8_t)(anim_frame * kSuperTilesPerFrame)),
              prop, sx, (int16_t)(sy + kPlayerHeightPx));
 }

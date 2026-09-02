@@ -339,14 +339,20 @@ uint8_t terrain_solid_at(int16_t column, int16_t row) {
     return (uint8_t)(kBlockFloor[kind] & kFloorSolid);
 }
 
-// the bridge the axe drops: the cells go to sky in the ram grid, and whichever of them the ring
-// still holds is repainted. anything standing on them is now standing on the death plane
-void terrain_clear_cell(int16_t column, int16_t row) {
+// a direct cell write: the kind goes into the ram grid, and if the ring still holds that column its
+// face is repainted too. the flag pennant coming down the pole moves one cell a step this way
+void terrain_set_cell(int16_t column, int16_t row, uint8_t kind) {
     if (column < 0 || column >= (int16_t)level_columns || row < 0 || row >= (int16_t)LEVEL_ROWS) {
         return;
     }
-    level_grid[column][row] = kBlockEmpty;
+    level_grid[column][row] = kind;
     terrain_write_block(column, row);
+}
+
+// the bridge the axe drops: the cells go to sky, and anything standing on them is now standing on
+// the death plane
+void terrain_clear_cell(int16_t column, int16_t row) {
+    terrain_set_cell(column, row, (uint8_t)kBlockEmpty);
 }
 
 void terrain_write_block(int16_t column, int16_t row) {

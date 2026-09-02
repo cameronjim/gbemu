@@ -41,7 +41,7 @@ static uint8_t anim_frame;
 static uint8_t anim_accum;
 static uint8_t walk_step;
 
-// the 16x32 body, and the crouch that folds it to 24 px. the power state itself lives in powerup.c;
+// the 16x32 body, and the crouch that folds it to 16 px. the power state itself lives in powerup.c;
 // this module only ever needs the size it implies
 static uint8_t big;
 static uint8_t crouched;
@@ -155,8 +155,10 @@ static void step_speed(uint8_t keys) {
     uint16_t sum;
     uint8_t delta;
 
-    // a crouching mario cannot walk; whatever speed he had still sheds through the friction path
-    if (crouched == 0U) {
+    // a mario holding down cannot walk, smb-style: whatever speed he had sheds through the friction
+    // path and the duck-slide is momentum only. one still folded because a ceiling will not let him
+    // stand does get to crawl, or a one-block gap he came to rest in would hold him for good
+    if (crouched == 0U || (keys & J_DOWN) == 0U) {
         if ((keys & J_LEFT) != 0U && (keys & J_RIGHT) == 0U) {
             want_dir = -1;
         } else if ((keys & J_RIGHT) != 0U && (keys & J_LEFT) == 0U) {
@@ -248,7 +250,30 @@ static uint8_t blocked_at(int16_t col) {
         terrain_solid_at(col, row_of((int16_t)(y_pos + foot_h() - 1))) != 0U) {
         return 1;
     }
-    return (big != 0U && terrain_solid_at(col, row_of((int16_t)(top + kPlayerHeightPx))) != 0U) ? 1U : 0U;
+    // a folded body is one cell tall, so the head and foot probes already cover it
+    return (big != 0U && crouched == 0U &&
+            terrain_solid_at(col, row_of((int16_t)(top + kPlayerHeightPx))) != 0U)
+               ? 1U
+               : 0U;
+}
+
+// 1 when the cells his head would come back up into are clear. standing puts the box top back at
+// y_pos, so it is the fold's own cell - and the next one down when he is not cell-aligned
+static uint8_t head_room(void) {
+    const int16_t left = col_of(hit_left());
+    const int16_t right = col_of(hit_right());
+    const int16_t row = row_of(y_pos);
+
+    if (terrain_solid_at(left, row) != 0U || terrain_solid_at(right, row) != 0U) {
+        return 0;
+    }
+    if ((y_pos & 15) == 0) {
+        return 1;
+    }
+    return (terrain_solid_at(left, (int16_t)(row + 1)) != 0U ||
+            terrain_solid_at(right, (int16_t)(row + 1)) != 0U)
+               ? 0U
+               : 1U;
 }
 
 static void collide_x(void) {
@@ -577,8 +602,10 @@ uint8_t player_update(uint8_t keys) {
         x_pos = (carried < 0) ? 0U : (uint16_t)carried;
         y_pos = (int16_t)(y_pos + hazard_lift_dy[riding]);
     }
-    // crouching is a grounded pose only; must-measure whether smbd keeps it through a jump
-    crouched = (big != 0U && on_ground != 0U && (keys & J_DOWN) != 0U) ? 1U : 0U;
+    // crouching is a grounded pose only; must-measure whether smbd keeps it through a jump. down
+    // released under a solid cell leaves him folded rather than popping his head into it, which is
+    // what makes a duck-slide through a one-block gap survive the far side of it
+    crouched = (big != 0U && on_ground != 0U && ((keys & J_DOWN) != 0U || head_room() == 0U)) ? 1U : 0U;
     step_speed(keys);
     move_x();
     collide_x();
@@ -794,8 +821,7 @@ void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
                                    (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
 
     if (palette == (uint8_t)kSpriteHidden || clear_gone != 0U || sy <= -(int16_t)foot_h() ||
-        sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx ||
-        sx >= (int16_t)kScreenWidthPx) {
+        sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx || sx >= (int16_t)kScreenWidthPx) {
         player_hide();
         return;
     }
@@ -823,14 +849,23 @@ void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
         move_sprite(kSpriteMarioLowR, 0, 0);
         return;
     }
-    // every pose but the jump shares one upper slab, which is why the jump could not raise an arm:
-    // its own slab is the one thing bank 1 holds for him. crouching drops the shared slab 8 px so
-    // the legs overlap it and the body reads 24 px tall without costing its own tiles
+    if (crouched != 0U) {
+        // the fold is one 16x16 pose of its own, so the upper row parks; 0xff is never a real
+        // tile, so the cache cannot skip the set_sprite_tile the next standing frame owes
+        drawn_mario_tile[kSpriteMarioL] = 0xFF;
+        drawn_mario_prop[kSpriteMarioL] = 0xFF;
+        move_sprite(kSpriteMarioL, 0, 0);
+        move_sprite(kSpriteMarioR, 0, 0);
+        draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + kFrameCrouch * kSuperTilesPerFrame), prop,
+                 sx, (int16_t)(sy + kCrouchInsetPx));
+        return;
+    }
+    // every standing pose but the jump shares one upper slab, which is why the jump could not raise
+    // an arm: its own slab is the one thing bank 1 holds for him
     if (anim_frame == (uint8_t)kFrameJump) {
         draw_row(kSpriteMarioL, (uint8_t)kTileSuperJumpUpper, (uint8_t)(prop | (uint8_t)S_BANK), sx, sy);
     } else {
-        draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx,
-                 (int16_t)(sy + (crouched != 0U ? kCrouchInsetPx : 0)));
+        draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx, sy);
     }
     draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + (uint8_t)(anim_frame * kSuperTilesPerFrame)),
              prop, sx, (int16_t)(sy + kPlayerHeightPx));

@@ -500,11 +500,12 @@
 // the player's sprite box; the art keeps one transparent column inside each vertical edge
 #define kPlayerWidthPx 16
 #define kPlayerHeightPx 16
-// super/fire mario is twice as tall, and crouching folds the body to 24 px by dropping its top edge
-// eight px while the feet stay put. must-measure: smb's crouch box was not read off the disassembly
+// super/fire mario is twice as tall, and crouching folds the body down to a small mario's box by
+// dropping its top edge a whole cell while the feet stay put - which is what lets a duck-slide
+// carry him through a one-block gap the way smb's does
 #define kPlayerBigHeightPx 32
-#define kCrouchInsetPx 8
-#define kPlayerCrouchHeightPx (kPlayerBigHeightPx - kCrouchInsetPx) // 24
+#define kCrouchInsetPx 16
+#define kPlayerCrouchHeightPx (kPlayerBigHeightPx - kCrouchInsetPx) // 16
 // the horizontal hitbox is 12 px centered in the 16 px sprite, so a 2 px shoulder overhangs each
 // wall before it bites; feet/head spans stay the full sprite height. must-measure: the inset is
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible

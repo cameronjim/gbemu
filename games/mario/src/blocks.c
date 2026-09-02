@@ -360,7 +360,25 @@ void blocks_head_bump(int16_t column, int16_t row) {
         return;
     }
     index = find_block(column, row);
-    if (index < 0 || state[index] != kBlockStateIdle) {
+    if (index < 0) {
+        // 1-2 stamps some 450 plain bricks straight into the grid, far past what the reaction list
+        // holds, so smb's rule for a brick with nothing in it is answered off the grid instead
+        if (terrain_kind_at(column, row) != (uint8_t)kBlockBrick) {
+            return;
+        }
+        if (blocks_player_big == 0U) {
+            start_bump(column, row);
+            publish_busy();
+            return;
+        }
+        hud_score = (uint16_t)(hud_score + kScoreTens(kBrickPoints));
+        // straight into the ram grid, which needs no override bookkeeping: a death reloads the
+        // grid from rom and the brick is back, exactly as smb leaves it
+        terrain_clear_cell(column, row);
+        blocks_busy = 1;
+        return;
+    }
+    if (state[index] != kBlockStateIdle) {
         return;
     }
     if (level->block_kind[index] == kBlockListBrick && level->block_content[index] == kContentNothing &&

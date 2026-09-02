@@ -22,9 +22,5 @@ void level_select(uint8_t index);
 
 // unpacks kAreaMain or one of the level's sub-areas; switches banks, so it stays in bank 0
 void level_load(uint8_t area);
-// the palette set the grid column renders with: a sub-area is always underground, whatever holds
-// it; the main grid is the level's own type, unless a segment table (1-2) overrides this column's
-// range to render as a different type. column is a level_grid index, not a screen position
-uint8_t level_palette_set(uint16_t column);
 
 #endif

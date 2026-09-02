@@ -11,6 +11,7 @@
 #include "player.h"
 #include "powerup.h"
 #include "save.h"
+#include "states.h"
 #include "terrain.h"
 #include "title.h"
 
@@ -21,38 +22,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-// title -> select file -> world map -> level -> world map. a game over is the only way back to
-// the title from play; b walks the front end back a screen at a time
-enum GameState {
-    kStateFront,
-    kStatePlay,
-    kStateClear,
-    kStateClearCard,
-    kStateDeath,
-    kStatePause,
-    kStateGameOver,
-    kStateCamera,
-    kStatePipeDown,
-    kStatePipeUp
-};
-
-// the grid mario is playing in; a pipe swaps it and rebuilds the whole ring with the lcd off
-static uint8_t current_area;
-// which of world one he is on, and where a pipe he has just entered is taking him
-static uint8_t level_number;
-static uint8_t pending_area;
-static uint8_t pending_warp;
-// set the instant a pipe spits him back out while down is still held, so the same frame's held
-// check cannot swallow him straight back into the exit pipe he just climbed out of; clears the
-// moment down is released
-static uint8_t pipe_reentry_lock;
-// 0 on a level with nothing hazards.c owns, which is 1-1: the bank-5 module is not entered at all
-static uint8_t hazard_active;
-// and whether any of them is near enough this frame to be worth entering bank 5 for
-static uint8_t hazard_near;
 // scx/scy and oam are cheap and must land before scanline 0; the ring stream can outlast vblank on
 // a column boundary, so it always goes last
-static void present(void) {
+void main_present(void) {
     terrain_set_scroll_x(camera_pos_x);
     terrain_set_pan_y(camera_pos_y);
     terrain_apply_scroll();
@@ -73,73 +45,6 @@ static void present(void) {
         hazards_draw(camera_pos_x, camera_pos_y);
     }
     terrain_stream_window();
-}
-
-// the level load and the respawn share this: both refill the whole ring, far more vram traffic
-// than one vblank holds, so both do it with the lcd off
-static void enter_play(void) {
-    DISPLAY_OFF;
-    current_area = kAreaMain;
-    pending_area = 0xFF;
-    pending_warp = 0xFF;
-    hazard_active = flow_enter_level(level_number);
-    hazard_near = hazard_active;
-    present();
-    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
-    terrain_commit_scroll();
-    SHOW_BKG;
-    SHOW_SPRITES;
-    DISPLAY_ON;
-}
-
-// a card overwrote the bg map and every actor is frozen where it stood: the ring is repainted
-// where the camera already is, which is the same lcd-off refill a level load pays
-static void leave_card(void) {
-    DISPLAY_OFF;
-    flow_resume_from_card(current_area, camera_pos_x);
-    present();
-    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
-    terrain_commit_scroll();
-    SHOW_BKG;
-    DISPLAY_ON;
-}
-
-// a pipe swaps the whole grid, its palettes and the ring, so it pays the same lcd-off rebuild the
-// level load does rather than trying to stream a new area in through vblank; flow.c owns the work.
-// answers 1 when the landing left him rising out of a pipe rather than standing in play.
-//
-// a same-grid jump (kJumpAreaFlag) is not an area at all: he is on the main grid when it is over,
-// and recording that is what lets the next pipe of any kind trigger - the gate below only looks
-// under him while current_area is kAreaMain, and before this it kept the flagged pseudo-value
-static uint8_t enter_sub_area(uint8_t index) {
-    uint8_t rising;
-
-    DISPLAY_OFF;
-    current_area = ((index & (uint8_t)kJumpAreaFlag) != 0U) ? (uint8_t)kAreaMain : index;
-    rising = flow_enter_sub_area(index);
-    present();
-    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
-    terrain_commit_scroll();
-    SHOW_BKG;
-    DISPLAY_ON;
-    return rising;
-}
-
-static void leave_sub_area(void) {
-    DISPLAY_OFF;
-    current_area = kAreaMain;
-    flow_leave_sub_area();
-    present();
-    // the lcd is off and the first vblank is a frame away, so the camera goes into scx/scy here
-    terrain_commit_scroll();
-    SHOW_BKG;
-    DISPLAY_ON;
-}
-
-// every death goes through the same beat, whatever killed him
-static uint8_t begin_death(uint8_t from) {
-    player_begin_death(from);
-    return kStateDeath;
 }
 
 void main(void) {
@@ -177,7 +82,7 @@ void main(void) {
             const uint8_t action = front_frame(pressed, &level_number);
 
             if (action == (uint8_t)kFrontPlay) {
-                enter_play();
+                states_enter_play();
                 state = kStatePlay;
             } else if (action == (uint8_t)kFrontCamera) {
                 current_area = kAreaMain;
@@ -192,7 +97,7 @@ void main(void) {
             if ((powerup_flags & kPowerFlagFrozen) != 0U) {
                 powerup_update(keys, player_x(), player_y(), player_facing_left(), camera_pos_x);
                 player_set_big(powerup_pose);
-                present();
+                main_present();
                 continue;
             }
             if ((pressed & J_START) != 0U) {
@@ -202,8 +107,9 @@ void main(void) {
             }
             // the countdown and the coin rollover, and whichever cells of the strip they move
             if (hud_frame() != 0U) {
-                state = begin_death(kDeathFromHit);
-                present();
+                player_begin_death(kDeathFromHit);
+                state = kStateDeath;
+                main_present();
                 continue;
             }
             // the lifts, firebars and bowser move first, so the deck under him has already gone
@@ -222,15 +128,16 @@ void main(void) {
             status = player_update(keys);
             if (status == kPlayerFell) {
                 // the pit has already taken him under the level, so the beat only holds
-                state = begin_death(kDeathFromPit);
-                present();
+                player_begin_death(kDeathFromPit);
+                state = kStateDeath;
+                main_present();
                 continue;
             }
             if (status == kPlayerFlag) {
                 flow_score_flag(player_feet());
                 player_begin_clear(kClearFromFlag);
                 state = kStateClear;
-                present();
+                main_present();
                 continue;
             }
             // down is held rather than edge triggered, so landing on a cap with down already
@@ -256,7 +163,7 @@ void main(void) {
                             player_begin_pipe_down();
                         }
                         state = kStatePipeDown;
-                        present();
+                        main_present();
                         continue;
                     }
                 }
@@ -266,7 +173,7 @@ void main(void) {
                     pending_warp = target;
                     player_begin_pipe_down();
                     state = kStatePipeDown;
-                    present();
+                    main_present();
                     continue;
                 }
                 // every other pipe in the game takes down, so the bonus room's own exit should too
@@ -274,14 +181,14 @@ void main(void) {
                     pending_warp = 0xFF;
                     player_begin_pipe_down();
                     state = kStatePipeDown;
-                    present();
+                    main_present();
                     continue;
                 }
             } else if ((pressed & J_UP) != 0U && flow_over_exit_pipe() != 0U) {
                 pending_warp = 0xFF;
                 player_begin_pipe_down();
                 state = kStatePipeDown;
-                present();
+                main_present();
                 continue;
             }
             camera_update(player_x(), player_feet(), player_on_ground(), player_standing(), keys);
@@ -293,7 +200,7 @@ void main(void) {
                         ? blocks_update(player_x(), player_box_top(), player_box_height(), camera_pos_x)
                         : (uint8_t)kItemNone;
             if (taken != kItemNone && powerup_collect(taken) != 0U) {
-                present(); // the pickup froze the world; the next frame takes the branch above
+                main_present(); // the pickup froze the world; the next frame takes the branch above
                 continue;
             }
             // the enemy pass runs last so it sees this frame's camera, and hands mario's reaction
@@ -312,7 +219,7 @@ void main(void) {
                     hazards_drop_bridge();
                     player_begin_clear(kClearFromAxe);
                     state = kStateClear;
-                    present();
+                    main_present();
                     continue;
                 }
                 if (hazard == kHazardDamage) {
@@ -321,8 +228,9 @@ void main(void) {
             }
             if (contact == kEnemyHitDamage && powerup_damage() != 0U) {
                 // small mario has nothing left to lose
-                state = begin_death(kDeathFromHit);
-                present();
+                player_begin_death(kDeathFromHit);
+                state = kStateDeath;
+                main_present();
                 continue;
             }
             if (contact > kEnemyHitDamage) {
@@ -336,110 +244,14 @@ void main(void) {
             }
             player_set_big(powerup_pose);
             blocks_player_big = (uint8_t)((powerup_flags & kPowerFlagBig) != 0U ? 1U : 0U);
-            present();
+            main_present();
             continue;
         }
 
-        if (state == kStateDeath) {
-            // the world is frozen: nothing steps but mario falling out of it
-            if (player_death_update() != 0U) {
-                if (flow_after_death() != (uint8_t)kAfterDeathRespawn) {
-                    state = kStateGameOver;
-                } else {
-                    // the level reloads whole, spent blocks and all, which is smb's own respawn
-                    enter_play();
-                    state = kStatePlay;
-                }
-                continue;
-            }
-            present();
+        state = states_off_play(state, keys, pressed);
+        if (state != (uint8_t)kStateCamera) {
             continue;
         }
-
-        if (state == kStatePause) {
-            const uint8_t choice = pause_frame(pressed);
-
-            if (choice == (uint8_t)kPauseResume) {
-                leave_card();
-                state = kStatePlay;
-            } else if (choice == (uint8_t)kPauseQuit) {
-                // the run is abandoned, not cleared: nothing is recorded and the lives and score
-                // stand. the next level entry reloads everything through enter_play, so whatever
-                // sub-area or segment he quit from leaves nothing behind
-                front_map(level_number);
-                state = kStateFront;
-            }
-            continue;
-        }
-
-        if (state == kStateGameOver) {
-            if (flow_game_over_frame() != 0U) {
-                // a game over ends the run, so the file is let go of: whatever it recorded stands,
-                // and the next thing the player picks starts a fresh three lives
-                level_number = 0;
-                front_title();
-                state = kStateFront;
-            }
-            continue;
-        }
-
-        if (state == kStatePipeDown) {
-            if (player_pipe_update() != 0U) {
-                if (pending_warp != 0xFF) {
-                    // flow_warp_under_player() only ever hands back a real kLevels index here: a
-                    // pipe whose bible destination is a world we do not have yet compiles to
-                    // WARP_UNBUILT (0xFF, see compile_level.py), and the check above already
-                    // filtered that case out before pending_warp was ever set to it
-                    level_number = pending_warp;
-                    enter_play();
-                    state = kStatePlay;
-                } else if (current_area == kAreaMain) {
-                    // a jump onto a pipe cap comes up out of it, so that landing owns a state of
-                    // its own; everything else is straight into play
-                    state = enter_sub_area(pending_area) != 0U ? kStatePipeUp : kStatePlay;
-                } else {
-                    leave_sub_area();
-                    state = kStatePipeUp;
-                }
-                continue;
-            }
-            present();
-            continue;
-        }
-
-        if (state == kStatePipeUp) {
-            if (player_pipe_update() != 0U) {
-                state = kStatePlay;
-                // he can only just have climbed out of the exit pipe, so if down is still held this
-                // is not a new press against it - lock the held check until he lets go of down
-                pipe_reentry_lock = (uint8_t)((keys & J_DOWN) != 0U ? 1U : 0U);
-            }
-            present();
-            continue;
-        }
-
-        if (state == kStateClear) {
-            if (player_clear_update() != 0U) {
-                flow_clear_card();
-                state = kStateClearCard;
-                continue;
-            }
-            // the sequence owns mario, so the camera tracks him as a supported-but-moving actor
-            camera_update(player_x(), player_feet(), 1, 0, 0);
-            present();
-            continue;
-        }
-
-        if (state == kStateClearCard) {
-            if (flow_clear_frame(&level_number) == (uint8_t)kAfterCardMap) {
-                // back to the map with the next node open and the file written, not straight on
-                // into the next level: picking what to play is the map's job now
-                front_cleared(&level_number);
-                state = kStateFront;
-            }
-            continue;
-        }
-
 #if kDebugCamera
         debug_camera_frame(keys);
 #endif

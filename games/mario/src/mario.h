@@ -821,18 +821,18 @@
 // the gold in every one of them - so one attribute byte gives a black band with white text
 // underground, overworld and castle alike, and not a single palette color has to move.
 //
-// the ids are 0xe0-0xf4 in vram BANK 1, where nothing has ever stored a tile: bank 0's own
-// 0xe0-0xf7 is mario's sprite family, and a sprite can never be confused with one of these
-// because the two banks are chosen per bg cell by the attribute byte. the run is kept short and
-// away from the terrain families on purpose - a bg id is all a host probe sees, so a bar glyph
-// sharing an id with a block face would count as that block on every row it sits above
-#define kTileHudDigitFirst 0xE0U // 0xe0-0xe9, '0' up
-#define kTileHudBlank 0xEAU      // the space glyph, which re-encodes to a solid black cell
+// the ids are 0x80-0x94 in vram BANK 1. a bg id past 0x7f reads out of 0x8800.. (lcdc bit 4 is
+// clear), the same bytes bank 1's sprite ids 0x80.. name, so the run has to dodge the bank-1
+// sprite art too: the climb poses at kTileClimbSmall (0xe0..) and the fireball's spin frame at
+// kTileFireball. 0x80-0x94 collides with none of them and with no terrain family - a bg id is
+// all a host probe sees, so a bar glyph sharing an id with a block face would count as that block
+#define kTileHudDigitFirst 0x80U // 0x80-0x89, '0' up
+#define kTileHudBlank 0x8AU      // the space glyph, which re-encodes to a solid black cell
 // a hand-drawn tile rather than a font one: a gold coin (color 1) with a white slot (color 2) on
 // the same black cell, which is what tells the coin count apart from the score
-#define kTileHudCoin 0xEBU
+#define kTileHudCoin 0x8BU
 // and one id per character of the list below, in that order
-#define kTileHudLetterFirst 0xECU // 0xec-0xf4
+#define kTileHudLetterFirst 0x8CU // 0x8c-0x94
 #define kHudGlyphChars "MARIOTEx-"
 #define kHudBarAttr ((uint8_t)(kCamPalQuestion | kCamAttrVram1))
 

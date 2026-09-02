@@ -229,6 +229,24 @@ void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED {
     SHOW_SPRITES;
 }
 
+// bank 0 relief: the segment lookup runs only at a palette sync, never inside a frame
+static uint8_t level_palette_set(uint16_t column) {
+    uint8_t i;
+
+    // every sub-area smb has is a room underground, whatever the level holding it looks like
+    if (level_sub != 0) {
+        return (uint8_t)kLevelTypeUnderground;
+    }
+    // 1-2's segment table: the level is typed underground for its long middle run, but the two
+    // ends the map rip shows above ground override that back to overworld for their own columns
+    for (i = 0; i < level->segment_count; ++i) {
+        if (column >= level->segment_x0[i] && column <= level->segment_x1[i]) {
+            return level->segment_type[i];
+        }
+    }
+    return level->type;
+}
+
 void terrain_sync_palette(void) BANKED {
     load_palette_set(level_palette_set(terrain_camera_x() >> 4));
 }

@@ -7650,8 +7650,8 @@ namespace {
 // are bg cells whose tile ids come out of vram bank 1 at kTileHudDigitFirst (games/mario/src/
 // mario.h). framebuffer_tiles reports the id byte and the bank is not part of it, which is why the
 // strip's run sits clear of every terrain family - see the comment on kTileHudDigitFirst
-constexpr uint8_t kTileHudDigitLo = 0xE0;
-constexpr uint8_t kTileHudDigitHi = 0xE9;
+constexpr uint8_t kTileHudDigitLo = 0x80;
+constexpr uint8_t kTileHudDigitHi = 0x89;
 // the two rows' glyph bands in screen px, and each readout's leftmost column, per mario.h's layout
 constexpr int kHudLabelRowY = 0;
 constexpr int kHudValueRowY = 8;

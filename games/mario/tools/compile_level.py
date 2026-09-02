@@ -54,6 +54,13 @@ BLOCK_HILL_FILL = 34
 BLOCK_BUSH_L = 35
 BLOCK_BUSH_M = 36
 BLOCK_BUSH_R = 37
+# the sideways pipe 1-2 leaves its underground through: a two-row mouth facing left (rim top/bottom),
+# then one or more columns of horizontal body, then an ordinary vertical shaft of PIPE_BODY_L/R.
+# solid like any pipe; the contract with mario.h's kBlockPipeSide*
+BLOCK_PIPE_SIDE_TL = 38
+BLOCK_PIPE_SIDE_BL = 39
+BLOCK_PIPE_SIDE_BODY_T = 40
+BLOCK_PIPE_SIDE_BODY_B = 41
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -94,6 +101,10 @@ KIND_NAMES = {
     BLOCK_BUSH_L: "BUSH_L",
     BLOCK_BUSH_M: "BUSH_M",
     BLOCK_BUSH_R: "BUSH_R",
+    BLOCK_PIPE_SIDE_TL: "PIPE_SIDE_TL",
+    BLOCK_PIPE_SIDE_BL: "PIPE_SIDE_BL",
+    BLOCK_PIPE_SIDE_BODY_T: "PIPE_SIDE_BODY_T",
+    BLOCK_PIPE_SIDE_BODY_B: "PIPE_SIDE_BODY_B",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -147,6 +158,9 @@ OBJ_AXE = 5
 # 1-2's above-ground/underground/above-ground segments, walled off from each other so the only way
 # from one to the next is through one of these. the contract with mario.h's kObjPipeJump
 OBJ_PIPE_JUMP = 6
+# a pipe entered by walking right into its mouth (1-2's underground exit): object column is the rim,
+# object row the mouth's top row, param a jump index exactly like OBJ_PIPE_JUMP. mario.h's kObjPipeSide
+OBJ_PIPE_SIDE = 7
 
 OBJ_NAMES = {
     OBJ_PIPE: "PIPE",
@@ -156,6 +170,7 @@ OBJ_NAMES = {
     OBJ_BOWSER: "BOWSER",
     OBJ_AXE: "AXE",
     OBJ_PIPE_JUMP: "PIPE_JUMP",
+    OBJ_PIPE_SIDE: "PIPE_SIDE",
 }
 
 # level types, the contract with games/mario/src/mario.h's kLevelType*
@@ -294,6 +309,10 @@ def feature_max_x(bible):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
+        elif t["kind"] == "pipe_side":
+            max_x = max(max_x, t["shaft_x"] + 1)
+        elif t["kind"] == "lift_vertical":
+            max_x = max(max_x, t["x"] + LIFT_BLOCKS - 1)
         elif t["kind"] == "castle":
             max_x = max(max_x, t["x0"] + CASTLE_WIDTH - 1)
     for b in bible.get("blocks", []):
@@ -722,7 +741,7 @@ def compile_grid(bible, level_type):
                 # target row is filled in once the whole grid - including the segment the target
                 # column lands in - has finished settling
                 objects.append((t["x"], top_row, OBJ_PIPE_JUMP, len(jumps)))
-                jumps.append(t["jump_to"])
+                jumps.append((t["jump_to"], t.get("jump_to_row")))
         elif t["kind"] == "castle":
             # a decorative castle with no flag beside it - 1-2's above-ground start stands one at
             # its own left edge, the way the real map does, with nothing to touch or clear
@@ -758,6 +777,37 @@ def compile_grid(bible, level_type):
             row = GROUND_ROW if t["y"] >= GROUND_ROW else t["y"]
             probes.append((t["x0"], row, kind))
             probes.append((t["x1"], row, kind))
+        elif t["kind"] == "pipe_side":
+            # the mouth's rim column and top row, the horizontal body out to the shaft, and the
+            # shaft itself rising from shaft_top to the mouth's bottom row (no cap: the map draws
+            # 1-2's shafts running straight up through the ceiling). the rim is the walk-in trigger
+            rim_x, top = t["x"], t["y"]
+            shaft_x, shaft_top = t["shaft_x"], t.get("shaft_top", CEILING_ROW)
+            if 0 <= rim_x < length_columns:
+                grid[rim_x][top] = BLOCK_PIPE_SIDE_TL
+                grid[rim_x][top + 1] = BLOCK_PIPE_SIDE_BL
+            for column in range(rim_x + 1, shaft_x):
+                if 0 <= column < length_columns:
+                    grid[column][top] = BLOCK_PIPE_SIDE_BODY_T
+                    grid[column][top + 1] = BLOCK_PIPE_SIDE_BODY_B
+            for row in range(shaft_top, top + 2):
+                if 0 <= shaft_x < length_columns:
+                    grid[shaft_x][row] = BLOCK_PIPE_BODY_L
+                if 0 <= shaft_x + 1 < length_columns:
+                    grid[shaft_x + 1][row] = BLOCK_PIPE_BODY_R
+            probes.append((rim_x, top, BLOCK_PIPE_SIDE_TL))
+            probes.append((rim_x, top + 1, BLOCK_PIPE_SIDE_BL))
+            probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
+            if t.get("jump_to") is not None:
+                objects.append((rim_x, top, OBJ_PIPE_SIDE, len(jumps)))
+                jumps.append((t["jump_to"], t.get("jump_to_row")))
+        elif t["kind"] == "lift_vertical":
+            # a measured vertical lift: x is the deck's left column, y0 the top row of its travel,
+            # span how many rows it covers, reverse whether it starts at the bottom running up. the
+            # engine bounces the deck between the two ends at kLiftSpeedPx (hazards.c)
+            span = min(LIFT_SPAN_MASK, max(1, int(t["span"])))
+            param = span | (LIFT_REVERSE if t.get("reverse") else 0)
+            objects.append((t["x"], t["y0"], OBJ_LIFT_V, param))
         elif t["kind"] == "lift_platform":
             # the bible's 1-2 run is a pair of vertical lifts ("left descends, right ascends"), its
             # 1-3 run a pair of horizontal ones. the ground under a horizontal pair is carved away,
@@ -783,6 +833,18 @@ def compile_grid(bible, level_type):
             continue
         apply_block(grid, b["x"], b["y"], b["kind"])
         probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    # loose coins standing in the level's own grid (1-2's underground has thirty-odd): a coin cell is
+    # walk-through and the engine collects it on contact, so it only ever lands on open sky
+    coin_cells = []
+    for c in bible.get("coins", []):
+        column, row = c["x"], c["y"]
+        if 0 <= column < length_columns and 0 <= row < LEVEL_ROWS and grid[column][row] == BLOCK_EMPTY:
+            grid[column][row] = BLOCK_COIN
+            coin_cells.append((column, row))
+    if coin_cells:
+        probes.append((coin_cells[0][0], coin_cells[0][1], BLOCK_COIN))
+        probes.append((coin_cells[-1][0], coin_cells[-1][1], BLOCK_COIN))
 
     bridge = None
     axe_column = None
@@ -840,11 +902,16 @@ def compile_grid(bible, level_type):
 
     # a jump's landing row can only be read off the grid once every terrain run - including
     # whatever segment the target column falls in - has finished settling
+    # a bible may name the landing row itself: a pipe cap's row makes the player rise out of that pipe,
+    # an open-air row drops him in from above (1-2's entrance shaft). otherwise he lands on the floor
     jump_targets = []
-    for target_x in jumps:
-        target_row = surface_row(grid, target_x, first_row_at(bible, target_x, level_type))
+    for target_x, explicit_row in jumps:
+        if explicit_row is None:
+            target_row = surface_row(grid, target_x, first_row_at(bible, target_x, level_type))
+        else:
+            target_row = int(explicit_row)
         jump_targets.append((target_x, target_row))
-        probes.append((target_x, target_row, BLOCK_GROUND))
+        probes.append((target_x, target_row, grid[target_x][target_row] if 0 <= target_x < length_columns else BLOCK_EMPTY))
 
     return {
         "grid": grid,
@@ -1019,7 +1086,11 @@ def compile_measured_area(area, kind):
         exit_column = length_columns - 2
     settle_ground(grid, probes)
 
-    start_column = int((area.get("start") or {}).get("x", 0))
+    start = area.get("start") or {}
+    start_column = int(start.get("x", 0))
+    # a room whose bible names the start row drops the player in from there (1-2's coin room: the
+    # real game lets him fall down the shaft); otherwise he stands on the column's floor
+    start_row = int(start["y"]) if start.get("y") is not None else surface_row(grid, start_column)
     return {
         "kind": kind,
         "grid": grid,
@@ -1029,7 +1100,7 @@ def compile_measured_area(area, kind):
         "exit_column": exit_column,
         "exit_top_row": exit_top_row,
         "start_column": start_column,
-        "start_row": surface_row(grid, start_column),
+        "start_row": start_row,
         "probes": probes,
     }
 
@@ -1469,6 +1540,13 @@ def compile_level(bible, bank, area_bank):
         # the bible's exit prose for 1-1 is "same pipe, returns to overworld near entry", so the
         # return column is the entry pipe's own; an area with no compiled pipe returns to the start
         entry = entry_of.get(index, (bible.get("start", {}).get("x", 0), GROUND_ROW - 2))
+        # a room that comes back up a different pipe than it went down (1-2's coin room returns
+        # through the third piranha pipe) names that pipe's column as return_x
+        return_x = area.get("return_x")
+        if return_x is not None:
+            for t in bible.get("terrain", []):
+                if t["kind"] == "pipe" and t["x"] == return_x:
+                    entry = (return_x, GROUND_ROW - t["height"])
         compiled["return_column"] = entry[0]
         compiled["return_top_row"] = entry[1]
         areas.append(compiled)

@@ -534,8 +534,20 @@ void player_begin_pipe_up(uint16_t column, uint8_t top_row) {
     behind_bg = 1;
 }
 
+// the sink reset again, with the phase and the pose swapped: he walks into the mouth rather than
+// standing on a cap, so the frame he is hidden for is a walk frame
+void player_begin_pipe_side(void) {
+    player_begin_pipe_down();
+    pipe_phase = kPipeSide;
+    anim_frame = kFrameWalk0;
+}
+
 uint8_t player_pipe_update(void) {
-    y_pos = (int16_t)(y_pos + (pipe_phase == kPipeDown ? kPipeStepPx : -kPipeStepPx));
+    if (pipe_phase == kPipeSide) {
+        x_pos = (uint16_t)(x_pos + kPipeStepPx);
+    } else {
+        y_pos = (int16_t)(y_pos + (pipe_phase == kPipeDown ? kPipeStepPx : -kPipeStepPx));
+    }
     pipe_travel = (uint8_t)(pipe_travel + kPipeStepPx);
     if (pipe_travel < (uint8_t)kPipeTravelPx) {
         return 0;

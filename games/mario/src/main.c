@@ -5,8 +5,8 @@
 #include "hazards.h"
 #include "hud.h"
 #include "level.h"
-#include "mario.h"
 #include "mapscreen.h"
+#include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
 #include "powerup.h"
@@ -97,14 +97,22 @@ static void leave_card(void) {
 }
 
 // a pipe swaps the whole grid, its palettes and the ring, so it pays the same lcd-off rebuild the
-// level load does rather than trying to stream a new area in through vblank; flow.c owns the work
-static void enter_sub_area(uint8_t index) {
+// level load does rather than trying to stream a new area in through vblank; flow.c owns the work.
+// answers 1 when the landing left him rising out of a pipe rather than standing in play.
+//
+// a same-grid jump (kJumpAreaFlag) is not an area at all: he is on the main grid when it is over,
+// and recording that is what lets the next pipe of any kind trigger - the gate below only looks
+// under him while current_area is kAreaMain, and before this it kept the flagged pseudo-value
+static uint8_t enter_sub_area(uint8_t index) {
+    uint8_t rising;
+
     DISPLAY_OFF;
-    current_area = index;
-    flow_enter_sub_area(index);
+    current_area = ((index & (uint8_t)kJumpAreaFlag) != 0U) ? (uint8_t)kAreaMain : index;
+    rising = flow_enter_sub_area(index);
     present();
     SHOW_BKG;
     DISPLAY_ON;
+    return rising;
 }
 
 static void leave_sub_area(void) {
@@ -218,12 +226,20 @@ void main(void) {
             }
             down_held = (uint8_t)(((keys & J_DOWN) != 0U && pipe_reentry_lock == 0U) ? 1U : 0U);
             if (current_area == kAreaMain) {
-                if (down_held != 0U) {
-                    target = flow_pipe_under_player();
+                // down over a cap, or right into a sideways mouth - which can only be answered
+                // while he is grounded and pressed still against something, so the object scan
+                // costs nothing on an ordinary frame of walking
+                if (down_held != 0U ||
+                    (flow_side_pipes != 0U && (keys & J_RIGHT) != 0U && player_standing() != 0U)) {
+                    target = flow_pipe_target(down_held);
                     if (target != 0xFF) {
                         pending_area = target;
                         pending_warp = 0xFF;
-                        player_begin_pipe_down();
+                        if (flow_pipe_side_armed != 0U) {
+                            player_begin_pipe_side();
+                        } else {
+                            player_begin_pipe_down();
+                        }
                         state = kStatePipeDown;
                         present();
                         continue;
@@ -254,6 +270,10 @@ void main(void) {
                 continue;
             }
             camera_update(player_x(), player_feet(), player_on_ground(), player_standing(), keys);
+            // the loose grid coins 1-2 is strewn with; no other level in world one has any
+            if (flow_grid_coins != 0U) {
+                flow_collect_grid_coins();
+            }
             taken = blocks_busy != 0U
                         ? blocks_update(player_x(), player_box_top(), player_box_height(), camera_pos_x)
                         : (uint8_t)kItemNone;
@@ -351,8 +371,9 @@ void main(void) {
                     enter_play();
                     state = kStatePlay;
                 } else if (current_area == kAreaMain) {
-                    enter_sub_area(pending_area);
-                    state = kStatePlay;
+                    // a jump onto a pipe cap comes up out of it, so that landing owns a state of
+                    // its own; everything else is straight into play
+                    state = enter_sub_area(pending_area) != 0U ? kStatePipeUp : kStatePlay;
                 } else {
                     leave_sub_area();
                     state = kStatePipeUp;

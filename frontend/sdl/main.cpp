@@ -735,8 +735,8 @@ void main_loop_step(void* arg) {
                     // carts like mario have no such menu and use esc to pause/unpause with start
                     if (down) {
                         app.esc_button = (gameboy.cgb_mode() || style_mask(app, 0x800) != 0)
-                                              ? gb::Button::Start
-                                              : gb::Button::B;
+                                             ? gb::Button::Start
+                                             : gb::Button::B;
                     }
                     gameboy.set_button(app.esc_button, down);
                     break;

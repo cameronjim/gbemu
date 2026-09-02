@@ -141,7 +141,8 @@ scenery, which is what 1-2, 1-3 and 1-4 do, and a sub-area never gets any.
 
 ## enums
 
-- `terrain.kind`: `ground`, `gap`, `pipe`, `stairs`, `elevation`, `lift_platform`, `island`,
+- `terrain.kind`: `ground`, `gap`, `pipe`, `pipe_side`, `stairs`, `elevation`, `lift_platform`,
+  `lift_vertical`, `bricks`, `castle`, `island`,
   `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's one solid row
   (`CEILING_ROW`) over that span, the only way to carve a hole back out of the roof `apply_ceiling()`
   otherwise stamps across every underground-typed column - 1-2 needs one for the entry shaft, one
@@ -219,14 +220,41 @@ from a coin count in its prose. such an entry uses:
   falls back to the old behaviour, where the count is read out of the room's `notes` prose and
   a flat row of coins is invented for it (which is what 1-2's bonus room still does).
 
+## 1-2's own primitives
+
+1-2 is transcribed cell by cell from the smbd map (see `level-1-2.json`'s `confidence_notes`), and
+a handful of things the real level does needed bible fields nothing else uses:
+
+- `coins`: a top-level list of `{"x":..,"y":..}` cells, loose coins standing in the level's own grid
+  (the underground run has twenty-six). they compile to coin cells the engine collects on contact.
+- `terrain[].kind = "pipe_side"`: the sideways pipe mario walks into. `x` is the mouth's rim column
+  and `y` the mouth's top row (the mouth is always two rows tall); `shaft_x` is the left column of
+  the ordinary vertical shaft the mouth joins, `shaft_top` the row that shaft rises to (default: the
+  ceiling row). columns between the rim and the shaft are horizontal body. `jump_to`/`jump_to_row`
+  are the destination, as for a `pipe` with `jump_to`; the engine's trigger is walking right into the
+  rim while standing on the mouth's floor.
+- `terrain[].pipe.jump_to_row` (optional, with `jump_to`): the landing row. name a pipe cap's row and
+  the player rises out of that pipe; name an open-air row and he drops in from there and falls
+  (1-2's entrance shaft). omitted, he lands on the target column's floor.
+- `terrain[].kind = "lift_vertical"`: a measured vertical lift. `x` is the deck's left column, `y0`
+  the top row of its travel, `span` the rows it covers, `reverse` whether it starts at the bottom
+  running up. the engine has two lift slots, so a level places at most two.
+- an `areas[]` entry's `start.y`, when given, is honoured instead of the column's floor, so a room
+  can drop the player in from the top of its shaft; and `return_x` names the main-grid pipe the
+  room's exit brings him up out of when it is not the one he went down.
+- the seam between two segments is sealed by the bible's own terrain (1-2 uses the brick wall at
+  column 24 and the coin room's exit shaft at 215-216, both carried up to row 0 so the roof walk
+  cannot leak across), not by a compiler-invented wall.
+
 ## smbd-specific notes (apply to all 4 files)
 
 - challenge mode adds exactly 5 red coins and 1 hidden yoshi egg per level, plus a
   score-based medal (bronze/silver/gold tiers keyed off `medal_score`), per
   mariowiki/strategywiki's Super Mario Bros. Deluxe/Challenge coverage. medal score
   targets and jp variants are recorded per-level where sourced.
-- smbd is known (per mariowiki 1-2 coverage) to alter at least one nes layout for the
-  smaller gbc screen: 1-2's warp zone room is replaced with a room of ? blocks/coins
-  instead of the 3-pipe warp select. other smbd layout deltas were not found in the
-  sources used for this pass and are marked `"unknown"` rather than assumed identical
-  to nes.
+- the smbd maps differ from the nes ones in two measured ways, both built here: 1-2's warp
+  zone room is a coin room (brick platforms, three question blocks, coins, its own sideways
+  exit pipe) instead of the three-pipe warp select, and every closing staircase is eight
+  columns and seven blocks tall with the flagpole eight columns past it, where the nes has
+  nine and eight and nine. 1-1 and 1-2 follow the smbd geometry; 1-3 and 1-4 are still
+  prose-derived.

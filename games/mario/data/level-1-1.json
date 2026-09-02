@@ -20,7 +20,7 @@
     {"kind": "stairs", "x0": 140, "x1": 143, "step_height": -4, "heights": [4, 3, 2, 1], "confidence": "measured", "notes": "second mid staircase, descending"},
     {"kind": "stairs", "x0": 148, "x1": 152, "step_height": 4, "heights": [1, 2, 3, 4, 4], "confidence": "measured", "notes": "third mid staircase, ascending with a flat two-column top over the pit at 153-154"},
     {"kind": "stairs", "x0": 155, "x1": 158, "step_height": -4, "heights": [4, 3, 2, 1], "confidence": "measured", "notes": "fourth mid staircase, descending out of the pit"},
-    {"kind": "stairs", "x0": 181, "x1": 189, "step_height": 8, "heights": [1, 2, 3, 4, 5, 6, 7, 8, 8], "confidence": "measured", "notes": "the closing staircase, eight blocks tall with a flat two-column top; the flagpole stands nine columns past its last column"}
+    {"kind": "stairs", "x0": 181, "x1": 188, "step_height": 7, "heights": [1, 2, 3, 4, 5, 6, 7, 7], "confidence": "measured", "notes": "the closing staircase as the smbd map draws it: eight columns, seven blocks tall with a flat two-column top. the nes map has nine columns and eight blocks; the gbc port trimmed the flight by one step and stands the flagpole eight columns past its last step instead of nine"}
   ],
   "blocks": [
     {"x": 16, "y": 9, "kind": "question", "contents": "coin", "confidence": "measured", "notes": "the lone opening question block"},
@@ -117,7 +117,7 @@
     {"kind": "big_hill", "x": 48, "confidence": "measured"},
     {"kind": "big_hill", "x": 96, "confidence": "measured"},
     {"kind": "small_hill", "x": 145, "confidence": "measured", "notes": "the map's big hill at 144 is cut off by the staircase at 148; scenery here is placed whole or not at all, so it stands as the smaller shape in the columns that are clear"},
-    {"kind": "big_hill", "x": 192, "confidence": "measured"},
+    {"kind": "big_hill", "x": 191, "confidence": "measured", "notes": "the smbd map stands it at 192 with its right slope hidden behind the flag's base block; scenery here is placed whole or not at all, so it steps one column left of the pole at 196"},
     {"kind": "small_hill", "x": 16, "confidence": "measured"},
     {"kind": "small_hill", "x": 64, "confidence": "measured"},
     {"kind": "small_hill", "x": 112, "confidence": "measured"},
@@ -132,6 +132,7 @@
     {"kind": "bush", "x": 119, "width": 3, "confidence": "measured"},
     {"kind": "bush", "x": 138, "width": 2, "confidence": "measured", "notes": "the map's four-wide bush at 137 has its caps buried in the two mid staircases; the two clear columns between them keep it"},
     {"kind": "bush", "x": 167, "width": 3, "confidence": "measured"},
+    {"kind": "bush", "x": 198, "width": 2, "confidence": "measured", "notes": "the smbd map's bush between the flag and the castle; its right cap is hidden behind the castle, so only the two clear columns are kept"},
     {"kind": "cloud", "x": 8, "y": 7, "width": 3, "confidence": "measured", "notes": "the cloud band repeats every 48 columns too: widths 3/3/5/4. the map's own rows are 3/2/3/2; every cloud here sits four rows lower, because the nes shows all fifteen rows at once and our nine-row window rests on rows 6-14, where the map's sky band would never be in shot"},
     {"kind": "cloud", "x": 19, "y": 6, "width": 3, "confidence": "measured"},
     {"kind": "cloud", "x": 27, "y": 7, "width": 5, "confidence": "measured"},
@@ -150,8 +151,8 @@
     {"kind": "cloud", "x": 180, "y": 6, "width": 4, "confidence": "measured"},
     {"kind": "cloud", "x": 199, "y": 7, "width": 3, "confidence": "measured"}
   ],
-  "flag": {"x": 198, "confidence": "measured", "notes": "nine columns past the closing staircase's last column (189); the map's pole runs rows 3-11 over a stone base at row 12, ours runs rows 4-12"},
-  "castle_end": {"x": 202, "confidence": "measured", "notes": "the castle occupies columns 202-206, rows 8-12"},
+  "flag": {"x": 196, "confidence": "measured", "notes": "eight columns past the closing staircase's last column (188), where the smbd map stands it; the map's pole runs rows 3-11 over a stone base at row 12, ours runs rows 4-12"},
+  "castle_end": {"x": 200, "confidence": "measured", "notes": "four columns past the flag, as on both maps: the castle occupies columns 200-204, rows 8-12"},
   "warps": [],
   "smbd": {
     "red_coins": [
@@ -171,5 +172,5 @@
     "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-1.png",
     "https://www.mariowiki.com/World_1-1_(Super_Mario_Bros.)"
   ],
-  "confidence_notes": "the terrain, blocks, enemies, decor, flagpole, castle and bonus room in this file are no longer prose-derived: every column and row was extracted programmatically from the official nes 1-1 map image (3584x480, 16px tiles, 224 columns x 15 playfield rows plus the bonus room below it) by classifying each 16x16 cell against a tile sheet cut from the same image. positions therefore carry \"confidence\": \"measured\". block *contents* are still read off the item icons the map draws over each block, cross-checked against mariowiki prose. four deliberate deviations from the measurement are recorded in the notes above: the big hill at map column 144 and the bush at map column 137 are cut off by staircases on the real map, and our compiler places scenery whole or not at all, so they stand as the largest shape that fits the clear columns; the whole cloud band is transposed four rows down, since our camera window never shows the nes sky rows; and the hidden 1-up block keeps its measured column but sits on the standard low block row. the flagpole shaft is one row shorter than the map's because the engine's flag band geometry is fixed at rows 4-12."
+  "confidence_notes": "the terrain, blocks, enemies, decor, flagpole, castle and bonus room in this file are no longer prose-derived: every column and row was extracted programmatically from the official nes 1-1 map image (3584x480, 16px tiles, 224 columns x 15 playfield rows plus the bonus room below it) by classifying each 16x16 cell against a tile sheet cut from the same image. positions therefore carry \"confidence\": \"measured\". block *contents* are still read off the item icons the map draws over each block, cross-checked against mariowiki prose. the closing staircase, flagpole and castle follow the smbd (gbc) map rather than the nes one: the gbc port trims the flight to eight columns and seven blocks and stands the flag eight columns past it (see the stairs, flag and castle_end notes). four deliberate deviations from the measurement are recorded in the notes above: the big hill at map column 144 and the bush at map column 137 are cut off by staircases on the real map, and our compiler places scenery whole or not at all, so they stand as the largest shape that fits the clear columns; the whole cloud band is transposed four rows down, since our camera window never shows the nes sky rows; and the hidden 1-up block keeps its measured column but sits on the standard low block row. the flagpole shaft is one row shorter than the map's because the engine's flag band geometry is fixed at rows 4-12."
 }

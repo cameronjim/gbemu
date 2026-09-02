@@ -22,6 +22,45 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
+uint8_t flow_grid_coins;
+uint8_t flow_side_pipes;
+uint8_t flow_pipe_side_armed;
+
+// whether this level has a sideways pipe at all, worked out once at load. the walk-in trigger is
+// the one pipe test that cannot hang off a button edge - he holds right into the mouth - so
+// without this the game loop would ask the player module for his stance, and then bank 5 for the
+// object list, on every frame of every walk in every level. 1-1's frames do not have that to give
+static void scan_side_pipes(void) {
+    uint8_t i;
+
+    flow_side_pipes = 0;
+    for (i = 0; i < level->object_count; ++i) {
+        if (level->object_kind[i] == (uint8_t)kObjPipeSide) {
+            flow_side_pipes = 1;
+            return;
+        }
+    }
+}
+
+// loose coins the compiler stamped straight into the main grid (1-2 is full of them) are picked up
+// by walking through them, which is a probe of the cells his box covers on every frame of play.
+// most levels have none at all, so the grid is read once here - lcd off, beside the level load -
+// and the game loop skips the whole path unless this says there is something to find
+static void scan_grid_coins(void) {
+    uint16_t c;
+    uint8_t r;
+
+    flow_grid_coins = 0;
+    for (c = 0; c < level_columns; ++c) {
+        for (r = 0; r < (uint8_t)LEVEL_ROWS; ++r) {
+            if (level_grid[c][r] == (uint8_t)kBlockCoin) {
+                flow_grid_coins = 1;
+                return;
+            }
+        }
+    }
+}
+
 uint8_t flow_enter_level(uint8_t index) BANKED {
     powerup_reset();
     level_select(index);
@@ -29,6 +68,8 @@ uint8_t flow_enter_level(uint8_t index) BANKED {
     blocks_player_big = 0;
     blocks_enter_area(kAreaMain);
     terrain_init(kAreaMain);
+    scan_grid_coins();
+    scan_side_pipes();
     hazards_load_level();
     player_init();
     enemies_load_level();
@@ -148,23 +189,45 @@ void terrain_sync_palette(void) BANKED {
 // and the bg palette still have to catch up to wherever he landed - the same lcd-off work a
 // sub-area swap pays, just reached through terrain's incremental scroll path since the grid
 // itself needs no work. called from flow_enter_sub_area below, never on its own: main.c's state
-// machine only ever sees the one pending_area value, kJumpAreaFlag and all
-static void pipe_jump(uint8_t index) {
+// machine only ever sees the one pending_area value, kJumpAreaFlag and all.
+//
+// answers 1 when the landing armed a rise out of a pipe, which the caller has to hold its pipe-up
+// state open for. the target cell decides which landing it is, so the data format never had to
+// grow a field for it: a kBlockPipeTl there is a pipe cap and he comes up out of it exactly the
+// way a bonus room's return pipe does (1-2's underground exit lands on the ending's pipe), and
+// anything else is a plain placement - with nothing solid under his feet, which is 1-2's entrance
+// shaft, that placement is the top of an eleven row fall
+static uint8_t pipe_jump(uint8_t index) {
     const uint16_t column = level->jump_target_column[index];
     const uint8_t row = level->jump_target_row[index];
 
     terrain_set_scroll_x((uint16_t)(column << 4));
     terrain_stream_window();
     terrain_sync_palette();
+    if (terrain_kind_at((int16_t)column, (int16_t)row) == (uint8_t)kBlockPipeTl) {
+        player_begin_pipe_up(column, row);
+        // framed on where he ends up standing, not on the shaft he is climbing out of
+        camera_init((uint16_t)(column << 4), (int16_t)((int16_t)row << 4));
+        return 1U;
+    }
     player_place(column, row);
+    // player_place stands him on the cell it names, so an empty one has to be let go of: a bounce
+    // of zero speed is the reset that does it - off the ground with gravity already running, and
+    // with the jump edge spent, so an a button still held from the pipe cannot launch him
+    if (terrain_floor_at((int16_t)column, (int16_t)row) == 0U) {
+        player_stomp_bounce(0);
+    }
     camera_init(player_x(), player_feet());
+    return 0U;
 }
 
-void flow_enter_sub_area(uint8_t index) BANKED {
+uint8_t flow_enter_sub_area(uint8_t index) BANKED {
     if ((index & (uint8_t)kJumpAreaFlag) != 0U) {
-        pipe_jump((uint8_t)(index & (uint8_t)~kJumpAreaFlag));
-        return;
+        return pipe_jump((uint8_t)(index & (uint8_t)~kJumpAreaFlag));
     }
+    // the room's own grid is about to replace the main one, so its coins belong to blocks.c's
+    // coin list from here until the return trip re-scans
+    flow_grid_coins = 0;
     // the room's own AreaInfo has to be in ram before anything reads it: blocks_enter_area takes
     // the coin table off level_sub, and level_sub is still null while the main level is loaded, so
     // without this the room's coin list was whatever bytes sat at address zero - which is why none
@@ -178,6 +241,7 @@ void flow_enter_sub_area(uint8_t index) BANKED {
     // the room's own entry cell: 1-1's drops him past the brick wall down its left edge, not into it
     player_place(level_sub->start_column, (uint8_t)level_sub->start_row);
     camera_init(player_x(), player_feet());
+    return 0U;
 }
 
 void flow_leave_sub_area(void) BANKED {
@@ -190,26 +254,82 @@ void flow_leave_sub_area(void) BANKED {
     player_begin_pipe_up(column, top_row);
     // the camera is framed on where he ends up standing, not on the shaft he is still climbing out of
     camera_init((uint16_t)(column << 4), (int16_t)((int16_t)top_row << 4));
+    scan_grid_coins();
 }
 
-uint8_t flow_pipe_under_player(void) BANKED {
+// a sideways mouth is entered by walking into it, so the test is a wall contact rather than a
+// stance: his right shoulder against the rim column (collide_x parks the hitbox exactly one px
+// short of a solid cell), still on the near side of it, and his body overlapping the two rows the
+// mouth spans. the caller has already checked that he is grounded, still and holding right
+static uint8_t at_side_mouth(uint16_t column, uint8_t row) {
+    const uint16_t rim = (uint16_t)(column << 4);
+    const uint16_t left = (uint16_t)(player_x() + kPlayerHitInsetPx);
+    const int16_t feet = player_feet();
+
+    if ((uint16_t)(left + kPlayerHitWidthPx) < rim || left >= rim) {
+        return 0;
+    }
+    return ((int16_t)(player_box_top() >> 4) <= (int16_t)((int16_t)row + 1) &&
+            (int16_t)((feet - 1) >> 4) >= (int16_t)row)
+               ? 1U
+               : 0U;
+}
+
+uint8_t flow_pipe_target(uint8_t down_held) BANKED {
     uint8_t i;
 
+    flow_pipe_side_armed = 0;
     for (i = 0; i < level->object_count; ++i) {
-        if (level->object_kind[i] == (uint8_t)kObjPipe) {
-            if (player_over_pipe(level->object_column[i], level->object_row[i]) != 0U) {
+        const uint8_t kind = level->object_kind[i];
+        const uint16_t column = level->object_column[i];
+        const uint8_t row = level->object_row[i];
+
+        if (down_held == 0U) {
+            // right is held instead, so only a sideways mouth can answer. the same flagged return
+            // an ordinary jump pipe gives, plus the byte that tells main.c to walk him in rather
+            // than sink him
+            if (kind == (uint8_t)kObjPipeSide && at_side_mouth(column, row) != 0U) {
+                flow_pipe_side_armed = 1;
+                return (uint8_t)(kJumpAreaFlag | level->object_param[i]);
+            }
+        } else if (kind == (uint8_t)kObjPipe) {
+            if (player_over_pipe(column, row) != 0U) {
                 return level->object_param[i];
             }
-        } else if (level->object_kind[i] == (uint8_t)kObjPipeJump) {
+        } else if (kind == (uint8_t)kObjPipeJump) {
             // a same-grid segment teleport (1-2's entrance/exit pipes): folded into the same scan
             // and the same return value as an ordinary sub-area pipe, flagged so
             // flow_enter_sub_area can tell them apart - main.c's state machine never has to
-            if (player_over_pipe(level->object_column[i], level->object_row[i]) != 0U) {
+            if (player_over_pipe(column, row) != 0U) {
                 return (uint8_t)(kJumpAreaFlag | level->object_param[i]);
             }
         }
     }
     return 0xFF;
+}
+
+// the cells his box covers, at most two columns by three rows, and never the whole grid: a coin
+// among them is cleared through terrain's own write path so the ram grid, the ring cache and vram
+// all agree, and pays exactly what a sub-area coin pays. a death reloads the grid from rom and the
+// coins come back, which is smb's own behaviour
+void flow_collect_grid_coins(void) BANKED {
+    const uint16_t px = player_x();
+    const int16_t top = player_box_top();
+    const int16_t last_row = (int16_t)((int16_t)(top + (int16_t)player_box_height() - 1) >> 4);
+    const int16_t last_col = (int16_t)((uint16_t)(px + kPlayerWidthPx - 1U) >> 4);
+    int16_t c;
+    int16_t r;
+
+    for (c = (int16_t)(px >> 4); c <= last_col && c < (int16_t)level_columns; ++c) {
+        for (r = (top < 0) ? 0 : (int16_t)(top >> 4); r <= last_row && r < (int16_t)LEVEL_ROWS; ++r) {
+            if (level_grid[c][r] != (uint8_t)kBlockCoin) {
+                continue;
+            }
+            terrain_clear_cell(c, r);
+            ++hud_coins;
+            hud_score = (uint16_t)(hud_score + kScoreTens(kCoinPoints));
+        }
+    }
 }
 
 uint8_t flow_warp_under_player(void) BANKED {

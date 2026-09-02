@@ -1,6 +1,7 @@
 #ifndef BLOCKS_H
 #define BLOCKS_H
 
+#include <gb/gb.h>
 #include <stdint.h>
 
 // one compiled block's runtime state; a spent block is still solid, a broken one is gone entirely
@@ -43,8 +44,22 @@ void blocks_head_bump(int16_t column, int16_t row);
 // returns the kItem* he picked up this frame, or kItemNone; the effects are powerup.c's business
 uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x);
 
-// writes the item and coin-pop sprites for this frame, or parks them off screen
-void blocks_draw(uint16_t cam_x, uint8_t cam_y);
+// writes the item and coin-pop sprites for this frame, or parks them off screen. it lives in
+// games/mario/src/blocks_draw.c, banked: it is two oam slots on the few frames anything is loose,
+// and bank 0 needed the half kilobyte back
+void blocks_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
+
+// the two loose slots, published as ram so the banked draw pass above can read them without a
+// call back into bank 0: the item (mushroom/star/1-up/flower) and the coin a block just paid out,
+// plus whether either still has sprites parked in oam - which is part of what blocks_busy answers
+extern uint8_t blocks_item_kind;
+extern uint16_t blocks_item_x;
+extern int16_t blocks_item_y;
+extern uint8_t blocks_coin_active;
+extern uint16_t blocks_coin_x;
+extern int16_t blocks_coin_y;
+extern uint8_t blocks_item_shown;
+extern uint8_t blocks_coin_shown;
 
 // the internal counters the hud will read in m8; nothing displays them yet
 uint16_t blocks_coins(void);

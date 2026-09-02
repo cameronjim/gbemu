@@ -2,7 +2,7 @@
   "level": "1-2",
   "type": "underground",
   "timer": 400,
-  "length_columns": 258,
+  "length_columns": 249,
   "length_columns_confidence": "measured",
   "start": {
     "x": 6,
@@ -14,21 +14,21 @@
       "x1": 23,
       "type": "overworld",
       "confidence": "measured",
-      "notes": "band 0 cols 0-23 of the real map rip: the above-ground start - castle, flat ground, the entry pipe"
+      "notes": "the above-ground start from the nes map's band 0 cols 0-23: castle, flat ground, the entrance pipe"
     },
     {
       "x0": 24,
-      "x1": 215,
+      "x1": 216,
       "type": "underground",
       "confidence": "measured",
-      "notes": "band 1 cols 0-191 of the real map rip, shifted +24 columns to make room for the start segment ahead of it. the underground main run"
+      "notes": "the smbd map's underground run, real cols 0-192, shifted +24 to sit behind the start segment. col 192 is the right column of the coin room's exit shaft, which the rip leaves undrawn"
     },
     {
-      "x0": 216,
-      "x1": 257,
+      "x0": 217,
+      "x1": 248,
       "type": "overworld",
       "confidence": "measured",
-      "notes": "band 0 cols 150-191 of the real map rip, re-anchored to start right after the underground run. the above-ground ending - piranha pipe, staircase, flagpole, castle"
+      "notes": "the above-ground ending: smbd map cols 193-223 shifted +25 (pipe, staircase, flag, castle), plus one empty sky column at 217 between the exit shaft and the map's first drawn ending column"
     }
   ],
   "terrain": [
@@ -36,7 +36,7 @@
       "kind": "castle",
       "x0": 0,
       "confidence": "measured",
-      "notes": "the above-ground start's decorative castle, measured off band 0 cols 0-4/rows8-12 of the real map rip - no flag beside it, nothing to touch"
+      "notes": "the above-ground start's decorative castle, nes map band 0 cols 0-4 rows 8-12; no flag beside it"
     },
     {
       "kind": "pipe",
@@ -44,7 +44,7 @@
       "height": 2,
       "dest": null,
       "confidence": "measured",
-      "notes": "the short decorative pipe standing left of the entrance pipe, measured off band 0 rows11-12"
+      "notes": "the short decorative pipe left of the entrance, nes map band 0 rows 11-12"
     },
     {
       "kind": "pipe",
@@ -52,30 +52,79 @@
       "height": 4,
       "dest": null,
       "jump_to": 27,
+      "jump_to_row": 2,
       "confidence": "measured",
-      "notes": "the entrance pipe mario descends, measured off band 0 rows9-12 (top_row 9, height 4). jump_to is the segment-teleport target: column 27 lands him inside the underground segment's own measured entry shaft (old pre-rebuild column 3, +24 for the new segment offset). this is compile_level.py's new kind:pipe/jump_to field - a same-grid segment teleport, distinct from dest (which switches to a sub-area's own grid); see mario.h's kObjPipeJump"
-    },
-    {
-      "kind": "elevation",
-      "x0": 24,
-      "x1": 24,
-      "y": 2,
-      "confidence": "measured",
-      "notes": "the wall between the above-ground start and the underground run: full-height so he cannot simply walk from one segment into the other and must take the entrance pipe. the real map has no such wall because the two segments are not adjacent tiles on real hardware - this is the compiler-invented seam that one concatenated grid needs instead"
+      "notes": "the entrance pipe mario takes down. jump_to lands him at the top of the underground entry shaft (real col 3, ceiling row 2) and he falls the eleven rows to the floor exactly as the real game drops him in; the wall at column 24 and the closed roof either side of cols 25-29 keep him in the shaft"
     },
     {
       "kind": "ceiling_gap",
       "x0": 25,
       "x1": 29,
       "confidence": "measured",
-      "notes": "the entry shaft: the real map's ceiling (row 2) is absent at cols 1-5 of the underground run, here at +24. jump_to 27 above lands in the middle of it"
+      "notes": "the entry shaft: the roof is open where mario drops in (real cols 1-5)"
+    },
+    {
+      "kind": "ceiling_gap",
+      "x0": 162,
+      "x1": 184,
+      "confidence": "measured",
+      "notes": "the lift shaft: open roof over both moving-platform pits, so the rising lift carries him onto the roof walk (real cols 138-160)"
+    },
+    {
+      "kind": "ceiling_gap",
+      "x0": 211,
+      "x1": 214,
+      "confidence": "measured",
+      "notes": "the four-column hole in the roof he drops through into the coin room that replaces the nes warp zone (real cols 187-190)"
     },
     {
       "kind": "gap",
       "x0": 104,
       "x1": 106,
       "confidence": "measured",
-      "notes": "first floor pit (real underground col 80-82, +24)"
+      "notes": "floor pit, real cols 80-82"
+    },
+    {
+      "kind": "gap",
+      "x0": 144,
+      "x1": 145,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 120-121"
+    },
+    {
+      "kind": "gap",
+      "x0": 148,
+      "x1": 149,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 124-125"
+    },
+    {
+      "kind": "gap",
+      "x0": 162,
+      "x1": 168,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 138-144"
+    },
+    {
+      "kind": "gap",
+      "x0": 177,
+      "x1": 183,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 153-159"
+    },
+    {
+      "kind": "gap",
+      "x0": 201,
+      "x1": 201,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 177-177"
+    },
+    {
+      "kind": "gap",
+      "x0": 210,
+      "x1": 210,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 186-186"
     },
     {
       "kind": "pipe",
@@ -83,7 +132,7 @@
       "height": 3,
       "dest": "bonus_room",
       "confidence": "measured",
-      "notes": "first of three piranha pipes (real col 103, +24); leads to the coin-heaven bonus room measured off band 2 of the map rip"
+      "notes": "first piranha pipe (real col 103), the way down into the coin room"
     },
     {
       "kind": "pipe",
@@ -91,7 +140,7 @@
       "height": 4,
       "dest": null,
       "confidence": "measured",
-      "notes": "second piranha pipe (real col 109, +24)"
+      "notes": "second piranha pipe (real col 109)"
     },
     {
       "kind": "pipe",
@@ -99,87 +148,61 @@
       "height": 2,
       "dest": null,
       "confidence": "measured",
-      "notes": "third piranha pipe (real col 115, +24)"
+      "notes": "third piranha pipe (real col 115); the coin room's exit pipe brings mario back up out of this one"
     },
     {
-      "kind": "gap",
-      "x0": 144,
-      "x1": 145,
-      "confidence": "measured",
-      "notes": "real col 120-121, +24"
-    },
-    {
-      "kind": "gap",
-      "x0": 148,
-      "x1": 149,
-      "confidence": "measured",
-      "notes": "real col 124-125, +24"
-    },
-    {
-      "kind": "gap",
-      "x0": 162,
-      "x1": 168,
-      "confidence": "measured",
-      "notes": "widened to the real map's full pit extent - n12_kinds.json shows the whole span as open/overlay-only (lift deck + rider/coin markers), not real brick/hard floor; see rebuild_1_2.py"
-    },
-    {
-      "kind": "ceiling_gap",
-      "x0": 162,
-      "x1": 184,
-      "confidence": "measured",
-      "notes": "the lift shaft (real col 138-160, +24): the real map's ceiling is open across this whole span so a rider on the vertical lifts can climb up onto the roof (row 2, solid and walkable from above) and walk right to the warp zone"
-    },
-    {
-      "kind": "gap",
-      "x0": 177,
-      "x1": 183,
-      "confidence": "measured",
-      "notes": "widened to the real map's full pit extent - n12_kinds.json shows the whole span as open/overlay-only (lift deck + rider/coin markers), not real brick/hard floor; see rebuild_1_2.py"
-    },
-    {
-      "kind": "ceiling_gap",
-      "x0": 211,
-      "x1": 213,
-      "confidence": "measured",
-      "notes": "the drop from the roof-top walkway down into the enclosed warp-zone room (real col 187-189, +24)"
-    },
-    {
-      "kind": "ceiling_gap",
-      "x0": 192,
-      "x1": 193,
-      "confidence": "measured",
-      "notes": "a narrow notch in the roof between the lift-shaft brick run and the run past it (real col 168-169, +24); n12_kinds.json classifies these two cells as a pipe-icon annotation rather than brick or a scored gap, but the map rip gives no basis to place an actual pipe there, so the closest honest compile is to leave the roof open across this span like the rest of the non-brick ceiling"
-    },
-    {
-      "kind": "pipe",
+      "kind": "pipe_side",
       "x": 190,
-      "height": 5,
-      "dest": null,
-      "jump_to": 218,
-      "confidence": "approx",
-      "notes": "the underground run's own exit pipe, leading to the above-ground ending. its 2-tall shape is measured off band 0's ending segment, but its column within the underground run (real col 166, +24) is a compiler judgement call - the map rip does not clearly distinguish this pipe from the warp-zone room's own approach, placed here just past the lift shaft and before the warp zone's roof-top corridor. jump_to 218 lands him in the above-ground ending, just left of its own piranha pipe at 219. unlike the other main-grid pipes this one carries no piranha of its own - the map rip gives no basis to place one on it, and standing on its cap to press down is the only way through this level's own segment boundary, so an unmeasured hazard timed to guard exactly that cell would make the level occasionally uncompletable rather than just harder"
+      "y": 8,
+      "shaft_x": 192,
+      "shaft_top": 2,
+      "jump_to": 220,
+      "jump_to_row": 11,
+      "confidence": "measured",
+      "notes": "the underground's exit: the sideways pipe at the end of the brick platform (real mouth col 166, rows 8-9), its shaft rising through the ceiling at real cols 168-169. walking right into the mouth takes him up out of the ending's pipe"
     },
     {
-      "kind": "elevation",
-      "x0": 216,
-      "x1": 216,
-      "y": 2,
+      "kind": "pipe_side",
+      "x": 213,
+      "y": 11,
+      "shaft_x": 215,
+      "shaft_top": 0,
+      "jump_to": 220,
+      "jump_to_row": 11,
       "confidence": "measured",
-      "notes": "the wall between the underground run and the above-ground ending, the same compiler-invented seam as column 24"
+      "notes": "the coin room's own sideways exit (real mouth col 189, rows 11-12), shaft at real cols 191-192 running to the top of the grid so it also seals the seam between the underground and the ending; same destination"
+    },
+    {
+      "kind": "lift_vertical",
+      "x": 164,
+      "y0": 3,
+      "span": 9,
+      "reverse": false,
+      "confidence": "approx",
+      "notes": "the first pit's platform (real pit 138-144): smb's descends; ours starts at the top and bounces between rows 3 and 12. the deck's two columns sit centred in the seven-column pit"
+    },
+    {
+      "kind": "lift_vertical",
+      "x": 179,
+      "y0": 1,
+      "span": 11,
+      "reverse": true,
+      "confidence": "approx",
+      "notes": "the second pit's platform (real pit 153-159): smb's rises to the roof; ours starts at the bottom and climbs to row 1, one row above the ceiling, so a rider steps off onto the roof walk"
     },
     {
       "kind": "pipe",
-      "x": 219,
+      "x": 220,
       "height": 2,
       "dest": null,
       "confidence": "measured",
-      "notes": "the above-ground ending own piranha pipe, standing just before the staircase - measured off band 0 rows11-12 (real col 153, ending-segment local col 3, +216)"
+      "notes": "the ending's piranha pipe (smbd map col 195), the one both sideways pipes deliver mario up out of"
     },
     {
       "kind": "stairs",
-      "x0": 221,
+      "x0": 222,
       "x1": 229,
-      "step_height": 8,
+      "step_height": 7,
       "heights": [
         1,
         2,
@@ -188,18 +211,17 @@
         5,
         6,
         7,
-        8,
-        8
+        7
       ],
       "confidence": "measured",
-      "notes": "the closing staircase: measured 9 columns, 8 blocks tall with a flat 2-column top, off band 0 cols 155-163 (ending-segment local col 5-13, +216). shape and the 9-column gap to the flagpole (238) are exact"
+      "notes": "the closing staircase as the smbd map draws it: eight columns, seven blocks tall with a flat two-column top (the nes original is nine columns and eight tall; the gbc port trimmed it, and the flag stands eight columns past its last step instead of nine)"
     },
     {
       "kind": "bricks",
       "x0": 24,
       "x1": 24,
-      "y0": 3,
-      "y1": 3,
+      "y0": 0,
+      "y1": 12,
       "confidence": "measured"
     },
     {
@@ -207,62 +229,6 @@
       "x0": 78,
       "x1": 79,
       "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 82,
-      "x1": 87,
-      "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 90,
-      "x1": 93,
-      "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 100,
-      "x1": 103,
-      "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 3,
-      "y1": 3,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 4,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 78,
-      "x1": 79,
-      "y0": 4,
       "y1": 4,
       "confidence": "measured"
     },
@@ -270,7 +236,7 @@
       "kind": "bricks",
       "x0": 82,
       "x1": 87,
-      "y0": 4,
+      "y0": 3,
       "y1": 4,
       "confidence": "measured"
     },
@@ -278,15 +244,7 @@
       "kind": "bricks",
       "x0": 90,
       "x1": 93,
-      "y0": 4,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 97,
-      "x1": 97,
-      "y0": 4,
+      "y0": 3,
       "y1": 4,
       "confidence": "measured"
     },
@@ -294,7 +252,7 @@
       "kind": "bricks",
       "x0": 100,
       "x1": 103,
-      "y0": 4,
+      "y0": 3,
       "y1": 4,
       "confidence": "measured"
     },
@@ -302,24 +260,8 @@
       "kind": "bricks",
       "x0": 194,
       "x1": 200,
-      "y0": 4,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 4,
-      "y1": 4,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 5,
-      "y1": 5,
+      "y0": 3,
+      "y1": 12,
       "confidence": "measured"
     },
     {
@@ -327,7 +269,7 @@
       "x0": 76,
       "x1": 77,
       "y0": 5,
-      "y1": 5,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -335,7 +277,7 @@
       "x0": 86,
       "x1": 87,
       "y0": 5,
-      "y1": 5,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -343,7 +285,7 @@
       "x0": 91,
       "x1": 91,
       "y0": 5,
-      "y1": 5,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -351,87 +293,23 @@
       "x0": 96,
       "x1": 97,
       "y0": 5,
-      "y1": 5,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 76,
-      "x1": 77,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 86,
-      "x1": 87,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 91,
-      "x1": 91,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 96,
-      "x1": 97,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 6,
-      "y1": 6,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 7,
       "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 203,
+      "x1": 203,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 207,
+      "x1": 214,
+      "y0": 6,
+      "y1": 6,
       "confidence": "measured"
     },
     {
@@ -439,7 +317,7 @@
       "x0": 63,
       "x1": 63,
       "y0": 7,
-      "y1": 7,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -452,74 +330,18 @@
     },
     {
       "kind": "bricks",
-      "x0": 76,
-      "x1": 77,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 86,
-      "x1": 87,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 91,
-      "x1": 91,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 96,
-      "x1": 97,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
       "x0": 108,
       "x1": 113,
       "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 8,
       "y1": 8,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 63,
-      "x1": 63,
-      "y0": 8,
-      "y1": 8,
+      "x0": 209,
+      "x1": 210,
+      "y0": 7,
+      "y1": 10,
       "confidence": "measured"
     },
     {
@@ -527,7 +349,7 @@
       "x0": 65,
       "x1": 65,
       "y0": 8,
-      "y1": 8,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -535,7 +357,7 @@
       "x0": 68,
       "x1": 68,
       "y0": 8,
-      "y1": 8,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -543,31 +365,7 @@
       "x0": 70,
       "x1": 70,
       "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 76,
-      "x1": 77,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 86,
-      "x1": 87,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 91,
-      "x1": 91,
-      "y0": 8,
-      "y1": 8,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -575,23 +373,7 @@
       "x0": 96,
       "x1": 96,
       "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 100,
-      "x1": 100,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 108,
-      "x1": 113,
-      "y0": 8,
-      "y1": 8,
+      "y1": 9,
       "confidence": "measured"
     },
     {
@@ -604,79 +386,39 @@
     },
     {
       "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
+      "x0": 64,
+      "x1": 64,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 47,
-      "x1": 47,
+      "x0": 69,
+      "x1": 69,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 49,
-      "x1": 49,
-      "y0": 9,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 63,
-      "x1": 65,
-      "y0": 9,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 68,
-      "x1": 70,
-      "y0": 9,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 76,
+      "x0": 78,
       "x1": 79,
       "y0": 9,
-      "y1": 9,
+      "y1": 11,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 82,
-      "x1": 87,
+      "x1": 85,
       "y0": 9,
       "y1": 9,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 91,
+      "x0": 92,
       "x1": 93,
       "y0": 9,
       "y1": 9,
@@ -684,7 +426,7 @@
     },
     {
       "kind": "bricks",
-      "x0": 96,
+      "x0": 97,
       "x1": 97,
       "y0": 9,
       "y1": 9,
@@ -693,6 +435,14 @@
     {
       "kind": "bricks",
       "x0": 100,
+      "x1": 100,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 103,
       "x1": 103,
       "y0": 9,
       "y1": 9,
@@ -700,34 +450,61 @@
     },
     {
       "kind": "bricks",
-      "x0": 159,
-      "x1": 161,
-      "y0": 9,
-      "y1": 9,
+      "x0": 146,
+      "x1": 147,
+      "y0": 10,
+      "y1": 12,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 194,
-      "x1": 200,
-      "y0": 9,
-      "y1": 9,
+      "x0": 184,
+      "x1": 193,
+      "y0": 10,
+      "y1": 12,
       "confidence": "measured"
     },
     {
       "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 9,
-      "y1": 9,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
+      "x0": 202,
+      "x1": 203,
       "y0": 10,
       "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 207,
+      "x1": 208,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 47,
+      "x1": 47,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 49,
+      "x1": 49,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 160,
+      "x1": 161,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
@@ -735,109 +512,35 @@
       "x0": 45,
       "x1": 45,
       "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 47,
-      "x1": 47,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 49,
-      "x1": 49,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 51,
       "x1": 51,
       "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 55,
       "x1": 55,
       "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 78,
-      "x1": 79,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 146,
-      "x1": 147,
-      "y0": 10,
-      "y1": 10,
+      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 159,
-      "x1": 161,
+      "x1": 159,
       "y0": 10,
-      "y1": 10,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 184,
-      "x1": 189,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 192,
-      "x1": 200,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 10,
-      "y1": 10,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 41,
-      "x1": 41,
-      "y0": 11,
-      "y1": 11,
+      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
@@ -845,127 +548,26 @@
       "x0": 43,
       "x1": 43,
       "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 45,
-      "x1": 45,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 47,
-      "x1": 47,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 49,
-      "x1": 49,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 51,
-      "x1": 51,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 55,
-      "x1": 55,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 57,
       "x1": 57,
       "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 78,
-      "x1": 79,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 146,
-      "x1": 147,
-      "y0": 11,
-      "y1": 11,
+      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 158,
-      "x1": 161,
+      "x1": 158,
       "y0": 11,
-      "y1": 11,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 184,
-      "x1": 189,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 192,
-      "x1": 200,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 11,
-      "y1": 11,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 24,
-      "x1": 24,
-      "y0": 12,
       "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 40,
-      "x1": 40,
-      "y0": 12,
-      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
@@ -974,590 +576,448 @@
       "x1": 41,
       "y0": 12,
       "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 43,
-      "x1": 43,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 45,
-      "x1": 45,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 47,
-      "x1": 47,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 49,
-      "x1": 49,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 51,
-      "x1": 51,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 53,
-      "x1": 53,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 55,
-      "x1": 55,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 57,
-      "x1": 57,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 86,
-      "x1": 86,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 88,
-      "x1": 88,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 123,
-      "x1": 123,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 126,
-      "x1": 126,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 137,
-      "x1": 137,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 146,
-      "x1": 147,
-      "y0": 12,
-      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
     },
     {
       "kind": "bricks",
       "x0": 157,
-      "x1": 161,
+      "x1": 157,
       "y0": 12,
       "y1": 12,
-      "confidence": "measured",
-      "material": "hard"
-    },
-    {
-      "kind": "bricks",
-      "x0": 184,
-      "x1": 189,
-      "y0": 12,
-      "y1": 12,
+      "material": "hard",
       "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 192,
-      "x1": 200,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "x0": 214,
-      "x1": 215,
-      "y0": 12,
-      "y1": 12,
-      "confidence": "measured"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 65,
-      "x1": 65,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 66,
-      "x1": 66,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 67,
-      "x1": 67,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 68,
-      "x1": 68,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 108,
-      "x1": 108,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 109,
-      "x1": 109,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 110,
-      "x1": 110,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 111,
-      "x1": 111,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 112,
-      "x1": 112,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 113,
-      "x1": 113,
-      "y0": 5,
-      "y1": 5,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 70,
-      "x1": 70,
-      "y0": 7,
-      "y1": 7,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 53,
-      "x1": 53,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 64,
-      "x1": 64,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 69,
-      "x1": 69,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 82,
-      "x1": 82,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 83,
-      "x1": 83,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 84,
-      "x1": 84,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 85,
-      "x1": 85,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 92,
-      "x1": 92,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "bricks",
-      "material": "question",
-      "x0": 97,
-      "x1": 97,
-      "y0": 8,
-      "y1": 8,
-      "confidence": "measured",
-      "notes": "interior question block, position measured off the map rip; non-interactive because 1-2 own per-level block list (unbanked home rom data shared with every other level) is nearly at capacity - see compile_level.py bricks/material note. renders and occupies the correct cell, cannot be hit"
-    },
-    {
-      "kind": "pipe",
-      "x": 202,
-      "height": 3,
-      "dest": null,
-      "confidence": "measured",
-      "notes": "decorative: the real map's own leftmost warp-room pipe, drawn in-band (real col 178, +24). the room itself is still reached via the entry_x=172 auto-pipe (see the warp-zone area's own notes) - the engine's sub-area system only triggers on a pipe, and there is no measured basis to point that trigger at this column instead"
-    },
-    {
-      "kind": "pipe",
-      "x": 206,
-      "height": 3,
-      "dest": null,
-      "confidence": "measured",
-      "notes": "decorative: the real map's middle warp-room pipe, drawn in-band (real col 182, +24)"
-    },
-    {
-      "kind": "pipe",
-      "x": 210,
-      "height": 3,
-      "dest": null,
-      "confidence": "measured",
-      "notes": "decorative: the real map's rightmost warp-room pipe, drawn in-band (real col 186, +24); its cap sits one column inside the existing ceiling_gap 211-213 (the roof-top drop into the room), matching how tightly they sit together on the real map"
     }
   ],
   "blocks": [
     {
-      "x": 64,
-      "y": 9,
-      "kind": "brick",
-      "contents": "star",
-      "confidence": "approx",
-      "notes": "column matches a coin-marker cell in the extracted grid; contents (starman) is sourced from mariowiki, row is a placeholder"
-    },
-    {
-      "x": 179,
-      "y": 4,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 180,
-      "y": 4,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 181,
-      "y": 4,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 166,
-      "y": 7,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 179,
-      "y": 12,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 180,
-      "y": 12,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    },
-    {
-      "x": 181,
-      "y": 12,
-      "kind": "hidden",
-      "contents": "coin",
-      "confidence": "measured",
-      "notes": "loose coin cell in the map rip; compiled as a hidden coin block since the main grid has no free-standing world-coin mechanism (that exists only for areas[].coins) - see SCHEMA.md/level.h"
-    }
-  ],
-  "enemies": [
-    {
       "x": 34,
       "y": 9,
-      "kind": "goomba",
+      "kind": "question",
+      "contents": "mushroom_fire",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "the power-up block that opens the underground run"
     },
     {
       "x": 35,
       "y": 9,
-      "kind": "goomba",
-      "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
     },
     {
       "x": 36,
       "y": 9,
-      "kind": "goomba",
-      "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
     },
     {
       "x": 37,
       "y": 9,
-      "kind": "goomba",
-      "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
     },
     {
       "x": 38,
       "y": 9,
-      "kind": "goomba",
+      "kind": "question",
+      "contents": "coin",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "the challenge-mode map paints this one's coin red; in the nes and smbd original modes it is a plain coin block"
     },
     {
-      "x": 68,
-      "y": 12,
-      "kind": "koopa_green",
+      "x": 53,
+      "y": 8,
+      "kind": "brick",
+      "contents": "multicoin",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "the map draws a coin on this brick over the first stair-step blocks: smb has no single-coin brick, so it is the ten-coin kind"
     },
     {
-      "x": 69,
-      "y": 12,
-      "kind": "koopa_green",
+      "x": 70,
+      "y": 7,
+      "kind": "brick",
+      "contents": "star",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
-    },
-    {
-      "x": 83,
-      "y": 12,
-      "kind": "goomba",
-      "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "the starman brick at the top right of the two arches"
     },
     {
       "x": 93,
       "y": 8,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the power-up brick at the right end of the third hanging platform"
+    },
+    {
+      "x": 97,
+      "y": 8,
+      "kind": "brick",
+      "contents": "multicoin",
+      "confidence": "measured",
+      "notes": "the coin brick in the side of the goomba's pillar"
+    },
+    {
+      "x": 113,
+      "y": 2,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the famous power-up hidden in the ceiling over the six coins"
+    },
+    {
+      "x": 174,
+      "y": 8,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the power-up brick capping the ledge platform between the two lift pits"
+    },
+    {
+      "x": 201,
+      "y": 10,
+      "kind": "brick",
+      "contents": "multicoin",
+      "confidence": "measured",
+      "notes": "coin room: the coin brick at the left end of the room's low platform"
+    },
+    {
+      "x": 204,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured",
+      "notes": "coin room: three question blocks set into the high platform"
+    },
+    {
+      "x": 205,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 206,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 211,
+      "y": 10,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "coin room: the power-up brick beside the exit pipe"
+    }
+  ],
+  "coins": [
+    {
+      "x": 204,
+      "y": 4
+    },
+    {
+      "x": 205,
+      "y": 4
+    },
+    {
+      "x": 206,
+      "y": 4
+    },
+    {
+      "x": 65,
+      "y": 5
+    },
+    {
+      "x": 66,
+      "y": 5
+    },
+    {
+      "x": 67,
+      "y": 5
+    },
+    {
+      "x": 68,
+      "y": 5
+    },
+    {
+      "x": 108,
+      "y": 5
+    },
+    {
+      "x": 109,
+      "y": 5
+    },
+    {
+      "x": 110,
+      "y": 5
+    },
+    {
+      "x": 111,
+      "y": 5
+    },
+    {
+      "x": 112,
+      "y": 5
+    },
+    {
+      "x": 113,
+      "y": 5
+    },
+    {
+      "x": 64,
+      "y": 8
+    },
+    {
+      "x": 69,
+      "y": 8
+    },
+    {
+      "x": 82,
+      "y": 8
+    },
+    {
+      "x": 83,
+      "y": 8
+    },
+    {
+      "x": 84,
+      "y": 8
+    },
+    {
+      "x": 85,
+      "y": 8
+    },
+    {
+      "x": 92,
+      "y": 8
+    },
+    {
+      "x": 211,
+      "y": 8
+    },
+    {
+      "x": 212,
+      "y": 8
+    },
+    {
+      "x": 213,
+      "y": 8
+    },
+    {
+      "x": 214,
+      "y": 8
+    },
+    {
+      "x": 207,
+      "y": 9
+    },
+    {
+      "x": 208,
+      "y": 9
+    }
+  ],
+  "enemies": [
+    {
+      "x": 40,
+      "y": 13,
       "kind": "goomba",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "the first pair, one on the floor"
+    },
+    {
+      "x": 41,
+      "y": 12,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "and one on the lone one-high block"
+    },
+    {
+      "x": 53,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "between the two stair-step groups"
+    },
+    {
+      "x": 68,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured",
+      "notes": "the two koopa troopas under the arches"
+    },
+    {
+      "x": 70,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured"
+    },
+    {
+      "x": 83,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured",
+      "notes": "the koopa under the hanging s-shaped wall"
+    },
+    {
+      "x": 86,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the pair under the middle hanging block"
+    },
+    {
+      "x": 88,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 96,
+      "y": 5,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "on top of the coin-brick pillar"
+    },
+    {
+      "x": 100,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the pair on the fourth hanging platform"
+    },
+    {
+      "x": 102,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 123,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the three before the piranha pipes"
+    },
+    {
+      "x": 124,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 126,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 137,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "between the second and third pipes"
+    },
+    {
+      "x": 159,
+      "y": 10,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the two on the staircase before the lift pits"
+    },
+    {
+      "x": 161,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 169,
+      "y": 13,
+      "kind": "koopa_red",
+      "confidence": "measured",
+      "notes": "the red koopa on the ledge between the pits; it turns at the edges"
     },
     {
       "x": 127,
       "y": 11,
       "kind": "piranha",
       "confidence": "measured",
-      "notes": "in the first, bonus-room piranha pipe; column measured, row is the pipe's own cap"
+      "notes": "piranha in the first pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
     },
     {
       "x": 133,
       "y": 11,
       "kind": "piranha",
       "confidence": "measured",
-      "notes": "in the second piranha pipe"
+      "notes": "piranha in the second pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
     },
     {
       "x": 139,
       "y": 11,
       "kind": "piranha",
       "confidence": "measured",
-      "notes": "in the third piranha pipe"
+      "notes": "piranha in the third pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
     },
     {
-      "x": 170,
-      "y": 12,
-      "kind": "goomba",
+      "x": 220,
+      "y": 11,
+      "kind": "piranha",
       "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
-    },
-    {
-      "x": 174,
-      "y": 8,
-      "kind": "koopa_red",
-      "confidence": "measured",
-      "notes": "position is one of the map-marked enemy positions transcribed in n12_exact_terrain.txt section 4; species is not distinguishable on the map rip and is carried over from the nearest previous approx placement (goomba is the default absent other evidence)"
+      "notes": "piranha in the ending's pipe"
     }
   ],
   "areas": [
     {
-      "id": "bonus-1",
+      "id": "coin-room",
       "kind": "bonus_room",
       "entry_x": 127,
-      "columns": 16,
+      "return_x": 139,
+      "columns": 17,
       "start": {
         "x": 1,
-        "y": 13
+        "y": 2
       },
-      "exit": "the pipe on the room's right side, rises back out near where the first piranha pipe was entered",
+      "exit": "the short pipe at the right, which brings mario up out of the third piranha pipe",
       "terrain": [
         {
           "kind": "bricks",
           "x0": 0,
           "x1": 0,
-          "y0": 2,
+          "y0": 0,
           "y1": 12,
           "confidence": "measured",
-          "notes": "the left wall the player drops in past, matching the entry arrow in the map rip's band-2 crop"
+          "notes": "the wall down the room's left edge; mario drops in past it through the two-column shaft"
         },
         {
           "kind": "bricks",
-          "x0": 1,
-          "x1": 10,
+          "x0": 3,
+          "x1": 14,
           "y0": 2,
-          "y1": 2,
+          "y1": 5,
           "confidence": "measured",
-          "notes": "the ceiling strip over the entry drop"
+          "notes": "the four-row brick ceiling block right of the shaft"
         },
         {
           "kind": "bricks",
-          "x0": 2,
-          "x1": 9,
-          "y0": 11,
-          "y1": 12,
+          "x0": 13,
+          "x1": 14,
+          "y0": 6,
+          "y1": 10,
           "confidence": "measured",
-          "notes": "the platform the lower coin row rests on"
+          "notes": "the inner right wall, from the ceiling block down to the exit pipe's cap"
+        },
+        {
+          "kind": "bricks",
+          "x0": 3,
+          "x1": 11,
+          "y0": 9,
+          "y1": 9,
+          "confidence": "measured",
+          "notes": "the one-row platform the upper coins sit on"
         },
         {
           "kind": "pipe",
@@ -1565,230 +1025,193 @@
           "height": 2,
           "dest": "overworld",
           "confidence": "measured",
-          "notes": "the exit pipe, rising off the room's floor at the right edge, matching the up-arrow in the rip"
+          "notes": "the exit pipe"
+        },
+        {
+          "kind": "pipe",
+          "x": 15,
+          "height": 11,
+          "confidence": "measured",
+          "notes": "the shaft rising out of the room beside the exit pipe"
         }
       ],
       "blocks": [],
       "coins": [
         {
+          "x": 3,
+          "y": 8
+        },
+        {
           "x": 4,
-          "y": 7
+          "y": 8
         },
         {
           "x": 5,
-          "y": 7
+          "y": 8
         },
         {
           "x": 6,
-          "y": 7
+          "y": 8
         },
         {
           "x": 7,
-          "y": 7
+          "y": 8
         },
         {
           "x": 8,
-          "y": 7
+          "y": 8
         },
         {
           "x": 9,
-          "y": 7
+          "y": 8
         },
         {
           "x": 10,
-          "y": 7
+          "y": 8
         },
         {
-          "x": 2,
-          "y": 10
+          "x": 12,
+          "y": 9
         },
         {
           "x": 3,
-          "y": 10
+          "y": 12
         },
         {
           "x": 4,
-          "y": 10
+          "y": 12
         },
         {
           "x": 5,
-          "y": 10
+          "y": 12
         },
         {
           "x": 6,
-          "y": 10
+          "y": 12
         },
         {
           "x": 7,
-          "y": 10
+          "y": 12
         },
         {
           "x": 8,
-          "y": 10
+          "y": 12
         },
         {
           "x": 9,
-          "y": 10
+          "y": 12
+        },
+        {
+          "x": 10,
+          "y": 12
+        },
+        {
+          "x": 11,
+          "y": 12
         }
       ],
       "confidence": "measured",
-      "notes": "the room and its two coin rows (7 over 8 = 15 coins) were counted directly off the map rip's band-2 crop (n12_shaft.png in the extraction scratch dir), not off mariowiki's 27-coin prose figure - the pixel count is preferred per the sourcing instructions. exact per-coin columns within each row are approx; the row counts and the room's overall L-shaped brick layout are measured. the room's own local grid is unaffected by the main level's segment rebuild - only entry_x (the main-grid pipe it is entered from) shifted with it"
-    },
-    {
-      "id": "warp-zone",
-      "kind": "warp_zone",
-      "entry_x": null,
-      "exit": "n/a - the real route is riding the vertical lifts up through the ceiling gap and walking the roof, which the engine cannot express. the room's three numbered pipes are drawn in-band at cols 202/206/210, so no synthetic entry pipe is compiled: one used to be stamped at col 172 and showed up as a lone pipe cap sitting on open floor, which is not on the map. unreachable until moving lifts exist; its pipes are WARP_UNBUILT no-ops regardless",
-      "terrain": [],
-      "blocks": [],
-      "notes": "the room itself - 3 pipes side by side at measured real-map columns 178-179/182-183/186-187, world number glyphs read directly off the map at row 8 (n12_warpnums.png): left to right 4, 3, 2. \"WELCOME TO WARP ZONE\" is drawn as map annotation text at row 6, cols 178-188 - not level content, not compiled. passing through the room's left wall instead of taking a pipe is smb1's minus-world (world -1) clip trick, recorded in warps[] below but not a pipe and not compiled",
-      "entry_height": null,
-      "confidence": "measured"
-    }
-  ],
-  "flag": {
-    "x": 238,
-    "confidence": "measured",
-    "notes": "the above-ground ending's flagpole, measured directly off band 0: pole column 172 (real map), +24+... see segment note - 216 (ending segment offset) + (172-150) = 238. the pole spans rows 4-11 with a pink stair-cap pedestal at row 12, matching FLAG_POLE_TOP_ROW/FLAG_POLE_BOTTOM_ROW exactly. 9 columns past the closing staircase's last column (229), matching the measured gap between real map cols 163 and 172"
-  },
-  "castle_end": {
-    "x": 242,
-    "confidence": "measured",
-    "notes": "the above-ground ending's castle, measured off band 0 cols 176-180/rows8-12: 216 + (176-150) = 242. 4 columns past the flagpole, matching the measured gap"
-  },
-  "warps": [
-    {
-      "from_x": 172,
-      "via": "warp_zone",
-      "to_level": "4-1",
-      "world_number": 4,
-      "confidence": "measured",
-      "notes": "leftmost of the 3 warp pipes; the map's own glyph above it reads 4. kLevelCount is 4 (world one only) so this compiles to WARP_UNBUILT (0xFF): the pipe is built at the right column with the right number, but pressing down over it is a no-op rather than a jump into an existing level - see SCHEMA.md"
-    },
-    {
-      "from_x": 172,
-      "via": "warp_zone",
-      "to_level": "3-1",
-      "world_number": 3,
-      "confidence": "measured",
-      "notes": "middle pipe, glyph reads 3"
-    },
-    {
-      "from_x": 172,
-      "via": "warp_zone",
-      "to_level": "2-1",
-      "world_number": 2,
-      "confidence": "measured",
-      "notes": "rightmost pipe, glyph reads 2"
-    },
-    {
-      "from_x": 172,
-      "via": "warp_zone",
-      "to_level": "-1",
-      "confidence": "sourced",
-      "notes": "the minus world: reached by clipping through the warp-zone room's left wall instead of taking a pipe. an nes-only trick, not a pipe, not compiled - recorded here so the destination is not silently lost"
+      "notes": "18 coins total: eight over the platform, one at the platform's right end where the map's challenge-mode red coin stands, nine along the floor. transcribed cell by cell from the smbd map's lower band (cols 102-118) cross-checked against the nes map's band 2 (cols 100-116), which agree exactly"
     }
   ],
   "decor": [
     {
       "kind": "cloud",
-      "x": 4,
-      "y": 3,
-      "width": 2,
-      "confidence": "approx",
-      "notes": "above-ground start, near the castle"
+      "x": 3,
+      "y": 7,
+      "width": 4,
+      "confidence": "measured",
+      "notes": "start segment clouds from the nes map, moved four rows down like 1-1's so they fall inside the nine-row window"
     },
     {
       "kind": "cloud",
-      "x": 19,
-      "y": 2,
-      "width": 2,
-      "confidence": "approx",
-      "notes": "above-ground start, past the entrance pipe"
-    },
-    {
-      "kind": "small_hill",
-      "x": 232,
-      "confidence": "measured",
-      "notes": "above-ground ending, real map col 166, +216-150"
-    },
-    {
-      "kind": "small_hill",
-      "x": 248,
-      "confidence": "measured",
-      "notes": "above-ground ending, real map col 182-184, +216-150"
-    },
-    {
-      "kind": "bush",
-      "x": 256,
-      "width": 2,
-      "confidence": "measured",
-      "notes": "above-ground ending, far right edge, real map col 190"
+      "x": 18,
+      "y": 6,
+      "width": 4,
+      "confidence": "measured"
     },
     {
       "kind": "cloud",
       "x": 221,
-      "y": 2,
-      "width": 2,
+      "y": 5,
+      "width": 4,
       "confidence": "measured",
-      "notes": "above-ground ending, over the piranha pipe/staircase"
+      "notes": "ending clouds at the smbd map's own rows"
     },
     {
       "kind": "cloud",
-      "x": 252,
-      "y": 2,
-      "width": 2,
+      "x": 232,
+      "y": 6,
+      "width": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "cloud",
+      "x": 244,
+      "y": 6,
+      "width": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "big_hill",
+      "x": 232,
       "confidence": "measured",
-      "notes": "above-ground ending, over the castle"
+      "notes": "the map stands it one column further right with its right slope hidden behind the flag's base block; our scenery is placed whole or not at all, so it steps one column left of the pole"
+    },
+    {
+      "kind": "bush",
+      "x": 239,
+      "width": 2,
+      "confidence": "measured"
     }
   ],
+  "flag": {
+    "x": 237,
+    "confidence": "measured",
+    "notes": "eight columns past the staircase's last column, as the smbd map draws it (the nes original stands nine past a nine-column staircase)"
+  },
+  "castle_end": {
+    "x": 241,
+    "confidence": "measured",
+    "notes": "four columns past the flag; the castle occupies the last five columns before the map's right edge"
+  },
+  "warps": [],
   "smbd": {
     "red_coins": [
       {
-        "x": 33,
+        "x": 38,
+        "y": 9
+      },
+      {
+        "x": 66,
+        "y": 5
+      },
+      {
+        "x": 97,
+        "y": 4
+      },
+      {
+        "x": 161,
+        "y": 3
+      },
+      {
+        "x": 138,
         "y": 9,
-        "notes": "last ? block in the opening row",
-        "confidence": "sourced"
-      },
-      {
-        "x": 54,
-        "y": 5,
-        "notes": "above the brick block formation near the start",
-        "confidence": "approx"
-      },
-      {
-        "x": 64,
-        "y": 5,
-        "notes": "on the pillar with the 10-coin block",
-        "confidence": "approx"
-      },
-      {
-        "x": 127,
-        "y": 5,
-        "notes": "in the bonus room's 10-coin block, requires collecting all its coins first",
-        "confidence": "sourced"
-      },
-      {
-        "x": 224,
-        "y": 5,
-        "notes": "above the stone stairs before the flagpole",
-        "confidence": "approx"
+        "notes": "in the coin room, at the platform's right end"
       }
     ],
     "yoshi_egg": {
-      "x": 154,
-      "y": 9,
-      "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe",
-      "confidence": "sourced"
+      "x": 191,
+      "y": 5,
+      "notes": "beside the exit pipe's shaft"
     },
-    "medal_score": 38000,
-    "medal_score_jp": 26000
+    "medal_score": 21000,
+    "medal_score_jp": 18000
   },
-  "smbd_deltas": "confirmed per mariowiki: smbd replaces the nes warp-zone room's 3-pipe world-select with a room containing brick blocks, three ? blocks, 22 coins, and a power-up brick block - i.e. smbd 1-2 likely has no functional warp zone / world skip in this spot, or it is relocated elsewhere (not found in sources used). the warp_zone area entry and warps[] array above describe the measured NES layout; do not assume they apply unmodified to smbd until the gbc map is pixel-measured the same way. total coin count also differs: 68 coins (nes) vs 90 coins (smbd challenge mode) per mariowiki, implying additional coins were added somewhere in the smbd layout beyond just the warp-zone-room replacement.",
+  "smbd_deltas": "the smbd map replaces the nes warp zone (real cols 177-190) with an enclosed coin room: brick platforms, three question blocks, eleven coins, a coin brick, a power-up brick and its own sideways exit pipe, reached only by riding the second lift onto the roof and dropping through the hole at cols 187-190. that room is what this file builds. the smbd map also trims the closing staircase to eight columns and seven blocks and pulls the flag one column closer. everything else matches the nes map cell for cell",
   "sources": [
-    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png",
-    "https://www.mariouniverse.com/maps-gbc-smbd/",
-    "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)"
+    "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-2.png",
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png"
   ],
-  "confidence_notes": "this pass fixes the fidelity gap the previous one knowingly shipped: 1-2 began directly underground with no above-ground start and its ending was appended as more columns of the same underground-typed grid, so the flagpole and castle stood under a cave ceiling. the engine still models a level as one typed grid plus pipe-triggered sub-areas that return to their entry point, which cannot express \"overworld, then underground, then overworld again\" on its own - so this pass extends the bible/compiler with the smaller of the two options considered: a `segments` list of column ranges, each with its own type, layered on top of the level's single base type (compile_level.py's compiled_segments()/type_at()/first_row_at()). apply_ceiling() now stamps the roof only inside underground-typed ranges when segments are present, and the roof-dependent row skip (piranha pipe caps, start/jump landing rows) is now looked up per column instead of once for the whole level. the palette equivalent lives at runtime: level_palette_set() takes the current camera column and consults the same segment table (empty on every level but 1-2), and terrain.c's new terrain_sync_palette() re-loads the bg palette set whenever that answer can have changed - once at every terrain_init() and again after any same-grid jump. the three ranges are walled off from each other with a full-height 'elevation' block at each seam (columns 24 and 216) so a player cannot simply walk from one into the next; the only crossing is a new terrain kind on a pipe, `jump_to`, compiled to a new object kind (kObjPipeJump) and a small jump_target_column/row table on LevelInfo - pressing down over one of these cuts to the target column with the lcd off (main.c's jump_to_segment(), mirroring the existing enter_sub_area()/leave_sub_area() pattern) without any level_load, because level_grid already holds the whole level (every segment) at once; only the vram ring and the bg palette catch up. a second new terrain kind, `castle`, places a decorative castle (apply_castle with no flag beside it) for the start segment's own castle. rejected alternative: a real area graph where a sub-area's exit could target another named area instead of always returning to the entry point - more faithful and more reusable for a future world 2, but it would touch blocks.c/enemies.c's per-area state reset and the flagpole/end-of-level logic that only reads the main level's own fields today; not worth it for one level's fix. capacity impact: length_columns grows 224 -> 258 (+34 columns), which becomes the new LEVEL_GRID_COLUMNS (the WRAM level_grid ring is sized to the longest level or widest sub-area, whichever is bigger) - +34*16 = 544 bytes of WRAM. LEVEL_MAX_OBJECTS grows by the two new kObjPipeJump entries this level adds (self-adjusting, gen_levels.py already takes the max across levels). the compiled grid array itself grows the same 544 bytes in 1-2's own rom bank (bank 2), comfortably inside a 16kb bank. two judgement calls worth flagging: (1) the underground run's own exit pipe column (166 in the old, pre-rebuild coordinate space) is not clearly distinguishable from the warp-zone room's approach in the map rip, so its exact column is a compiler choice, not a measurement - placed just past the lift shaft and before the warp-zone corridor, which is the right neighborhood per mariowiki's prose description of the route; (2) both segment transitions (down the entrance pipe, down the exit pipe) play the same 'sink then cut' beat main.c already uses for entering a sub-area, rather than a 'rise up out of a pipe' beat on arrival (which the real game's exit pipe does) - reusing the engine's own existing arrival convention (enter_sub_area never plays an arrival animation either) rather than adding a second one. neither takes away from the acceptance test: mario starts under open sky with the castle behind him, goes down a real pipe to reach the cave, and the flagpole/castle at the end have sky above them, not rock.\n\nfollow-up pass: the underground segment's own interior was still ~90% empty against the real map (the previous pass measured the skeleton only - floor pits, ceiling, pipes, warp zone, staircase - and left the ~450 solid cells of brick/hard interior structure and the ceiling itself unbuilt). this pass fixes both, reconciling n12_kinds.json (per-cell brick/hard/question/coin classification) against an independent band1 classification that keeps hard blocks distinct from brick (n12_kinds.json lumps some of the former stair-step hard-block structures into brick) to get the two real stair-step hard-block sections right. three changes: (1) the roof was wrong at the row level, not just missing content - apply_ceiling() stamped a two-row BLOCK_GROUND slab at rows 0-1 (CEILING_ROWS), but the real map's cave roof is one row of BLOCK_BRICK at row 2, with rows 0-1 rendering nothing; CEILING_ROW/CEILING_ROWS and every ceiling probe were re-pointed at row 2, and a new ceiling_gap (192-193) covers a narrow map-annotation notch the old two existing gaps did not. (2) the ~450-cell interior (block towers, the two hard-block staircases, the coin-room walls) is now built as a new main-terrain `bricks` kind - a solid rectangle stamped straight into the compiled grid, the same primitive an area's own bricks terrain already used - so none of it costs an entry in the level's interactive blocks[] list; the honest cost is that terrain-fill brick cannot be bumped or broken. one interior rect (cols 78-79, rows 9-11 in the raw classification) left only a single 16px row of clearance above the floor - tight enough that a synthetic route planner (and arguably a real player) cannot reliably cross it - so it was shaved to rows 9-10, a judgement call favoring traversability over the pixel-exact row count. (3) the real map's 20 question-block cells and 7 loose-coin cells are now placed at their real positions - coins as `hidden`/contents:coin interactive blocks (7, minus one that already coincided with an existing hidden 1-up), but the 20 question cells as non-interactive `bricks`/material:question terrain fill rather than real interactive blocks[] entries: 1-2's own per-level list (block/enemy/object/jump/segment/area-coin arrays, all compiled unbanked into unbanked home rom alongside every other level's own list and the shared engine code) turned out to have far less spare room than LEVEL_MAX_BLOCKS' raw ram headroom suggested - empirically, growing 1-2's own list past 18 entries (9 original + 9 new) makes lcc warn 'possible overflow from bank 0 into bank 1' and silently corrupts unrelated data (1-1's own compiled level, in the observed failure). the 20 question cells render with the correct tile and occupy the correct cell either way; only their interactivity was dropped to stay inside that budget, with headroom to spare (16 of 18 safe slots used). two existing tests needed updating to match: the ceiling probe test now checks row 2 for brick instead of rows 0-1 for ground, and mario_warp_zone_compiles - which used to walk a synthetic host twin the full ~145 columns from the entrance pipe to the warp room live - now plants that twin much closer in, on the same reasoning mario_autopilot_completes_1_2 already gives for not walking the full interior live (a short-lookahead greedy planner cannot solve the real map's dense platforming the way it could the placeholder's near-empty one, just as a synthetic twin cannot track 160 columns of live enemy/lift phase)."
+  "confidence_notes": "every cell of this file was read off the smbd challenge-mode map rip by hashing each 16x16 cell of the image and labelling the distinct tiles, then cross-checked cell by cell against the nes map rip, which agrees on the whole underground run. the start segment (castle, pipes, ground 0-23) comes from the nes map, which is the only rip that draws it. enemies are placed at the column the smbd rip draws them; a sprite the rip straddles across two columns is put on one of them. piranha plants are not drawn in the smbd rip but stand on the same pipes in the gbc game, so they are taken from the nes rip. the two vertical lifts are ours in size and speed (a two-block deck bouncing at one pixel a frame, one deck per pit, the engine having two lift slots); their pits, the open roof above them and the roof walk they lead to are measured. challenge-mode-only content (red coins, the yoshi egg) is recorded under smbd and not built."
 }

@@ -11,17 +11,41 @@
 // mario on the start cell. returns how many hazards the level has, which is 0 for 1-1
 uint8_t flow_enter_level(uint8_t index) BANKED;
 
-// swaps in one of the level's compiled sub-areas and drops mario at its start cell
-void flow_enter_sub_area(uint8_t index) BANKED;
+// swaps in one of the level's compiled sub-areas and drops mario at its start cell. 1 when the
+// landing armed a rise out of a pipe rather than putting him straight into play, which only a
+// same-grid jump onto a pipe cap does: the caller has to hold its pipe-up state open for it
+uint8_t flow_enter_sub_area(uint8_t index) BANKED;
 
 // reloads the main grid with its spent blocks intact and starts him rising out of the link pipe
 void flow_leave_sub_area(void) BANKED;
 
-// the sub-area index of the enterable pipe mario is standing squarely on, or 0xff. also answers
-// for 1-2's entrance/exit pipes - a same-grid segment teleport rather than a sub-area - with
-// kJumpAreaFlag set on the low bits; flow_enter_sub_area is what actually tells the two apart, so
-// main.c's state machine can carry the value forward exactly like it already carries an area index
-uint8_t flow_pipe_under_player(void) BANKED;
+// the pipe mario can enter from where he stands this frame, or 0xff. with down held that is a cap
+// he is squarely on top of; with down released it is a sideways mouth his shoulder is against, and
+// the caller must already have established that he is grounded, still and pushing right - the scan
+// walks the object list, which is not something to pay for on every frame of a walk.
+//
+// the answer is a sub-area index, or - for 1-2's entrance/exit pipes, a same-grid segment teleport
+// rather than a sub-area - kJumpAreaFlag set over the low bits; flow_enter_sub_area is what
+// actually tells the two apart, so main.c's state machine can carry the value forward exactly like
+// it already carries an area index
+uint8_t flow_pipe_target(uint8_t down_held) BANKED;
+
+// 1 while the level being played has a sideways pipe mouth in it at all. the game loop must test
+// this before it looks at his stance or calls the scan above: only a walk-in trigger has no button
+// edge to hang off, and asking on every frame of every walk is more than 1-1's frames can spare
+extern uint8_t flow_side_pipes;
+
+// 1 when the target flow_pipe_target just answered with is a sideways mouth, which is walked into
+// rather than sunk down; a plain ram byte so bank 0 pays a load rather than a second banked call
+extern uint8_t flow_pipe_side_armed;
+
+// 1 while the main grid being played has loose coin cells in it at all (1-2 does, 1-1 does not).
+// the game loop reads it to decide whether this level owes the pickup pass below a frame at all
+extern uint8_t flow_grid_coins;
+
+// picks up any loose grid coin the player's box is standing in, paying the same score and coin as
+// a sub-area coin; call once per frame of play, on the main grid, while flow_grid_coins is set
+void flow_collect_grid_coins(void) BANKED;
 
 // (re)loads the bg palette set for the camera's current column: level.c's segment table (empty on
 // every level but 1-2) can make that a different kLevelType than the level's own. lives here,

@@ -80,16 +80,15 @@ void save_init(void) BANKED {
                                            ((uint16_t)sram[at + kSaveSlotScoreOffset + 1U] << 8));
             }
         }
-    } else if (magic_ok((uint8_t)kSaveLegacyMagic3) != 0U &&
-               sram[kSaveLegacyLevelOffset] != 0U &&
+    } else if (magic_ok((uint8_t)kSaveLegacyMagic3) != 0U && sram[kSaveLegacyLevelOffset] != 0U &&
                sram[kSaveLegacyLevelOffset] <= (uint8_t)kLevelCount) {
         // the one-slot save that shipped before this. both of its fields mean exactly what they
         // still mean, so it migrates into file 1 rather than being thrown away; a legacy slot at
         // level 0 was the "no progress yet" state and migrates to nothing
         slot_used[0] = 1;
         slot_level[0] = sram[kSaveLegacyLevelOffset];
-        slot_score[0] = (uint16_t)(sram[kSaveLegacyScoreOffset] |
-                                   ((uint16_t)sram[kSaveLegacyScoreOffset + 1U] << 8));
+        slot_score[0] =
+            (uint16_t)(sram[kSaveLegacyScoreOffset] | ((uint16_t)sram[kSaveLegacyScoreOffset + 1U] << 8));
         store_all();
     } else {
         store_all();

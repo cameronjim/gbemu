@@ -32,12 +32,13 @@ static int16_t bump_column;
 static int16_t bump_row;
 static uint8_t bump_timer;
 
-// the single item slot: mushroom/star/1-up, 16x16, two 8x16 sprites
-static uint8_t item_kind;
+// the single item slot: mushroom/star/1-up, 16x16, two 8x16 sprites. the four the draw pass needs
+// are plain ram rather than statics, because blocks_draw itself lives in a bank now (blocks_draw.c)
+uint8_t blocks_item_kind;
 static uint8_t item_phase;
 static uint8_t item_timer;
-static uint16_t item_x;
-static int16_t item_y;
+uint16_t blocks_item_x;
+int16_t blocks_item_y;
 static int16_t item_origin_y;
 static int8_t item_dir;
 static int8_t item_dy;
@@ -45,18 +46,18 @@ static uint8_t item_accum;
 static uint8_t item_grounded;
 
 // the single coin-pop slot: 8x16, one sprite
-static uint8_t coin_active;
+uint8_t blocks_coin_active;
 static uint8_t coin_timer;
-static uint16_t coin_x;
-static int16_t coin_y;
+uint16_t blocks_coin_x;
+int16_t blocks_coin_y;
 
 static uint16_t coins_collected;
 static uint8_t items_taken;
 
 // oam writes are cheap but not free, and both slots sit empty for most of a level: parking them
 // once on the frame they go away keeps a quiet frame down to no oam traffic at all
-static uint8_t item_shown;
-static uint8_t coin_shown;
+uint8_t blocks_item_shown;
+uint8_t blocks_coin_shown;
 
 // the engine probes solidity four to six times a frame and streams a column every 16 px, and a
 // linear scan of the reaction list on each of those costs more than the frame has left. these row
@@ -77,17 +78,6 @@ static uint8_t altered_count;
 static uint8_t hidden_block[LEVEL_MAX_BLOCKS];
 static uint8_t hidden_count;
 static uint8_t coins_taken;
-
-// kItem* indexes both tables. the flower lives outside the 0xd0 family and has no palette slot of
-// its own, so it borrows the star's white/yellow set - see kPalFire in mario.h
-static const uint8_t kItemPalette[kItemKindCount] = {kPalMario, kPalMushroom, kPalStar, kPalOneup, kPalStar};
-static const uint8_t kItemTile[kItemKindCount] = {
-    kTileItemFirst,
-    kTileItemFirst,
-    kTileItemFirst + kItemTilesPerKind,
-    kTileItemFirst + 2U * kItemTilesPerKind,
-    kTileFlowerFirst,
-};
 
 #if kEnemyLab
 // the lab's second dispenser. 1-1 places its other mushroom_fire block at the top of a pyramid the
@@ -157,10 +147,10 @@ static void start_bump(int16_t column, int16_t row) {
 
 static void pop_coin(int16_t column, int16_t row) {
     // the 8 px sprite sits centered in the block's 16 px cell and starts one cell above it
-    coin_x = (uint16_t)(((uint16_t)column << 4) + 4U);
-    coin_y = (int16_t)(((int16_t)row << 4) - (int16_t)kBlockPx);
+    blocks_coin_x = (uint16_t)(((uint16_t)column << 4) + 4U);
+    blocks_coin_y = (int16_t)(((int16_t)row << 4) - (int16_t)kBlockPx);
     coin_timer = 0;
-    coin_active = 1;
+    blocks_coin_active = 1;
     ++coins_collected;
     // the hud counters are plain ram, so a coin costs an increment and an add rather than a
     // trampoline into bank 5; hud_frame picks up the change on the same frame
@@ -170,13 +160,13 @@ static void pop_coin(int16_t column, int16_t row) {
 
 static void spawn_item(uint8_t content) {
     if (content == kContentStar) {
-        item_kind = kItemStar;
+        blocks_item_kind = kItemStar;
     } else if (content == kContentOneup) {
-        item_kind = kItemOneup;
+        blocks_item_kind = kItemOneup;
     } else {
         // smb picks at dispense time, not at bump time: a mushroom_fire block pays the flower only
         // if mario is already grown when it opens
-        item_kind = blocks_player_big != 0U ? kItemFlower : kItemMushroom;
+        blocks_item_kind = blocks_player_big != 0U ? kItemFlower : kItemMushroom;
     }
     item_phase = kItemRising;
     item_timer = 0;
@@ -205,9 +195,9 @@ static void react(uint8_t index, int16_t column, int16_t row) {
         }
     } else if (content != kContentNothing && content != kContentVine) {
         // vine is m8's beanstalk; until then it bounces like an empty block
-        item_x = (uint16_t)((uint16_t)column << 4);
+        blocks_item_x = (uint16_t)((uint16_t)column << 4);
         item_origin_y = (int16_t)((int16_t)row << 4);
-        item_y = item_origin_y;
+        blocks_item_y = item_origin_y;
         spawn_item(content);
         spend = 1U;
     }
@@ -284,10 +274,10 @@ void blocks_enter_area(uint8_t next_area) {
     bump_timer = 0;
     bump_column = 0;
     bump_row = 0;
-    item_kind = kItemNone;
-    coin_active = 0;
-    item_shown = 1;
-    coin_shown = 1;
+    blocks_item_kind = kItemNone;
+    blocks_coin_active = 0;
+    blocks_item_shown = 1;
+    blocks_coin_shown = 1;
     publish_busy();
 }
 
@@ -392,26 +382,26 @@ void blocks_head_bump(int16_t column, int16_t row) {
 
 // the loose item walks at the bible's post-emergence speed, turns at walls and falls off ledges
 static void item_walk(void) {
-    const int16_t next_x = (int16_t)((int16_t)item_x + (int16_t)item_dir * kItemWalkPx);
-    const int16_t top = row_of(item_y);
-    const int16_t bottom = row_of((int16_t)(item_y + kPlayerHeightPx - 1));
+    const int16_t next_x = (int16_t)((int16_t)blocks_item_x + (int16_t)item_dir * kItemWalkPx);
+    const int16_t top = row_of(blocks_item_y);
+    const int16_t bottom = row_of((int16_t)(blocks_item_y + kPlayerHeightPx - 1));
     const int16_t probe = col_of(item_dir > 0 ? (int16_t)(next_x + kPlayerWidthPx - 1) : next_x);
 
     if (terrain_solid_at(probe, top) != 0U || terrain_solid_at(probe, bottom) != 0U) {
         item_dir = (int8_t)-item_dir;
         return;
     }
-    item_x = (uint16_t)next_x;
+    blocks_item_x = (uint16_t)next_x;
 }
 
 static void item_fall(void) {
-    const int16_t left = col_of((int16_t)item_x);
-    const int16_t right = col_of((int16_t)(item_x + kPlayerWidthPx - 1));
+    const int16_t left = col_of((int16_t)blocks_item_x);
+    const int16_t right = col_of((int16_t)(blocks_item_x + kPlayerWidthPx - 1));
     uint16_t sum;
     int16_t row;
 
     if (item_grounded != 0U) {
-        row = row_of((int16_t)(item_y + kPlayerHeightPx));
+        row = row_of((int16_t)(blocks_item_y + kPlayerHeightPx));
         if (terrain_solid_at(left, row) != 0U || terrain_solid_at(right, row) != 0U) {
             return;
         }
@@ -426,17 +416,17 @@ static void item_fall(void) {
             item_dy = kItemMaxFallPx;
         }
     }
-    item_y = (int16_t)(item_y + item_dy);
+    blocks_item_y = (int16_t)(blocks_item_y + item_dy);
     if (item_dy < 0) {
         return;
     }
-    row = row_of((int16_t)(item_y + kPlayerHeightPx - 1));
+    row = row_of((int16_t)(blocks_item_y + kPlayerHeightPx - 1));
     if (terrain_solid_at(left, row) == 0U && terrain_solid_at(right, row) == 0U) {
         return;
     }
-    item_y = (int16_t)(((int16_t)row << 4) - kPlayerHeightPx);
+    blocks_item_y = (int16_t)(((int16_t)row << 4) - kPlayerHeightPx);
     item_accum = 0;
-    if (item_kind == kItemStar) {
+    if (blocks_item_kind == kItemStar) {
         // the star is the one item that keeps hopping; the height is ours, not the bible's
         item_dy = kStarBouncePx;
         return;
@@ -454,33 +444,33 @@ static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t ah, uint16_t bx, i
 
 // the kItem* he picked up this frame, or kItemNone
 static uint8_t item_update(uint16_t player_px, int16_t player_py, uint8_t player_h, uint16_t cam_x) {
-    if (item_kind == kItemNone) {
+    if (blocks_item_kind == kItemNone) {
         return kItemNone;
     }
     if (item_phase == kItemRising) {
         ++item_timer;
-        item_y = (int16_t)(item_origin_y - (int16_t)(item_timer / kItemRiseFramesPerPx));
+        blocks_item_y = (int16_t)(item_origin_y - (int16_t)(item_timer / kItemRiseFramesPerPx));
         if (item_timer >= (uint8_t)(kItemRisePx * (int16_t)kItemRiseFramesPerPx)) {
             item_phase = kItemLoose;
         }
-    } else if (item_kind != kItemFlower) {
+    } else if (blocks_item_kind != kItemFlower) {
         // roster.json: the flower is the one item that neither slides nor falls once it is out
         item_walk();
         item_fall();
     }
 
-    if (boxes_overlap(player_px, player_py, player_h, item_x, item_y, kPlayerWidthPx) != 0U) {
-        const uint8_t taken = item_kind;
+    if (boxes_overlap(player_px, player_py, player_h, blocks_item_x, blocks_item_y, kPlayerWidthPx) != 0U) {
+        const uint8_t taken = blocks_item_kind;
 
-        item_kind = kItemNone;
+        blocks_item_kind = kItemNone;
         ++items_taken;
         return taken;
     }
     // off either side of the view, or out the bottom of the level, and it is gone
-    if (item_y > (int16_t)kLevelHeightPx ||
-        (int16_t)item_x + kPlayerWidthPx + kItemDespawnMarginPx < (int16_t)cam_x ||
-        (int16_t)item_x > (int16_t)(cam_x + kScreenWidthPx + kItemDespawnMarginPx)) {
-        item_kind = kItemNone;
+    if (blocks_item_y > (int16_t)kLevelHeightPx ||
+        (int16_t)blocks_item_x + kPlayerWidthPx + kItemDespawnMarginPx < (int16_t)cam_x ||
+        (int16_t)blocks_item_x > (int16_t)(cam_x + kScreenWidthPx + kItemDespawnMarginPx)) {
+        blocks_item_kind = kItemNone;
     }
     return kItemNone;
 }
@@ -518,8 +508,8 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py, uint8_t p
 
 // everything blocks_update and blocks_draw could have to do this frame, worked out once
 static void publish_busy(void) {
-    blocks_busy = (uint8_t)((bump_timer != 0U || item_kind != kItemNone || coin_active != 0U ||
-                             item_shown != 0U || coin_shown != 0U || area != (uint8_t)kAreaMain)
+    blocks_busy = (uint8_t)((bump_timer != 0U || blocks_item_kind != kItemNone || blocks_coin_active != 0U ||
+                             blocks_item_shown != 0U || blocks_coin_shown != 0U || area != (uint8_t)kAreaMain)
                                 ? 1U
                                 : 0U);
 }
@@ -533,78 +523,19 @@ uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, u
             terrain_restore_block(bump_column, bump_row);
         }
     }
-    if (coin_active != 0U) {
-        coin_y = (int16_t)(coin_y +
-                           (coin_timer < (uint8_t)(kCoinPopFrames / 2U) ? -kCoinPopRisePx : kCoinPopRisePx));
+    if (blocks_coin_active != 0U) {
+        blocks_coin_y =
+            (int16_t)(blocks_coin_y +
+                      (coin_timer < (uint8_t)(kCoinPopFrames / 2U) ? -kCoinPopRisePx : kCoinPopRisePx));
         ++coin_timer;
         if (coin_timer >= (uint8_t)kCoinPopFrames) {
-            coin_active = 0;
+            blocks_coin_active = 0;
         }
     }
     taken = item_update(player_px, player_py, player_h, cam_x);
     collect_world_coins(player_px, player_py, player_h);
     publish_busy();
     return taken;
-}
-
-static void hide(uint8_t slot) {
-    move_sprite(slot, 0, 0);
-}
-
-void blocks_draw(uint16_t cam_x, uint8_t cam_y) {
-    int16_t sx;
-    int16_t sy;
-    uint8_t tile;
-
-    if (item_kind == kItemNone) {
-        if (item_shown != 0U) {
-            item_shown = 0;
-            hide(kSpriteItemL);
-            hide(kSpriteItemR);
-        }
-    } else {
-        sx = (int16_t)((int16_t)item_x - (int16_t)cam_x);
-        sy = (int16_t)(item_y - (int16_t)cam_y);
-        if (sy <= -(int16_t)kPlayerHeightPx || sy >= (int16_t)kScreenHeightPx ||
-            sx <= -(int16_t)kPlayerWidthPx || sx >= (int16_t)kScreenWidthPx) {
-            if (item_shown != 0U) {
-                item_shown = 0;
-                hide(kSpriteItemL);
-                hide(kSpriteItemR);
-            }
-        } else {
-            item_shown = 1;
-            tile = kItemTile[item_kind];
-            set_sprite_tile(kSpriteItemL, tile);
-            set_sprite_tile(kSpriteItemR, (uint8_t)(tile + 2U));
-            set_sprite_prop(kSpriteItemL, kItemPalette[item_kind]);
-            set_sprite_prop(kSpriteItemR, kItemPalette[item_kind]);
-            move_sprite(kSpriteItemL, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-            move_sprite(kSpriteItemR, (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-        }
-    }
-
-    if (coin_active == 0U) {
-        if (coin_shown != 0U) {
-            coin_shown = 0;
-            hide(kSpriteCoin);
-        }
-        return;
-    }
-    sx = (int16_t)((int16_t)coin_x - (int16_t)cam_x);
-    sy = (int16_t)(coin_y - (int16_t)cam_y);
-    if (sy <= -(int16_t)kPlayerHeightPx || sy >= (int16_t)kScreenHeightPx || sx <= -8 ||
-        sx >= (int16_t)kScreenWidthPx) {
-        if (coin_shown != 0U) {
-            coin_shown = 0;
-            hide(kSpriteCoin);
-        }
-        return;
-    }
-    coin_shown = 1;
-    set_sprite_tile(kSpriteCoin, kTileCoinPop);
-    set_sprite_prop(kSpriteCoin, kPalCoin);
-    move_sprite(kSpriteCoin, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
 }
 
 uint16_t blocks_coins(void) {

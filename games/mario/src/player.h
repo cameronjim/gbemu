@@ -18,9 +18,11 @@
 #define kClearWalk 2U
 #define kClearHold 3U
 
-// which way a pipe transition is carrying him
+// which way a pipe transition is carrying him. the side entry is the only horizontal one: 1-2's
+// L-shaped exit pipe is walked into rather than dropped down
 #define kPipeDown 0U
 #define kPipeUp 1U
+#define kPipeSide 2U
 
 // loads small mario's and the items' art/palettes and parks him on the bible's start cell
 void player_init(void);
@@ -39,6 +41,10 @@ uint8_t player_death_update(void);
 // arms the sink-into-a-pipe animation from where he stands, or the rise-out-of-one at a given cap
 void player_begin_pipe_down(void);
 void player_begin_pipe_up(uint16_t column, uint8_t top_row);
+
+// and the walk-into-a-sideways-mouth animation, the same block of travel carried right instead of
+// down. flow.c's kObjPipeSide scan arms it; the transition ends in the same jump a kObjPipeJump does
+void player_begin_pipe_side(void);
 
 // one frame of whichever pipe animation is armed; 1 when it is over
 uint8_t player_pipe_update(void);

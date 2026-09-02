@@ -183,7 +183,13 @@ constexpr uint8_t kBlockHillFill = 34;
 constexpr uint8_t kBlockBushL = 35;
 constexpr uint8_t kBlockBushM = 36;
 constexpr uint8_t kBlockBushR = 37;
-constexpr uint8_t kBlockKindCount = 38;
+// 1-2's sideways exit pipes: a two-row mouth rim facing left and a horizontal body out to an
+// ordinary vertical shaft. solid like any pipe, so they stand past kBlockFirstDecor's range
+constexpr uint8_t kBlockPipeSideTl = 38;
+constexpr uint8_t kBlockPipeSideBl = 39;
+constexpr uint8_t kBlockPipeSideBodyT = 40;
+constexpr uint8_t kBlockPipeSideBodyB = 41;
+constexpr uint8_t kBlockKindCount = 42;
 // the first purely decorative kind; everything from here up is non-solid scenery
 constexpr uint8_t kBlockFirstDecor = kBlockCloudTl;
 
@@ -394,12 +400,12 @@ constexpr uint8_t kSuperFirstTile = 0x60;
 constexpr uint8_t kSuperLastTile = 0x7F;
 constexpr uint8_t kTileFlowerLo = 0x80;
 constexpr uint8_t kTileFlowerHi = 0x83;
-constexpr uint8_t kTileStarLo = 0xD4;
-constexpr uint8_t kTileStarHi = 0xD7;
+[[maybe_unused]] constexpr uint8_t kTileStarLo = 0xD4;
+[[maybe_unused]] constexpr uint8_t kTileStarHi = 0xD7;
 constexpr uint8_t kTileFireballLo = 0xDE;
 constexpr uint8_t kTileFireballHi = 0xDF;
 constexpr int kPlayerBigBoxPx = 32;
-constexpr int kFireballPx = 8;
+[[maybe_unused]] constexpr int kFireballPx = 8;
 constexpr int kGrowFrames = 64;
 constexpr uint8_t kContentStar = 3;
 constexpr uint8_t kContentNothing = 0;
@@ -667,7 +673,7 @@ uint16_t first_gap_column() {
 // mirrors of games/mario/src/mario.h's camera and hitbox tuning, same convention as kBlockPx above
 constexpr int kCamFollowX = 64;
 constexpr int kCamLookAheadX = 24;
-constexpr int kCamAnchorStepPx = 2;
+[[maybe_unused]] constexpr int kCamAnchorStepPx = 2;
 constexpr int kCamGroundOffsetPx = 32;
 constexpr int kScreenHeightPx = 144;
 constexpr int kCamSafeTopPx = 32;
@@ -678,13 +684,13 @@ constexpr int kCamEaseMaxPx = 4;
 constexpr int kCamEaseShift = 3;
 constexpr int kCamAirEaseShift = 2;
 constexpr int kCamLookUpPx = 32;
-constexpr int kCamLookDownPx = 24;
+[[maybe_unused]] constexpr int kCamLookDownPx = 24;
 constexpr int kCamLookDelayFrames = 24;
 
 // the host twin of games/mario/src/camera.c's vertical rules: a deadzone window in screen space and
 // a distance-proportional ease onto whatever it asks for. both sims below share these, so the
 // planner's screen predictions stay frame-identical with the rom's.
-inline uint8_t cam_clamp_scy(int value) {
+[[maybe_unused]] inline uint8_t cam_clamp_scy(int value) {
     return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
 }
 
@@ -734,13 +740,12 @@ constexpr uint8_t kFloorSolid = 1;
 constexpr uint8_t kFloorThin = 2;
 
 constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
-    0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
-    kFloorSolid, 0,           kFloorThin,  0,           kFloorSolid, 0,
-    kFloorSolid, 0,           0,           0,           0,           0,
-    0,           0,           0,           0,           0,           0,
-    0,           0,           0,           0,           0,           0,
-    0,           0,
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,           kFloorSolid, 0,
+    kFloorThin,  0,           kFloorSolid, 0,           kFloorSolid, 0,           0,
+    0,           0,           0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,           0,
+    0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -817,6 +822,9 @@ constexpr uint8_t kObjAxe = 5;
 // 1-2's above-ground/underground/above-ground rebuild: a same-grid segment teleport, not a
 // sub-area. object.param indexes lv->jumps[] for the landing column/row
 constexpr uint8_t kObjPipeJump = 6;
+// the pipe walked into from the side: object.column is the mouth's rim, object.row its top row,
+// param a jump index exactly like kObjPipeJump
+constexpr uint8_t kObjPipeSide = 7;
 
 constexpr int kLiftSpeedPx = 1;
 constexpr int kLiftSlots = 2;
@@ -837,16 +845,16 @@ constexpr int8_t kSpinX[kFirebarSteps] = {8,  8,  7,  6,  6,  4,  3,  2,  0, -2,
 constexpr int8_t kSpinY[kFirebarSteps] = {0, 2,  3,  4,  6,  6,  7,  8,  8,  8,  7,  6,  6,  4,  3,  2,
                                           0, -2, -3, -4, -6, -6, -7, -8, -8, -8, -7, -6, -6, -4, -3, -2};
 // the m8a sprite pairs at 0x84 and the two bg tiles the flag family had left
-constexpr uint8_t kTilePiranhaLo = 0x84;
-constexpr uint8_t kTilePiranhaHi = 0x85;
+[[maybe_unused]] constexpr uint8_t kTilePiranhaLo = 0x84;
+[[maybe_unused]] constexpr uint8_t kTilePiranhaHi = 0x85;
 constexpr uint8_t kTileFlameLo = 0x86;
 constexpr uint8_t kTileFlameHi = 0x87;
-constexpr uint8_t kTileLiftLo = 0x88;
-constexpr uint8_t kTileLiftHi = 0x89;
+[[maybe_unused]] constexpr uint8_t kTileLiftLo = 0x88;
+[[maybe_unused]] constexpr uint8_t kTileLiftHi = 0x89;
 constexpr uint8_t kTileBowserLo = 0x8A;
 constexpr uint8_t kTileBowserHi = 0x8B;
 constexpr uint8_t kTileBridge = 0xBA;
-constexpr uint8_t kTileAxe = 0xBB;
+[[maybe_unused]] constexpr uint8_t kTileAxe = 0xBB;
 
 constexpr uint8_t kHazardNone = 0;
 constexpr uint8_t kHazardDamage = 1;
@@ -2185,7 +2193,7 @@ constexpr int kClearWatchPx = 120;
 constexpr int kClearWaitFrames = 400;
 // and only a death this close is worth a jump that merely postpones it; anything further off is
 // the lookahead guessing about a stretch the route has not decided how to run yet
-constexpr int kPlanPanicFrames = 70;
+[[maybe_unused]] constexpr int kPlanPanicFrames = 70;
 // the window this close to its end is not a forecast any more, it is the ledge under his feet: a
 // takeoff that only postpones the death is still the right move here, and nowhere earlier
 constexpr int kPlanLastGaspFrames = 24;
@@ -2198,9 +2206,9 @@ constexpr int kStarRiseFrames = 72;
 // and how long a hop the star chase spends on a goomba that walks into it
 constexpr int kStarStompHold = 16;
 // and how long a hop the lab sweep spends on one
-constexpr int kLabSweepHold = 16;
+[[maybe_unused]] constexpr int kLabSweepHold = 16;
 // close enough that the hop comes down on top of it rather than in front of it
-constexpr int kLabHopPx = 30;
+[[maybe_unused]] constexpr int kLabHopPx = 30;
 // how far past the first of the row the sweep runs: the whole cluster plus room for the one the
 // full row turned away to get its slot once a stomp frees one
 constexpr int kLabSweepColumns = 14;
@@ -2287,8 +2295,8 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
         // run that never takes off touches the shaft at its base and scores nothing. once the pole
         // is inside a takeoff's reach the search picks the hold whose contact lands highest; it is
         // the same shape of search the pit jumps use, with height for its score instead of ground
-        if (to_flag && jump_left == 0 && sim.on_ground != 0 && sim.a_prev == 0 &&
-            !sim.at_flag() && sim.lv->has_flag != 0) {
+        if (to_flag && jump_left == 0 && sim.on_ground != 0 && sim.a_prev == 0 && !sim.at_flag() &&
+            sim.lv->has_flag != 0) {
             const int16_t ahead =
                 static_cast<int16_t>(sim.lv->flag_column) - PlayerSim::col_of(sim.hit_right());
             if (ahead > 0 && ahead <= kFlagTakeoffColumns) {
@@ -2341,8 +2349,8 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
                     best_total = tried.total;
                     best_hold = hold;
                 }
-                if (best_hold == 0 && plain.died_at >= 0 &&
-                    plain.died_at <= kPlanLastGaspFrames && longest_hold > 0) {
+                if (best_hold == 0 && plain.died_at >= 0 && plain.died_at <= kPlanLastGaspFrames &&
+                    longest_hold > 0) {
                     best_hold = longest_hold;
                 }
                 if (best_hold > 0) {
@@ -2794,8 +2802,7 @@ Route plan_lab_walk(uint16_t goal, bool sweep_row = false) {
             std::vector<uint8_t> tail;
             int hop = 0;
             for (int i = 0; i < 600 && probe.x_pos < sweep && !probe.dead(); ++i) {
-                if (hop == 0 && probe.on_ground != 0 && probe.a_prev == 0 &&
-                    threat_within(probe, px)) {
+                if (hop == 0 && probe.on_ground != 0 && probe.a_prev == 0 && threat_within(probe, px)) {
                     hop = hold;
                 }
                 uint8_t in = kInRight | kInB;
@@ -3920,8 +3927,8 @@ TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
             seen.insert(kind);
             camera.goto_xy(gameboy, scx_for_column(static_cast<uint16_t>(column)),
                            scy_for_row(static_cast<uint8_t>(row)));
-            const uint8_t tile = block_tile(gameboy, static_cast<uint16_t>(column),
-                                            static_cast<uint8_t>(row), camera.x, camera.y);
+            const uint8_t tile = block_tile(gameboy, static_cast<uint16_t>(column), static_cast<uint8_t>(row),
+                                            camera.x, camera.y);
             REQUIRE(tile_in_kind_family(tile, kind));
         }
     }
@@ -4292,7 +4299,8 @@ TEST_CASE("mario_play_is_deterministic") {
 // vram(2 banks) + oam + dot + ly + lyc + lcdc + bgp, and scy is the byte after those; the first
 // camera test asserts it against kPlayScy, which is what pins this offset down.
 uint32_t state_u32(const std::vector<uint8_t>& blob, size_t at) {
-    return blob[at] | (blob[at + 1] << 8) | (blob[at + 2] << 16) | (static_cast<uint32_t>(blob[at + 3]) << 24);
+    return blob[at] | (blob[at + 1] << 8) | (blob[at + 2] << 16) |
+           (static_cast<uint32_t>(blob[at + 3]) << 24);
 }
 
 int play_scy(const gb::Gameboy& gameboy) {
@@ -4764,8 +4772,11 @@ TEST_CASE("mario_autopilot_completes_1_1") {
                 break;
             }
             ++held_pole;
-            // the slide's end: his feet come to rest on the ground row beside the pole's base
-            if (m.top + kPlayerBoxPx == first_tile_row(gameboy, 0xA0, 0xA0)) {
+            // the slide's end: his feet come to rest on the ground row beside the pole's base. the
+            // camera is still easing down onto a slide that started low, so the ground's screen row
+            // is read to within a pixel or two rather than matched exactly
+            const int ground = first_tile_row(gameboy, 0xA0, 0xA0);
+            if (ground >= 0 && std::abs(m.top + kPlayerBoxPx - ground) <= 2) {
                 feet_on_ground = true;
             }
         }
@@ -4779,10 +4790,16 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     // alignment on the frame after it lands
     const int base_y = (static_cast<int>(LEVEL_1_1_FLAG_BASE_ROW) + 1) * kBlockPx - kPlayerBoxPx;
     const int slide_frames = (base_y - route.end.y_pos + kClearSlidePx - 1) / kClearSlidePx;
-    REQUIRE(slide_frames > 40);
+    // the smbd map's closing staircase tops out at seven blocks, so the planned jump meets the pole
+    // lower than the nes eight-block flight used to and the slide is a shorter one
+    REQUIRE(slide_frames > 15);
     REQUIRE(held_pole >= slide_frames - 4);
     REQUIRE(held_pole <= slide_frames + 4);
-    REQUIRE(descents > 8);
+    // the camera tracks him down the pole during the clear, so his on-screen top only moves on the
+    // frames the view is already pinned; a slide that starts low on the pole (the smbd staircase is
+    // a block shorter than the nes one) may show only a step or two of screen descent, and the
+    // held_pole count above is what pins its real length
+    REQUIRE(descents >= 1);
     REQUIRE(feet_on_ground);
 
     // the walk off the pole, the level-clear beat, and back out to the world map with 1-2's node
@@ -5049,8 +5066,8 @@ constexpr const LevelObject* find_object(const LevelObject* list, uint16_t count
 
 constexpr uint16_t kPipeColumn = find_object(kLevel11Objects, kLevel11ObjectCount, kObjPipe)->column;
 constexpr uint8_t kPipeTopRow = find_object(kLevel11Objects, kLevel11ObjectCount, kObjPipe)->row;
-constexpr uint16_t kExitColumn = LEVEL_1_1_AREA0_EXIT_COLUMN;
-constexpr uint8_t kExitTopRow = LEVEL_1_1_AREA0_EXIT_TOP_ROW;
+[[maybe_unused]] constexpr uint16_t kExitColumn = LEVEL_1_1_AREA0_EXIT_COLUMN;
+[[maybe_unused]] constexpr uint8_t kExitTopRow = LEVEL_1_1_AREA0_EXIT_TOP_ROW;
 constexpr uint16_t kReturnColumn = LEVEL_1_1_AREA0_RETURN_COLUMN;
 constexpr uint8_t kReturnTopRow = LEVEL_1_1_AREA0_RETURN_TOP_ROW;
 
@@ -5082,8 +5099,7 @@ bool on_pipe_cap(const gb::Gameboy& gameboy) {
     // pipe shaft beside its short exit pipe, and that shaft's own cap is always higher up the picture
     const int x = m.left + kPlayerBoxPx / 2;
     const int y = m.top + kPlayerBoxPx;
-    if (x < 0 || x >= static_cast<int>(gb::kLcdWidth) || y < 0 ||
-        y >= static_cast<int>(gb::kLcdHeight)) {
+    if (x < 0 || x >= static_cast<int>(gb::kLcdWidth) || y < 0 || y >= static_cast<int>(gb::kLcdHeight)) {
         return false;
     }
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
@@ -5192,10 +5208,12 @@ TEST_CASE("mario_1_1_has_fourth_bonus_pipe") {
     REQUIRE(LEVEL_1_1_AREA0_COIN_COUNT == 19);
 }
 
-// the three things the measured nes 1-1 map settles that the prose-derived bible had wrong: how
-// long the level is and where its castle stands, how much clear ground the flagpole gets after the
-// closing staircase, and how many goombas walk in it
-TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_202") {
+// the three things the measured maps settle that the prose-derived bible had wrong: how long the
+// level is and where its castle stands, how much clear ground the flagpole gets after the closing
+// staircase, and how many goombas walk in it. the ending follows the smbd (gbc) map: the nes map's
+// nine-column, eight-block staircase is eight columns and seven blocks there, and the pole and
+// castle each stand two columns earlier as a result - see level-1-1.json's stairs/flag/castle notes
+TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_200") {
     REQUIRE(LEVEL_1_1_LENGTH_COLUMNS == 208u);
 
     const auto castle_cell = [](uint8_t kind) {
@@ -5219,13 +5237,13 @@ TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_202") {
             bottom = std::max(bottom, static_cast<int>(row));
         }
     }
-    REQUIRE(first == 202);
-    REQUIRE(last == 206);
+    REQUIRE(first == 200);
+    REQUIRE(last == 204);
     REQUIRE(top == 8);
     REQUIRE(bottom == 12);
 }
 
-TEST_CASE("mario_1_1_leaves_nine_clear_columns_between_the_stairs_and_the_flag") {
+TEST_CASE("mario_1_1_leaves_eight_clear_columns_between_the_stairs_and_the_flag") {
     int last_stair = -1;
     for (uint16_t column = 0; column < LEVEL_1_1_LENGTH_COLUMNS; ++column) {
         for (uint8_t row = 0; row < kHostLevelRows; ++row) {
@@ -5234,18 +5252,21 @@ TEST_CASE("mario_1_1_leaves_nine_clear_columns_between_the_stairs_and_the_flag")
             }
         }
     }
-    // the closing staircase runs 181-189 and the pole stands on 198
-    REQUIRE(last_stair == 189);
+    // the closing staircase runs 181-188, seven blocks tall at its flat top, and the pole stands
+    // on 196: the smbd map's geometry
+    REQUIRE(last_stair == 188);
+    REQUIRE(kLevel11Grid[188][6] == kBlockStair);
+    REQUIRE(kLevel11Grid[188][5] == kBlockEmpty);
     REQUIRE(LEVEL_1_1_HAS_FLAG == 1u);
-    REQUIRE(LEVEL_1_1_FLAG_COLUMN == 198u);
-    REQUIRE(static_cast<int>(LEVEL_1_1_FLAG_COLUMN) - last_stair == 9);
+    REQUIRE(LEVEL_1_1_FLAG_COLUMN == 196u);
+    REQUIRE(static_cast<int>(LEVEL_1_1_FLAG_COLUMN) - last_stair == 8);
 
-    // and those nine columns really are clear ground he can run across
+    // and those eight columns really are clear ground he can run across
     const auto solid = [](uint8_t kind) {
         return kind == kBlockGround || kind == kBlockGroundFill || kind == kBlockBrick ||
-               kind == kBlockQuestion || kind == kBlockHard || kind == kBlockStair ||
-               kind == kBlockSpent || kind == kBlockThin || kind == kBlockPipeTl ||
-               kind == kBlockPipeTr || kind == kBlockPipeBodyL || kind == kBlockPipeBodyR;
+               kind == kBlockQuestion || kind == kBlockHard || kind == kBlockStair || kind == kBlockSpent ||
+               kind == kBlockThin || kind == kBlockPipeTl || kind == kBlockPipeTr ||
+               kind == kBlockPipeBodyL || kind == kBlockPipeBodyR;
     };
     for (uint16_t column = 190; column < LEVEL_1_1_FLAG_COLUMN; ++column) {
         REQUIRE(kLevel11Grid[column][LEVEL_1_1_START_ROW] == kBlockGround);
@@ -5263,8 +5284,8 @@ TEST_CASE("mario_1_1_walks_sixteen_goombas") {
         }
     }
     // every goomba the nes 1-1 map draws, in the order the spawn cursor meets them
-    REQUIRE(goombas == std::vector<uint16_t>{22, 40, 51, 53, 80, 82, 97, 99, 114, 116, 124, 126,
-                                             128, 130, 174, 176});
+    REQUIRE(goombas ==
+            std::vector<uint16_t>{22, 40, 51, 53, 80, 82, 97, 99, 114, 116, 124, 126, 128, 130, 174, 176});
 
     // the two on the eight-wide high brick platform stand on it rather than on the ground
     for (uint16_t i = 0; i < kLevel11EnemyCount; ++i) {
@@ -5813,8 +5834,7 @@ TEST_CASE("mario_scanline_cap_holds_at_four") {
     }
     REQUIRE(cluster > kEnemyRowCap);
 
-    const Route walk =
-        plan_lab_walk(spawn_stand_x(kLabEnemies[cluster - 1].column) + 6 * kBlockPx, true);
+    const Route walk = plan_lab_walk(spawn_stand_x(kLabEnemies[cluster - 1].column) + 6 * kBlockPx, true);
     REQUIRE(walk.reached);
 
     // the twin says the spawner refused a slot on the full row and let the waiting one in later
@@ -6239,8 +6259,7 @@ TEST_CASE("mario_star_invincibility") {
         }
     }
     // and it never runs further than the star can bounce in the window below
-    pit_edge = std::min<uint16_t>(pit_edge,
-                                  static_cast<uint16_t>((block->column + 8) * kBlockPx));
+    pit_edge = std::min<uint16_t>(pit_edge, static_cast<uint16_t>((block->column + 8) * kBlockPx));
     // the lab's row of five now stands close enough to the star block that one of them walks into
     // the chase while the star is still in the air, so the chase hops onto whatever is in front of
     // it. the twin says which frames those are; nothing here is a hand-placed jump
@@ -6358,7 +6377,9 @@ int sky_for_column(int level, int column) {
     return type == 2 ? kSkyCastle : kSkyOverworld;
 }
 
-int sky_for(int level) { return sky_for_column(level, 0); }
+int sky_for(int level) {
+    return sky_for_column(level, 0);
+}
 
 // the per-frame screen box the twin predicts for mario, camera included
 std::vector<std::pair<int, int>> predict(const Route& route, int level) {
@@ -6490,7 +6511,7 @@ std::vector<PlayerSim> trace_route(const Route& route, int level) {
 
 // a sub-area's grid dressed as a level so the twin can plan inside one: a room has no blocks, no
 // enemies and no objects of its own, only terrain and the pipes standing in it
-HostLevel as_level(const HostArea& area) {
+[[maybe_unused]] HostLevel as_level(const HostArea& area) {
     HostLevel out = kHostLevels[kLevel11];
 
     out.type = 1;
@@ -6507,9 +6528,9 @@ HostLevel as_level(const HostArea& area) {
     return out;
 }
 
-const HostArea* warp_room() {
+const HostArea* coin_room() {
     for (int i = 0; i < kHostAreaCount; ++i) {
-        if (kHostAreas[i].level == kLevel12 && kHostAreas[i].kind == 1) {
+        if (kHostAreas[i].level == kLevel12 && kHostAreas[i].kind == 0) {
             return &kHostAreas[i];
         }
     }
@@ -6517,8 +6538,8 @@ const HostArea* warp_room() {
 }
 
 // the nth object of a kind, rather than just the first find_object gives: 1-2 has two
-// kObjPipeJump objects (the entrance and the run's own exit), sorted by column, so index 0 is
-// always the entrance and index 1 the exit
+// kObjPipeSide objects (the underground run's exit and the coin room's), sorted by column, so
+// index 0 is always the run's own and index 1 the room's
 const LevelObject* find_object_nth(const LevelObject* list, uint16_t count, uint8_t kind, int n) {
     int seen = 0;
     for (uint16_t i = 0; i < count; ++i) {
@@ -6644,12 +6665,27 @@ TEST_CASE("mario_autopilot_completes_1_2") {
     enter_1_2_underground(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
 
-    // the run's own exit pipe lands inside the above-ground ending segment, not the underground one
+    // both sideways exit pipes - the run's own at the end of its brick platform and the coin
+    // room's - deliver him up out of the ending's piranha pipe: the landing cell is that pipe's
+    // cap, inside the above-ground ending segment, not the underground one
     const HostLevel& lv = kHostLevels[kLevel12];
-    const LevelObject* exit_pipe = find_object_nth(lv.objects, lv.object_count, kObjPipeJump, 1);
-    REQUIRE(exit_pipe != nullptr);
-    const LevelJump& ending_target = lv.jumps[exit_pipe->param];
-    REQUIRE(sky_for_column(kLevel12, ending_target.column) == kSkyOverworld);
+    for (int n = 0; n < 2; ++n) {
+        const LevelObject* exit_pipe = find_object_nth(lv.objects, lv.object_count, kObjPipeSide, n);
+        REQUIRE(exit_pipe != nullptr);
+        const LevelJump& ending_target = lv.jumps[exit_pipe->param];
+        REQUIRE(ending_target.column == 220);
+        REQUIRE(ending_target.row == 11);
+        REQUIRE(kLevel12Grid[ending_target.column][ending_target.row] == kBlockPipeTl);
+        REQUIRE(sky_for_column(kLevel12, ending_target.column) == kSkyOverworld);
+    }
+    REQUIRE(find_object_nth(lv.objects, lv.object_count, kObjPipeSide, 2) == nullptr);
+    // and the entrance drops him in at the top of the open shaft, not onto its floor
+    const LevelObject* entrance = find_object_nth(lv.objects, lv.object_count, kObjPipeJump, 0);
+    REQUIRE(entrance != nullptr);
+    REQUIRE(lv.jumps[entrance->param].column == 27);
+    REQUIRE(lv.jumps[entrance->param].row == 2);
+    REQUIRE(kLevel12Grid[27][2] == kBlockEmpty);
+    REQUIRE(kLevel12Grid[27][13] == kBlockGround);
 
     // and the flag/castle themselves stand in that same overworld segment, with no ceiling
     // stamped above them - the cave-ceiling fidelity gap this whole rebuild exists to close
@@ -6658,16 +6694,11 @@ TEST_CASE("mario_autopilot_completes_1_2") {
     REQUIRE(kLevel12Grid[lv.flag_column][1] == kBlockEmpty);
 }
 
-// the facts a pixel extraction of the official nes 1-2 map settled that the old prose-derived
-// bible had wrong: the three piranha pipes' columns, the seven floor pits, and the two deliberate
-// holes in the underground roof (the entry shaft and the lift shaft). see level-1-2.json's
-// confidence_notes and SCHEMA.md's ceiling_gap entry. this pass re-anchored the whole underground
-// run +24 columns to make room for a real above-ground start (segments[0], cols 0-23) ahead of it,
-// and gave the level a real above-ground ending (segments[2], cols 216-257) instead of appending
-// more underground-typed columns past the run's own end - so every column below is +24 from the
-// bible's old numbers, and two more pipes now exist outside the underground run entirely: the
-// above-ground start's short decorative pipe (10) and entrance pipe (12), and the above-ground
-// ending's own piranha pipe (219)
+// 1-2 is transcribed cell by cell from the smbd map rip (level-1-2.json's confidence_notes): the
+// underground run sits at +24 from the map's own columns behind a 24-column above-ground start, and
+// the ending at +25 past the exit shaft. the facts pinned here are the ones a player feels: where
+// the pipes stand, where the floor is missing, where the roof is open, and the two sideways pipes
+// and two lifts the level cannot be finished without
 TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     std::vector<uint16_t> pipe_caps;
     for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
@@ -6678,20 +6709,16 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
         }
     }
     // above-ground start: the short decorative pipe (10) and the entrance pipe (12). underground
-    // run (+24 from the old numbers): the three piranha pipes (127/133/139), the run's own exit
-    // pipe (190, a compiler judgement call - see level-1-2.json), and the three real, measured
-    // warp-room pipes the map draws directly in-band (202/206/210) - decorative only (dest: null).
-    // above-ground ending: its own piranha pipe (219). there is deliberately NO pipe at 172: a
-    // synthetic one used to be stamped there for the warp-zone sub-area's entry_x and rendered as a
-    // lone cap standing on open floor, which the map has nothing at - see level-1-2.json's warp-zone
-    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 190, 202, 206, 210, 219});
+    // run: the three piranha pipes (map 103/109/115). above-ground ending: its own piranha pipe
+    // (map 195). the two sideways exits have no cap of their own - their shafts run straight up
+    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 220});
 
     // a pit is a column with no ground at either of the two floor rows
     std::vector<int> pits;
     bool in_pit = false;
     for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
         const bool floorless = kLevel12Grid[column][LEVEL_1_2_START_ROW] != kBlockGround &&
-                                kLevel12Grid[column][LEVEL_1_2_START_ROW] != kBlockGroundFill;
+                               kLevel12Grid[column][LEVEL_1_2_START_ROW] != kBlockGroundFill;
         if (floorless && !in_pit) {
             pits.push_back(column);
             in_pit = true;
@@ -6699,48 +6726,233 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
             in_pit = false;
         }
     }
-    // five measured pits' left edges, +24: 104-106, 144-145, 148-149, then the lift-shaft's two full
-    // pits, 162-168 and 177-183 - n12_kinds.json's per-cell classification shows the "floor islands"
-    // this bible used to carve out of those two spans (163-166, 178-181) are not real floor at all:
-    // every cell there is either open or an 'other'/'enemy'/'coin' overlay marker for the lift decks
-    // and their riders/loose coins, not brick/hard/question ground. see level-1-2.json's terrain
-    REQUIRE(pits == std::vector<int>{104, 144, 148, 162, 177});
+    // the map's seven pits, left edges +24: the three-wide one under the coin platform (80-82),
+    // the two two-wide ones either side of the brick pillar (120-121, 124-125), the two seven-wide
+    // lift pits (138-144, 153-159), and the coin room's two one-column holes (177, 186)
+    REQUIRE(pits == std::vector<int>{104, 144, 148, 162, 177, 201, 210});
 
-    // the roof is one row of brick at row 2 (not the two-row ground slab this test used to check -
-    // the pixel extraction of the real map settled that the cave ceiling is exactly one row, and
-    // rows 0-1 above it render nothing), stamped only inside the underground segment (24-215): a
-    // segment typed overworld gets none at all, which is the whole point of this rebuild - the
-    // above-ground start and ending read as open sky, not cave with the roof carved away column by
-    // column. rows 0-1 must stay empty everywhere, underground or not
-    const auto roof_open = [](uint16_t column) {
-        return kLevel12Grid[column][0] == kBlockEmpty && kLevel12Grid[column][1] == kBlockEmpty &&
-               kLevel12Grid[column][2] != kBlockBrick;
-    };
-    // above-ground start: no roof anywhere
+    // the roof is one row of brick at row 2, stamped only inside the underground segment, and open
+    // exactly where the map opens it: the entry shaft (1-5), the lift shaft (138-160, where the
+    // second lift carries a rider onto the roof walk) and the four-column drop into the coin room
+    // (187-190). the two exit shafts poke up through it at 168-169 (map) and 191-192
+    const auto roof_brick = [](uint16_t column) { return kLevel12Grid[column][2] == kBlockBrick; };
     for (uint16_t column = 0; column <= 23; ++column) {
-        REQUIRE(roof_open(column));
+        REQUIRE(!roof_brick(column));
+        REQUIRE(kLevel12Grid[column][0] == kBlockEmpty);
     }
-    // underground run: solid roof except the entry shaft and the lift shaft, +24
     for (uint16_t column = 25; column <= 29; ++column) {
-        REQUIRE(roof_open(column));
+        REQUIRE(!roof_brick(column));
+    }
+    for (uint16_t column = 30; column <= 161; ++column) {
+        REQUIRE(roof_brick(column));
     }
     for (uint16_t column = 162; column <= 184; ++column) {
-        REQUIRE(roof_open(column));
+        REQUIRE(!roof_brick(column));
     }
-    for (uint16_t column = 211; column <= 213; ++column) {
-        REQUIRE(roof_open(column));
+    for (uint16_t column = 185; column <= 210; ++column) {
+        if (column == 192 || column == 193) {
+            continue;
+        }
+        REQUIRE(roof_brick(column));
     }
-    REQUIRE(!roof_open(30));
-    REQUIRE(!roof_open(161));
-    REQUIRE(!roof_open(185));
-    REQUIRE(!roof_open(210));
-    REQUIRE(!roof_open(214));
-    REQUIRE(!roof_open(190));
-    // above-ground ending: no roof anywhere but the compiler-invented wall column at its own left
-    // edge (216), which is solid floor to ceiling on purpose - see level-1-2.json's segments notes
-    for (uint16_t column = 217; column <= 257; ++column) {
-        REQUIRE(roof_open(column));
+    for (uint16_t column = 211; column <= 214; ++column) {
+        REQUIRE(!roof_brick(column));
     }
+    for (uint16_t column = 217; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        REQUIRE(!roof_brick(column));
+        REQUIRE(kLevel12Grid[column][0] == kBlockEmpty);
+    }
+    // the roof walk cannot leak into either above-ground segment: the shaft's left wall and the
+    // coin room's exit shaft both run to the top of the grid
+    for (uint8_t row = 0; row <= 12; ++row) {
+        REQUIRE(kLevel12Grid[24][row] == kBlockBrick);
+        REQUIRE(kLevel12Grid[215][row] == kBlockPipeBodyL);
+        REQUIRE(kLevel12Grid[216][row] == kBlockPipeBodyR);
+    }
+
+    // the underground's exit: a sideways pipe at the end of the three-row brick platform (map rows
+    // 10-12, cols 160-176), mouth at map col 166 rows 8-9, body at 167, shaft at 168-169 rising
+    // through the ceiling. the seven-wide brick wall past it (170-176, rows 2-9) is a dead end
+    REQUIRE(kLevel12Grid[190][8] == kBlockPipeSideTl);
+    REQUIRE(kLevel12Grid[190][9] == kBlockPipeSideBl);
+    REQUIRE(kLevel12Grid[191][8] == kBlockPipeSideBodyT);
+    REQUIRE(kLevel12Grid[191][9] == kBlockPipeSideBodyB);
+    for (uint8_t row = 2; row <= 9; ++row) {
+        REQUIRE(kLevel12Grid[192][row] == kBlockPipeBodyL);
+        REQUIRE(kLevel12Grid[193][row] == kBlockPipeBodyR);
+    }
+    for (uint16_t column = 184; column <= 200; ++column) {
+        for (uint8_t row = 10; row <= 12; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockBrick);
+        }
+    }
+    for (uint16_t column = 194; column <= 200; ++column) {
+        for (uint8_t row = 2; row <= 9; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockBrick);
+        }
+    }
+    // the coin room's own sideways exit, mouth at map col 189 rows 11-12
+    REQUIRE(kLevel12Grid[213][11] == kBlockPipeSideTl);
+    REQUIRE(kLevel12Grid[213][12] == kBlockPipeSideBl);
+    REQUIRE(kLevel12Grid[214][11] == kBlockPipeSideBodyT);
+    REQUIRE(kLevel12Grid[214][12] == kBlockPipeSideBodyB);
+
+    // and both are objects the engine can trigger, one jump target apiece
+    const HostLevel& lv = kHostLevels[kLevel12];
+    const LevelObject* run_exit = find_object_nth(lv.objects, lv.object_count, kObjPipeSide, 0);
+    const LevelObject* room_exit = find_object_nth(lv.objects, lv.object_count, kObjPipeSide, 1);
+    REQUIRE(run_exit != nullptr);
+    REQUIRE(room_exit != nullptr);
+    REQUIRE(run_exit->column == 190);
+    REQUIRE(run_exit->row == 8);
+    REQUIRE(room_exit->column == 213);
+    REQUIRE(room_exit->row == 11);
+
+    // the two lifts, one per pit: the first starts at the top of its travel and descends, the
+    // second starts at the bottom and rises to row 1, one row above the roof, so a rider can step
+    // off onto the roof walk. both decks sit centred in their seven-column pits
+    const LevelObject* first = find_object_nth(lv.objects, lv.object_count, kObjLiftV, 0);
+    const LevelObject* second = find_object_nth(lv.objects, lv.object_count, kObjLiftV, 1);
+    REQUIRE(first != nullptr);
+    REQUIRE(second != nullptr);
+    REQUIRE(first->column == 164);
+    REQUIRE(first->row == 3);
+    REQUIRE((first->param & kLiftSpanMask) == 9);
+    REQUIRE((first->param & kLiftReverse) == 0);
+    REQUIRE(second->column == 179);
+    REQUIRE(second->row == 1);
+    REQUIRE((second->param & kLiftSpanMask) == 11);
+    REQUIRE((second->param & kLiftReverse) != 0);
+    REQUIRE(find_object_nth(lv.objects, lv.object_count, kObjLiftV, 2) == nullptr);
+}
+
+// the underground's loose coins, blocks and enemies, as the map draws them
+TEST_CASE("mario_1_2_coins_blocks_and_enemies_match_the_measured_map") {
+    int coins = 0;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel12Grid[column][row] == kBlockCoin) {
+                ++coins;
+            }
+        }
+    }
+    // twenty-six loose coins in the main grid: 2+4+4+1+6 along the run, 3+2+4 in the coin room
+    REQUIRE(coins == 26);
+    for (uint16_t column = 108; column <= 113; ++column) {
+        REQUIRE(kLevel12Grid[column][5] == kBlockCoin);
+    }
+    REQUIRE(kLevel12Grid[64][8] == kBlockCoin);
+    REQUIRE(kLevel12Grid[69][8] == kBlockCoin);
+
+    // the reaction list: the opening power-up block and its four coin blocks, the starman brick,
+    // three ten-coin bricks, four power-up bricks (one in the ceiling), the room's three blocks
+    REQUIRE(kLevel12BlockCount == 16);
+    const auto block_at = [](uint16_t column, uint8_t row) -> const LevelBlock* {
+        for (uint16_t i = 0; i < kLevel12BlockCount; ++i) {
+            if (kLevel12Blocks[i].column == column && kLevel12Blocks[i].row == row) {
+                return &kLevel12Blocks[i];
+            }
+        }
+        return nullptr;
+    };
+    REQUIRE(block_at(34, 9) != nullptr);
+    REQUIRE(block_at(34, 9)->kind == 0); // kBlockListQuestion
+    REQUIRE(block_at(34, 9)->content == kContentMushroom);
+    for (uint16_t column = 35; column <= 38; ++column) {
+        REQUIRE(block_at(column, 9) != nullptr);
+        REQUIRE(block_at(column, 9)->content == kContentCoin);
+    }
+    REQUIRE(block_at(70, 7) != nullptr);
+    REQUIRE(block_at(70, 7)->content == kContentStar);
+    REQUIRE(block_at(113, 2) != nullptr);
+    REQUIRE(block_at(113, 2)->kind == kBlockListBrick);
+    REQUIRE(block_at(113, 2)->content == kContentMushroom);
+    REQUIRE(kLevel12Grid[113][2] == kBlockBrick);
+    REQUIRE(block_at(53, 8)->content == kContentMulticoin);
+    REQUIRE(block_at(97, 8)->content == kContentMulticoin);
+    REQUIRE(block_at(174, 8)->content == kContentMushroom);
+
+    // enemies: eighteen walkers off the map plus the four piranha plants, one per vertical pipe
+    REQUIRE(kLevel12EnemyCount == 22);
+    std::vector<uint16_t> plants;
+    std::vector<uint16_t> reds;
+    for (uint16_t i = 0; i < kLevel12EnemyCount; ++i) {
+        if (kLevel12Enemies[i].kind == kEnemyPiranha) {
+            plants.push_back(kLevel12Enemies[i].column);
+            // a plant's roster row is its pipe's cap row
+            REQUIRE(kLevel12Grid[kLevel12Enemies[i].column][kLevel12Enemies[i].row] == kBlockPipeTl);
+        } else if (kLevel12Enemies[i].kind == kEnemyKoopaRed) {
+            reds.push_back(kLevel12Enemies[i].column);
+        }
+    }
+    REQUIRE(plants == std::vector<uint16_t>{127, 133, 139, 220});
+    REQUIRE(reds == std::vector<uint16_t>{169});
+    // the goomba on the lone one-high block and the one on top of the coin-brick pillar stand on
+    // those, not on the floor
+    bool on_block = false;
+    bool on_pillar = false;
+    for (uint16_t i = 0; i < kLevel12EnemyCount; ++i) {
+        const LevelEnemy& e = kLevel12Enemies[i];
+        if (e.column == 41 && e.row == 12) {
+            on_block = kLevel12Grid[41][12] == kBlockHard;
+        }
+        if (e.column == 96 && e.row == 5) {
+            on_pillar = kLevel12Grid[96][5] == kBlockBrick;
+        }
+    }
+    REQUIRE(on_block);
+    REQUIRE(on_pillar);
+}
+
+// the coin room under the first piranha pipe, as the smbd map's lower band draws it: a wall down
+// the left with a two-column shaft mario drops through, a four-row ceiling block, eight coins
+// over a one-row platform plus one at its end, nine along the floor, and an exit pipe that brings
+// him up out of the third piranha pipe rather than the one he went down
+TEST_CASE("mario_1_2_coin_room_compiles") {
+    const HostArea* room = coin_room();
+    REQUIRE(room != nullptr);
+    REQUIRE(kHostAreaCount == 2);
+    REQUIRE(room->columns == 17);
+    REQUIRE(room->warp_count == 0);
+    REQUIRE(room->start_column == 1);
+    REQUIRE(room->start_row == 2);
+    REQUIRE(room->exit_column == 13);
+    REQUIRE(room->exit_top_row == 11);
+    REQUIRE(room->return_column == 139);
+    REQUIRE(room->return_top_row == 11);
+    REQUIRE(kLevel12Grid[139][11] == kBlockPipeTl);
+
+    int coins = 0;
+    for (int column = 0; column < room->columns; ++column) {
+        for (int row = 0; row < kHostLevelRows; ++row) {
+            if (room->grid[column][row] == kBlockCoin) {
+                ++coins;
+            }
+        }
+    }
+    REQUIRE(coins == 18);
+    for (int row = 0; row <= 12; ++row) {
+        REQUIRE(room->grid[0][row] == kBlockBrick);
+    }
+    for (int column = 3; column <= 14; ++column) {
+        for (int row = 2; row <= 5; ++row) {
+            REQUIRE(room->grid[column][row] == kBlockBrick);
+        }
+    }
+    // the shaft he falls down is open from the top of the grid to the floor
+    for (int row = 0; row <= 12; ++row) {
+        REQUIRE(room->grid[1][row] == kBlockEmpty);
+        REQUIRE(room->grid[2][row] == kBlockEmpty);
+    }
+    REQUIRE(room->grid[13][11] == kBlockPipeTl);
+
+    // and the pipe that leads down into it is the first piranha pipe
+    const HostLevel& lv = kHostLevels[kLevel12];
+    const LevelObject* down = find_object(lv.objects, lv.object_count, kObjPipe);
+    REQUIRE(down != nullptr);
+    REQUIRE(down->column == 127);
+    REQUIRE(down->row == 10);
+    REQUIRE(down->param == 0);
 }
 
 TEST_CASE("mario_autopilot_completes_1_3") {
@@ -6883,14 +7095,20 @@ TEST_CASE("mario_lift_carries") {
     REQUIRE(rode > 0);
     REQUIRE(carried > 20);
 
-    // 1-2's lift shaft used to carry a bible-approximated vertical pair, but the real map gives no
-    // measured track for them (mariowiki only says "left descends, right ascends", not where) and
-    // the old approx span stamped static pipe-body blocks into cells the real map leaves open - the
-    // user-reported "blue bricks too close to the ground" bug. transcribing the real map instead
-    // means leaving this shaft empty rather than inventing a track: no vertical lifts in 1-2 today.
+    // 1-2's two lift pits each carry one vertical deck (the engine has two lift slots): the first
+    // starts at the top of its travel, the second at the bottom, so the twin's pair start out of
+    // phase exactly as the object list says
     PlayerSim vertical;
     vertical.load_level(kLevel12);
-    REQUIRE(vertical.lift_count == 0);
+    REQUIRE(vertical.lift_count == 2);
+    REQUIRE(vertical.lifts[0].vertical == 1);
+    REQUIRE(vertical.lifts[1].vertical == 1);
+    REQUIRE(vertical.lifts[0].dir == 1);
+    REQUIRE(vertical.lifts[1].dir == -1);
+    REQUIRE(vertical.lifts[0].lo == 3 * kBlockPx);
+    REQUIRE(vertical.lifts[0].hi == 12 * kBlockPx);
+    REQUIRE(vertical.lifts[1].lo == 1 * kBlockPx);
+    REQUIRE(vertical.lifts[1].hi == 12 * kBlockPx);
 
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
@@ -7043,81 +7261,6 @@ TEST_CASE("mario_axe_ends_1_4") {
     REQUIRE(wait_for_map(gameboy, 900) >= 0);
 }
 
-TEST_CASE("mario_warp_zone_compiles") {
-    // the bible's warp-zone room: three pipes side by side, measured off the real nes map at
-    // columns 178-179/182-183/186-187, ordered left to right by the glyph the map draws above each
-    // one - 4, 3, 2. every one of those worlds is real in smb1 but does not exist in this rom
-    // (kLevelCount is 4, world one only), so each compiles to WARP_UNBUILT (0xFF) rather than being
-    // clamped onto a level that does exist: the pipe is still built, still in the right order, but
-    // pressing down over it is a no-op. see SCHEMA.md and level-1-2.json's confidence_notes
-    constexpr uint8_t kWarpUnbuilt = 0xFF;
-    const HostArea* warp = warp_room();
-    REQUIRE(warp != nullptr);
-    REQUIRE(warp->warp_count == 3);
-    for (int i = 0; i < warp->warp_count; ++i) {
-        REQUIRE(warp->warps[i].level == kWarpUnbuilt);
-    }
-    // the room lays its three pipes out left to right in the bible's own warps[] order - world 4,
-    // then 3, then 2 - so the compiled columns still climb left to right even though none opens
-    REQUIRE(warp->warps[0].column < warp->warps[1].column);
-    REQUIRE(warp->warps[1].column < warp->warps[2].column);
-
-    // there is deliberately no synthetic entry pipe: the room's three numbered pipes are drawn
-    // in-band at 202/206/210, and the auto-pipe that used to be stamped at the bible's entry_x
-    // showed up in play as a lone pipe cap sitting on open floor with nothing under it, which is
-    // not on the map. the real route in is riding the lifts up and walking the roof, which the
-    // engine cannot express yet - so the room is unreachable for now, and its pipes are
-    // WARP_UNBUILT no-ops regardless. this asserts the artifact stays gone
-    const HostLevel& lv = kHostLevels[kLevel12];
-    for (int i = 0; i < lv.object_count; ++i) {
-        REQUIRE_FALSE((lv.objects[i].kind == kObjPipe && lv.objects[i].param == 1));
-    }
-
-    // the twin can still stand on a destination cap inside the compiled room itself
-    static const HostLevel room = as_level(*warp);
-    PlayerSim inside;
-    inside.load_host(room);
-    const Route across =
-        plan_stand_on_pipe(inside, warp->warps[0].column, static_cast<uint8_t>(warp->exit_top_row), 900);
-    REQUIRE(across.reached);
-}
-
-// the rom-level guarantee behind the WARP_UNBUILT sentinel: standing on one of the three unbuilt
-// warp pipes and holding down neither crashes nor changes what level is loaded. this is the fix
-// for a real bug - compile_level.py used to clamp an unresolvable warp target to the last level of
-// world one, so this exact input (stand on the "world 4" pipe, hold down) used to silently load
-// 1-4. mario_warp_zone_compiles already proves the compiled sentinel/ordering; reaching the warp
-// room live from 1-2's own start would mean walking the underground run's full ~160-column length
-// on real hardware from a host twin planted mid-level, which mario_autopilot_completes_1_2's own
-// comment explains is not currently reliable (no way to sync a fresh twin to the real rom's
-// already-elapsed lift/enemy phase at that column). what IS proven live here is the other half of
-// the guarantee: main.c's `if (target != 0xff)` skip is exactly the same code path a real,
-// reachable pipe with no destination takes - the entrance pipe, held down well past the frames the
-// real transition needs, never mis-fires into some other pipe or crashes
-TEST_CASE("mario_unbuilt_warp_pipe_is_a_polite_no_op") {
-    const HostArea* warp = warp_room();
-    REQUIRE(warp != nullptr);
-    REQUIRE(warp->warp_count == 3);
-    constexpr uint8_t kWarpUnbuilt = 0xFF;
-    for (int i = 0; i < warp->warp_count; ++i) {
-        REQUIRE(warp->warps[i].level == kWarpUnbuilt);
-    }
-
-    const std::vector<uint8_t> rom = read_mario_rom();
-    gb::Gameboy gameboy;
-    REQUIRE(gameboy.load_rom(rom));
-    enter_level(gameboy, kLevel12);
-    REQUIRE(sky_color(gameboy) == kSkyOverworld);
-
-    // cross into the underground for real, then hold down well past what the crossing itself
-    // needs: nothing after the real transition completes should re-trigger it or anything else
-    enter_1_2_underground(gameboy);
-    REQUIRE(sky_color(gameboy) == kSkyUnderground);
-    press(gameboy, gb::Button::Down, 120);
-    run(gameboy, 30);
-    REQUIRE(sky_color(gameboy) == kSkyUnderground);
-}
-
 // --- sub-milestone 8b: hud, lives, cards and the battery slot ----------------------------------
 
 namespace {
@@ -7147,7 +7290,7 @@ constexpr int kTimeBonus = kTimeBonusPoints;
 constexpr int kShortTimerTicks = 70;
 constexpr int kStartLives = 3;
 // how long a is held at the pole to clear its top row entirely, which is what misses the contact
-constexpr int kFlagClearHold = 12;
+[[maybe_unused]] constexpr int kFlagClearHold = 12;
 constexpr int kTimerFramesPerTick = 60;
 // the kContent* contract again, for the one entry the earlier mirrors did not need
 constexpr uint8_t kContentOneup = 4;
@@ -7754,8 +7897,7 @@ TEST_CASE("mario_file_select_cursor_and_confirm") {
     // b walks back to the title, whose wordmark is the six glyph span
     step_screen(gameboy, gb::Button::B);
     run(gameboy, kScreenSettleFrames);
-    REQUIRE(glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) ==
-            std::pair<int, int>{7, 12});
+    REQUIRE(glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{7, 12});
 
     // and start off the title opens the card again, cursor back on the first slot
     step_screen(gameboy, gb::Button::Start);
@@ -8005,10 +8147,10 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
 
 namespace {
 // the map's own kMap* layout, mirrored from mario.h
-constexpr uint32_t kMapWorldRow = 1;
+[[maybe_unused]] constexpr uint32_t kMapWorldRow = 1;
 constexpr uint32_t kMapLevelRow = 2;
 constexpr uint32_t kMapLivesTextRow = 14;
-constexpr uint32_t kMapLivesTextCol = 1;
+[[maybe_unused]] constexpr uint32_t kMapLivesTextCol = 1;
 constexpr uint32_t kMapListLeftCol = 7;
 constexpr uint32_t kMapListCellsRow = 15;
 constexpr uint32_t kMapBandFirstTileRow = 4; // (kMapBandFirstRow=2) * kTilesPerBlock

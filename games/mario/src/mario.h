@@ -161,10 +161,20 @@
 #define kBlockBushL 35U
 #define kBlockBushM 36U
 #define kBlockBushR 37U
-#define kBlockKindCount 38U
-// the first purely decorative kind: everything from here up is non-solid and is only ever stamped
-// into a cell the compiled level left empty
+// 1-2's sideways pipe mouth, the classic L: a 2-row-tall mouth facing left, then a column of
+// horizontal body, then an ordinary vertical shaft. all four are solid, and their art is the
+// vertical pipe's own tiles turned on their side (see kPipeSideTiles in assets_data.c)
+#define kBlockPipeSideTl 38U
+#define kBlockPipeSideBl 39U
+#define kBlockPipeSideBodyT 40U
+#define kBlockPipeSideBodyB 41U
+#define kBlockKindCount 42U
+// the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
+// empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
+// enum until the side pipe was appended past them, so anything testing for decor has to take the
+// range rather than "everything from here up"
 #define kBlockFirstDecor kBlockCloudTl
+#define kBlockLastDecor kBlockBushR
 // what blocks_kind_override returns when the compiled grid still stands unaltered
 #define kBlockNoOverride 0xFFU
 
@@ -308,6 +318,24 @@
 #define kTileScenPole 0x59U
 #define kTileScenBlank 0x5AU
 #define kTileSceneryLast 0x5AU
+
+// the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
+// transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes
+// the rim line down the mouth's left edge and the highlight runs along the pipe's top for its
+// whole horizontal length (see kPipeSideTiles in assets_data.c). vram bank 0 has no tile ids left
+// at all, so they ride in bank 1 past the map screen's own run (0x60-0x71, declared in assets.h),
+// and their kBlockPalette entries carry kCamAttrVram1 the way every scenery kind's does.
+// the mouth is one block column of two block rows - top quadrants then bottom - and the body the
+// same shape again, so nine tiles cover all four kinds
+#define kTilePipeSideTl 0x72U
+#define kTilePipeSideTr 0x73U
+#define kTilePipeSideMl 0x74U
+#define kTilePipeSideMr 0x75U
+#define kTilePipeSideBl 0x76U
+#define kTilePipeSideBr 0x77U
+#define kTilePipeSideBodyT 0x78U
+#define kTilePipeSideBodyM 0x79U
+#define kTilePipeSideBodyB 0x7AU
 
 // cgb bg palette slots for the terrain: one per pinned tile family, plus a neutral one for
 // bridge/axe/platform. all eight cgb bg palettes are spoken for
@@ -664,6 +692,11 @@
 // with the lcd off, exactly like entering a sub-area, but level_grid never reloads because the
 // whole level was already unpacked into it at level_load - only the vram ring and bg palette catch up
 #define kObjPipeJump 6U
+// and the same teleport walked into sideways rather than dropped into: object_column is the mouth
+// rim's column, object_row the mouth's top row (the mouth is that row and the one under it), and
+// object_param indexes jump_target_column/jump_target_row exactly like kObjPipeJump's does. it is
+// how 1-2 leaves the underground - right into the mouth, out of the ending's pipe cap
+#define kObjPipeSide 7U
 
 // flow_pipe_under_player()'s sub-area index and a same-grid jump index share one uint8_t return
 // value (0xff means neither): a jump index is this bit set over the low bits, kept well clear of

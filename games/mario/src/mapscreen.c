@@ -243,8 +243,8 @@ static uint16_t map_x;
 #define L (uint8_t)(kBlockKindCount + 5U) // hedge, low
 static const uint8_t kMapRows[kMapBandBlockRows][kMapBlockCols] = {
     {E, N, L, T, N, E, kBlockPipeTl, kBlockPipeTr, kBlockCastleCrenel, kBlockCastleCrenel},
-    {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR,
-     kBlockCastleDoorTop, kBlockCastleWindow},
+    {T, L, E, kBlockBushL, kBlockBushM, kBlockBushR, kBlockPipeBodyL, kBlockPipeBodyR, kBlockCastleDoorTop,
+     kBlockCastleWindow},
     {P, P, P, P, P, P, P, P, kBlockCastleDoor, kBlockCastle},
     {L, W, W, P, P, P, P, W, kBlockCastle, kBlockCastle},
 };
@@ -342,11 +342,9 @@ static void put_cell(uint8_t bx, uint8_t by, uint8_t kind) {
     if (kind < (uint8_t)kBlockKindCount) {
         put_block(bx, by, kind);
     } else if (kind == (uint8_t)kBlockKindCount) {
-        put_new_quad(bx, by, kTileMapWaterTop, kTileMapWaterBody,
-                     (uint8_t)(kCamPalNeutral | kCamAttrVram1));
+        put_new_quad(bx, by, kTileMapWaterTop, kTileMapWaterBody, (uint8_t)(kCamPalNeutral | kCamAttrVram1));
     } else if (kind == (uint8_t)(kBlockKindCount + 1U)) {
-        put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody,
-                     (uint8_t)(kCamPalCoin | kCamAttrVram1));
+        put_new_quad(bx, by, kTileMapPathTop, kTileMapPathBody, (uint8_t)(kCamPalCoin | kCamAttrVram1));
     } else if (kind == (uint8_t)(kBlockKindCount + 2U)) {
         // x-flipped the same way the hedges are, and top/base are two different speck scatters
         // (not the same tile twice): between the mirror and the mismatched halves, a run of field
@@ -486,8 +484,7 @@ static void draw_mario(void) {
     const uint8_t tile = (uint8_t)(kTileMarioFirst + map_anim * kMarioTilesPerFrame);
     const uint8_t left = map_facing_left != 0U ? (uint8_t)(tile + 2U) : tile;
     const uint8_t right = map_facing_left != 0U ? tile : (uint8_t)(tile + 2U);
-    const uint8_t prop =
-        (uint8_t)(kPalMario | (map_facing_left != 0U ? (uint8_t)S_FLIPX : 0U));
+    const uint8_t prop = (uint8_t)(kPalMario | (map_facing_left != 0U ? (uint8_t)S_FLIPX : 0U));
     const uint8_t x = (uint8_t)(map_x + kOamXOffset);
     const uint8_t y = (uint8_t)(kMapWalkRow * kBlockPx + kOamYOffset);
 
@@ -536,7 +533,7 @@ static void map_reset(uint8_t node) {
     card_clear_map();
     font_color(kFontFore, kFontBack);
     card_paint_band((uint8_t)(kMapBandFirstRow * kTilesPerBlock),
-                     (uint8_t)(kMapBandBlockRows * kTilesPerBlock), kCamPalGround);
+                    (uint8_t)(kMapBandBlockRows * kTilesPerBlock), kCamPalGround);
     // the level left its own oam behind - mario's lower row, the five hud digits, items, enemies -
     // and SHOW_SPRITES below would put every one of them back on screen. the map draws four sprites
     // (mario, and the lives icon) and owns all forty, so the rest are parked above the visible area
@@ -591,8 +588,7 @@ static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
     }
     // a node past the file's furthest is not walkable at all: the path simply refuses, which is
     // what the locked brick marker over it has already said
-    if ((pressed & J_RIGHT) != 0U && map_node + 1U < (uint8_t)kLevelCount &&
-        map_node + 1U <= map_unlocked) {
+    if ((pressed & J_RIGHT) != 0U && map_node + 1U < (uint8_t)kLevelCount && map_node + 1U <= map_unlocked) {
         map_target = (uint8_t)(map_node + 1U);
         map_facing_left = 0;
     } else if ((pressed & J_LEFT) != 0U && map_node != 0U) {

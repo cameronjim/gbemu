@@ -131,13 +131,13 @@ static void step_y(uint8_t feet, uint8_t on_ground, uint8_t standing, uint8_t ke
                 look_base = window_target(feet, 1U);
                 ++look_hold;
             }
-            ease_to(look_dir == J_UP ? (look_base > (uint8_t)kCamLookUpPx
-                                            ? (uint8_t)(look_base - (uint8_t)kCamLookUpPx)
-                                            : 0U)
-                                     : (look_base > (uint8_t)(kScyMax - kCamLookDownPx)
-                                            ? (uint8_t)kScyMax
-                                            : (uint8_t)(look_base + (uint8_t)kCamLookDownPx)),
-                    1U);
+            ease_to(
+                look_dir == J_UP
+                    ? (look_base > (uint8_t)kCamLookUpPx ? (uint8_t)(look_base - (uint8_t)kCamLookUpPx) : 0U)
+                    : (look_base > (uint8_t)(kScyMax - kCamLookDownPx)
+                           ? (uint8_t)kScyMax
+                           : (uint8_t)(look_base + (uint8_t)kCamLookDownPx)),
+                1U);
             return;
         }
     }

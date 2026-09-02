@@ -100,6 +100,8 @@ def write_header(gen_dir, levels, bank):
         f.write("    uint16_t flag_column;\n")
         f.write("    uint8_t flag_top_row;\n")
         f.write("    uint8_t flag_base_row;\n")
+        f.write("    uint8_t has_castle;\n")
+        f.write("    uint16_t castle_column;\n")
         f.write("    uint8_t has_axe;\n")
         f.write("    uint16_t axe_column;\n")
         f.write("    uint8_t axe_row;\n")
@@ -172,6 +174,7 @@ def write_table(gen_dir, levels, bank):
                     % (upper, upper, upper, upper, upper, upper))
             f.write("     %s_HAS_FLAG, %s_FLAG_COLUMN, %s_FLAG_TOP_ROW, %s_FLAG_BASE_ROW,\n"
                     % (upper, upper, upper, upper))
+            f.write("     %s_HAS_CASTLE, %s_CASTLE_COLUMN,\n" % (upper, upper))
             f.write("     %s_HAS_AXE, %s_AXE_COLUMN, %s_AXE_ROW, %s_BRIDGE_X0, %s_BRIDGE_X1,\n"
                     % (upper, upper, upper, upper, upper))
             f.write("     %s_BRIDGE_ROW, (const uint8_t*)%s_blocks,\n" % (upper, slug))
@@ -214,6 +217,7 @@ def write_host(gen_dir, levels):
         f.write("struct HostLevel {\n")
         f.write("    int type;\n    int timer;\n    int columns;\n    int start_column;\n    int start_row;\n")
         f.write("    int has_flag;\n    int flag_column;\n    int flag_top_row;\n    int flag_base_row;\n")
+        f.write("    int has_castle;\n    int castle_column;\n")
         f.write("    int has_axe;\n    int axe_column;\n    int axe_row;\n")
         f.write("    int bridge_x0;\n    int bridge_x1;\n    int bridge_row;\n")
         f.write("    const uint8_t (*grid)[kHostLevelRows];\n")
@@ -232,6 +236,7 @@ def write_host(gen_dir, levels):
                     % (upper, upper, upper, upper, upper))
             f.write("     %s_HAS_FLAG, %s_FLAG_COLUMN, %s_FLAG_TOP_ROW, %s_FLAG_BASE_ROW,\n"
                     % (upper, upper, upper, upper))
+            f.write("     %s_HAS_CASTLE, %s_CASTLE_COLUMN,\n" % (upper, upper))
             f.write("     %s_HAS_AXE, %s_AXE_COLUMN, %s_AXE_ROW, %s_BRIDGE_X0, %s_BRIDGE_X1,\n"
                     % (upper, upper, upper, upper, upper))
             f.write("     %s_BRIDGE_ROW, k%sGrid, k%sBlocks, k%sBlockCount, k%sEnemies, k%sEnemyCount,\n"

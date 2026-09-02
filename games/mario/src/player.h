@@ -12,11 +12,15 @@
 #define kClearFromFlag 0U
 #define kClearFromAxe 1U
 
-// the level-clear sequence's phases, in the order player_clear_update walks them
+// the level-clear sequence's phases, in the order player_clear_update walks them. smb's beat: down
+// the pole in the climb pose with the flag alongside, a flip to the pole's far side and a pause
+// there, the hop off, the walk to the castle, and the step into its door
 #define kClearSlide 0U
-#define kClearHop 1U
-#define kClearWalk 2U
-#define kClearHold 3U
+#define kClearFlip 1U
+#define kClearHop 2U
+#define kClearWalk 3U
+#define kClearDoor 4U
+#define kClearHold 5U
 
 // which way a pipe transition is carrying him. the side entry is the only horizontal one: 1-2's
 // L-shaped exit pipe is walked into rather than dropped down

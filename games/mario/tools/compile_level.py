@@ -61,6 +61,10 @@ BLOCK_PIPE_SIDE_TL = 38
 BLOCK_PIPE_SIDE_BL = 39
 BLOCK_PIPE_SIDE_BODY_T = 40
 BLOCK_PIPE_SIDE_BODY_B = 41
+# the keep's own battlement row, the five-wide one the three-wide tower stands on. the outer
+# crenel's notches are transparent and let sky through under the tower; this one's are the
+# castle's black. the contract with mario.h's kBlockCastleCrenelInner
+BLOCK_CASTLE_CRENEL_INNER = 42
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -105,6 +109,7 @@ KIND_NAMES = {
     BLOCK_PIPE_SIDE_BL: "PIPE_SIDE_BL",
     BLOCK_PIPE_SIDE_BODY_T: "PIPE_SIDE_BODY_T",
     BLOCK_PIPE_SIDE_BODY_B: "PIPE_SIDE_BODY_B",
+    BLOCK_CASTLE_CRENEL_INNER: "CASTLE_CRENEL_INNER",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -112,7 +117,7 @@ KIND_NAMES = {
 WALK_THROUGH = frozenset(
     [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH, BLOCK_COIN, BLOCK_AXE,
      BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
-     BLOCK_CASTLE_DOOR]
+     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER]
     + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
 )
 
@@ -212,6 +217,9 @@ FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
 CASTLE_WIDTH = 5
 CASTLE_HEIGHT = 5
 CASTLE_FLAG_GAP = 3
+# the door sits in the middle of the five-wide keep, which is where the clear walk ends. the
+# contract with mario.h kCastleDoorOffset, which is what player.c ends the clear walk at
+CASTLE_DOOR_OFFSET = 2
 
 # scenery geometry. a hill or a bush stands on the row the ground's grass is about to grow out of;
 # a cloud carries its own row. smb's narrowest bush is its two caps back to back
@@ -477,7 +485,7 @@ def apply_castle(grid, x0):
     rows = [
         [None, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, None],
         [None, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW, None],
-        [BLOCK_CASTLE_CRENEL] * 5,
+        [BLOCK_CASTLE_CRENEL_INNER] * 5,
         [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE, BLOCK_CASTLE],
         [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR, BLOCK_CASTLE, BLOCK_CASTLE],
     ]
@@ -879,6 +887,7 @@ def compile_grid(bible, level_type):
     objects = [fit_lift(grid, o) for o in objects]
 
     flag_col = None
+    castle_col = None
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
         flag_col = apply_flag(grid, flag["x"])
@@ -892,9 +901,12 @@ def compile_grid(bible, level_type):
         # a bible that measured the castle's own column places it there; otherwise it stands the
         # default short walk past the pole
         castle_x = (bible.get("castle_end") or {}).get("x")
-        castle = apply_castle(grid, castle_x if castle_x is not None else flag_col + CASTLE_FLAG_GAP)
+        castle_col = castle_x if castle_x is not None else flag_col + CASTLE_FLAG_GAP
+        castle = apply_castle(grid, castle_col)
         if castle is not None:
             probes.append(castle)
+        else:
+            castle_col = None
 
     # the bible's own scenery, stamped last so it can only ever land on sky
     probes.extend(apply_decor(grid, bible))
@@ -918,6 +930,7 @@ def compile_grid(bible, level_type):
         "columns": length_columns,
         "probes": probes,
         "flag_column": flag_col,
+        "castle_column": castle_col,
         "objects": objects,
         "bridge": bridge,
         "axe_column": axe_column,
@@ -1239,6 +1252,10 @@ def write_header(out_dir, slug, level, source_path):
         f.write("#define %s_FLAG_COLUMN %dU\n" % (upper, level["flag_column"] or 0))
         f.write("#define %s_FLAG_TOP_ROW %dU\n" % (upper, FLAG_POLE_TOP_ROW))
         f.write("#define %s_FLAG_BASE_ROW %dU\n" % (upper, FLAG_POLE_BOTTOM_ROW))
+        f.write("// the castle that closes the level: the column apply_castle() stood its five-wide\n")
+        f.write("// keep at. the clear walk ends at its door, CASTLE_DOOR_OFFSET columns in\n")
+        f.write("#define %s_HAS_CASTLE %dU\n" % (upper, 0 if level["castle_column"] is None else 1))
+        f.write("#define %s_CASTLE_COLUMN %dU\n" % (upper, level["castle_column"] or 0))
         f.write("// a castle ends at the axe instead: touching it drops the bridge span below\n")
         bridge = level["bridge"] or (0, 0)
         f.write("#define %s_HAS_AXE %dU\n" % (upper, 0 if level["axe_column"] is None else 1))
@@ -1566,6 +1583,7 @@ def compile_level(bible, bank, area_bank):
         "columns": built["columns"],
         "probes": built["probes"],
         "flag_column": built["flag_column"],
+        "castle_column": built["castle_column"],
         "bridge": built["bridge"],
         "axe_column": built["axe_column"],
         "start_column": start_column,

@@ -47,6 +47,10 @@ uint8_t terrain_floor_at(int16_t column, int16_t row);
 // scrolled out of the streamed window
 void terrain_write_block(int16_t column, int16_t row);
 
+// writes a cell's kind into the ram grid and repaints it: the flag pennant coming down the pole
+// moves one cell a step this way, since oam is full and it cannot be a sprite
+void terrain_set_cell(int16_t column, int16_t row, uint8_t kind);
+
 // turns a cell to sky in the ram grid and repaints it: the axe dropping 1-4's bridge
 void terrain_clear_cell(int16_t column, int16_t row);
 

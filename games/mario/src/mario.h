@@ -179,7 +179,12 @@
 #define kBlockPipeSideBl 39U
 #define kBlockPipeSideBodyT 40U
 #define kBlockPipeSideBodyB 41U
-#define kBlockKindCount 42U
+// the keep's own battlement, the five-wide row the tower stands on. the outer crenel leaves the
+// notches between its merlons transparent, which let sky through directly under the three-wide
+// tower and made the tower read as floating; this kind fills those notches with the castle's own
+// black instead, so the tower stands on masonry. scenery, like every other castle kind
+#define kBlockCastleCrenelInner 42U
+#define kBlockKindCount 43U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -328,7 +333,9 @@
 // tile with the bank-0 shaft beside it: it gets its own copies
 #define kTileScenPole 0x59U
 #define kTileScenBlank 0x5AU
-#define kTileSceneryLast 0x5AU
+// the inner crenel's one tile, the outer merlon redrawn with its notch and its cap filled in
+#define kTileCastleCrenelInner 0x5BU
+#define kTileSceneryLast 0x5BU
 
 // the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
 // transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes
@@ -404,6 +411,16 @@
 #define kSuperTileCount ((kSuperFrameCount + 1U) * kSuperTilesPerFrame) // 32, ids 0x60-0x7f
 // the crouch pose sits past the six small-mario poses share their order with
 #define kFrameCrouch 6U
+
+// the three poses vram bank 0 has no ids left for. they live in CGB VRAM BANK 1 and are drawn with
+// S_BANK set in the sprite's own prop, the way the fireball's second spin frame already is; each
+// keeps an id inside the family it belongs to so a host test reading tile numbers still names the
+// sprite. kTileSuperJumpUpper is the one upper slab super mario's shared one cannot be (an arm goes
+// up in it); the two climb poses are the flagpole grip, one per body size
+#define kTileSuperJumpUpper 0x7CU
+#define kTileClimbSmall 0xE0U
+#define kTileClimbBigUpper 0xE4U
+#define kTileClimbBigLower 0xE8U
 
 // the fire flower, in the same m7 block right after super mario
 #define kTileFlowerFirst 0x80U
@@ -537,16 +554,35 @@
 // scy on the level's flat opening ground, which is where the default band lands there
 #define kPlayScy kScyMax
 
-// the level-clear sequence, all our own cadence (smbd's exact frame counts are unsourced)
+// the level-clear sequence, all our own cadence (smbd's exact frame counts are unsourced). smb's
+// beat: grab the pole, slide down it with the flag coming down alongside, flip to the pole's far
+// side and wait there while the flag finishes, hop off, walk to the castle and step into the door
 #define kClearSlidePx 2
+// the pole shaft is painted in the left 3 px of its block (kFlagPoleTile), so his box sits this
+// far left of that block while he climbs: it puts the gripping hand of the climb pose on the shaft
+// with his body beside the pole rather than straddling it
+#define kClearPoleOffsetPx 12
+// and the step across to the pole's far side, which is where smb's mario finishes the slide
+#define kClearFlipPx 16
+// the pause on that side. in smb it lasts as long as the flag needs, so this is a floor and the
+// flag's own descent can hold the phase open past it
+#define kClearFlipFrames 48U
+// the pennant comes down one 16 px cell per this many frames. cell-granular because oam is full
+// (40/40) and the flag has to be repainted bg cells rather than a sprite
+#define kClearFlagStepFrames 6U
 #define kClearHopFrames 12
 #define kClearHopPx 2
 #define kClearWalkPx 1
 #define kClearWalkAnimFrames 8U
-// 1-1's bible places no castle_end, so the walk off the pole ends this many blocks along the
-// closing ground, where a castle would stand. must-measure once the data names a castle column
+// the walk ends at the castle's door column when the level has a castle. a level whose compiler
+// placed none falls back to this many blocks along the closing ground
 #define kClearWalkBlocks 5
-#define kClearHoldFrames 120U
+// he is inside the doorway, drawn nowhere, for this long before the card takes over
+#define kClearDoorFrames 24U
+// the door's own column inside the five-wide keep, the contract with compile_level.py's
+// CASTLE_DOOR_OFFSET and with apply_castle's door rows
+#define kCastleDoorOffset 2U
+#define kClearHoldFrames 60U
 
 // block reactions (games/mario/src/blocks.c). the bounce is a bg rewrite, not a sprite: the struck
 // cell's 2x2 face is redrawn one tile row higher for kBumpFrames and then put back, which costs two

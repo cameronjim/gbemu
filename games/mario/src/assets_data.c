@@ -635,6 +635,23 @@ static const uint8_t kCastleTiles[224] = {
 };
 // clang-format on
 
+// the inner merlon, the one the keep's own battlement row is stamped from. the outer merlon leaves
+// its notch and the two rows above its cap transparent, so the sky showed through the row the tower
+// stands on; here the notch is the castle's black mortar and the tooth runs the full 8px, which
+// puts masonry under the tower and keeps the notches reading as crenellation
+// clang-format off
+static const uint8_t kCastleCrenelInnerTile[16] = {
+    0xFF, 0x03, // ------##
+    0xFF, 0x13, // ---#--##
+    0x13, 0xFF, // +++#++##
+    0x13, 0xFF, // +++#++##
+    0xFF, 0xFF, // ########
+    0x47, 0xFF, // +#+++###
+    0x47, 0xFF, // +#+++###
+    0x47, 0xFF, // +#+++###
+};
+// clang-format on
+
 // clouds, two block rows tall: a rounded left cap and a repeatable middle, each drawn as one
 // 16x32 mass with three bumps across its top, a black outline and a cloud-blue underside.
 // the right cap is the left one mirrored, which the block's own x-flip attribute pays for
@@ -1151,6 +1168,7 @@ void assets_load_scenery_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileLavaTop, 2, kLavaTiles);
     set_bkg_data(kTileCastleWall, 14, kCastleTiles);
+    set_bkg_data(kTileCastleCrenelInner, 1, kCastleCrenelInnerTile);
     set_bkg_data(kTileFlagBall, 5, kFlagHeadTiles);
     set_bkg_data(kTileCloudCapTl, 16, kCloudTiles);
     set_bkg_data(kTileHillPeakTl, 12, kHillTiles);
@@ -1777,41 +1795,41 @@ static const uint8_t kMarioTiles[384] = {
     0x3E, 0x3E, // ..#####.
     0x3E, 0x3E, // ..#####.
     // jump l top
-    0x00, 0x0F, // ....++++
     0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // jump l bot
     0x00, 0x3F, // ..++++++
+    0x40, 0x7F, // .#++++++
+    0x7F, 0x62, // .##---#-
+    0x7F, 0x42, // .#----#-
+    0x7F, 0x41, // .#-----#
+    0x3F, 0x00, // ..------
+    0x00, 0x3F, // ..++++++
+    // jump l bot
     0x60, 0x1F, // .--+++++
     0x68, 0x1F, // .--+#+++
     0x00, 0x1F, // ...+++++
-    0x00, 0x1E, // ...++++.
-    0x3C, 0x3C, // ..####..
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
+    0x00, 0x1F, // ...+++++
+    0x00, 0x3E, // ..+++++.
+    0x00, 0x78, // .++++...
+    0x78, 0x78, // .####...
+    0x78, 0x78, // .####...
     // jump r top
-    0x00, 0xC0, // ++......
+    0x00, 0x80, // +.......
+    0x00, 0xF0, // ++++....
     0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
+    0xF6, 0x00, // ----.--.
     0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x06, 0xF8, // +++++--.
+    0xF8, 0xF6, // ####-++.
+    0xE0, 0x06, // ---..++.
+    0x00, 0xFE, // +++++++.
     // jump r bot
-    0x06, 0xF8, // +++++--.
     0x00, 0xFC, // ++++++..
     0x10, 0xF8, // +++#+...
     0x00, 0xF8, // +++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x7C, // .+++++..
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
+    0x00, 0xF8, // +++++...
+    0x00, 0x3C, // ..++++..
+    0x3C, 0x3C, // ..####..
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
 };
 // clang-format on
 
@@ -2214,8 +2232,8 @@ static const uint8_t kSuperTiles[512] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     // jump lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
     0x00, 0xF8, // +++++...
     0x00, 0xF8, // +++++...
     0x00, 0xF8, // +++++...
@@ -2281,10 +2299,189 @@ static const uint8_t kFlowerTiles[64] = {
 };
 // clang-format on
 
+// the three poses vram bank 0 has no tile ids left for, so they live in CGB VRAM BANK 1 and are
+// drawn with S_BANK set in the sprite's own prop - the same trick the fireball's second spin frame
+// already uses (see kFireballFrameBTiles and powerup_draw). each keeps an id inside the family it
+// belongs to, so the tile number alone still names the sprite: the jump slab inside super mario's
+// 0x60-0x7f run, the two climb poses inside small mario's own 0xe0-0xf7 run
+//
+// super mario's jump upper slab. every other pose of his shares one upper slab, which is why his
+// jump could not raise an arm: this is that slab redrawn with the head leaning back and the front
+// arm thrown up beside the cap, and player_draw swaps to it on kFrameJump alone
+// clang-format off
+static const uint8_t kSuperJumpUpperTiles[64] = {
+    // jump upper l top
+    0x00, 0x1F, // ...+++++
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x40, 0x7F, // .#++++++
+    0x7F, 0x62, // .##---#-
+    0x7F, 0x42, // .#----#-
+    0x7F, 0x41, // .#-----#
+    0x3F, 0x00, // ..------
+    // jump upper l bot
+    0x1F, 0x00, // ...-----
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    0x10, 0x7F, // .++#++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    // jump upper r top
+    0x00, 0x80, // +.......
+    0x06, 0xF0, // ++++.--.
+    0x06, 0xF8, // +++++--.
+    0x0E, 0xF8, // ++++#--.
+    0xF0, 0x06, // ----.++.
+    0xF8, 0x06, // -----++.
+    0xF8, 0xF6, // ####-++.
+    0xE0, 0x06, // ---..++.
+    // jump upper r bot
+    0xC0, 0x06, // --...++.
+    0x00, 0xFE, // +++++++.
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x20, 0xF8, // ++#++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+};
+// clang-format on
+
+// small mario's flagpole climb: both hands on the pole at his right, face turned to it. one 16x16
+// pose, held for the whole slide and the flip to the pole's far side
+// clang-format off
+static const uint8_t kClimbSmallTiles[64] = {
+    // climb l top
+    0x00, 0x0F, // ....++++
+    0x00, 0x1F, // ...+++++
+    0x20, 0x3F, // ..#+++++
+    0x3F, 0x31, // ..##---#
+    0x3F, 0x21, // ..#----#
+    0x3F, 0x20, // ..#-----
+    0x1F, 0x00, // ...-----
+    0x00, 0x1F, // ...+++++
+    // climb l bot
+    0x00, 0x3F, // ..++++++
+    0x08, 0x3F, // ..++#+++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x7C, 0x7C, // .#####..
+    0x7C, 0x7C, // .#####..
+    // climb r top
+    0x00, 0xC0, // ++......
+    0x00, 0xF8, // +++++...
+    0x00, 0xFC, // ++++++..
+    0xF8, 0x00, // -----...
+    0xFC, 0x00, // ------..
+    0xFC, 0xF8, // #####-..
+    0xF0, 0x00, // ----....
+    0x06, 0xF0, // ++++.--.
+    // climb r bot
+    0x06, 0xF8, // +++++--.
+    0x20, 0xF8, // ++#++...
+    0x06, 0xF0, // ++++.--.
+    0x06, 0xF8, // +++++--.
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x7C, 0x7C, // .#####..
+    0x7C, 0x7C, // .#####..
+};
+// clang-format on
+
+// and super mario's, the same grip on a 16x32 body: its own upper slab (the shared one has both
+// arms down) over a lower slab with the second hand out and the legs held together
+// clang-format off
+static const uint8_t kClimbBigTiles[128] = {
+    // climb upper l top
+    0x00, 0x1F, // ...+++++
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x40, 0x7F, // .#++++++
+    0x7F, 0x62, // .##---#-
+    0x7F, 0x42, // .#----#-
+    0x7F, 0x41, // .#-----#
+    0x3F, 0x00, // ..------
+    // climb upper l bot
+    0x1F, 0x00, // ...-----
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    0x10, 0x7F, // .++#++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x7F, // .+++++++
+    // climb upper r top
+    0x00, 0x80, // +.......
+    0x00, 0xF0, // ++++....
+    0x00, 0xF8, // +++++...
+    0x08, 0xF8, // ++++#...
+    0xF0, 0x00, // ----....
+    0xF8, 0x00, // -----...
+    0xF8, 0xF0, // ####-...
+    0xE0, 0x00, // ---.....
+    // climb upper r bot
+    0xC0, 0x00, // --......
+    0x06, 0xF0, // ++++.--.
+    0x06, 0xF8, // +++++--.
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x20, 0xF8, // ++#++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    // climb lower l top
+    0x00, 0x3F, // ..++++++
+    0x00, 0x3F, // ..++++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    // climb lower l bot
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x7C, 0x7C, // .#####..
+    0x7C, 0x7C, // .#####..
+    // climb lower r top
+    0x06, 0xF8, // +++++--.
+    0x06, 0xF8, // +++++--.
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    // climb lower r bot
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x00, 0xF8, // +++++...
+    0x7C, 0x7C, // .#####..
+    0x7C, 0x7C, // .#####..
+};
+// clang-format on
+
 void assets_load_sprite_tiles(void) BANKED {
     set_sprite_data(kTileMarioFirst, kMarioTileCount, kMarioTiles);
     // both bodies stay resident, so growing and shrinking never touch vram
     set_sprite_data(kTileSuperFirst, kSuperTileCount, kSuperTiles);
+    // the jump slab and the two climb poses ride in vram bank 1: bank 0's tile table is full end
+    // to end, and a sprite picks its bank from S_BANK in its own prop (see player_draw)
+    VBK_REG = VBK_BANK_1;
+    set_sprite_data(kTileSuperJumpUpper, 4, kSuperJumpUpperTiles);
+    set_sprite_data(kTileClimbSmall, 4, kClimbSmallTiles);
+    set_sprite_data(kTileClimbBigUpper, 8, kClimbBigTiles);
+    VBK_REG = VBK_BANK_0;
 }
 
 void assets_load_item_tiles(void) BANKED {

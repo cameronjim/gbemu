@@ -847,8 +847,10 @@
 // the view opens on block rows 6-14. the two things the row can pass in front of are the top half
 // of a block row 6 cloud and, with the vertical window pushed to its limit, the underground roof;
 // either way it hides 8 px of them, which is what smb's own bar does to the same tiles
+// the row sits one tile down from the top edge: flush against it read as cramped
+#define kHudRowTopPx 8U
 #define kHudBarRows 2U
-#define kHudBarLines 8U
+#define kHudBarLines (kHudRowTopPx + 8U)
 // the one live row, and the second the isr's own latency can leak onto (the stat interrupt lands a
 // few dots into scanline 8, so the ppu may already have fetched that line): painted with blanks,
 // which are sky, so the leak is invisible

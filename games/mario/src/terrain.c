@@ -440,7 +440,7 @@ static void bar_lcd(void) {
 
 void terrain_install_isrs(void) {
     WX_REG = 7; // the window's own -7 offset: 7 puts its left edge at screen x 0
-    WY_REG = 0;
+    WY_REG = (uint8_t)kHudRowTopPx;
     LCDC_REG |= LCDCF_WIN9C00; // the level's ring keeps gbdk's 0x9800 map
     add_VBL(scroll_vbl);
     add_LCD(bar_lcd);

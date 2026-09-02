@@ -3909,11 +3909,11 @@ int approach_lab_row(gb::Gameboy& gameboy, PlayerSim& sim) {
 // every visible cell is one of the families the terrain may legitimately render as. the top row is
 // the hud readout, a window layer over the level rather than terrain (games/mario/src/hud.c), so
 // the scan starts under it
-constexpr uint32_t kHudBarRows = 1;
+constexpr uint32_t kHudBarRows = 2;
 // and the scanline the readout's lyc handler turns the window off at. the handler is entered a few
 // dots into that line, after the ppu has already fetched it, so the line itself is still window:
 // the first level scanline is the one after it, which is why the rom paints a second row of blanks
-constexpr int kHudBarLines = 8;
+constexpr int kHudBarLines = 16;
 
 void require_no_garbage(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
@@ -4662,10 +4662,11 @@ TEST_CASE("mario_camera_manual_pan") {
 
     // that target is bounded: leaning on up for another two seconds cannot scroll past it
     const int panned_row = first_tile_row(gameboy, 0xA8, 0xAB);
-    // the readout is one 8 px row now and the pan stops with the row 5 block's own top line at
-    // screen 16, clear of it, so the probe finds the block's top edge itself
-    REQUIRE(5 * kBlockPx - (kScyMax - kCamLookUpPx) > kHudBarLines);
-    REQUIRE(panned_row == 5 * kBlockPx - (kScyMax - kCamLookUpPx));
+    // the pan stops with the row 5 block's own top line at screen 16, which is the readout's lyc
+    // line and still window (the handler lands a few dots into it), so the first level line the
+    // probe can see is the one under it
+    REQUIRE(5 * kBlockPx - (kScyMax - kCamLookUpPx) == kHudBarLines);
+    REQUIRE(panned_row == kHudBarLines + 1);
     REQUIRE(panned_row < grounded_row);
     run(gameboy, 120);
     REQUIRE(play_scy(gameboy) == kPlayScy - kCamLookUpPx);
@@ -8348,7 +8349,7 @@ constexpr uint8_t kTileHudDigitLo = 0x80;
 constexpr uint8_t kTileHudDigitHi = 0x89;
 // the one row's glyph band in screen px, and each readout's leftmost column, per mario.h's layout:
 // the coin count after its icon and its x, the score centred, the countdown hard right
-constexpr int kHudRowY = 0;
+constexpr int kHudRowY = 8;
 constexpr int kHudCoinX = 2 * 8;
 constexpr int kHudScoreX = 7 * 8;
 constexpr int kHudTimeX = 17 * 8;
@@ -8645,13 +8646,14 @@ namespace {
 // the row is white ink on the sky itself: every cell carries kCamPalSky, whose color 0 is the
 // level's own backdrop and whose color 1 is white in all three of the level palette sets (see
 // kTileHudDigitFirst in mario.h). so whichever set is loaded the top 8 px hold white ink and the
-// set's own sky color, and no black at all - the black band is what the layout got rid of
+// set's own sky color, and no black at all - the black band is what the layout got rid of. only
+// the readout's own 8 px are scanned: the level shows through above it
 bool row_reads(const gb::Gameboy& gameboy, int sky) {
     const std::span<const uint16_t> px = gameboy.framebuffer_color();
     bool backdrop = false;
     bool white = false;
     bool black = false;
-    for (int y = 0; y < kHudBarLines; ++y) {
+    for (int y = kHudRowY; y < kHudRowY + 8; ++y) {
         for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
             const uint16_t c = px[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
             if (c == 0x7FFF) {

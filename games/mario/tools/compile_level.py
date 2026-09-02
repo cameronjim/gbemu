@@ -324,8 +324,8 @@ def feature_max_x(bible):
     for s in bible.get("segments", []):
         max_x = max(max_x, s["x1"])
     for t in bible.get("terrain", []):
-        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "lift_platform", "ceiling_gap",
-                         "bricks"):
+        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "tree", "lift_platform",
+                         "ceiling_gap", "bricks"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
@@ -472,6 +472,22 @@ def apply_island(grid, x0, x1, y):
         return
     for col in range(x0, x1 + 1):
         grid[col][y] = BLOCK_THIN
+
+
+def apply_tree(grid, x0, x1, y):
+    # 1-3's tree: the canopy is terrain and always wins its cells; the trunk under it is scenery and
+    # only ever fills sky, so a tall tree whose trunk hangs down through a shorter tree's canopy
+    # (1-3 stacks two at columns 59-63) leaves that canopy standing. the trunk is the canopy inset
+    # one column at each end, which is what the map draws at every width from three up; a two-wide
+    # canopy is the two caps back to back and has no trunk at all
+    x0, x1 = clamp_span(grid, x0, x1)
+    for col in range(x0, x1 + 1):
+        kind = BLOCK_TREE_TOP_L if col == x0 else (BLOCK_TREE_TOP_R if col == x1 else BLOCK_TREE_TOP_M)
+        grid[col][y] = kind
+    for col in range(x0 + 1, x1):
+        for row in range(y + 1, LEVEL_ROWS):
+            if grid[col][row] == BLOCK_EMPTY:
+                grid[col][row] = BLOCK_TRUNK
 
 
 def apply_block(grid, x, y, kind):
@@ -666,7 +682,9 @@ def apply_decor(grid, bible):
 
 def compile_grid(bible, level_type):
     terrain = bible.get("terrain", [])
-    has_islands = any(t["kind"] == "island" for t in terrain)
+    # an athletic level is platforms over open air, whether the bible writes them as 1-3's measured
+    # trees or as the older prose-derived islands
+    has_islands = any(t["kind"] in ("island", "tree") for t in terrain)
     # a bible that measured its own extent says so; anything else is still the last positioned
     # feature plus the provisional padding below
     stated = bible.get("length_columns")
@@ -676,6 +694,7 @@ def compile_grid(bible, level_type):
     grid = new_grid(length_columns, base_ground=not has_islands)
     probes = []
     objects = []
+    measured_lifts = []  # decks whose travel the bible measured, so fit_lift must not touch them
     jumps = []  # each entry is a target column; the target row is resolved after the grid settles
     skip_pipe = entry_pipe_x(bible, level_type)
     gap_fill = BLOCK_LAVA if level_type == TYPE_CASTLE else BLOCK_EMPTY
@@ -797,6 +816,12 @@ def compile_grid(bible, level_type):
             row = GROUND_ROW if t["y"] >= GROUND_ROW else t["y"]
             probes.append((t["x0"], row, kind))
             probes.append((t["x1"], row, kind))
+        elif t["kind"] == "tree":
+            # the measured form of an athletic platform: a canopy row from x0 to x1 at row y with a
+            # trunk hanging under its middle columns. 1-3 is built out of nothing else
+            apply_tree(grid, t["x0"], t["x1"], t["y"])
+            probes.append((t["x0"], t["y"], BLOCK_TREE_TOP_L))
+            probes.append((t["x1"], t["y"], BLOCK_TREE_TOP_R))
         elif t["kind"] == "pipe_side":
             # the mouth's rim column and top row, the horizontal body out to the shaft, and the
             # shaft itself rising from shaft_top to the mouth's bottom row (no cap: the map draws
@@ -828,6 +853,16 @@ def compile_grid(bible, level_type):
             span = min(LIFT_SPAN_MASK, max(1, int(t["span"])))
             param = span | (LIFT_REVERSE if t.get("reverse") else 0)
             objects.append((t["x"], t["y0"], OBJ_LIFT_V, param))
+        elif t["kind"] == "lift_platform" and t.get("y") is not None:
+            # the measured form (1-3): one deck riding row y between columns x0 and x1, its travel
+            # taken from the bible rather than from the width of a carved pit. an athletic level has
+            # no ground under the track to carve and no lip for fit_lift to find, so these are kept
+            # out of that pass entirely. an entry marked "live": false is measured map geometry the
+            # engine has no slot left for (mario.h kLiftSlots is two) and is not compiled
+            if t.get("live", True):
+                span = min(LIFT_SPAN_MASK, max(1, t["x1"] - t["x0"] - LIFT_BLOCKS + 1))
+                param = span | (LIFT_REVERSE if t.get("reverse") else 0)
+                measured_lifts.append((t["x0"], t["y"], OBJ_LIFT_H, param))
         elif t["kind"] == "lift_platform":
             # the bible's 1-2 run is a pair of vertical lifts ("left descends, right ascends"), its
             # 1-3 run a pair of horizontal ones. the ground under a horizontal pair is carved away,
@@ -896,7 +931,7 @@ def compile_grid(bible, level_type):
 
     # a horizontal lift only earns its keep if its deck actually reaches the far lip of the pit it
     # spans, and the pit's real width is only known once every terrain run has been laid down
-    objects = [fit_lift(grid, o) for o in objects]
+    objects = [fit_lift(grid, o) for o in objects] + measured_lifts
 
     flag_col = None
     castle_col = None

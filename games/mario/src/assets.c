@@ -23,6 +23,9 @@ uint8_t kBlockPalette[kBlockKindCount];
 // repeats (a pipe's body has no vertical variation, a castle wall's masonry tiles at 8px, and a
 // decorative cell's unused half is sky).
 //
+// 1-3's four tree kinds close each table: the three canopy caps wear the thin platform's deck art
+// and the trunk is sky, placeholders until the art pass draws them
+//
 // the four mirrored kinds - the right cloud caps, the right hill slope, the right bush cap - carry
 // the same tiles as their left twin with the two columns swapped, and set kCamAttrXFlip in their
 // palette byte so the hardware does the mirroring, which halves what the scenery costs

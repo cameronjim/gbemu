@@ -2561,15 +2561,32 @@ constexpr int kAliveBonus = 4096;
 constexpr int kEndBonus = 16384;
 // the holds worth trying with right let go at the apex; a lift deck only needs the short ones
 constexpr int kRideHolds[] = {4, 8, 12, 16, 20, 24, 28, 32};
+// how long mario_lift_carries leaves a rider standing on a deck with no button held at all
+constexpr int kLiftIdleFrames = 90;
 
 // what an option does with the window it is given
 constexpr uint8_t kMoveRun = 0;   // the baseline, with a forced hold at the start
 constexpr uint8_t kMoveRide = 1;  // jump, let go at the apex, then brake and stay put
 constexpr uint8_t kMoveStand = 2; // brake and wait the whole window out
+// walk back a few frames, then jump right out of the run-up: 1-3's climb needs it. its canopies are
+// solid on every side and mostly four rows apart, so a mario who has braked against the lip of one
+// is too close to clear the next - his arc crosses the canopy's leading edge still under it, and
+// under a canopy there is nothing but the pit. no amount of held a fixes that from a standing stop;
+// backing off first is what a player does there, and it is the only move here that ever gives ground
+constexpr uint8_t kMoveBackJump = 3;
+// the three phases: frames of left, then frames of run-up, then the a hold, and it brakes onto
+// whatever it landed on. a step back of zero and a run-up of zero is the plainest of them - jump
+// now with right held, which carries further than a ride's release at the apex - and the full
+// three-phase form is what a player does at a canopy lip: give ground, run at it, jump late
+constexpr int kBackSteps[] = {0, 24};
+constexpr int kBackRuns[] = {0, 16, 32};
+constexpr int kBackHolds[] = {16, 24, 32};
 
 struct Option {
     uint8_t move = kMoveRun;
     int hold = 0;
+    int back = 0;
+    int run = 0;
 };
 
 // the baseline's own reflex: the ground under his feet stops within a stride of his leading edge.
@@ -2586,6 +2603,7 @@ struct Probe {
     int ended_at = -1;
     int total = 0;
     int tail = 0;
+    int rise = 0;
     int score = 0;
 
     bool survives() const {
@@ -2600,6 +2618,21 @@ uint8_t option_input(const PlayerSim& sim, const Option& option, int frame, int&
     }
     if (option.move == kMoveRide) {
         if (frame < option.hold) {
+            return static_cast<uint8_t>(kInRight | kInB | kInA);
+        }
+        return sim.x_speed > 0 ? uint8_t{kInLeft} : uint8_t{0};
+    }
+    if (option.move == kMoveBackJump) {
+        // step back, jump out of the run-up, then brake like a ride does: the ledge it climbs onto
+        // is a dead end again until the next decision frame, and a move that ran on off its far lip
+        // would read as a death inside the window and be thrown away
+        if (frame < option.back) {
+            return kInLeft;
+        }
+        if (frame < option.back + option.run) {
+            return static_cast<uint8_t>(kInRight | kInB);
+        }
+        if (frame < option.back + option.run + option.hold) {
             return static_cast<uint8_t>(kInRight | kInB | kInA);
         }
         return sim.x_speed > 0 ? uint8_t{kInLeft} : uint8_t{0};
@@ -2619,16 +2652,19 @@ uint8_t option_input(const PlayerSim& sim, const Option& option, int frame, int&
     return in;
 }
 
-Probe probe_option(PlayerSim sim, const Option& option) {
+Probe probe_option(PlayerSim sim, const Option& option, bool climbs = false) {
     const int start_x = static_cast<int>(sim.x_pos);
+    const int start_feet = sim.y_pos + sim.foot_h();
     int mid_x = start_x;
     int end_x = start_x;
+    int end_feet = start_feet;
     int reflex = 0;
     Probe out;
 
     for (int i = 0; i < kLevelHorizon; ++i) {
         sim.step(option_input(sim, option, i, reflex));
         end_x = static_cast<int>(sim.x_pos);
+        end_feet = sim.y_pos + sim.foot_h();
         if (i == kLevelHorizon - kLevelTail) {
             mid_x = end_x;
         }
@@ -2643,13 +2679,20 @@ Probe probe_option(PlayerSim sim, const Option& option) {
     }
     out.total = end_x - start_x;
     out.tail = end_x - mid_x;
-    out.score = out.total + (out.ended_at >= 0 ? kEndBonus : (out.died_at < 0 ? kAliveBonus : 0));
+    // on a level whose route climbs (1-3 goes up four canopy rows three times over), a move that
+    // ends higher up has made progress a purely horizontal score cannot see: two moves that both
+    // land him standing still differ by nothing but the row they land on. climbing is credited px
+    // for px with running; falling is not charged for, because dropping off a canopy onto the next
+    // one down is how half of this level is crossed and it pays in x already
+    out.rise = climbs ? std::max(0, start_feet - end_feet) : 0;
+    out.score = out.total + out.rise +
+                (out.ended_at >= 0 ? kEndBonus : (out.died_at < 0 ? kAliveBonus : 0));
     return out;
 }
 
 // the options a grounded decision frame chooses between, the baseline first so a clear stretch
 // costs one probe and nothing else. the stand goes last: it survives when nothing else does
-std::vector<Option> level_options() {
+std::vector<Option> level_options(bool climbs = false) {
     std::vector<Option> out;
 
     out.push_back(Option{kMoveRun, 0});
@@ -2658,6 +2701,19 @@ std::vector<Option> level_options() {
     }
     for (int hold : kRideHolds) {
         out.push_back(Option{kMoveRide, hold});
+    }
+    // the run-ups go after both, so a move that never gives ground is always preferred at an equal
+    // score, and before the stand, which is still the last resort. only a climbing level offers
+    // them: 1-2 and 1-4 have nothing to climb, and handing their searches a whole extra family
+    // just re-plans two routes that already work
+    if (climbs) {
+        for (int back : kBackSteps) {
+            for (int run : kBackRuns) {
+                for (int hold : kBackHolds) {
+                    out.push_back(Option{kMoveBackJump, hold, back, run});
+                }
+            }
+        }
     }
     out.push_back(Option{kMoveStand, 0});
     return out;
@@ -2668,7 +2724,11 @@ std::vector<Option> level_options() {
 // segments (see level-1-2.json) put a wall between the level's own start and everywhere a
 // kObjPipeJump pipe lands, which nothing here can walk through on its own
 Route plan_level(int level, int frame_cap, uint16_t goal = 0, const PlayerSim* start = nullptr) {
-    const std::vector<Option> options = level_options();
+    // 1-3 is the level built out of trees: solid canopies four rows apart with a pit under every
+    // one of them, so its route has to climb, and a horizontal-only score cannot tell a move that
+    // gained a canopy from one that landed back where it started
+    const bool climbs = level == kLevel13;
+    const std::vector<Option> options = level_options(climbs);
     Route route;
     PlayerSim sim;
     Option running;
@@ -2698,14 +2758,14 @@ Route plan_level(int level, int frame_cap, uint16_t goal = 0, const PlayerSim* s
             continue;
         }
         if (left <= 0 && sim.on_ground != 0 && sim.a_prev == 0 && sim.grounded_for >= 2) {
-            const Probe plain = probe_option(sim, options[0]);
+            const Probe plain = probe_option(sim, options[0], climbs);
             size_t best = 0;
 
             if (plain.ended_at < 0 && (plain.died_at >= 0 || plain.tail < kPlanTailPx)) {
                 int best_score = plain.survives() ? plain.score : -1;
 
                 for (size_t i = 1; i < options.size(); ++i) {
-                    const Probe tried = probe_option(sim, options[i]);
+                    const Probe tried = probe_option(sim, options[i], climbs);
 
                     // only a move that lives out the whole window is worth swapping the run for
                     if (!tried.survives() || tried.score <= best_score + kPlanGainPx) {
@@ -2720,8 +2780,9 @@ Route plan_level(int level, int frame_cap, uint16_t goal = 0, const PlayerSim* s
             }
             running = options[best];
             frame_in = 0;
-            // a jump is committed for its hold; everything else re-decides on the next frame
-            left = std::max(running.hold, 1);
+            // a jump is committed for its hold - a run-up for its whole step-back and hold, or it
+            // would re-decide mid-stride and never leave the lip; everything else re-decides next frame
+            left = std::max(running.back + running.run + running.hold, 1);
         }
 
         const uint8_t in = option_input(sim, running, frame_in, reflex);
@@ -7706,6 +7767,221 @@ TEST_CASE("mario_1_2_coins_blocks_and_enemies_match_the_measured_map") {
     REQUIRE(on_ledge == 2);
 }
 
+// 1-3 is transcribed cell by cell from the nes and smbd 1-3 map rips (see level-1-3.json's
+// confidence_notes and smbd_deltas), and the smbd geometry is the one followed wherever the two
+// rips part company - from column 50 on, which is most of the level. these two pin the whole of it
+// against the compiled grid: the trees and the ground here, the collectibles and the roster below
+TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
+    // every canopy in the level, read off the grid the way the transcription read the rip: a left
+    // cap, middles, a right cap, all on one row. the map's seventeen, in column order
+    struct Canopy {
+        int row;
+        int x0;
+        int x1;
+    };
+    std::vector<Canopy> canopies;
+    for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+        for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; ++column) {
+            if (kLevel13Grid[column][row] != kBlockTreeTopL) {
+                continue;
+            }
+            uint16_t end = column;
+            while (end + 1U < static_cast<uint16_t>(LEVEL_1_3_LENGTH_COLUMNS) &&
+                   kLevel13Grid[end + 1][row] == kBlockTreeTopM) {
+                ++end;
+            }
+            REQUIRE(kLevel13Grid[end + 1][row] == kBlockTreeTopR);
+            canopies.push_back(Canopy{row, static_cast<int>(column), static_cast<int>(end + 1)});
+        }
+    }
+    std::sort(canopies.begin(), canopies.end(),
+              [](const Canopy& a, const Canopy& b) { return a.x0 < b.x0; });
+    const std::vector<Canopy> want = {
+        {12, 18, 21},  {9, 24, 31},   {5, 26, 30},  {12, 32, 34},  {8, 35, 39},  {4, 40, 46},
+        {10, 50, 53},  {13, 59, 63},  {5, 60, 63},  {13, 65, 69},  {9, 70, 72},  {6, 76, 81},
+        {11, 96, 99},  {7, 102, 109}, {13, 111, 113}, {9, 114, 117}, {9, 120, 123},
+    };
+    REQUIRE(canopies.size() == want.size());
+    for (size_t i = 0; i < want.size(); ++i) {
+        CAPTURE(i, canopies[i].row, canopies[i].x0, canopies[i].x1);
+        REQUIRE(canopies[i].row == want[i].row);
+        REQUIRE(canopies[i].x0 == want[i].x0);
+        REQUIRE(canopies[i].x1 == want[i].x1);
+    }
+
+    // a trunk hangs from the canopy inset one column at each end, all the way to the bottom row,
+    // and it is scenery: nothing about it is standable. the two stacked trees are the interesting
+    // ones - the tall tree at 60-63 drops its trunk through the canopy at 59-63, which keeps its
+    // own cells, and the tree at 26-30 does the same through the wide canopy at 24-31
+    for (const Canopy& tree : want) {
+        for (int column = tree.x0 + 1; column < tree.x1; ++column) {
+            for (int row = tree.row + 1; row < kHostLevelRows; ++row) {
+                const uint8_t kind = kLevel13Grid[column][row];
+                CAPTURE(column, row, kind);
+                const bool canopy = kind >= kBlockTreeTopL && kind <= kBlockTreeTopR;
+                REQUIRE((kind == kBlockTrunk || canopy));
+            }
+        }
+    }
+    REQUIRE(kLevel13Grid[61][13] == kBlockTreeTopM); // the lower canopy under the tall tree's trunk
+    REQUIRE(kLevel13Grid[61][12] == kBlockTrunk);
+    REQUIRE(kLevel13Grid[61][14] == kBlockTrunk);
+    REQUIRE(kLevel13Grid[28][9] == kBlockTreeTopM);
+    REQUIRE(kLevel13Grid[28][8] == kBlockTrunk);
+
+    // the only two stretches of ground in the level: the opening plateau and the closing run the
+    // staircase, the pole and the castle stand on. everything between them is open air, and a
+    // level of trees over a pit has no thin platform in it anywhere
+    std::vector<std::pair<int, int>> ground;
+    for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; ++column) {
+        const uint8_t kind = kLevel13Grid[column][13];
+        const bool solid = kind == kBlockGround || kind == kBlockGroundFill;
+
+        if (!solid) {
+            continue;
+        }
+        REQUIRE(kLevel13Grid[column][14] != kBlockEmpty);
+        if (ground.empty() || column != static_cast<uint16_t>(ground.back().second + 1)) {
+            ground.push_back({column, column});
+        } else {
+            ground.back().second = column;
+        }
+    }
+    REQUIRE(ground == std::vector<std::pair<int, int>>{{0, 15}, {128, 159}});
+
+    // the castle the level opens with, standing on that plateau: a five-wide keep at 0-4 with its
+    // battlement row at 10 and the tower's two rows above it. scenery, so the walk out of it is
+    // through it
+    REQUIRE(kLevel13Grid[0][10] == kBlockCastleCrenelInner);
+    REQUIRE(kLevel13Grid[2][8] == kBlockCastleCrenel);
+    REQUIRE(kLevel13Grid[2][11] == kBlockCastleDoorTop);
+    REQUIRE(kLevel13Grid[2][12] == kBlockCastleDoor);
+    REQUIRE(!solid_at(kHostLevels[kLevel13], 2, 12));
+
+    // the two lift decks the engine has slots for: the map draws the first at 55-57 on row 6 and
+    // the second at 86-88 on row 8, and each is compiled at the left end of the pit it bridges with
+    // its travel packed into the object's span byte. the smbd map's third deck (92-94, row 9) is
+    // recorded in the bible with "live": false - two slots is all mario.h kLiftSlots has
+    const HostLevel& lv = kHostLevels[kLevel13];
+    REQUIRE(lv.object_count == 2);
+    REQUIRE(lv.objects[0].kind == kObjLiftH);
+    REQUIRE(lv.objects[0].column == 47);
+    REQUIRE(lv.objects[0].row == 6);
+    REQUIRE((lv.objects[0].param & kLiftSpanMask) == 12);
+    REQUIRE(lv.objects[1].kind == kObjLiftH);
+    REQUIRE(lv.objects[1].column == 82);
+    REQUIRE(lv.objects[1].row == 8);
+    REQUIRE((lv.objects[1].param & kLiftSpanMask) == 13);
+
+    // the closing staircase is not smb's usual one-column steps: 1-3 ends on three tiers two
+    // columns wide, three then five then seven blocks tall (smbd's, at 136-141; the nes map's is
+    // four/six/eight at 138-143)
+    const int tiers[6] = {3, 3, 5, 5, 7, 7};
+    for (int i = 0; i < 6; ++i) {
+        const uint16_t column = static_cast<uint16_t>(136 + i);
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            const bool stair = kLevel13Grid[column][row] == kBlockStair;
+            CAPTURE(column, row);
+            REQUIRE(stair == (row >= 13 - tiers[i] && row <= 12));
+        }
+    }
+    REQUIRE(kLevel13Grid[135][12] == kBlockEmpty);
+    REQUIRE(kLevel13Grid[142][12] == kBlockEmpty);
+
+    // the pole stands eight columns past the staircase's last column, which is smbd's spacing, and
+    // the castle's tower lines up with the one the rip draws at 155-157
+    REQUIRE(LEVEL_1_3_FLAG_COLUMN == 149);
+    REQUIRE(LEVEL_1_3_CASTLE_COLUMN == 154);
+    for (uint8_t row = LEVEL_1_3_FLAG_TOP_ROW; row <= LEVEL_1_3_FLAG_BASE_ROW; ++row) {
+        REQUIRE(kLevel13Grid[149][row] == kBlockFlagPole);
+    }
+    REQUIRE(kLevel13Grid[149][3] == kBlockFlagBall);
+    REQUIRE(kLevel13Grid[156][8] == kBlockCastleCrenel);
+    REQUIRE(LEVEL_1_3_LENGTH_COLUMNS == 160);
+}
+
+TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
+    // all twenty-three coins, in column order. the smbd challenge rip draws twenty-one plus five
+    // red ones; two of those reds (28,4 and 112,12) sit inside a coin run the nes rip has a plain
+    // coin in, so they are compiled as plain coins and the other three - which are challenge-mode
+    // additions to cells the nes map leaves empty - are recorded in the bible and not compiled
+    std::vector<std::pair<int, int>> coins;
+    for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel13Grid[column][row] == kBlockCoin) {
+                coins.push_back({column, row});
+            }
+        }
+    }
+    const std::vector<std::pair<int, int>> want_coins = {
+        {27, 4},  {28, 4},  {29, 4},  {33, 11}, {37, 2},  {38, 2},   {50, 6},   {51, 6},
+        {60, 4},  {61, 4},  {62, 4},  {63, 4},  {85, 5},  {86, 5},   {91, 4},   {92, 4},
+        {95, 4},  {96, 4},  {111, 12}, {112, 12}, {113, 12}, {118, 5}, {119, 5},
+    };
+    REQUIRE(coins == want_coins);
+
+    // the stage's one and only block: a ? block floating three rows over the left cap of the tree
+    // at 59-63, with a power-up in it (the nes rip draws a mushroom on it, the smbd rip a flower)
+    const HostLevel& lv = kHostLevels[kLevel13];
+    REQUIRE(lv.block_count == 1);
+    REQUIRE(lv.blocks[0].column == 59);
+    REQUIRE(lv.blocks[0].row == 10);
+    REQUIRE(lv.blocks[0].kind == 0); // kBlockListQuestion
+    REQUIRE(lv.blocks[0].content == kContentMushroom);
+    REQUIRE(kLevel13Grid[59][10] == kBlockQuestion);
+
+    // the roster, in the order the engine's cursor walks it. every row is the surface the sprite
+    // stands on in the rip - for the two paratroopas, the row their feet hang at
+    struct Foe {
+        int column;
+        int row;
+        uint8_t kind;
+    };
+    const std::vector<Foe> want_foes = {
+        {30, 5, kEnemyKoopaRed},      {44, 4, kEnemyGoomba},   {46, 4, kEnemyGoomba},
+        {74, 5, kEnemyKoopaParaRed},  {80, 6, kEnemyGoomba},   {108, 7, kEnemyKoopaRed},
+        {112, 6, kEnemyKoopaParaRed}, {131, 13, kEnemyKoopaRed},
+    };
+    REQUIRE(lv.enemy_count == static_cast<int>(want_foes.size()));
+    for (size_t i = 0; i < want_foes.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(lv.enemies[i].column == want_foes[i].column);
+        REQUIRE(lv.enemies[i].row == want_foes[i].row);
+        REQUIRE(lv.enemies[i].kind == want_foes[i].kind);
+    }
+    // and each of the six walkers has the canopy or the ground the rip stands it on under its feet;
+    // the paratroopas are the two with nothing under them at all
+    for (const Foe& foe : want_foes) {
+        const bool flyer = foe.kind == kEnemyKoopaParaRed;
+        CAPTURE(foe.column, foe.row);
+        REQUIRE(solid_at(lv, foe.column, foe.row) != flyer);
+    }
+
+    // the scenery is clouds and nothing else: over open air there is no ground for a hill or a bush
+    // to stand on, and neither rip draws one. eighteen of the twenty the rips draw land - the two
+    // at 35,7 and 96,10 have their lower row behind a canopy in both rips, and the compiler's
+    // whole-shape rule drops a cloud it cannot place entire
+    std::vector<std::pair<int, int>> cloud_caps;
+    int hills = 0;
+    for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            const uint8_t kind = kLevel13Grid[column][row];
+
+            if (kind == kBlockCloudTl) {
+                cloud_caps.push_back({column, row});
+            }
+            hills += (kind >= kBlockHillPeak && kind <= kBlockBushR) ? 1 : 0;
+        }
+    }
+    REQUIRE(hills == 0);
+    REQUIRE(cloud_caps == std::vector<std::pair<int, int>>{
+                              {3, 6},   {9, 7},    {20, 3},   {38, 6},   {46, 7},   {51, 3},
+                              {57, 7},  {66, 4},   {83, 7},   {86, 6},   {92, 10},  {97, 3},
+                              {112, 2}, {123, 10}, {129, 6},  {132, 5},  {144, 3},  {150, 7}});
+    REQUIRE(kLevel13Grid[35][7] == kBlockEmpty);
+    REQUIRE(kLevel13Grid[96][10] == kBlockEmpty);
+}
+
 // every other floating brick ledge along the run, counted off the two map rips: nothing else lost
 // a cell at its ends the way the fourth platform did
 TEST_CASE("mario_1_2_brick_ledges_are_their_measured_widths") {
@@ -8264,7 +8540,7 @@ TEST_CASE("mario_autopilot_completes_1_4") {
     REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
 }
 
-TEST_CASE("mario_thin_platforms") {
+TEST_CASE("mario_tree_platforms") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
     const Route route = plan_level(kLevel13, 6000);
@@ -8272,48 +8548,86 @@ TEST_CASE("mario_thin_platforms") {
     const std::vector<PlayerSim> states = trace_route(route, kLevel13);
     const HostLevel& lv = kHostLevels[kLevel13];
 
-    // the bible's islands really did compile to tree tops
-    int decks = 0;
+    // 1-3's measured trees replaced the prose bible's islands, so the level is canopies and trunks
+    // and no thin platform anywhere: smb has no one-way platform, and a tree top is solid on every
+    // side (see level-1-3.json). the trunks hang under them and are walked straight through
+    int canopy = 0;
+    int trunks = 0;
+    int thin = 0;
     for (int c = 0; c < lv.columns; ++c) {
         for (int r = 0; r < kHostLevelRows; ++r) {
-            decks += lv.grid[c][r] == kBlockThin ? 1 : 0;
+            const uint8_t kind = lv.grid[c][r];
+
+            if (kind >= kBlockTreeTopL && kind <= kBlockTreeTopR) {
+                ++canopy;
+                REQUIRE(solid_at(lv, c, r));
+            }
+            if (kind == kBlockTrunk) {
+                ++trunks;
+                REQUIRE(!solid_at(lv, c, r));
+            }
+            thin += kind == kBlockThin ? 1 : 0;
         }
     }
-    REQUIRE(decks > 10);
+    REQUIRE(canopy > 10);
+    REQUIRE(trunks > 10);
+    REQUIRE(thin == 0);
+
+    // and a canopy stops a head coming up from underneath, which is the half of "solid" a thin
+    // platform never had: the tree at 24-31 carries a taller one at 26-30, and a jump off the lower
+    // canopy that would clear four rows in open air is stopped by the upper one's underside
+    PlayerSim under;
+    under.load_level(kLevel13);
+    under.x_pos = 28 * kBlockPx;
+    under.y_pos = static_cast<int16_t>(9 * kBlockPx - under.foot_h());
+    under.on_ground = 1;
+    under.grounded_for = 8;
+    int highest = under.y_pos;
+    for (int i = 0; i < 40; ++i) {
+        under.step(static_cast<uint8_t>(kInA | kInB));
+        highest = std::min(highest, static_cast<int>(under.y_pos));
+    }
+    REQUIRE(highest >= 6 * kBlockPx);
 
     size_t landed = 0;
-    size_t through = 0;
     int airborne_camera_frames = 0;
     for (size_t i = 1; i < states.size(); ++i) {
         const PlayerSim& s = states[i];
         const int left = PlayerSim::col_of(s.hit_left());
         const int right = PlayerSim::col_of(s.hit_right());
         const int feet_row = (s.y_pos + s.foot_h()) >> 4;
-        const int head_row = s.y_pos >> 4;
 
-        // resting on a deck: his feet sit exactly on the deck line of a thin cell
-        if (landed == 0 && s.on_ground != 0 && s.riding == 0xFF && (s.y_pos + s.foot_h()) % kBlockPx == 0 &&
-            (floor_at(lv, left, feet_row) == kFloorThin || floor_at(lv, right, feet_row) == kFloorThin)) {
+        // resting on a canopy: his feet sit exactly on the line of a tree-top cell
+        const auto canopy_at = [&lv](int column, int row) {
+            const uint8_t kind = lv.grid[column][row];
+            return kind >= kBlockTreeTopL && kind <= kBlockTreeTopR;
+        };
+        if (landed == 0 && s.on_ground != 0 && s.riding == 0xFF &&
+            (s.y_pos + s.foot_h()) % kBlockPx == 0 &&
+            (canopy_at(left, feet_row) || canopy_at(right, feet_row))) {
             landed = i;
-        }
-        // and rising straight through one: his head is inside a deck cell and nothing stopped him
-        if (through == 0 && s.y_speed < 0 && s.bumped_column < 0 &&
-            (floor_at(lv, left, head_row) == kFloorThin || floor_at(lv, right, head_row) == kFloorThin)) {
-            through = i;
         }
 
         // 1-3 supplies the vertical sequence 1-1 cannot: while Mario rises and drops between its
         // platforms, automatic camera motion must keep some part of his body in the picture.
+        // 1-3's jumps go higher than 1-1 ever asks for: the arc that crosses the pit before the
+        // second lift carries him off the top of the level itself, which nothing in the engine
+        // blocks (smb lets him leave the picture there too). so the camera contract is that it is
+        // already as high as it goes whenever he is above row 0, and that his feet are in the
+        // picture whenever he is not
         const int screen_top = s.y_pos - s.cam_y;
         const int screen_bottom = screen_top + s.foot_h();
-        REQUIRE(screen_bottom > 0);
+        if (s.y_pos < 0) {
+            REQUIRE(s.cam_y <= kCamEaseMaxPx); // at the top of the level or one ease step off it
+        } else {
+            REQUIRE(screen_bottom > 0);
+        }
         REQUIRE(screen_top < kScreenHeightPx);
         if (s.on_ground == 0 && s.cam_y != states[i - 1].cam_y) {
             ++airborne_camera_frames;
         }
     }
     REQUIRE(landed > 0);
-    REQUIRE(through > 0);
     REQUIRE(airborne_camera_frames > 0);
 
     // and the rom agrees frame for frame, which is what says its collision took the same branches
@@ -8329,15 +8643,35 @@ TEST_CASE("mario_thin_platforms") {
 TEST_CASE("mario_lift_carries") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
-    const Route route = plan_level(kLevel13, 6000);
-    REQUIRE(route.reached);
-    const std::vector<PlayerSim> states = trace_route(route, kLevel13);
+    const Route planned = plan_level(kLevel13, 6000);
+    REQUIRE(planned.reached);
+    const std::vector<PlayerSim> planned_states = trace_route(planned, kLevel13);
 
-    // the pit the bible's lift_platform run carves is wider than any jump, so the route has to ride
+    // 1-3's measured decks are two blocks of solid footing over pits five and fourteen columns
+    // wide, and the planner's route clips the corner of one at a run and jumps straight off again
+    // rather than settling on it - so the ride itself is set up here rather than hoped for. he is
+    // dropped onto the middle of the first deck with no button held at all, and everything after
+    // that is the engine's doing
+    REQUIRE(planned_states[0].lift_count == 2);
+    PlayerSim rider;
+    rider.load_level(kLevel13);
+    const PlayerSim::LiftSim& deck = rider.lifts[0];
+    REQUIRE(deck.vertical == 0);
+    rider.x_pos = static_cast<uint16_t>(deck.x + (kLiftWidthPx - kPlayerBoxPx) / 2);
+    rider.y_pos = static_cast<int16_t>(deck.y - rider.foot_h() - kBlockPx);
+    rider.on_ground = 0;
+    rider.y_speed = 0;
+
     size_t rode = 0;
     int carried = 0;
+    std::vector<PlayerSim> states;
+    states.push_back(rider);
+    for (int i = 0; i < kLiftIdleFrames; ++i) {
+        rider.step(0);
+        states.push_back(rider);
+    }
     for (size_t i = 1; i + 1 < states.size(); ++i) {
-        if (states[i].riding == 0xFF || route.script[i] != 0 || states[i + 1].riding == 0xFF) {
+        if (states[i].riding == 0xFF || states[i + 1].riding == 0xFF || states[i].x_speed != 0) {
             continue;
         }
         // no input at all this frame, yet the deck under him took him somewhere
@@ -8346,7 +8680,6 @@ TEST_CASE("mario_lift_carries") {
         if (dx == 0) {
             continue;
         }
-        REQUIRE(states[i].x_speed == 0);
         REQUIRE((dx == kLiftSpeedPx || dx == -kLiftSpeedPx));
         if (rode == 0) {
             rode = i;
@@ -8371,10 +8704,12 @@ TEST_CASE("mario_lift_carries") {
     REQUIRE(vertical.lifts[1].lo == 1 * kBlockPx);
     REQUIRE(vertical.lifts[1].hi == 12 * kBlockPx);
 
+    // and the rom plays the route that touches both decks back frame for frame, which is what says
+    // its own lift collision took the same branches the twin's did
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_level(gameboy, kLevel13);
-    const Match match = replay_matched(gameboy, route, kLevel13);
+    const Match match = replay_matched(gameboy, planned, kLevel13);
     REQUIRE(match.broke_at == -1);
     REQUIRE(match.hits > 400);
     REQUIRE(match.drops <= kMaxVsyncMisses);

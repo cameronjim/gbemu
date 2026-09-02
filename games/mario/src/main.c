@@ -59,6 +59,9 @@ void main(void) {
     uint8_t target = 0xFF;
     uint8_t down_held = 0;
 
+    // a cgb cart, so the cpu runs at double speed: the play frame had grown to the edge of the
+    // single-speed budget and dropped a frame on its heaviest jumps
+    cpu_fast();
     font_init();
     font_set(font_load(font_ibm));
     // the vbl handler that lands the camera and the lyc one that clips the hud strip, both before

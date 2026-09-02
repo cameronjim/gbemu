@@ -341,6 +341,89 @@ static const uint8_t kPipeTiles[144] = {
 };
 // clang-format on
 
+// 1-3's tree, transcribed pixel for pixel off the smb1 map rip (mariouniverse's 1-3.png, the tree
+// at column 18). the canopy uses exactly four colors there - sky, a bright green body, a dark
+// green accent under its scalloped bottom edge, and a black outline - which is kCamPalPipe's
+// overworld set in that order, so the greens the hills and bushes already share color the tree too.
+// the trunk is the brick browns: color 2 fills it and color 3 draws the dark stripes, whose 8px
+// period in both axes is why the whole column is one tile
+// clang-format off
+static const uint8_t kTreeTiles[128] = {
+    // kTileTreeCapTl 0x0a - the left cap, rounded into the sky
+    0x3F, 0x3F, // ..######
+    0x7F, 0x60, // .##-----
+    0x7F, 0x40, // .#------
+    0xFF, 0xC0, // ##------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    // kTileTreeTop 0x0b - the plain top row, also both of the middle and the right cap
+    0xFF, 0xFF, // ########
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    // kTileTreeCapBl 0x0c - the left cap again, rounded the other way
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x80, // #-------
+    0xFF, 0x81, // #------#
+    0x7E, 0x42, // .#----#.
+    0x3C, 0x3C, // ..####..
+    // kTileTreeBot 0x0d - a plain scalloped bottom, also the right cap left half
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x01, // -------#
+    0xFE, 0x82, // #-----#.
+    0x7C, 0x7C, // .#####..
+    // kTileTreeBotM 0x0e - the middle's bottom, the only one with dark green in it
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x01, // -------#
+    0xFE, 0x83, // #-----#+
+    0x7C, 0xFF, // +#####++
+    // kTileTreeCapTr 0x0f - the right cap top
+    0xF8, 0xF8, // #####...
+    0xFC, 0x04, // -----#..
+    0xFE, 0x02, // ------#.
+    0xFE, 0x02, // ------#.
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    // kTileTreeCapBr 0x10 - the right cap bottom
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x81, // #------#
+    0x7E, 0x42, // .#----#.
+    0x3C, 0x3C, // ..####..
+    // kTileTrunk 0x11 - one tile that tiles the whole column, 8px stripe period both axes
+    0x00, 0xFF, // ++++++++
+    0x08, 0xFF, // ++++#+++
+    0x08, 0xFF, // ++++#+++
+    0x08, 0xFF, // ++++#+++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x00, 0xFF, // ++++++++
+};
+// clang-format on
+
 // and the same lip and body turned on their side, which is the whole of the sideways pipe's art:
 // every tile is kPipeTiles' own transposed, pixel (x,y) read at (y,x). that is the turn a pipe
 // wants rather than a plain rotation, because it keeps smb's light where smb keeps it - top left.
@@ -1177,6 +1260,8 @@ void assets_load_scenery_tiles(void) BANKED {
     // the sideways pipe is solid terrain, not scenery, but vram bank 0 has no tile ids left: it
     // rides here with the scenery and reads back through kCamAttrVram1 the same way
     set_bkg_data(kTilePipeSideTl, 9, kPipeSideTiles);
+    // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
+    set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -2586,8 +2671,97 @@ static const uint8_t kHazardTiles[128] = {
 };
 // clang-format on
 
+// the red paratroopa's two frames: the koopa's own walk0 pair with a wing drawn into the top left
+// of its shell half, where the walk frame leaves the cell empty anyway. kPalKoopa paints it - color
+// 1 is the koopa's cream, which is the white smb gives the wing, color 2 the green shell and 3 the
+// outline - so the flyer costs no sprite palette either. red and green koopas have always
+// shared this one palette in this game, and the paratroopa shares it too.
+//
+// the wing beats by dropping a row rather than changing shape, which is one legible flap and keeps
+// the two frames' body bytes identical. vram bank 0's 0xc0 family is exactly full, so these ride at
+// the same ids in bank 1 and enemies_draw sets S_BANK on the flyer's prop
+// clang-format off
+static const uint8_t kParaTiles[128] = {
+    // paratroopa frame0 l top - the koopa shell with its wing raised
+    0xC0, 0xC0, // ##......
+    0xE0, 0xA0, // #-#.....
+    0xF1, 0x91, // #--#...#
+    0xF9, 0x89, // #---#..#
+    0x79, 0x49, // .#--#..#
+    0x39, 0x39, // ..###..#
+    0x62, 0x7E, // .##+++#.
+    0x41, 0x7F, // .#+++++#
+    // paratroopa frame0 l bot
+    0x80, 0xFF, // #+++++++
+    0x98, 0xFF, // #++##+++
+    0xA4, 0xFF, // #+#++#++
+    0x80, 0xFF, // #+++++++
+    0x80, 0xFF, // #+++++++
+    0x7F, 0x7F, // .#######
+    0x38, 0x00, // ..---...
+    0x78, 0x00, // .----...
+    // paratroopa frame0 r top
+    0x78, 0x78, // .####...
+    0xFC, 0x84, // #----#..
+    0xFE, 0x32, // --##--#.
+    0xFF, 0x31, // --##---#
+    0xFF, 0x01, // -------#
+    0xFE, 0x02, // ------#.
+    0xFE, 0x82, // #-----#.
+    0xFC, 0x84, // #----#..
+    // paratroopa frame0 r bot
+    0x7C, 0xC4, // +#---#..
+    0x3C, 0xE4, // ++#--#..
+    0x18, 0xF8, // +++##...
+    0x10, 0xF0, // +++#....
+    0x10, 0xF0, // +++#....
+    0xE0, 0xE0, // ###.....
+    0xE0, 0x00, // ---.....
+    0xF0, 0x00, // ----....
+    // paratroopa frame1 l top - the same wing a row lower, on the downbeat
+    0x00, 0x00, // ........
+    0x80, 0x80, // #.......
+    0xC1, 0xC1, // ##.....#
+    0xE9, 0xA9, // #-##...#
+    0xF9, 0x89, // #---#..#
+    0x79, 0x79, // .####..#
+    0x62, 0x7E, // .##+++#.
+    0x41, 0x7F, // .#+++++#
+    // paratroopa frame1 l bot
+    0x80, 0xFF, // #+++++++
+    0x98, 0xFF, // #++##+++
+    0xA4, 0xFF, // #+#++#++
+    0x80, 0xFF, // #+++++++
+    0x80, 0xFF, // #+++++++
+    0x7F, 0x7F, // .#######
+    0x38, 0x00, // ..---...
+    0x78, 0x00, // .----...
+    // paratroopa frame1 r top
+    0x78, 0x78, // .####...
+    0xFC, 0x84, // #----#..
+    0xFE, 0x32, // --##--#.
+    0xFF, 0x31, // --##---#
+    0xFF, 0x01, // -------#
+    0xFE, 0x02, // ------#.
+    0xFE, 0x82, // #-----#.
+    0xFC, 0x84, // #----#..
+    // paratroopa frame1 r bot
+    0x7C, 0xC4, // +#---#..
+    0x3C, 0xE4, // ++#--#..
+    0x18, 0xF8, // +++##...
+    0x10, 0xF0, // +++#....
+    0x10, 0xF0, // +++#....
+    0xE0, 0xE0, // ###.....
+    0xE0, 0x00, // ---.....
+    0xF0, 0x00, // ----....
+};
+// clang-format on
+
 void assets_load_enemy_tiles(void) BANKED {
     set_sprite_data(kTileEnemyFirst, kEnemyTileCount, kEnemyTiles);
+    VBK_REG = VBK_BANK_1;
+    set_sprite_data(kTileParaFly0, kParaTileCount, kParaTiles);
+    VBK_REG = VBK_BANK_0;
 }
 
 void assets_load_hazard_tiles(void) BANKED {

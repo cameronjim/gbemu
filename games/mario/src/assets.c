@@ -1,7 +1,7 @@
-// m18's art pass took the block tables from eighteen kinds to thirty-eight (forty-two now that
-// 1-2's sideways pipe is in), and six tables of that length is 252 bytes bank 0 no longer had. so
-// they ride with the rest of the art and are staged into ram at a level load, exactly the way
-// level.c already stages the level table: the streamer's reads stay plain loads with no bank
+// m18's art pass took the block tables from eighteen kinds to thirty-eight (forty-seven now that
+// 1-2's sideways pipe and 1-3's tree are in), and six tables of that length is 282 bytes bank 0 no
+// longer had. so they ride with the rest of the art and are staged into ram at a level load, the
+// way level.c already stages the level table: the streamer's reads stay plain loads with no bank
 // switch behind them, and bank 0 carries none of the bytes
 #pragma bank 4
 
@@ -40,6 +40,7 @@ static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTileBushMidTl,      kTileBushCapTr,
     kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
+    kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
 };
 // clang-format on
 // clang-format off
@@ -56,6 +57,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileBushMidTr,      kTileBushCapTl,
     kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
+    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
 };
 // clang-format on
 // clang-format off
@@ -72,6 +74,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTileBushMidBl,      kTileBushCapBr,
     kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
+    kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
 };
 // clang-format on
 // clang-format off
@@ -88,6 +91,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileBushMidBr,      kTileBushCapBl,
     kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
+    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
 };
 // clang-format on
 // sky, the flag's three cells, a world coin, the axe, lava and every scenery kind are all
@@ -104,13 +108,16 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     0,           0,
     kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
     0,
+    kFloorSolid, kFloorSolid, kFloorSolid, 0,
 };
 // clang-format on
 // lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge, the
 // axe and the thin platform are wood and take the neutral one. the hills, the bushes and the flag
 // share the pipe's greens, the castle shares the brick's browns, and the clouds and the pennant
 // share the sky's whites - and the sideways pipe is the vertical one rotated, so it shares those
-// greens too - which is how eight cgb slots still cover all forty-two kinds.
+// greens too, and so does 1-3's tree canopy, whose four rip colors are exactly the pipe slot's
+// (sky, bright green, dark green, black); its trunk takes the brick's browns - which is how eight
+// cgb slots still cover all forty-seven kinds.
 //
 // the kScen* entries add kCamAttrVram1: every kind whose art assets_load_scenery_tiles put in vram
 // bank 1 has to say so here, because the attribute byte is what picks the bank a cell reads from
@@ -131,6 +138,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenBrick,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
 };
 // clang-format on
 

@@ -234,6 +234,19 @@ static void step_plant(Enemy* e, uint16_t player_px) {
     }
 }
 
+// the red paratroopa's flight. it holds its column and probes no terrain at all, so the whole step
+// is two adds and a compare: pos_y moves a pixel a frame, y_accum tracks how far into the band it
+// is and turns it round at either end. see kParaBandPx in mario.h for why no slot field was added
+static void step_fly(Enemy* e) {
+    e->pos_y = (int16_t)(e->pos_y + e->dy);
+    e->y_accum = (uint8_t)((int16_t)e->y_accum + e->dy);
+    if (e->y_accum == 0U) {
+        e->dy = 1;
+    } else if (e->y_accum >= (uint8_t)kParaSpanPx) {
+        e->dy = -1;
+    }
+}
+
 // smb's defeat animation for anything a fireball or a moving shell takes: the body flips over,
 // pops upward and falls out of the level instead of blinking away. it stops colliding with mario
 // and with the pool on this very frame, and its slot frees when despawn sees it leave the level
@@ -300,7 +313,10 @@ static uint8_t row_load(uint8_t top_row) {
     uint8_t n = 0;
 
     for (i = 0; i < live; ++i) {
-        // a falling corpse is not on any row: it must not hold the scanline cap against a spawn
+        // a falling corpse is not on any row: it must not hold the scanline cap against a spawn.
+        // a flyer answers for whatever row it is passing through this frame, which is the honest
+        // answer - the cap is about how many 16px sprites a scanline crosses, and a paratroopa
+        // crossing a walker's row costs that scanline exactly what a walker there would
         if (pool[i].state != kEnemyFlipped && (uint8_t)(pool[i].pos_y >> 4) == top_row) {
             ++n;
         }
@@ -362,6 +378,12 @@ static void spawn(uint16_t cam_x) {
             // enemy width (16px), so recentre it across the pipe's full 32px span - see
             // kPlantCenterOffsetPx in mario.h
             e->pos_x = (uint16_t)(e->pos_x + kPlantCenterOffsetPx);
+        } else if (e->kind == kEnemyKoopaParaRed) {
+            // the flyer comes in at the centre of its band and starts by rising. it never stands on
+            // anything, so grounded goes off and the gravity accumulator becomes its band offset
+            e->grounded = 0;
+            e->y_accum = (uint8_t)kParaBandPx;
+            e->dy = -1;
         }
         ++cursor;
         note_next_spawn();
@@ -431,6 +453,12 @@ static void collide_enemies(void) {
                 award(kShellChain, kShellChainCount, &shell_chain);
                 break;
             }
+            // a flyer holds its column: the nudge below must not shove it sideways, and it is not
+            // walking into anything either, so it only ever meets the pool as a shell's victim
+            if (a->kind == kEnemyKoopaParaRed || b->kind == kEnemyKoopaParaRed) {
+                ++j;
+                continue;
+            }
             // two walkers meeting turn each other around; the nudge stops them flipping again
             left = (a->pos_x <= b->pos_x) ? a : b;
             right = (left == a) ? b : a;
@@ -458,6 +486,18 @@ static uint8_t stomp(Enemy* e) {
         return kEnemyHitShellStomp;
     }
     award(kStompChain, kStompChainCount, &stomp_chain);
+    // roster.json: a paratroopa stomps down into a plain koopa. it keeps the slot and the position
+    // it was hit at, loses the wings, and falls out of the air to whatever is under it - a second
+    // stomp is what puts it in its shell. the points are the koopa's, paid by the award above
+    if (e->kind == kEnemyKoopaParaRed) {
+        e->kind = kEnemyKoopaRed;
+        e->grounded = 0;
+        e->dy = 0;
+        e->y_accum = 0;
+        e->lead_col = lead_of(e);
+        e->foot_col = foot_of(e);
+        return kEnemyHitStomp;
+    }
     if (e->kind == kEnemyKoopa || e->kind == kEnemyKoopaRed) {
         e->state = kEnemyShellIdle;
         e->timer = kShellWakeFrames;
@@ -674,6 +714,12 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
             ++i;
             continue;
         }
+        // a stomped flyer has already become a plain koopa, so this only runs while it still flies
+        if (e->kind == kEnemyKoopaParaRed) {
+            step_fly(e);
+            ++i;
+            continue;
+        }
         if (e->state == kEnemySquashed) {
             --e->timer;
             if (e->timer == 0U) {
@@ -719,6 +765,7 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
     const uint8_t swap = (uint8_t)((anim & kEnemyAnimFrames) != 0U ? 1U : 0U);
     const uint8_t goomba_tile = swap != 0U ? (uint8_t)kTileGoombaWalk1 : (uint8_t)kTileGoombaWalk0;
     const uint8_t koopa_tile = swap != 0U ? (uint8_t)kTileKoopaWalk1 : (uint8_t)kTileKoopaWalk0;
+    const uint8_t para_tile = swap != 0U ? (uint8_t)kTileParaFly1 : (uint8_t)kTileParaFly0;
     uint8_t i;
 
     // the same fast path: an empty pool with nothing left on screen writes no oam at all
@@ -739,6 +786,9 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         // a defeated body is its own walk frame turned upside down. the hardware swaps the pair's
         // two tiles as well as the rows inside them, so one flip bit is the whole animation
         uint8_t flip_y = 0;
+        // the paratroopa's frames sit at the enemy family's own ids in vram bank 1, so the tile
+        // number alone cannot pick its palette or its halves the way every other kind's does
+        uint8_t para = 0;
 
         if (sy <= -(int16_t)kEnemyHeightPx || sy >= (int16_t)kScreenHeightPx ||
             sx <= -(int16_t)kEnemyWidthPx || sx >= (int16_t)kScreenWidthPx) {
@@ -764,12 +814,19 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             tile = kTileGoombaSquash;
         } else if (e->state != kEnemyWalk) {
             tile = kTileShell;
+        } else if (e->kind == kEnemyKoopaParaRed) {
+            tile = para_tile;
+            para = 1;
         } else {
             tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
         }
-        prop = (uint8_t)(((tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa
-                                                                      : (uint8_t)kPalGoomba) |
+        prop = (uint8_t)(((para != 0U || tile == kTilePiranha || tile >= kTileShell)
+                              ? (uint8_t)kPalKoopa
+                              : (uint8_t)kPalGoomba) |
                          flip_y);
+        if (para != 0U) {
+            prop = (uint8_t)(prop | (uint8_t)S_BANK);
+        }
         if (tile == kTilePiranha && flip_y == 0U) {
             // OAM background-priority: the hardware draws this sprite behind bg colors 1-3 and only
             // over color 0. every bg palette keeps color 0 as the level's plain backdrop hue (see
@@ -777,7 +834,7 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
             // plant sinks the pipe tiles progressively cover it instead of it sitting on top
             prop = (uint8_t)(prop | (uint8_t)S_PRIORITY);
         }
-        if (tile == kTilePiranha || tile < kTileKoopaWalk0) {
+        if (para == 0U && (tile == kTilePiranha || tile < kTileKoopaWalk0)) {
             // a symmetric frame is one 8x16 pair; the right half is the same tile drawn flipped
             left_tile = tile;
             right_tile = tile;

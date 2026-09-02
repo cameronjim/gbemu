@@ -65,6 +65,14 @@ BLOCK_PIPE_SIDE_BODY_B = 41
 # crenel's notches are transparent and let sky through under the tower; this one's are the
 # castle's black. the contract with mario.h's kBlockCastleCrenelInner
 BLOCK_CASTLE_CRENEL_INNER = 42
+# 1-3's tree tops: a one-block-tall canopy - rounded left cap, repeatable middle, rounded right cap
+# - over a column of trunk. the canopy is solid on all four sides the way smb1's tree tops are; the
+# trunk is scenery you walk straight through, but the terrain pass stamps it, not the decor pass,
+# so it stays outside the BLOCK_CLOUD_TL..BLOCK_BUSH_R decor range
+BLOCK_TREE_TOP_L = 43
+BLOCK_TREE_TOP_M = 44
+BLOCK_TREE_TOP_R = 45
+BLOCK_TRUNK = 46
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -110,6 +118,10 @@ KIND_NAMES = {
     BLOCK_PIPE_SIDE_BODY_T: "PIPE_SIDE_BODY_T",
     BLOCK_PIPE_SIDE_BODY_B: "PIPE_SIDE_BODY_B",
     BLOCK_CASTLE_CRENEL_INNER: "CASTLE_CRENEL_INNER",
+    BLOCK_TREE_TOP_L: "TREE_TOP_L",
+    BLOCK_TREE_TOP_M: "TREE_TOP_M",
+    BLOCK_TREE_TOP_R: "TREE_TOP_R",
+    BLOCK_TRUNK: "TRUNK",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -117,7 +129,7 @@ KIND_NAMES = {
 WALK_THROUGH = frozenset(
     [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH, BLOCK_COIN, BLOCK_AXE,
      BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
-     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER]
+     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_TRUNK]
     + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
 )
 
@@ -146,9 +158,9 @@ ENEMY_KIND_MAP = {
     "goomba": 0,
     "koopa_green": 1,
     "koopa_red": 2,
-    # roster.json: a paratroopa stomps down into a plain koopa. the wings are m9's, so the bible's
-    # red paratroopas compile to red koopas at the same cell and fall to whatever is under them
-    "koopa_para_red": 2,
+    # roster.json: a paratroopa stomps down into a plain koopa. the flyer is its own kind now, and
+    # that stomp is what turns one into a red koopa at the cell it was hit at (see enemies.c)
+    "koopa_para_red": 4,
     "piranha": 3,
 }
 

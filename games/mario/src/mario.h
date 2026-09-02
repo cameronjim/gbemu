@@ -184,7 +184,16 @@
 // tower and made the tower read as floating; this kind fills those notches with the castle's own
 // black instead, so the tower stands on masonry. scenery, like every other castle kind
 #define kBlockCastleCrenelInner 42U
-#define kBlockKindCount 43U
+// 1-3's tree tops. smb1 draws a tree as a one-block-tall canopy - a rounded left cap, a repeatable
+// middle and a rounded right cap - standing on a column of trunk, and the canopy is an ordinary
+// solid block on all four sides while the trunk is pure scenery you walk straight through. the
+// trunk is stamped by the terrain pass rather than the decor one, so it stays outside the
+// [kBlockFirstDecor, kBlockLastDecor] range even though nothing about it is solid
+#define kBlockTreeTopL 43U
+#define kBlockTreeTopM 44U
+#define kBlockTreeTopR 45U
+#define kBlockTrunk 46U
+#define kBlockKindCount 47U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -336,6 +345,27 @@
 // the inner crenel's one tile, the outer merlon redrawn with its notch and its cap filled in
 #define kTileCastleCrenelInner 0x5BU
 #define kTileSceneryLast 0x5BU
+
+// --- 1-3's tree run, 0x0a-0x11, also in VRAM BANK 1 ---------------------------------------------
+// the scenery run above is contiguous and exactly full: 0x5c-0x5f is only four ids and 0x60-0x71
+// is the map screen's own bank-1 art. so the tree takes the eight free ids under the map screen's
+// castle instead (bank-1 bg 0x00-0x09, see assets.h), which nothing else in either screen touches.
+//
+// eight is all the canopy costs because the shape repeats: a plain top row serves the left cap's
+// right quadrant, both of the middle's and the right cap's left one, and one plain scalloped
+// bottom serves the left cap's inner quadrant and the right cap's. the rip's dark-green notch
+// accents only appear under the middle, so its bottom is its own tile. the trunk's stripes have an
+// 8px period in both axes, so one tile stamped four times is the whole column
+#define kTileTreeFirst 0x0AU
+#define kTileTreeCapTl 0x0AU
+#define kTileTreeTop 0x0BU
+#define kTileTreeCapBl 0x0CU
+#define kTileTreeBot 0x0DU
+#define kTileTreeBotM 0x0EU
+#define kTileTreeCapTr 0x0FU
+#define kTileTreeCapBr 0x10U
+#define kTileTrunk 0x11U
+#define kTileTreeCount 8U
 
 // the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
 // transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes
@@ -656,12 +686,24 @@
 #define kTileKoopaWalk1 0xCCU
 #define kEnemyTileCount 16U // 0xc0-0xcf
 
+// the paratroopa's two frames. smb draws it as the koopa with a white wing, so each frame is the
+// koopa's own facing pair with the wing baked into the shell half - four tiles a frame, eight in
+// all, and the 0xc0 family in vram bank 0 has none left. they ride at the same ids in VRAM BANK 1
+// and are drawn with S_BANK in the sprite's own prop, the way super mario's jump slab already is.
+// the body is walk0's for both frames: a flyer's feet never shuffle, only the wing beats
+#define kTileParaFly0 0xC0U
+#define kTileParaFly1 0xC4U
+#define kParaTileCount 8U // bank 1, 0xc0-0xc7
+
 // the compiled kinds, the contract with compile_level.py's ENEMY_KIND_MAP. roster.json: the red
 // koopa turns at a ledge where the green one walks off, and the piranha lives in a pipe
 #define kEnemyGoomba 0U
 #define kEnemyKoopa 1U
 #define kEnemyKoopaRed 2U
 #define kEnemyPiranha 3U
+// 1-3's red paratroopa. it holds its spawn column, ignores gravity and terrain entirely, and
+// slides up and down around the row it came in on
+#define kEnemyKoopaParaRed 4U
 
 // a pool slot's state. the pool is kept packed, so kEnemyOff never sits in a live slot: it is the
 // value a slot is cleared to and the one the host twin starts a fresh slot at
@@ -726,6 +768,13 @@
 // change, though, so it retuned two frame-exact host tests that depended on the old off-centre
 // position: mario_star_invincibility and mario_autopilot_completes_1_2
 #define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
+// the paratroopa's own band, all ours: the bible times no paratroopa at all. smb1's red one slides
+// up and down over about three blocks with no horizontal motion, so it is a constant one pixel a
+// frame between spawn_y - kParaBandPx and spawn_y + kParaBandPx - a 96-frame round trip. the slot
+// needs no new field for it: y_accum carries how far into the band the flyer is (0..2*kParaBandPx,
+// starting at the centre) and dy which way it is going, neither of which a flyer uses otherwise
+#define kParaBandPx 24
+#define kParaSpanPx (2 * kParaBandPx) // 48
 // must-measure: smb wakes an untouched shell after about ten seconds, which is this many frames at
 // 60fps. no disassembly line for it was found in the bible, so the count is ours until one is
 #define kShellWakeFrames 600U

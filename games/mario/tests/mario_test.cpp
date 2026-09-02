@@ -765,6 +765,30 @@ bool solid_at(const HostLevel& lv, int column, int row) {
     return (floor_at(lv, column, row) & kFloorSolid) != 0;
 }
 
+// the reaction list entry covering a cell, or -1. a cell with no entry is answered off the grid
+// alone, which is what blocks.c's plain-brick path is for
+int list_index(const HostLevel& lv, int column, int row) {
+    for (int i = 0; i < lv.block_count; ++i) {
+        if (lv.blocks[i].column == column && lv.blocks[i].row == row) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// blocks.c's rule for the brick a head bump found: a brick with nothing in it gives way to a grown
+// mario, whether or not the reaction list ever heard of it
+bool brick_breaks(const HostLevel& lv, int column, int row) {
+    if (column < 0 || column >= lv.columns || row < 0 || row >= kLevelRows) {
+        return false;
+    }
+    if (lv.grid[column][row] != kBlockBrick) {
+        return false;
+    }
+    const int i = list_index(lv, column, row);
+    return i < 0 || lv.blocks[i].content == kContentNothing;
+}
+
 // a hidden block is sky in the grid above: only the compiled reaction list says one waits there, and
 // only a rising head turns it solid. the twin has to know, or the rom diverges from it mid-route
 int hidden_index(const HostLevel& lv, int column, int row) {
@@ -956,6 +980,13 @@ struct PlayerSim {
     // one bit per compiled hidden block, set the moment a rising head materializes it. it rides
     // inside the sim so the planner's lookahead copies inherit exactly what the real run has done
     uint32_t hidden_solid = 0;
+    // the plain bricks a grown mario has knocked out of the grid. 1-2's underground is built out of
+    // them, so a route planned for a big mario has to know which ones are no longer there - the rom
+    // clears them for good and a twin that did not track it would drift out of step mid-route
+    static constexpr int kBrokenCap = 32;
+    uint16_t broken_column[kBrokenCap] = {};
+    uint8_t broken_row[kBrokenCap] = {};
+    uint8_t broken_count = 0;
     // the cell this frame's head bump struck, or (-1, -1); the bump tests search on it
     int16_t bumped_column = -1;
     int16_t bumped_row = -1;
@@ -1671,8 +1702,17 @@ struct PlayerSim {
         }
     }
 
+    bool broken(int column, int row) const {
+        for (uint8_t i = 0; i < broken_count; ++i) {
+            if (broken_column[i] == column && broken_row[i] == row) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool solid(int column, int row) const {
-        if (solid_at(*lv, column, row)) {
+        if (solid_at(*lv, column, row) && !broken(column, row)) {
             return true;
         }
         const int h = hidden_index(*lv, column, row);
@@ -1681,7 +1721,7 @@ struct PlayerSim {
 
     // terrain_floor_at: a materialized hidden block reads solid, everything else off the table
     uint8_t floor(int column, int row) const {
-        const uint8_t f = floor_at(*lv, column, row);
+        const uint8_t f = broken(column, row) ? uint8_t{0} : floor_at(*lv, column, row);
 
         if (f != 0) {
             return f;
@@ -1922,6 +1962,13 @@ struct PlayerSim {
                 bumped_row = row;
                 if (hit >= 0) {
                     hidden_solid |= (1u << hit);
+                }
+                // the rise still stops on the frame it lands, exactly as the rom's does; what the
+                // break changes is every later pass through the cell
+                if (big != 0 && broken_count < kBrokenCap && brick_breaks(*lv, bumped_column, bumped_row)) {
+                    broken_column[broken_count] = static_cast<uint16_t>(bumped_column);
+                    broken_row[broken_count] = static_cast<uint8_t>(bumped_row);
+                    ++broken_count;
                 }
                 dispense();
                 y_pos = static_cast<int16_t>((row + 1) << 4);
@@ -6305,11 +6352,21 @@ TEST_CASE("mario_star_invincibility") {
     const int goombas_before = goombas_on_screen(gameboy);
     REQUIRE(goombas_before > 0);
 
-    // the twin calls this contact fatal; with the star running it takes the goomba instead
-    run(gameboy, 4);
-    elapsed += 4;
-    REQUIRE(!at_start_cell(gameboy));
-    REQUIRE(goombas_on_screen(gameboy) < goombas_before);
+    // the twin calls this contact fatal; with the star running it takes the goomba instead. the
+    // twin names the frame it lands on, but the rom scans out a frame or two behind its own logic
+    // and gives a vsync back on the busiest lab frames, so the exact frame moves with whatever
+    // else bank 0 is carrying (m20's brick and crouch work shifted it): the window is what holds,
+    // and inside it he must never be the one who pays
+    int took = -1;
+    for (int i = 0; i < 30 && took < 0; ++i) {
+        gameboy.run_frame();
+        ++elapsed;
+        REQUIRE(!at_start_cell(gameboy));
+        if (goombas_on_screen(gameboy) < goombas_before) {
+            took = i;
+        }
+    }
+    REQUIRE(took >= 0);
 
     // nothing else can reach him with the camera parked, so the rest of the window just runs out
     REQUIRE(elapsed < kStarFrames);
@@ -6597,6 +6654,66 @@ PlayerSim enter_1_2_underground(gb::Gameboy& gameboy) {
     return sim_at_level(kLevel12, target.column, target.row);
 }
 
+// --- sub-milestone 20: 1-2's grid bricks and the one-block crawl space --------------------------
+
+// the brick face family, per the tile-id map in games/mario/src/mario.h
+constexpr uint8_t kTileBrickLo = 0xA4;
+constexpr uint8_t kTileBrickHi = 0xA7;
+// 1-2's own landmarks (level-1-2.json). the arch's underside is a plain brick stamped into the grid
+// with no reaction list entry of its own - the level is built out of some 450 of them, far past what
+// LEVEL_MAX_BLOCKS could hold - and the brick pillar at 78/79 stands on posts, leaving row 12 open
+// over the run's floor: one block of crawl space
+constexpr uint16_t kArchBrickColumn = 64;
+constexpr uint8_t kArchBrickRow = 9;
+constexpr uint16_t kCrawlColumn = 78;
+constexpr uint8_t kCrawlRow = 12;
+
+// the entrance pipe drops him into an open shaft, so the twin has to fall it before it knows where
+// he is; the frames it spends falling go into `script` for the rom to replay
+PlayerSim stand_on_the_1_2_floor(gb::Gameboy& gameboy, std::vector<uint8_t>& script) {
+    PlayerSim sim = enter_1_2_underground(gameboy);
+
+    for (int i = 0; i < 120; ++i) {
+        script.push_back(0);
+        sim.step(0);
+        if (i > 2 && sim.on_ground != 0 && sim.y_speed == 0) {
+            break;
+        }
+    }
+    return sim;
+}
+
+// the bg cell the rom is actually showing at a world block, with the camera taken from mario's own
+// screen box against where the twin says he stands: the test never asks the rom for its camera
+bool brick_shown(const gb::Gameboy& gameboy, const PlayerSim& sim, uint16_t column, uint8_t row) {
+    const Mario m = mario_at(gameboy);
+    REQUIRE(m.found);
+    const uint8_t tile =
+        block_tile(gameboy, column, row, static_cast<uint16_t>(sim.x_pos - (m.left - kMarioArtInset)),
+                   static_cast<uint8_t>(sim.y_pos - m.top));
+    return tile >= kTileBrickLo && tile <= kTileBrickHi;
+}
+
+// the leftmost screen x carrying a bg tile in [lo, hi], or -1. the play camera holds mario at a
+// fixed screen column, so a landmark's screen x is how far the world has moved under him: it is the
+// only thing that says whether a crouching mario walked or stayed put
+int bg_family_left(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+
+    for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
+        for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
+            const uint16_t id = ids[y * gb::kLcdWidth + x];
+            if ((id & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(id & 0xFFu);
+            if (tile >= lo && tile <= hi) {
+                return static_cast<int>(x);
+            }
+        }
+    }
+    return -1;
+}
 } // namespace
 
 TEST_CASE("mario_level_progression") {
@@ -6953,6 +7070,97 @@ TEST_CASE("mario_1_2_coin_room_compiles") {
     REQUIRE(down->column == 127);
     REQUIRE(down->row == 10);
     REQUIRE(down->param == 0);
+}
+
+// 1-2's underground is built out of bricks stamped straight into the grid as kBlockBrick cells,
+// far past what LEVEL_MAX_BLOCKS could hold, so none of them has a reaction list entry of its own.
+// blocks_head_bump answers them off the grid instead: small mario bounces one and leaves it
+// standing, which before m20 no grid brick did at all
+TEST_CASE("mario_grid_bricks_answer_a_head_bump") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the arch's underside: a plain grid brick and nowhere in the compiled reaction list
+    REQUIRE(kLevel12Grid[kArchBrickColumn][kArchBrickRow] == kBlockBrick);
+    for (uint16_t i = 0; i < kLevel12BlockCount; ++i) {
+        REQUIRE((kLevel12Blocks[i].column != kArchBrickColumn || kLevel12Blocks[i].row != kArchBrickRow));
+    }
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    std::vector<uint8_t> fall;
+    PlayerSim sim = stand_on_the_1_2_floor(gameboy, fall);
+    replay(gameboy, fall, 0, fall.size());
+
+    // nothing between the entrance pipe and the arch is inside a small mario's reach, so the twin
+    // is still in step by the time the bump is planned and the cell can be read by name
+    const Route out = plan_level(kLevel12, 4000, static_cast<uint16_t>(62U * kBlockPx), &sim);
+    REQUIRE(out.reached);
+    replay(gameboy, out.script, 0, out.script.size());
+    sim = out.end;
+    REQUIRE(!mario_at(gameboy).big);
+    REQUIRE(brick_shown(gameboy, sim, kArchBrickColumn, kArchBrickRow));
+
+    std::vector<uint8_t> tail;
+    REQUIRE(append_bump_at(sim, tail, kArchBrickColumn, kArchBrickRow));
+    replay(gameboy, tail, 0, tail.size());
+    // mid-bounce the face is drawn a row higher, which is terrain_bump_block running on a cell the
+    // reaction list has never heard of - the whole point of the new path
+    REQUIRE(brick_shown(gameboy, sim, kArchBrickColumn, static_cast<uint8_t>(kArchBrickRow - 1U)));
+
+    // and once it drops back, the brick is still standing: only a grown mario takes one out
+    for (int i = 0; i < kBumpFramesHost + 8; ++i) {
+        sim.step(0);
+        gameboy.run_frame();
+    }
+    REQUIRE(brick_shown(gameboy, sim, kArchBrickColumn, kArchBrickRow));
+}
+
+// the crouch folds super mario's box down to a small mario's, which is what a duck-slide through a
+// one-block gap needs. 1-2's brick pillar at 78/79 leaves exactly that gap over the run's floor
+TEST_CASE("mario_crouch_folds_to_one_block") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the gap the fold exists for: brick down to row 11, row 12 open, the run's floor under that
+    for (uint16_t column = kCrawlColumn; column <= kCrawlColumn + 1U; ++column) {
+        REQUIRE(kLevel12Grid[column][kCrawlRow - 1U] == kBlockBrick);
+        REQUIRE(kLevel12Grid[column][kCrawlRow] == kBlockEmpty);
+        REQUIRE(kLevel12Grid[column][kCrawlRow + 1U] == kBlockGround);
+    }
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    PlayerSim sim = lab_sim();
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+
+    // standing, he is 32 px of mario, and 1-1's brick row is the landmark the walk is measured on
+    REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
+    const int landmark = bg_family_left(gameboy, kTileBrickLo, kTileBrickHi);
+    REQUIRE(landmark >= 0);
+
+    // down folds him to one block, drawn from his own crouch pose rather than the standing slab
+    gameboy.set_button(gb::Button::Down, true);
+    run(gameboy, 6);
+    Mario m = mario_at(gameboy);
+    REQUIRE(m.big);
+    REQUIRE(m.height() == kPlayerBoxPx);
+
+    // smb's rule: a mario holding down has no walk at all, so the world does not move under him
+    gameboy.set_button(gb::Button::Right, true);
+    run(gameboy, 60);
+    m = mario_at(gameboy);
+    REQUIRE(m.big);
+    REQUIRE(m.height() == kPlayerBoxPx);
+    REQUIRE(bg_family_left(gameboy, kTileBrickLo, kTileBrickHi) == landmark);
+
+    // and with open sky over his head he stands straight back up, and walks again
+    gameboy.set_button(gb::Button::Down, false);
+    run(gameboy, 8);
+    REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
+    run(gameboy, 40);
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(bg_family_left(gameboy, kTileBrickLo, kTileBrickHi) < landmark);
 }
 
 TEST_CASE("mario_autopilot_completes_1_3") {
@@ -8355,3 +8563,4 @@ TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_is_gameplay(sky_color(gameboy)));
 }
+

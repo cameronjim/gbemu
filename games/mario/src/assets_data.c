@@ -1935,12 +1935,12 @@ static const uint8_t kEnemyTiles[256] = {
 };
 // clang-format on
 
-// super mario. the shared upper slab comes first, then one lower slab per pose; the crouch's own
-// upper eight rows are blank because the pose draws the shared slab eight px lower and lets it
-// show through, which is how a 24 px body costs no extra tiles.
-// the slab holds cap, face and chest down to the overall bib's top line, so every pose inherits
-// the same torso and only the arms below the elbow, the legs and the shoes swing - which is what
-// lets seven poses share it, crouch included
+// super mario. the shared upper slab comes first, then one lower slab per pose.
+// the slab holds cap, face and chest down to the overall bib's top line, so every standing pose
+// inherits the same torso and only the arms below the elbow, the legs and the shoes swing - which
+// is what lets six poses share it.
+// the crouch is the exception: its box is one cell tall, so its four tiles carry the whole folded
+// body - cap, squashed head, arms and shoes inside 16 rows - and the upper row of sprites parks
 // clang-format off
 static const uint8_t kSuperTiles[512] = {
     // shared upper l top
@@ -2196,41 +2196,41 @@ static const uint8_t kSuperTiles[512] = {
     0x7E, 0x7E, // .######.
     0xFE, 0xFE, // #######.
     // crouch lower l top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
+    0x00, 0x0F, // ....++++
+    0x00, 0x1F, // ...+++++
+    0x20, 0x3F, // ..#+++++
+    0x3F, 0x31, // ..##---#
+    0x3F, 0x21, // ..#----#
+    0x3F, 0x20, // ..#-----
+    0x1F, 0x00, // ...-----
+    0x00, 0x3F, // ..++++++
     // crouch lower l bot
+    0x40, 0x3F, // .-++++++
+    0x48, 0x3F, // .-++#+++
     0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
     0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    0x7E, 0x7E, // .######.
+    0x00, 0x3C, // ..++++..
+    0x3C, 0x3C, // ..####..
+    0x7C, 0x7C, // .#####..
+    0x7C, 0x7C, // .#####..
     // crouch lower r top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
+    0x00, 0xC0, // ++......
+    0x00, 0xF8, // +++++...
+    0x04, 0xFC, // +++++#..
+    0xF8, 0x00, // -----...
+    0xFC, 0x00, // ------..
+    0xFC, 0xF8, // #####-..
+    0xF0, 0x00, // ----....
+    0x00, 0xFC, // ++++++..
     // crouch lower r bot
+    0x02, 0xFC, // ++++++-.
+    0x12, 0xFC, // +++#++-.
     0x00, 0xFC, // ++++++..
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
     0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x1E, 0x1E, // ...####.
-    0x1E, 0x1E, // ...####.
-    0x7E, 0x7E, // .######.
+    0x00, 0x3C, // ..++++..
+    0x3C, 0x3C, // ..####..
+    0x3E, 0x3E, // ..#####.
+    0x3E, 0x3E, // ..#####.
 };
 // clang-format on
 

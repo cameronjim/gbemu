@@ -342,9 +342,17 @@ void main(void) {
         }
 
         if (state == kStatePause) {
-            if ((pressed & J_START) != 0U) {
+            const uint8_t choice = pause_frame(pressed);
+
+            if (choice == (uint8_t)kPauseResume) {
                 leave_card();
                 state = kStatePlay;
+            } else if (choice == (uint8_t)kPauseQuit) {
+                // the run is abandoned, not cleared: nothing is recorded and the lives and score
+                // stand. the next level entry reloads everything through enter_play, so whatever
+                // sub-area or segment he quit from leaves nothing behind
+                front_map(level_number);
+                state = kStateFront;
             }
             continue;
         }

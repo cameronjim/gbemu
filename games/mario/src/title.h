@@ -31,6 +31,13 @@ void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digi
 // the between-states cards, all painted the same lcd-off way the title is: everything freezes
 // while one is up, so the bg map is theirs to overwrite and flow_resume_from_card puts it back
 void card_pause(uint8_t level) BANKED;
+
+// one frame of the pause card's RESUME/QUIT menu: up/down move the cursor and repaint, start or a
+// confirm. quitting hands back to the world map without recording anything, which is main.c's job
+#define kPauseStay 0U
+#define kPauseResume 1U
+#define kPauseQuit 2U
+uint8_t pause_frame(uint8_t pressed) BANKED;
 // the rest are flow.c's, which shares bank 5 with them, so none needs a trampoline
 void card_game_over(void);
 // the clear card, redrawn each frame while the countdown converts into points

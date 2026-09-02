@@ -13,8 +13,13 @@
 // once at boot, before the first level load
 void powerup_init(void) BANKED;
 
-// every level load and respawn: back to small, no timers, no fireballs
+// a run start and every death: back to small, no timers, no fireballs. smb1 carries the form from
+// level to level, so a level load is not one of these - it takes the call below instead
 void powerup_reset(void) BANKED;
+
+// every level load: the star and injury windows, the grow animation and the fireball pool all
+// cleared, but the form itself kept, so the level he walks into is the one he cleared the last in
+void powerup_enter_level(void) BANKED;
 
 uint8_t powerup_state(void) BANKED;
 

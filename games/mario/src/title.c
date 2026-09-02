@@ -197,15 +197,69 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
     return kTitleStay;
 }
 
-void card_pause(uint8_t level) BANKED {
+// the pause card's own two-entry menu: which level it was opened over, and which entry is lit
+static uint8_t pause_level;
+static uint8_t pause_cursor;
+
+// ">RESUME" or " QUIT  ", padded to the same width either way so the cursor column never shifts -
+// the file select's slot lines are built the same way and for the same reason
+static void pause_item(uint8_t item) {
+    char text[kPauseItemWidth + 1U];
+    const char* label = (item == 0U) ? "RESUME" : "QUIT";
+    uint8_t n = 0;
+    uint8_t i;
+
+    text[n++] = (char)(item == pause_cursor ? '>' : ' ');
+    for (i = 0; label[i] != '\0'; ++i) {
+        text[n++] = label[i];
+    }
+    while (n < (uint8_t)kPauseItemWidth) {
+        text[n++] = ' ';
+    }
+    text[n] = '\0';
+    if (item == pause_cursor) {
+        card_paint_band((uint8_t)(kPauseMenuRow + item * kPauseItemStep), 1, kPalAccent);
+    }
+    card_print_centered((uint8_t)(kPauseMenuRow + item * kPauseItemStep), text);
+}
+
+// the whole card, repainted with the lcd off on every cursor move: the accent band is an attribute
+// write, which is mode locked on real hardware, and the file select already moves its cursor this
+// way. nothing is playing, so there is nothing for the blank frame to interrupt
+static void pause_show(void) {
+    uint8_t i;
+
     card_begin(kPauseRow);
     card_print_centered(kPauseRow, "PAUSED");
-    // systems.md: smbd's small screen moves the lives and the level name onto this card
-    card_print_value((uint8_t)(kPauseRow + 2U), "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
-    card_print_value((uint8_t)(kPauseRow + 4U), "SCORE ", hud_score, 5, 1);
-    card_print_value((uint8_t)(kPauseRow + 6U), "LIVES ", hud_lives, 2, 0);
-    card_print_centered((uint8_t)(kPauseRow + 9U), "START RESUMES");
+    // systems.md: smbd's small screen moves the lives and the level name onto this card. one blank
+    // row below the banner's own padding row, so the readout is not crowded against the band
+    card_print_value((uint8_t)(kPauseRow + 3U), "WORLD 1-", (uint16_t)(pause_level + 1U), 1, 0);
+    card_print_value((uint8_t)(kPauseRow + 5U), "SCORE ", hud_score, 5, 1);
+    card_print_value((uint8_t)(kPauseRow + 7U), "LIVES ", hud_lives, 2, 0);
+    for (i = 0; i < (uint8_t)kPauseItemCount; ++i) {
+        pause_item(i);
+    }
+    card_print_centered(kPauseHintRow, "A PICKS");
     card_end();
+}
+
+void card_pause(uint8_t level) BANKED {
+    pause_level = level;
+    pause_cursor = 0;
+    pause_show();
+}
+
+uint8_t pause_frame(uint8_t pressed) BANKED {
+    // start opened the card and start closes it: with the cursor resting on RESUME that is the
+    // same "back" it means on every front end screen now
+    if ((pressed & (J_START | J_A)) != 0U) {
+        return (pause_cursor == 0U) ? (uint8_t)kPauseResume : (uint8_t)kPauseQuit;
+    }
+    if ((pressed & (J_UP | J_DOWN)) != 0U) {
+        pause_cursor = (uint8_t)(pause_cursor ^ 1U);
+        pause_show();
+    }
+    return kPauseStay;
 }
 
 void card_game_over(void) {

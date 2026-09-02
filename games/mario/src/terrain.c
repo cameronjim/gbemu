@@ -250,6 +250,10 @@ void terrain_init(uint8_t next_area) {
     owed_flush();
 
     terrain_apply_scroll();
+    // the lcd is off here and the first vblank is a whole frame away, so the camera goes straight
+    // into the registers as well: without it the level's opening frame renders on the last card's
+    // scroll
+    terrain_commit_scroll();
 }
 
 void terrain_scroll_x(int8_t delta_px) {
@@ -400,7 +404,64 @@ void terrain_pan_y(int8_t delta_px) {
     world_y = (uint8_t)next;
 }
 
+// what the next vblank will put in scx/scy, and whether the hud strip is one of this frame's
+// layers. present() runs while the ppu is drawing - the logic above it has already eaten most of
+// the frame - so writing the scroll registers there tore the picture in half: the pan docs have
+// the ppu sampling scx per scanline, so the lines already fetched kept the old camera and the rest
+// took the new one, which is exactly the sideways shift a moving block showed. the isr below is
+// the only writer now, so the scroll lands with the oam gbdk dma's at the same vblank
+static uint8_t shadow_scx;
+static uint8_t shadow_scy;
+uint8_t terrain_bar_on;
+
+static void commit_scroll(void) {
+    SCX_REG = shadow_scx;
+    SCY_REG = shadow_scy;
+}
+
+// both handlers run every frame, so both are three instructions: the vbl one lands the camera and
+// raises the strip, the lyc one drops it again after its 16 px
+static void scroll_vbl(void) {
+    commit_scroll();
+    if (terrain_bar_on != 0U) {
+        SHOW_WIN;
+    }
+}
+
+static void bar_lcd(void) {
+    HIDE_WIN;
+}
+
+void terrain_install_isrs(void) {
+    WX_REG = 7; // the window's own -7 offset: 7 puts its left edge at screen x 0
+    WY_REG = 0;
+    LCDC_REG |= LCDCF_WIN9C00; // the level's ring keeps gbdk's 0x9800 map
+    add_VBL(scroll_vbl);
+    add_LCD(bar_lcd);
+    // gbdk's default chain terminator spins until the ppu reaches mode 0 or 1 before returning,
+    // which from a scanline-16 interrupt is most of a scanline of cpu the engine's own frame wants.
+    // this handler writes one register and touches neither vram nor oam, so it has nothing to wait
+    // for; nowait_int_handler has to be added last to replace the terminator
+    add_LCD(nowait_int_handler);
+    STAT_REG = STATF_LYC;
+    LYC_REG = (uint8_t)kHudBarLines;
+    set_interrupts((uint8_t)(VBL_IFLAG | LCD_IFLAG));
+}
+
 void terrain_apply_scroll(void) {
-    SCX_REG = (uint8_t)world_x; // truncation is the ring's own 256px wrap
-    SCY_REG = world_y;
+    shadow_scx = (uint8_t)world_x; // truncation is the ring's own 256px wrap
+    shadow_scy = world_y;
+}
+
+void terrain_commit_scroll(void) {
+    commit_scroll();
+}
+
+void terrain_park_scroll(void) {
+    shadow_scx = 0;
+    shadow_scy = 0;
+    commit_scroll();
+    // every caller is a card painting the 0x9800 map with the lcd off, and the strip is not theirs
+    terrain_bar_on = 0;
+    HIDE_WIN;
 }

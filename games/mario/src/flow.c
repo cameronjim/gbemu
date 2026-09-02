@@ -74,7 +74,7 @@ uint8_t flow_enter_level(uint8_t index) BANKED {
     player_init();
     enemies_load_level();
     camera_init(player_x(), player_feet());
-    hud_enter_level(level->timer);
+    hud_enter_level(level->timer, index);
     return hazards_count();
 }
 

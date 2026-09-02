@@ -23,13 +23,15 @@ extern uint16_t hud_time;
 // three lives, no coins and no score
 void hud_new_game(void);
 
-// arms the level's countdown and re-places the five digit sprites; a respawn shares it
-void hud_enter_level(uint16_t ticks);
+// arms the level's countdown and paints the whole window strip - its palette attributes, its black
+// cells and its labels, the level's own number among them; a respawn shares it. lcd off only
+void hud_enter_level(uint16_t ticks, uint8_t level);
 
 // the timer lab: the next hud_enter_level takes kShortTimerTicks instead of the level's own
 void hud_set_short_timer(uint8_t on);
 
-// one frame of the countdown, the coin rollover and the digit sprites; 1 on the frame time ran out
+// one frame of the countdown, the coin rollover and whichever of the strip's ten digit cells
+// changed; 1 on the frame time ran out
 uint8_t hud_frame(void) BANKED;
 
 // a 1-up item, and the life every hundredth coin pays; both clamp at kLivesMax

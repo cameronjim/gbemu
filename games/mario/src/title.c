@@ -111,8 +111,9 @@ void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digi
 void card_begin(uint8_t heading_row) {
     DISPLAY_OFF;
     HIDE_SPRITES;
-    SCX_REG = 0;
-    SCY_REG = 0;
+    // and the hud strip goes with the scroll: a card owns the whole screen, and its own text is on
+    // the 0x9800 map the window would sit over
+    terrain_park_scroll();
     load_palettes();
     card_clear_map();
     card_paint_band((uint8_t)(heading_row - 1U), kBannerRows, kPalWordmark);

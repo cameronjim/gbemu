@@ -149,21 +149,23 @@ static void step_speed(uint8_t keys) {
     const uint8_t run = (keys & J_B) != 0U ? 1U : 0U;
     const uint8_t speed_abs = abs_speed();
     const int8_t moving_dir = x_speed > 0 ? (int8_t)1 : (x_speed < 0 ? (int8_t)-1 : (int8_t)0);
+    // a mario holding down keeps no walk of his own past a crawl: smb gives him none at all, but
+    // that leaves one who came to a stop flush against 1-2's brick pillar at 78/79 no way into the
+    // one block of crawl space under it - the slide wants momentum he no longer has, and standing
+    // back up only puts him against the same brick. anything above the crawl cap still sheds
+    // through the friction path below, so a duck-slide out of a run is momentum first and cannot be
+    // steered faster; one still folded because a ceiling will not let him stand walks normally
+    const uint8_t crawling = (crouched != 0U && (keys & J_DOWN) != 0U) ? 1U : 0U;
     int8_t want_dir = 0;
-    uint8_t max_speed = kMarioMaxWalkSubpx;
+    uint8_t max_speed = crawling != 0U ? (uint8_t)kMarioCrouchWalkSubpx : (uint8_t)kMarioMaxWalkSubpx;
     uint16_t adder;
     uint16_t sum;
     uint8_t delta;
 
-    // a mario holding down cannot walk, smb-style: whatever speed he had sheds through the friction
-    // path and the duck-slide is momentum only. one still folded because a ceiling will not let him
-    // stand does get to crawl, or a one-block gap he came to rest in would hold him for good
-    if (crouched == 0U || (keys & J_DOWN) == 0U) {
-        if ((keys & J_LEFT) != 0U && (keys & J_RIGHT) == 0U) {
-            want_dir = -1;
-        } else if ((keys & J_RIGHT) != 0U && (keys & J_LEFT) == 0U) {
-            want_dir = 1;
-        }
+    if ((keys & J_LEFT) != 0U && (keys & J_RIGHT) == 0U) {
+        want_dir = -1;
+    } else if ((keys & J_RIGHT) != 0U && (keys & J_LEFT) == 0U) {
+        want_dir = 1;
     }
     if (want_dir != 0) {
         facing_left = want_dir < 0 ? 1U : 0U;
@@ -193,12 +195,15 @@ static void step_speed(uint8_t keys) {
     } else {
         adder = kMarioWalkAccel;
     }
-    if (on_ground != 0U) {
-        if (run != 0U) {
+    // the crawl cap outranks both run tiers: b earns nothing while he is folded
+    if (crawling == 0U) {
+        if (on_ground != 0U) {
+            if (run != 0U) {
+                max_speed = kMarioMaxRunSubpx;
+            }
+        } else if (speed_abs >= kMarioAirRunTierSubpx) {
             max_speed = kMarioMaxRunSubpx;
         }
-    } else if (speed_abs >= kMarioAirRunTierSubpx) {
-        max_speed = kMarioMaxRunSubpx;
     }
     // the disassembly's asl/rol: doubling can push a whole subpixel into the adder's high byte
     if (skidding != 0U) {

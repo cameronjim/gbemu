@@ -416,6 +416,10 @@ constexpr uint8_t kTileFlowerHi = 0x83;
 constexpr uint8_t kTileFireballLo = 0xDE;
 constexpr uint8_t kTileFireballHi = 0xDF;
 constexpr int kPlayerBigBoxPx = 32;
+// kMarioCrouchWalkSubpx in games/mario/src/mario.h: the cap on a ducking mario's own walk, half a
+// walk's. smb gives him none at all, which left 1-2's one-block crawl space unenterable from a
+// standstill; mirrored here the way every other mario.h constant in this file is
+constexpr int kCrouchWalkSubpx = 12;
 [[maybe_unused]] constexpr int kFireballPx = 8;
 constexpr int kGrowFrames = 64;
 constexpr uint8_t kContentStar = 3;
@@ -4431,6 +4435,24 @@ int play_scx(const gb::Gameboy& gameboy) {
     return blob[at + 4 + 2 * 8192 + 160 + 4 + 5];
 }
 
+// how far mario's own world position moves over `frames`, taken off the rom alone: the camera pins
+// his screen box, so the play view's travel is his, and scx is only the camera's low byte - the
+// wrap is unfolded into the smaller signed step, which every per-frame move here is well inside.
+// this is the only reading that measures a crouched mario, whose pose the twin does not model
+int world_travel(gb::Gameboy& gameboy, int frames) {
+    int prev = play_scx(gameboy);
+    const int from = mario_at(gameboy).left;
+    int moved = 0;
+
+    for (int i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const int scx = play_scx(gameboy);
+        moved += ((scx - prev + 128) & 0xFF) - 128;
+        prev = scx;
+    }
+    return moved + mario_at(gameboy).left - from;
+}
+
 // runs frames until the view stops moving, and reports how many px it moved in the largest single
 // frame on the way. the whole point of the redesign is that this number stays small
 struct Pan {
@@ -7393,6 +7415,147 @@ TEST_CASE("mario_1_2_coins_blocks_and_enemies_match_the_measured_map") {
     }
     REQUIRE(on_block);
     REQUIRE(on_pillar);
+
+    // the fourth hanging platform (map cols 76-79) is four bricks in a row, and both goombas the
+    // map puts on it have one of them under their feet. the first transcription read it as two lone
+    // bricks at the ends, because the goomba sprites hash over the middle two cells - which left
+    // the goomba at 102 standing on nothing
+    for (uint16_t column = 100; column <= 103; ++column) {
+        REQUIRE(kLevel12Grid[column][9] == kBlockBrick);
+    }
+    REQUIRE(kLevel12Grid[99][9] == kBlockEmpty);
+    REQUIRE(kLevel12Grid[104][9] == kBlockEmpty);
+    int on_ledge = 0;
+    for (uint16_t i = 0; i < kLevel12EnemyCount; ++i) {
+        const LevelEnemy& e = kLevel12Enemies[i];
+        if (e.row == 9 && e.column >= 100 && e.column <= 103) {
+            on_ledge += kLevel12Grid[e.column][9] == kBlockBrick ? 1 : 0;
+        }
+    }
+    REQUIRE(on_ledge == 2);
+}
+
+// every other floating brick ledge along the run, counted off the two map rips: nothing else lost
+// a cell at its ends the way the fourth platform did
+TEST_CASE("mario_1_2_brick_ledges_are_their_measured_widths") {
+    struct Ledge {
+        uint16_t x0;
+        uint16_t x1;
+        uint8_t row;
+    };
+    // the arch tops (map 41-44), the s-wall's underhang (58-61), the third platform (67-69), the
+    // six over the ceiling coins (84-89), the fourth platform (76-79), the ledge between the lift
+    // pits with its power-up brick at its right end (145-150), and the coin room's three
+    static const Ledge kLedges[] = {
+        {65, 68, 7},   {82, 85, 9},   {91, 93, 9},   {100, 103, 9}, {108, 113, 7},
+        {108, 113, 8}, {169, 174, 8}, {207, 214, 6}, {202, 203, 10}, {207, 208, 10},
+    };
+    for (const Ledge& l : kLedges) {
+        for (uint16_t column = l.x0; column <= l.x1; ++column) {
+            REQUIRE(kLevel12Grid[column][l.row] == kBlockBrick);
+        }
+    }
+}
+
+// the one-block crawl space under the pillar at 78/79 is the only one in the level, and the only
+// way past the pillar: nothing goes over it. both map rips agree - the pocket at rows 5-8 opens
+// only to the right, the pillar's own left flank (76/77) is solid brick from row 5 down to row 9,
+// and the five columns before it are empty top to bottom, so there is nothing to climb
+TEST_CASE("mario_1_2_the_one_block_crawl_is_the_only_way_past") {
+    const auto solid = [](uint16_t column, uint8_t row) {
+        const uint8_t kind = kLevel12Grid[column][row];
+        return kind != kBlockEmpty && kind != kBlockCoin;
+    };
+
+    // every standing space in the level that is exactly one block high, floor under it and a solid
+    // cell over it, is one of the crawl's own two columns
+    std::vector<std::pair<uint16_t, uint8_t>> pinches;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 3; row + 1 < kHostLevelRows; ++row) {
+            if (!solid(column, row) && solid(column, static_cast<uint8_t>(row - 1)) &&
+                solid(column, static_cast<uint8_t>(row + 1))) {
+                pinches.emplace_back(column, row);
+            }
+        }
+    }
+    REQUIRE(pinches == std::vector<std::pair<uint16_t, uint8_t>>{{kCrawlColumn, kCrawlRow},
+                                                                {kCrawlColumn + 1U, kCrawlRow}});
+
+    // the pillar: two columns of brick from row 9 down to row 11 on posts, its cap at rows 3-4, the
+    // pocket between them open, and the run's floor under the crawl
+    for (uint16_t column = 78; column <= 79; ++column) {
+        for (uint8_t row = 3; row <= 4; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockBrick);
+        }
+        for (uint8_t row = 5; row <= 8; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockEmpty);
+        }
+        for (uint8_t row = 9; row <= 11; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockBrick);
+        }
+        REQUIRE(kLevel12Grid[column][12] == kBlockEmpty);
+        REQUIRE(kLevel12Grid[column][13] == kBlockGround);
+    }
+    // its left flank walls the pocket off, and he walks in under it standing: 76/77 are brick from
+    // row 5 to row 9 with rows 10-12 clear
+    for (uint16_t column = 76; column <= 77; ++column) {
+        for (uint8_t row = 5; row <= 9; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockBrick);
+        }
+        for (uint8_t row = 10; row <= 12; ++row) {
+            REQUIRE(kLevel12Grid[column][row] == kBlockEmpty);
+        }
+    }
+    // and nothing between the arches and the pillar reaches up to its cap, so no route goes over
+    for (uint16_t column = 71; column <= 75; ++column) {
+        for (uint8_t row = 3; row <= 12; ++row) {
+            REQUIRE(!solid(column, row));
+        }
+    }
+    for (uint16_t column = 70; column <= 77; ++column) {
+        for (uint8_t row = 3; row <= 4; ++row) {
+            REQUIRE(!solid(column, row));
+        }
+    }
+}
+
+// and a small mario simply walks the crawl: he is one block tall, so the pillar is a doorway. the
+// route planner cannot search this stretch (it treats the pillar as a wall and looks for a jump),
+// so the approach is planned to the arches and the walk past it driven straight, with his world
+// position read back off the rom's own scroll
+TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    std::vector<uint8_t> fall;
+    PlayerSim sim = stand_on_the_1_2_floor(gameboy, fall);
+    replay(gameboy, fall, 0, fall.size());
+    const Route approach = plan_level(kLevel12, 4000, static_cast<uint16_t>(70U * kBlockPx), &sim);
+    REQUIRE(approach.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    sim = approach.end;
+    REQUIRE(!mario_at(gameboy).big);
+
+    // one block of mario, so his box never leaves row 12 - the crawl's own row
+    const int start_top = mario_at(gameboy).top;
+    int covered = 0;
+    int folded = 0;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < 300 && covered < static_cast<int>((kCrawlColumn + 3U) * kBlockPx) -
+                                              static_cast<int>(sim.x_pos);
+         ++i) {
+        covered += world_travel(gameboy, 1);
+        const Mario m = mario_at(gameboy);
+        REQUIRE(m.height() == kPlayerBoxPx);
+        folded += m.top == start_top ? 1 : 0;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    // he is past both of the pillar's columns, and never left the floor to get there
+    REQUIRE(static_cast<int>(sim.x_pos) + covered >=
+            static_cast<int>((kCrawlColumn + 2U) * kBlockPx) + kHitWidthPx);
+    REQUIRE(folded > 100);
 }
 
 // the coin room under the first piranha pipe, as the smbd map's lower band draws it: a wall down
@@ -7523,21 +7686,79 @@ TEST_CASE("mario_crouch_folds_to_one_block") {
     REQUIRE(m.big);
     REQUIRE(m.height() == kPlayerBoxPx);
 
-    // smb's rule: a mario holding down has no walk at all, so the world does not move under him
+    // holding down leaves him a crawl and no more. smb gives a ducking mario no walk at all, but
+    // that left a big mario stopped flush against the pillar at 78/79 no way into the gap under it:
+    // the slide wants momentum he no longer has, and standing back up puts him against the same
+    // brick. so the input goes through capped at kMarioCrouchWalkSubpx, well under a walk
     gameboy.set_button(gb::Button::Right, true);
-    run(gameboy, 60);
+    const int crawled = world_travel(gameboy, 60);
     m = mario_at(gameboy);
     REQUIRE(m.big);
     REQUIRE(m.height() == kPlayerBoxPx);
-    REQUIRE(bg_family_left(gameboy, kTileBrickLo, kTileBrickHi) == landmark);
+    REQUIRE(crawled > kBlockPx);
+    REQUIRE(crawled <= 60 * kCrouchWalkSubpx / 16);
 
-    // and with open sky over his head he stands straight back up, and walks again
+    // and with open sky over his head he stands straight back up, and walks - faster than the crawl
     gameboy.set_button(gb::Button::Down, false);
     run(gameboy, 8);
     REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
-    run(gameboy, 40);
+    const int walked = world_travel(gameboy, 60);
     gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(walked > crawled);
     REQUIRE(bg_family_left(gameboy, kTileBrickLo, kTileBrickHi) < landmark);
+}
+
+// 1-2's brick pillar at 78/79 stands on posts with row 12 left open over the run's floor, and that
+// one block of crawl space is the only way past it - in our grid and in both map rips. so whatever
+// carries a big mario through it has to be enough on its own: this measures the two things that do,
+// against the gap's own width taken off the compiled grid
+TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the travel a folded mario needs to be clear of the pillar: from his shoulder short of its
+    // first column to his shoulder past its last, so the two columns plus his own hitbox
+    int gap_columns = 0;
+    for (uint16_t column = kCrawlColumn; kLevel12Grid[column][kCrawlRow - 1U] == kBlockBrick; ++column) {
+        ++gap_columns;
+    }
+    REQUIRE(gap_columns == 2);
+    const int needed = gap_columns * kBlockPx + kHitWidthPx;
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    PlayerSim sim = lab_sim();
+    REQUIRE(grow_on_the_pyramid(gameboy, sim));
+    // back to the level's opening columns: 1-1's first pipe stands a few columns right of the
+    // pyramid, and the run below needs clear ground either side of where he ducks
+    gameboy.set_button(gb::Button::Left, true);
+    run(gameboy, 300);
+    gameboy.set_button(gb::Button::Left, false);
+    run(gameboy, 20);
+
+    // one: the crawl alone covers it, which is what a mario who came to a dead stop at the pillar
+    // has left. the frames are the ones a 400-tick level can spare, not a whole timer
+    gameboy.set_button(gb::Button::Down, true);
+    gameboy.set_button(gb::Button::Right, true);
+    const int crawled = world_travel(gameboy, 120);
+    REQUIRE(mario_at(gameboy).height() == kPlayerBoxPx);
+    REQUIRE(crawled > needed);
+
+    // two: a duck-slide out of a full run covers it inside the two frames of shoulder room the
+    // approach gives him, so a running mario is through before the crawl ever has to carry him
+    gameboy.set_button(gb::Button::Down, false);
+    run(gameboy, 8);
+    gameboy.set_button(gb::Button::B, true);
+    run(gameboy, 90);
+    REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
+    gameboy.set_button(gb::Button::Down, true);
+    const int slid = world_travel(gameboy, 40);
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::B, false);
+    gameboy.set_button(gb::Button::Down, false);
+    REQUIRE(mario_at(gameboy).height() == kPlayerBoxPx);
+    REQUIRE(slid > needed);
+    REQUIRE(slid > crawled * 40 / 120);
 }
 
 TEST_CASE("mario_autopilot_completes_1_3") {

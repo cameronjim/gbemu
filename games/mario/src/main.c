@@ -1,5 +1,6 @@
 #include "blocks.h"
 #include "camera.h"
+#include "debris.h"
 #include "enemies.h"
 #include "flow.h"
 #include "hazards.h"
@@ -35,6 +36,10 @@ void main_present(void) {
     player_draw(camera_pos_x, camera_pos_y, powerup_prop);
     if (blocks_busy != 0U) {
         blocks_draw(camera_pos_x, camera_pos_y);
+    }
+    // the brick fragments and the fireball's puff, on the handful of frames either is alive
+    if (debris_busy != 0U) {
+        debris_frame(camera_pos_x, camera_pos_y);
     }
     if ((powerup_flags & kPowerFlagDrawn) != 0U) {
         powerup_draw(camera_pos_x, camera_pos_y);

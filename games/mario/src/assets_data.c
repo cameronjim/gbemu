@@ -2484,9 +2484,52 @@ void assets_load_sprite_tiles(void) BANKED {
     VBK_REG = VBK_BANK_0;
 }
 
+// m19's throwaway animations, three 8x16 pairs whose lower halves are blank the way the fireball's
+// own pair is. the fragment is one 7x7 chip of the brick wall - black mortar edge, a tan highlight
+// course and a brown body, which is exactly what the goomba's palette paints (see debris.c) - and
+// the puff is a tight burst widening into a bigger one, drawn from the star's white and yellow
+// clang-format off
+static const uint8_t kDebrisTiles[96] = {
+    // brick fragment
+    0xFC, 0xFC, // ######..
+    0xFC, 0x84, // #----#..
+    0xC4, 0xBC, // #-+++#..
+    0xC4, 0xBC, // #-+++#..
+    0xC4, 0xBC, // #-+++#..
+    0x84, 0xFC, // #++++#..
+    0xFC, 0xFC, // ######..
+    0x00, 0x00, // ........
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // fragment lower half, blank
+    // puff frame a - the tight burst
+    0x00, 0x00, // ........
+    0x18, 0x18, // ...##...
+    0x24, 0x3C, // ..#++#..
+    0x5A, 0x66, // .#+--+#.
+    0x5A, 0x66, // .#+--+#.
+    0x24, 0x3C, // ..#++#..
+    0x18, 0x18, // ...##...
+    0x00, 0x00, // ........
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // puff a lower half, blank
+    // puff frame b - the same burst thrown out to the full 8px
+    0x18, 0x18, // ...##...
+    0x24, 0x3C, // ..#++#..
+    0x5A, 0x66, // .#+--+#.
+    0xDB, 0xE7, // ##+--+##
+    0xDB, 0xE7, // ##+--+##
+    0x5A, 0x66, // .#+--+#.
+    0x24, 0x3C, // ..#++#..
+    0x18, 0x18, // ...##...
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // puff b lower half, blank
+};
+// clang-format on
+
 void assets_load_item_tiles(void) BANKED {
     set_sprite_data(kTileItemFirst, kItemTileCount, kItemTiles);
     set_sprite_data(kTileFlowerFirst, kFlowerTileCount, kFlowerTiles);
+    set_sprite_data(kTileDebris, kDebrisTileCount, kDebrisTiles);
     // the fireball's second spin frame rides in bank 1 at the same id as the first, since bank 0's
     // tile table has no room left; see the comment on kFireballFrameBTiles
     VBK_REG = VBK_BANK_1;

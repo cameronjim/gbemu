@@ -1,6 +1,7 @@
 #include "blocks.h"
 
 #include "assets.h"
+#include "debris.h"
 #include "hud.h"
 #include "level.h"
 #include "mario.h"
@@ -247,6 +248,10 @@ void blocks_load_level(void) {
     coins_collected = 0;
     items_taken = 0;
     blocks_player_big = 0;
+    // a break cannot survive a level load; debris_busy stays set while the slots are still drawn,
+    // so the next frame parks them (see debris.h)
+    debris_timer = 0;
+    debris_puff = 0;
 }
 
 void blocks_enter_area(uint8_t next_area) {
@@ -278,6 +283,8 @@ void blocks_enter_area(uint8_t next_area) {
     blocks_coin_active = 0;
     blocks_item_shown = 1;
     blocks_coin_shown = 1;
+    debris_timer = 0;
+    debris_puff = 0;
     publish_busy();
 }
 
@@ -375,6 +382,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
         // straight into the ram grid, which needs no override bookkeeping: a death reloads the
         // grid from rom and the brick is back, exactly as smb leaves it
         terrain_clear_cell(column, row);
+        debris_break((uint16_t)((uint16_t)column << 4), (int16_t)(row << 4));
         blocks_busy = 1;
         return;
     }
@@ -392,6 +400,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
         ++main_solid_edits;
         ++blocks_solid_edits;
         terrain_write_block(column, row);
+        debris_break((uint16_t)((uint16_t)column << 4), (int16_t)(row << 4));
         blocks_busy = 1;
         return;
     }

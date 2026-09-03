@@ -108,6 +108,10 @@ def write_header(gen_dir, levels, bank):
         f.write("    uint16_t bridge_x0;\n")
         f.write("    uint16_t bridge_x1;\n")
         f.write("    uint8_t bridge_row;\n")
+        f.write("    // where the fake bowser's flame zone starts, in world px less one, or\n")
+        f.write("    // 0xffff on a level with none: from there to his own cell hazards.c throws\n")
+        f.write("    // the dart in at the right edge of the view rather than out of his jaw\n")
+        f.write("    uint16_t bowser_fire_x;\n")
         f.write("    const uint8_t* grid;\n")
         f.write("    uint8_t block_count;\n")
         f.write("    const uint16_t* block_column;\n")
@@ -177,7 +181,8 @@ def write_table(gen_dir, levels, bank):
             f.write("     %s_HAS_CASTLE, %s_CASTLE_COLUMN,\n" % (upper, upper))
             f.write("     %s_HAS_AXE, %s_AXE_COLUMN, %s_AXE_ROW, %s_BRIDGE_X0, %s_BRIDGE_X1,\n"
                     % (upper, upper, upper, upper, upper))
-            f.write("     %s_BRIDGE_ROW, (const uint8_t*)%s_blocks,\n" % (upper, slug))
+            f.write("     %s_BRIDGE_ROW, %s_BOWSER_FIRE_X, (const uint8_t*)%s_blocks,\n"
+                    % (upper, upper, slug))
             f.write("     %s_BLOCK_COUNT, %s_block_column, %s_block_row, %s_block_kind, %s_block_content,\n"
                     % (upper, slug, slug, slug, slug))
             f.write("     %s_ENEMY_COUNT, %s_enemy_column, %s_enemy_row, %s_enemy_kind,\n"
@@ -220,6 +225,7 @@ def write_host(gen_dir, levels):
         f.write("    int has_castle;\n    int castle_column;\n")
         f.write("    int has_axe;\n    int axe_column;\n    int axe_row;\n")
         f.write("    int bridge_x0;\n    int bridge_x1;\n    int bridge_row;\n")
+        f.write("    int bowser_fire_column;\n    int bowser_fire_x;\n")
         f.write("    const uint8_t (*grid)[kHostLevelRows];\n")
         f.write("    const LevelBlock* blocks;\n    int block_count;\n")
         f.write("    const LevelEnemy* enemies;\n    int enemy_count;\n")
@@ -239,8 +245,10 @@ def write_host(gen_dir, levels):
             f.write("     %s_HAS_CASTLE, %s_CASTLE_COLUMN,\n" % (upper, upper))
             f.write("     %s_HAS_AXE, %s_AXE_COLUMN, %s_AXE_ROW, %s_BRIDGE_X0, %s_BRIDGE_X1,\n"
                     % (upper, upper, upper, upper, upper))
-            f.write("     %s_BRIDGE_ROW, k%sGrid, k%sBlocks, k%sBlockCount, k%sEnemies, k%sEnemyCount,\n"
-                    % (upper, camel, camel, camel, camel, camel))
+            f.write("     %s_BRIDGE_ROW, %s_BOWSER_FIRE_COLUMN, %s_BOWSER_FIRE_X,\n"
+                    % (upper, upper, upper))
+            f.write("     k%sGrid, k%sBlocks, k%sBlockCount, k%sEnemies, k%sEnemyCount,\n"
+                    % (camel, camel, camel, camel, camel))
             f.write("     k%sObjects, k%sObjectCount, k%sJumps, k%sJumpCount, k%sSegments, k%sSegmentCount,\n"
                     % (camel, camel, camel, camel, camel, camel))
             f.write("     k%sProbes, k%sProbeCount},\n"

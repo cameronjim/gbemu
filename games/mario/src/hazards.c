@@ -10,6 +10,7 @@
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "player.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -203,12 +204,19 @@ static void note_live_bars(uint16_t cam_x) {
     }
 }
 
-static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t aw, uint8_t ah, uint16_t bx, int16_t by,
-                             uint8_t bw, uint8_t bh) {
-    if ((uint16_t)(ax + aw) <= bx || (uint16_t)(bx + bw) <= ax) {
+// the box every test in this module is against - mario's, or a fireball's when it is his fireball
+// asking. parked here rather than passed to each of the six calls: eight arguments a call was more
+// of bank 5 than the whole module's arithmetic, and the left box never changes inside a pass
+static uint16_t hit_x;
+static int16_t hit_y;
+static uint8_t hit_w;
+static uint8_t hit_h;
+
+static uint8_t hits_box(uint16_t bx, int16_t by, uint8_t bw, uint8_t bh) {
+    if ((uint16_t)(hit_x + hit_w) <= bx || (uint16_t)(bx + bw) <= hit_x) {
         return 0;
     }
-    return ((int16_t)(ay + ah) > by && (int16_t)(by + bh) > ay) ? 1U : 0U;
+    return ((int16_t)(hit_y + hit_h) > by && (int16_t)(by + bh) > hit_y) ? 1U : 0U;
 }
 
 static void park(uint8_t slot);
@@ -228,7 +236,11 @@ void hazards_load_level(void) BANKED {
 
     assets_load_hazard_tiles();
     hazard_lift_count = 0;
-    hazard_min_x = 0xFFFFU;
+    // the gate main.c works off this has to be open over the whole of the fake bowser's fire zone,
+    // which starts screens left of his own cell: so the floor starts there rather than at the
+    // no-hazard sentinel, and the object scan below pulls it further left if anything is. a
+    // level that compiled no zone carries 0xffff here, which is that sentinel exactly
+    hazard_min_x = level->bowser_fire_x;
     hazard_max_x = 0;
     bar_count = 0;
     bowser_live = 0;
@@ -399,6 +411,8 @@ static void step_bowser_fall(void) {
 }
 
 static void step_bowser_fire(void) {
+    uint16_t edge;
+
     if (fire_ttl != 0U) {
         const uint16_t sum = (uint16_t)(fire_accum + (uint16_t)kBowserFireSubpx);
 
@@ -416,12 +430,32 @@ static void step_bowser_fire(void) {
         return;
     }
     fire_timer = 0;
-    // out of his jaw and to the left, which is the way the player always comes at him
-    if (bowser_x < (uint16_t)kBowserFireWidthPx) {
-        return;
+    edge = (uint16_t)(camera_pos_x + kScreenWidthPx);
+    if (bowser_x >= edge) {
+        // the zone throw: while his body is still off the right edge the dart comes in at that
+        // edge instead, on whichever screen of the zone the camera has reached. smb1's spawner
+        // works the same way, and only hands the job back to his jaw once he is in view. the
+        // level's own zone start, read straight out of the ram copy rather than kept in a
+        // variable of its own - bank 5 had the bytes for neither
+        if (camera_pos_x < level->bowser_fire_x) {
+            return;
+        }
+        fire_x = edge;
+        // the block row his feet stand in, or one of the three over it: kBowserFireZoneRowMask
+        // off his own walk tick picks which, so the table of heights costs no state and no two
+        // darts in a row come in at the same height. no clamp - fire_y is signed, and a dart over
+        // the roof simply flies where nothing can be. edge is done with and carries the sum
+        edge = (uint16_t)player_feet();
+        edge = (uint16_t)(((edge - 1U) & 0xFFF0U) - (uint16_t)(bowser_tick & kBowserFireZoneRowMask));
+        fire_y = (int16_t)(edge + kBowserFireZoneInsetPx);
+    } else {
+        // out of his jaw and to the left, which is the way the player always comes at him
+        if (bowser_x < (uint16_t)kBowserFireWidthPx) {
+            return;
+        }
+        fire_x = (uint16_t)(bowser_x - kBowserFireWidthPx);
+        fire_y = (int16_t)(bowser_y + kBowserFireJawPx);
     }
-    fire_x = (uint16_t)(bowser_x - kBowserFireWidthPx);
-    fire_y = (int16_t)(bowser_y + kBowserFireJawPx);
     fire_accum = 0;
     fire_ttl = (uint8_t)kBowserFireLifeFrames;
 }
@@ -544,25 +578,25 @@ static int16_t bar_centre_y(uint8_t i) {
 }
 
 uint8_t hazards_contact(uint16_t player_px, int16_t player_py, uint8_t player_h, uint8_t immune) BANKED {
-    const uint16_t left = (uint16_t)(player_px + kPlayerHitInsetPx);
     uint8_t i;
     uint8_t k;
 
-    if (axe_live != 0U &&
-        boxes_overlap(left, player_py, kPlayerHitWidthPx, player_h, axe_x, axe_y, kBlockPx, kBlockPx) != 0U) {
+    hit_x = (uint16_t)(player_px + kPlayerHitInsetPx);
+    hit_y = player_py;
+    hit_w = (uint8_t)kPlayerHitWidthPx;
+    hit_h = player_h;
+    if (axe_live != 0U && hits_box(axe_x, axe_y, kBlockPx, kBlockPx) != 0U) {
         return kHazardAxe;
     }
     if (immune != 0U) {
         return kHazardNone;
     }
     if (bowser_live != 0U && bowser_falling == 0U &&
-        boxes_overlap(left, player_py, kPlayerHitWidthPx, player_h, bowser_x, bowser_y, kBowserWidthPx,
-                      kBowserHeightPx) != 0U) {
+        hits_box(bowser_x, bowser_y, kBowserWidthPx, kBowserHeightPx) != 0U) {
         return kHazardDamage;
     }
     // his breath burns whether or not its sprites found oam to draw in
-    if (fire_ttl != 0U && boxes_overlap(left, player_py, kPlayerHitWidthPx, player_h, fire_x, fire_y,
-                                        kBowserFireWidthPx, kBowserFireHeightPx) != 0U) {
+    if (fire_ttl != 0U && hits_box(fire_x, fire_y, kBowserFireWidthPx, kBowserFireHeightPx) != 0U) {
         return kHazardDamage;
     }
     // every live bar's whole segment list, however few of them the draw found oam for: what burns
@@ -594,8 +628,7 @@ uint8_t hazards_contact(uint16_t player_px, int16_t player_py, uint8_t player_h,
             if (fx < 0) {
                 continue;
             }
-            if (boxes_overlap(left, player_py, kPlayerHitWidthPx, player_h, (uint16_t)fx, fy, kFlamePx,
-                              kFlamePx) != 0U) {
+            if (hits_box((uint16_t)fx, fy, kFlamePx, kFlamePx) != 0U) {
                 return kHazardDamage;
             }
         }
@@ -609,8 +642,11 @@ uint8_t hazards_fireball_hit(uint16_t px, int16_t py) BANKED {
     if (bowser_live == 0U || bowser_falling != 0U) {
         return 0;
     }
-    if (boxes_overlap(px, py, kFireballPx, kFireballPx, bowser_x, bowser_y, kBowserWidthPx,
-                      kBowserHeightPx) == 0U) {
+    hit_x = px;
+    hit_y = py;
+    hit_w = (uint8_t)kFireballPx;
+    hit_h = (uint8_t)kFireballPx;
+    if (hits_box(bowser_x, bowser_y, kBowserWidthPx, kBowserHeightPx) == 0U) {
         return 0;
     }
     ++bowser_hits;
@@ -781,20 +817,19 @@ static void draw_flames(uint16_t cam_x, uint8_t cam_y) {
 static void draw_bowser(int16_t sx, int16_t sy) {
     const uint8_t base = (uint8_t)(kTileBowserFirst + (bowser_frame != 0U ? kBowserTilesPerFrame : 0U));
     const uint8_t prop = (uint8_t)((uint8_t)kPalKoopa | (uint8_t)S_BANK);
-    uint8_t r;
-    uint8_t c;
+    uint8_t i;
 
-    for (r = 0; r < 2U; ++r) {
-        for (c = 0; c < 4U; ++c) {
-            const uint8_t slot = (uint8_t)(kSpriteBowserFirst + (r << 2) + c);
+    // one run of eight rather than two of four: the low two bits of the index are the column and
+    // the third is the row, which costs two masks where the pair of loops cost a multiply a sprite
+    for (i = 0; i < 8U; ++i) {
+        const uint8_t slot = (uint8_t)(kSpriteBowserFirst + i);
 
-            // his tile changes with the walk frame, so this one always writes rather than asking
-            (void)claim_slot(slot, (uint8_t)kOwnerBowser);
-            set_sprite_tile(slot, (uint8_t)(base + (((r << 2) + c) << 1)));
-            set_sprite_prop(slot, prop);
-            move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)c << 3) + kOamXOffset),
-                        (uint8_t)(sy + (int16_t)((uint16_t)r << 4) + kOamYOffset));
-        }
+        // his tile changes with the walk frame, so this one always writes rather than asking
+        (void)claim_slot(slot, (uint8_t)kOwnerBowser);
+        set_sprite_tile(slot, (uint8_t)(base + (uint8_t)(i << 1)));
+        set_sprite_prop(slot, prop);
+        move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)(i & 3U) << 3) + kOamXOffset),
+                    (uint8_t)(sy + (int16_t)((uint16_t)(i >> 2) << 4) + kOamYOffset));
     }
 }
 

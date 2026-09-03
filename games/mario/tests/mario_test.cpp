@@ -966,6 +966,13 @@ constexpr int kBowserFireSubpx = 384;
 constexpr int kBowserFireJawPx = 18;
 constexpr int kBowserFireLifeFrames = 100;
 constexpr int kBowserAnimFrames = 16;
+// m22's fire zone: while the camera is at or past the level's own zone column and bowser is still
+// off the right edge, the dart comes in at that edge instead, at the block row mario's feet stand
+// in or one of the three over it - his own walk tick masked picks which. the four rows are ours;
+// that smb1's spawner is armed screens early and picks a row off mario's y is the sourced part
+constexpr int kBowserFireZoneRows = 4;
+constexpr uint8_t kBowserFireZoneRowMask = 0x30;
+constexpr int kBowserFireZoneInsetPx = 4;
 constexpr uint8_t kBowserFireballHits = 5;
 constexpr int kBridgeDropFrames = 3;
 // the same 32-step circle hazards.c spins on; both sides read the same rounded values
@@ -1248,6 +1255,10 @@ struct PlayerSim {
     void load_host(const HostLevel& l) {
         *this = PlayerSim{};
         lv = &l;
+        // hazards.c seeds this with the level's fire-zone start rather than the no-hazard
+        // sentinel, so main.c's gate into bank 5 is open over the whole zone; the object scan
+        // below pulls it further left if anything is. a level with no zone compiles 0xffff
+        hazard_min_x = static_cast<uint16_t>(l.bowser_fire_x);
         roster = l.enemies;
         roster_count = static_cast<uint16_t>(l.enemy_count);
         x_pos = static_cast<uint16_t>(l.start_column * kBlockPx);
@@ -2403,6 +2414,12 @@ struct PlayerSim {
         }
     }
 
+    // 1 while his body is anywhere in the view, which is what decides whether the next throw
+    // leaves his jaw or comes in at the right edge as the zone's
+    uint8_t bowser_on_screen() const {
+        return static_cast<uint8_t>(bowser_x < static_cast<uint16_t>(cam_x + kScreenWidthPx) ? 1 : 0);
+    }
+
     void step_bowser_fire() {
         if (fire_ttl != 0) {
             const unsigned sum = static_cast<unsigned>(fire_accum) + kBowserFireSubpx;
@@ -2421,11 +2438,29 @@ struct PlayerSim {
             return;
         }
         fire_timer = 0;
-        if (bowser_x < kBowserFireWidthPx) {
-            return;
+        const uint16_t edge = static_cast<uint16_t>(cam_x + kScreenWidthPx);
+
+        if (bowser_x >= edge) {
+            // the zone throw: while his body is off the right edge the dart comes in at that edge
+            // instead, on whichever screen of the zone the camera has reached
+            if (cam_x < static_cast<uint16_t>(lv->bowser_fire_x)) {
+                return;
+            }
+            const uint16_t feet = static_cast<uint16_t>(y_pos + foot_h());
+
+            // the block row his feet stand in, or one of the three over it; his own walk tick
+            // masked picks which, and no clamp - fire_y is signed
+            fire_x = edge;
+            fire_y = static_cast<int16_t>(((feet - 1) & 0xFFF0) -
+                                          (bowser_tick & kBowserFireZoneRowMask) +
+                                          kBowserFireZoneInsetPx);
+        } else {
+            if (bowser_x < kBowserFireWidthPx) {
+                return;
+            }
+            fire_x = static_cast<uint16_t>(bowser_x - kBowserFireWidthPx);
+            fire_y = static_cast<int16_t>(bowser_y + kBowserFireJawPx);
         }
-        fire_x = static_cast<uint16_t>(bowser_x - kBowserFireWidthPx);
-        fire_y = static_cast<int16_t>(bowser_y + kBowserFireJawPx);
         fire_accum = 0;
         fire_ttl = kBowserFireLifeFrames;
     }
@@ -10191,6 +10226,11 @@ TEST_CASE("mario_bowser_dart_flies_its_life") {
     const int16_t deck_top = static_cast<int16_t>(lv.bridge_row * kBlockPx);
     REQUIRE(sim.bowser_deck_y + kBowserHeightPx == deck_top);
 
+    // the jaw throw is the one he makes with his body in view: off screen it is the fire zone's
+    // dart instead (mario_bowser_fire_zone_throws_at_the_right_edge), so put the camera on him
+    sim.cam_x = static_cast<uint16_t>(sim.bowser_x - kScreenWidthPx / 2);
+    REQUIRE(sim.bowser_on_screen() == 1);
+
     // the throw he happens to be grounded for, so the band is the deck's own and not a hop's
     int waited = 0;
     while ((sim.fire_ttl == 0 || sim.bowser_airborne != 0) && waited < 8 * kBowserFireFrames) {
@@ -10221,6 +10261,168 @@ TEST_CASE("mario_bowser_dart_flies_its_life") {
     REQUIRE(jaw - low == kBowserFireLifeFrames * kBowserFireSubpx / 256);
     // which is over half the deck he is standing on, wherever along it he threw from
     REQUIRE(static_cast<int>(jaw - low) > (lv.bridge_x1 - lv.bridge_x0) * kBlockPx / 2);
+}
+
+// the fire zone. the nes 1-4 rip draws three of bowser's flames in flight well before the bridge
+// room - a 24x8 dart at cells 102/8, 115/9 and 127/10 - and smb1's flame spawner is what puts them
+// there: it is armed screens before he is ever on screen, and its flames come in at the RIGHT EDGE
+// of the view at one of a few heights read off mario's own y. level-1-4.json names the column that
+// band starts at, a screen left of the leftmost of the three, and the compiler carries it as
+// BOWSER_FIRE_X (that column in px, less one, so a level with no zone comes out 0xffff)
+TEST_CASE("mario_bowser_fire_zone_is_the_rip_s_own_three_flames") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const LevelObject* boss = find_object(lv.objects, lv.object_count, kObjBowser);
+
+    REQUIRE(boss != nullptr);
+    const int zone = (lv.bowser_fire_x + 1) / kBlockPx;
+
+    REQUIRE(zone == 92);
+    // one screen is ten columns, and 102 is the leftmost flame the rip draws
+    REQUIRE(zone == 102 - kScreenWidthPx / kBlockPx);
+    // and all three of them fall between the band's start and bowser himself, which is the zone
+    for (const int flame : {102, 115, 127}) {
+        REQUIRE(flame > zone);
+        REQUIRE(flame < boss->column);
+    }
+    // no other level in world one names one, so hazards.c's seed of hazard_min_x is the sentinel
+    for (const int index : {kLevel11, kLevel12, kLevel13}) {
+        REQUIRE(kHostLevels[index].bowser_fire_x == 0xFFFF);
+    }
+}
+
+// main.c only enters bank 5 while a hazard is within kHazardMarginPx of the view, worked off
+// hazard_min_x - which is the object CELLS, and bowser's is a few screens right of where his
+// flames start coming. so hazards.c seeds hazard_min_x with the zone instead of the no-hazard
+// sentinel, and this is the arithmetic: the gate stands open from the band's first column to his
+TEST_CASE("mario_bowser_fire_zone_is_inside_the_bank_5_gate") {
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    const LevelObject* boss = find_object(sim.lv->objects, sim.lv->object_count, kObjBowser);
+
+    REQUIRE(boss != nullptr);
+    for (int cam = sim.lv->bowser_fire_x; cam <= boss->column * kBlockPx; ++cam) {
+        CAPTURE(cam, sim.hazard_min_x, sim.hazard_max_x);
+        REQUIRE(cam + kScreenWidthPx + kHazardMarginPx > sim.hazard_min_x);
+        REQUIRE(cam < sim.hazard_max_x + kHazardMarginPx);
+    }
+}
+
+// and the throws themselves, over 1-4's own route: inside the zone with his body still off the
+// right edge every dart starts AT that edge, at the block row mario's feet stood in or one of the
+// three over it, and flies left; before the zone there is no dart at all. once he is on screen the
+// throw goes back to leaving his jaw, which is what mario_bowser_dart_flies_its_life measures
+TEST_CASE("mario_bowser_fire_zone_throws_at_the_right_edge") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel14);
+
+    int zone_throws = 0;
+    int jaw_throws = 0;
+    int flew_left = 0;
+    for (size_t i = 1; i < states.size(); ++i) {
+        const PlayerSim& before = states[i - 1];
+
+        // nothing burns him before the band starts, however many screens of castle that is
+        if (before.cam_x < static_cast<uint16_t>(lv.bowser_fire_x)) {
+            REQUIRE(states[i].fire_ttl == 0);
+        }
+        if (states[i].fire_ttl != kBowserFireLifeFrames || before.fire_ttl != 0) {
+            continue;
+        }
+        // hazards_step runs before the camera and before mario, so the throw is measured against
+        // the view and the feet as they stood at the end of the frame before - but against his own
+        // x as it is now, because his walk step is the same pass that threw
+        const uint16_t edge = static_cast<uint16_t>(before.cam_x + kScreenWidthPx);
+
+        if (states[i].bowser_x < edge) {
+            REQUIRE(states[i].fire_x == static_cast<uint16_t>(states[i].bowser_x - kBowserFireWidthPx));
+            ++jaw_throws;
+            continue;
+        }
+        const int feet_row = (before.y_pos + before.foot_h() - 1) >> 4;
+        const int row = (states[i].fire_y - kBowserFireZoneInsetPx) >> 4;
+
+        CAPTURE(i, before.cam_x, states[i].fire_x, states[i].fire_y, feet_row, row);
+        REQUIRE(states[i].fire_x == edge);
+        REQUIRE(row <= feet_row);
+        REQUIRE(row > feet_row - kBowserFireZoneRows);
+        ++zone_throws;
+        // and it goes left from there for as long as it lives
+        for (size_t j = i + 1; j < states.size() && states[j].fire_ttl != 0; ++j) {
+            REQUIRE(states[j].fire_x < states[j - 1].fire_x);
+            flew_left = std::max(flew_left, static_cast<int>(states[i].fire_x - states[j].fire_x));
+        }
+    }
+    CAPTURE(zone_throws, jaw_throws, flew_left);
+    // the first two of the rip's three zones, which the jaw-only throw never reached at all
+    REQUIRE(zone_throws >= 2);
+    REQUIRE(flew_left > kBlockPx);
+}
+
+// and the rom draws them: parked in the zone with bowser's body nowhere on screen, the dart still
+// comes in at the right edge and crosses the view leftward
+TEST_CASE("mario_rom_draws_the_fire_zone_dart") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel14);
+    const HostLevel& lv = kHostLevels[kLevel14];
+
+    // the first frame of the route that stands a couple of blocks inside the band with his body
+    // still off the right edge, which is where the old jaw-only throw did nothing
+    size_t at = 0;
+    for (size_t i = 1; i < states.size(); ++i) {
+        const uint16_t cam = states[i].cam_x;
+
+        if (cam >= static_cast<uint16_t>(lv.bowser_fire_x + 2 * kBlockPx) &&
+            states[i].bowser_x >= static_cast<uint16_t>(cam + kScreenWidthPx)) {
+            at = i;
+            break;
+        }
+    }
+    REQUIRE(at > 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, at);
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::Left, false);
+    gameboy.set_button(gb::Button::A, false);
+    gameboy.set_button(gb::Button::B, false);
+
+    std::vector<int> lefts;
+    int body = 0;
+    int held = 0;
+    int last = -1;
+    for (int f = 0; f < 2 * kBowserFireFrames + kBowserFireLifeFrames; ++f) {
+        gameboy.run_frame();
+        body += sprite_rect(gameboy, kTileBowserLo, kTileBowserHi).found ? 1 : 0;
+        const SpriteRect dart = sprite_rect(gameboy, kTileBowserFireLo, kTileBowserFireHi);
+
+        if (!dart.found) {
+            continue;
+        }
+        lefts.push_back(dart.left);
+        // the dart that stops moving is the world frozen behind the death beat it just started
+        held = dart.left == last ? held + 1 : 0;
+        last = dart.left;
+        if (held >= 8) {
+            break;
+        }
+    }
+    std::string trace;
+    for (size_t i = 0; i < lefts.size(); i += 8) {
+        trace += std::to_string(lefts[i]) + " ";
+    }
+    CAPTURE(lefts.size(), body, trace);
+    // he is not on screen for any of it, and the dart is
+    REQUIRE(body == 0);
+    REQUIRE(lefts.size() > 20);
+    // it came in at the right edge and went left across the view
+    REQUIRE(lefts.front() > static_cast<int>(gb::kLcdWidth) - 3 * kBlockPx);
+    REQUIRE(lefts.front() - lefts.back() >= 2 * kBlockPx);
 }
 
 // hazards.c decodes a bar's whole variant out of its object_param: kFirebarParamSegMask segments,

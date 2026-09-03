@@ -177,6 +177,12 @@ clouds; 1-3, which is trees over open air, has clouds only.
 - a `bowser_fake` entry's own `x`/`y` are honoured when the bible measured them: he starts on that
   cell and paces out to the bridge's last column. without them his patrol is derived from the
   bridge's own last stretch, which is what a prose-derived castle got.
+- a `bowser_fake` entry may also carry `fire_from`: the column his flame spawner arms at. smb1
+  starts throwing flames at mario several screens before the bridge, from the right edge of the
+  view rather than out of a jaw that is still off screen, so this is the column that band begins
+  at - read off the leftmost flame the level's own rip draws in flight, one screen further left.
+  it compiles to the level's `BOWSER_FIRE_COLUMN`, and to the `BOWSER_FIRE_X` the engine reads
+  (that column in px less one, so a level that names none comes out 0xffff). 0 means no zone.
 - `confidence`: `measured` (the coordinate was extracted from a map image pixel by pixel —
   see "measured levels" below), `sourced` (fact came directly from cited text), `approx`
   (position is sequence-derived, see above; or a count/detail is a reasonable paraphrase of

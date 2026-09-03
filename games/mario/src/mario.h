@@ -6,11 +6,16 @@
 // the visible screen is 20x18 cells; text lines are centered across the 20
 #define kScreenCols 20U
 #define kTitleRow 6U
-#define kPromptRow 11U
+#define kPromptRow 12U
 // every card banner is a padding row, the text row, then another padding row, so the tinted band
-// reads as a band rather than exactly the glyph height. kPromptRow sits 5 rows below kTitleRow so
+// reads as a band rather than exactly the glyph height. kPromptRow sits 6 rows below kTitleRow so
 // the two banners (each reaching one row above/below their text) still leave a 2-row sky gap
 #define kBannerRows 3U
+// the title card's own banner is one row taller than every other: it carries two wordmark lines
+// (kTitleRow and kTitleRow+1) rather than one, so it needs a padding row above the first line and
+// another below the second to read as a centered band instead of hugging the band's bottom edge.
+// painted from kTitleRow-1 the same way card_begin's own kBannerRows band is
+#define kTitleBannerRows 4U
 // the pause card's own heading row, 2 rows above kTitleRow: it carries more lines (world, score,
 // lives, footer) than the title/game-over/clear cards do, so it sits higher to leave the footer
 // some breathing room above the bottom of the 18-row screen
@@ -69,12 +74,23 @@
 #define kMapLevelRow 2U
 
 // the "world 2 is on its way" popup, shown once a file's furthest node reaches kLevelCount (world
-// one cleared) every time the map opens. it lands on the strip's fourth (last) block row: the only
-// one of the four the castle's footprint never reaches (that spans the top three - see the comment
-// on kMapRows in mapscreen.c) and, being one row below kMapMarkerRow, one neither a marker nor
-// mario's own sprite is ever drawn over either, so dismissing it only has to repaint that one row
-#define kMapPopupBlockRow 3U
-#define kMapPopupRow ((kMapBandFirstRow + kMapPopupBlockRow) * kTilesPerBlock)
+// one cleared) every time the map opens: a bordered modal card centered over the map's middle,
+// wide and tall enough to read as a dropped-in dialog rather than a tint over the terrain. its
+// border rows are kMapPopupTopRow/kMapPopupBottomRow, kMapPopupWidth columns wide and centered on
+// the 20-col screen (kMapPopupLeftCol); it covers most of the strip plus one footer padding row, so
+// dismissing it repaints the whole strip (blocks, castle, markers) and mario rather than one row
+#define kMapPopupLeftCol 2U
+#define kMapPopupWidth 16U
+// its bottom border lands exactly on kMapFooterFirstTileRow, the one tile row the footer's own
+// black band would otherwise own there - see map_draw_popup_hide in mapscreen.c for the row that
+// blanks it back
+#define kMapPopupBottomRow kMapFooterFirstTileRow
+#define kMapPopupTopRow (uint8_t)(kMapPopupBottomRow - 7U)
+// interior rows, top to bottom: a blank pad, "WORLD 2", "IS ON ITS WAY!", a blank pad, "PRESS A"
+// banded in its own accent color, then a trailing blank pad before the bottom border
+#define kMapPopupWorldRow 7U
+#define kMapPopupWayRow 8U
+#define kMapPopupPressRow 10U
 
 // the footer, rows 12-17: row 12 is padding, 13-16 hold the lives readout and the bordered CLEAR
 // LIST panel side by side (cols 0-6 and 7-19), 17 carries the button hint. the lives readout is

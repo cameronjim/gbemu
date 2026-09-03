@@ -133,13 +133,15 @@ void card_end(void) {
 
 // the whole map is rewritten here, far more vram traffic than a vblank holds, so the lcd is off
 static void title_show(void) {
-    // card_begin's own band is already the right height: padding, kTitleRow, kTitleRow+1 - the
-    // wordmark's two lines fill both text rows the band already covers, so no second paint call is
-    // needed (bank 5 has no room left for one; see the comment above debug_camera_enter's old home)
+    // card_begin's own band is only kBannerRows tall - one padding row, one text row, one padding
+    // row - which is one row short of the wordmark's two text rows: the second line would hug the
+    // band's bottom edge with no padding below it. repainting kTitleBannerRows wide (one row taller,
+    // from the same top edge) fixes that up without touching card_begin's other callers
     // the literal text lives in bank 6 (states.c's title_text_load); bank 5 is full - see the
     // comment on title_line1 in title.h
     title_text_load();
     card_begin(kTitleRow);
+    card_paint_band((uint8_t)(kTitleRow - 1U), kTitleBannerRows, kPalWordmark);
     card_print_centered(kTitleRow, title_line1);
     card_print_centered((uint8_t)(kTitleRow + 1U), title_line2);
     // one line, banded the same way every other banner is: a padding row above and below. m19's

@@ -534,6 +534,11 @@
 #define kSpriteFlameFirst 24U
 #define kSpriteBowser 30U
 #define kSpriteLiftFirst 32U
+#define kSpriteLiftCount (kLiftSlotsShared * 4U) // 8
+// 1-3 draws a third deck, and oam has nothing left. the flame and bowser slots are the only ones
+// idle on a level with no firebar and no bowser, so a third deck borrows them: hazards.c refuses
+// the third lift when either is loaded, and compile_level.py refuses to build such a level at all
+#define kSpriteLiftOverflowFirst kSpriteFlameFirst
 // the hardware's whole oam, which the map screen parks every slot of before drawing its two
 #define kOamSlots 40U
 #define kPalMario 0U
@@ -636,10 +641,13 @@
 #define kClearWalkBlocks 5
 // he is inside the doorway, drawn nowhere, for this long before the card takes over
 #define kClearDoorFrames 24U
-// the door's own column inside the five-wide keep, the contract with compile_level.py's
-// CASTLE_DOOR_OFFSET and with apply_castle's door rows
+// the door's own column inside the keep, the contract with compile_level.py's CASTLE_DOOR_OFFSET
+// and with the door rows of both castle templates: it lands on the small keep's one arch and on
+// the leftmost of the big keep's three
 #define kCastleDoorOffset 2U
-#define kClearHoldFrames 60U
+// m18 stood the pole on smb's hard block, which ends the slide a row higher and took the whole
+// beat just under the four seconds it is meant to run for; the empty-castle hold makes it back
+#define kClearHoldFrames 72U
 
 // block reactions (games/mario/src/blocks.c). the bounce is a bg rewrite, not a sprite: the struck
 // cell's 2x2 face is redrawn one tile row higher for kBumpFrames and then put back, which costs two
@@ -844,7 +852,10 @@
 // disassembly has a routine per lift type but the bible extracted no constant from any of them,
 // so 1 px a frame either way is ours, picked to read like smb's own unhurried decks
 #define kLiftSpeedPx 1
-#define kLiftSlots 2U
+// two decks fit in oam on their own (kSpriteLiftFirst); the third only exists on a level with no
+// firebar and no bowser, whose slots it takes over
+#define kLiftSlotsShared 2U
+#define kLiftSlots 3U
 #define kLiftBlocks 2U
 #define kLiftWidthPx (kLiftBlocks * kBlockPx) // 32
 #define kLiftDeckPx 8

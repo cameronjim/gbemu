@@ -126,9 +126,18 @@ static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t aw, uint8_t ah, ui
 
 static void park(uint8_t slot);
 
+// the oam slot one of a deck's four sprites takes. the first two decks own kSpriteLiftFirst; the
+// third's four come out of the flame/bowser run, which a level carrying one has to leave idle
+static uint8_t lift_slot(uint8_t sprite) {
+    return (sprite < (uint8_t)kSpriteLiftCount)
+               ? (uint8_t)(kSpriteLiftFirst + sprite)
+               : (uint8_t)(kSpriteLiftOverflowFirst + sprite - (uint8_t)kSpriteLiftCount);
+}
+
 void hazards_load_level(void) BANKED {
     uint8_t i;
     uint8_t span;
+    uint8_t lift_cap = (uint8_t)kLiftSlots;
 
     assets_load_hazard_tiles();
     hazard_lift_count = 0;
@@ -149,13 +158,25 @@ void hazards_load_level(void) BANKED {
     // from any of them would otherwise leave the last life's lift/flame/bowser sprites sitting in
     // oam forever. park every slot this module owns up front, regardless of hazard_near
     for (i = 0; i < (uint8_t)(kLiftSlots * 4U); ++i) {
-        park((uint8_t)(kSpriteLiftFirst + i));
+        park(lift_slot(i));
     }
     for (i = 0; i < (uint8_t)kFlameSlots; ++i) {
         park((uint8_t)(kSpriteFlameFirst + i));
     }
     park((uint8_t)kSpriteBowser);
     park((uint8_t)(kSpriteBowser + 1U));
+
+    // the borrowed slots belong to the bar and the bowser first, so a level carrying either keeps
+    // only the two decks that have oam of their own. compile_level.py rejects a level that would
+    // hit this, so it never silently drops a deck a real map draws
+    for (i = 0; i < level->object_count; ++i) {
+        const uint8_t look = level->object_kind[i];
+
+        if (look == (uint8_t)kObjFirebar || look == (uint8_t)kObjBowser) {
+            lift_cap = (uint8_t)kLiftSlotsShared;
+            break;
+        }
+    }
 
     for (i = 0; i < level->object_count; ++i) {
         const uint16_t column = level->object_column[i];
@@ -183,7 +204,7 @@ void hazards_load_level(void) BANKED {
         } else if (kind == kObjLiftH || kind == kObjLiftV) {
             const uint8_t slot = hazard_lift_count;
 
-            if (slot >= (uint8_t)kLiftSlots) {
+            if (slot >= lift_cap) {
                 continue;
             }
             span = (uint8_t)(param & kLiftSpanMask);
@@ -396,7 +417,7 @@ static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
         // a deck is 32 px of 8 px sprites; the pair's lower tile is blank so the plank reads 8 tall.
         // a slot already showing a plank keeps its tile and palette and is only moved
         for (half = 0; half < 4U; ++half) {
-            const uint8_t slot = (uint8_t)(kSpriteLiftFirst + drawn);
+            const uint8_t slot = lift_slot(drawn);
 
             if (drawn >= lift_sprites_shown) {
                 set_sprite_tile(slot, (uint8_t)kTileLiftDeck);
@@ -408,7 +429,7 @@ static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
         }
     }
     for (i = drawn; i < lift_sprites_shown; ++i) {
-        park((uint8_t)(kSpriteLiftFirst + i));
+        park(lift_slot(i));
     }
     lift_sprites_shown = drawn;
 }

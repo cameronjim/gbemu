@@ -753,6 +753,8 @@ constexpr int kClearSlidePx = 2;
 // mario.h kClearPoleOffsetPx: the clear parks his box this far left of the flag block so the
 // climb pose's gripping hand lands on the shaft, which is painted in that block's left 3 px
 constexpr int kClearPoleOffsetPx = 12;
+// mario.h kCastleDoorOffset: the column the clear walk ends at, counted in from the keep's left
+constexpr int kCastleDoorOffset = 2;
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
 constexpr int kLevelHeightPx = 240;
@@ -888,7 +890,10 @@ constexpr uint8_t kObjPipeJump = 6;
 constexpr uint8_t kObjPipeSide = 7;
 
 constexpr int kLiftSpeedPx = 1;
-constexpr int kLiftSlots = 2;
+// three since m18's third 1-3 deck: the third borrows the firebar/bowser oam slots, so a level
+// carries it or a bar, never both (mario.h kLiftSlotsShared, hazards.c lift_slot)
+constexpr int kLiftSlots = 3;
+constexpr int kLiftSlotsShared = 2;
 constexpr int kLiftBlocks = 2;
 constexpr int kLiftWidthPx = kLiftBlocks * kBlockPx;
 constexpr uint8_t kLiftSpanMask = 0x3F;
@@ -1887,11 +1892,14 @@ struct PlayerSim {
         if (lv->has_flag == 0) {
             return false;
         }
-        if (col_of(hit_left()) > static_cast<int16_t>(lv->flag_column) ||
-            col_of(hit_right()) < static_cast<int16_t>(lv->flag_column)) {
+        // player.c touching_flag: the span tested is his drawn box, not his hit box, because the
+        // hard block at the pole's foot stops the hit box a column short of the shaft
+        if (col_of(x_pos) > static_cast<int16_t>(lv->flag_column) ||
+            col_of(static_cast<uint16_t>(x_pos + kPlayerBoxPx - 1)) <
+                static_cast<int16_t>(lv->flag_column)) {
             return false;
         }
-        return row_of(y_pos) <= static_cast<int16_t>(lv->flag_base_row) &&
+        return row_of(y_pos) <= static_cast<int16_t>(lv->flag_base_row + 1) &&
                row_of(static_cast<int16_t>(y_pos + foot_h() - 1)) >= static_cast<int16_t>(lv->flag_top_row);
     }
 
@@ -5088,8 +5096,11 @@ TEST_CASE("mario_autopilot_completes_1_1") {
 
     const Route route = plan_route(0, true, 4000);
     REQUIRE(route.reached);
-    // contact lands on the compiled flag column, not somewhere the route wandered into
-    REQUIRE(PlayerSim::col_of(route.end.hit_right()) == static_cast<int16_t>(LEVEL_1_1_FLAG_COLUMN));
+    // contact lands on the compiled flag column, not somewhere the route wandered into. the box
+    // read is his drawn one: m18 put smb's hard block at the pole's foot, so his hit box is held a
+    // column short of the shaft the drawn box is already overlapping
+    REQUIRE(PlayerSim::col_of(static_cast<uint16_t>(route.end.x_pos + kPlayerBoxPx - 1)) ==
+            static_cast<int16_t>(LEVEL_1_1_FLAG_COLUMN));
     REQUIRE(route.end.x_pos > static_cast<uint16_t>((LEVEL_1_1_FLAG_COLUMN - 2) * kBlockPx));
 
     // the twin's per-frame screen prediction for mario's sprite box, camera included
@@ -5149,7 +5160,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     int prev_top = grabbed.top;
     int descents = 0;
     int held_pole = 0;
-    bool feet_on_ground = false;
+    bool feet_on_base = false;
     for (int i = 0; i < 400; ++i) {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
@@ -5166,12 +5177,13 @@ TEST_CASE("mario_autopilot_completes_1_1") {
                 break;
             }
             ++held_pole;
-            // the slide's end: his feet come to rest on the ground row beside the pole's base. the
-            // camera is still easing down onto a slide that started low, so the ground's screen row
-            // is read to within a pixel or two rather than matched exactly
-            const int ground = first_tile_row(gameboy, 0xA0, 0xA0);
-            if (ground >= 0 && std::abs(m.top + kPlayerBoxPx - ground) <= 2) {
-                feet_on_ground = true;
+            // the slide ends level with the top of the hard block m18 put at the pole's foot, not
+            // on the grass a row below it: the block's own cell is the one his feet come alongside,
+            // read off the shaft he is holding rather than off the camera, which by then has the
+            // ground row off the bottom of the screen
+            if (tile_in_kind_family(bg_tile_at(gameboy, pole + 8, m.top + kPlayerBoxPx + 4),
+                                    kBlockHard)) {
+                feet_on_base = true;
             }
         }
         if (m.top > prev_top) {
@@ -5185,8 +5197,10 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     const int base_y = (static_cast<int>(LEVEL_1_1_FLAG_BASE_ROW) + 1) * kBlockPx - kPlayerBoxPx;
     const int slide_frames = (base_y - route.end.y_pos + kClearSlidePx - 1) / kClearSlidePx;
     // the smbd map's closing staircase tops out at seven blocks, so the planned jump meets the pole
-    // lower than the nes eight-block flight used to and the slide is a shorter one
-    REQUIRE(slide_frames > 15);
+    // lower than the nes eight-block flight used to and the slide is a shorter one. m18 shortened
+    // it again at both ends: contact is tested against his drawn box, which reaches the shaft
+    // earlier in the arc, and the slide now stops on the pole's hard block a row above the ground
+    REQUIRE(slide_frames > 12);
     REQUIRE(held_pole >= slide_frames - 4);
     REQUIRE(held_pole <= slide_frames + 4);
     // the camera tracks him down the pole during the clear, so his on-screen top only moves on the
@@ -5194,7 +5208,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     // a block shorter than the nes one) may show only a step or two of screen descent, and the
     // held_pole count above is what pins its real length
     REQUIRE(descents >= 1);
-    REQUIRE(feet_on_ground);
+    REQUIRE(feet_on_base);
 
     // the walk off the pole, the level-clear beat, and back out to the world map with 1-2's node
     // unlocked under him; start off it opens 1-2, which now begins above ground (see 1-2's
@@ -5264,8 +5278,9 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
 
     // and the whole beat, pole contact to the card taking over, is the four to six seconds smb
     // spends on it: what is watched above plus the doorway pause and the hold behind it
-    // (mario.h kClearDoorFrames + kClearHoldFrames)
-    const int sequence = gone_at + 24 + 60;
+    // (mario.h kClearDoorFrames + kClearHoldFrames, the hold lengthened in m18 to make back what
+    // the shorter slide onto the pole's hard block took off the front of the beat)
+    const int sequence = gone_at + 24 + 72;
     REQUIRE(sequence >= 4 * 60);
     REQUIRE(sequence <= 6 * 60);
 }
@@ -5737,6 +5752,32 @@ TEST_CASE("mario_1_1_leaves_eight_clear_columns_between_the_stairs_and_the_flag"
             REQUIRE(!solid(kLevel11Grid[column][row]));
         }
     }
+}
+
+// m18: smb's flagpole stands on a hard block, not on the grass. every rip draws it, so every level
+// that has a flag gets one: the shaft stops at FLAG_BASE_ROW, the block takes the row under it and
+// the ground takes the row under that. the clear's slide ends on top of the block (player.c
+// clear_base_y) and the hop off it lands him on the ground (clear_walk_y)
+TEST_CASE("mario_flagpoles_stand_on_a_hard_block") {
+    for (const int index : {kLevel11, kLevel12, kLevel13}) {
+        const HostLevel& lv = kHostLevels[index];
+        const int column = static_cast<int>(lv.flag_column);
+        const int base = static_cast<int>(lv.flag_base_row);
+
+        CAPTURE(index, column);
+        REQUIRE(lv.has_flag != 0);
+        REQUIRE(base == 11);
+        REQUIRE(lv.flag_top_row == 3);
+        // the shaft's last cell, then the block, then the surface the block stands on
+        REQUIRE(lv.grid[column][base] == kBlockFlagPole);
+        REQUIRE(lv.grid[column][base + 1] == kBlockHard);
+        REQUIRE(lv.grid[column][13] == kBlockGround);
+        REQUIRE(solid_at(lv, column, base + 1));
+        // and the ball caps the shaft one row above its top, which the rips put at row 2
+        REQUIRE(lv.grid[column][lv.flag_top_row - 1] == kBlockFlagBall);
+    }
+    // 1-4 ends on the axe, so it has no pole and no block under one
+    REQUIRE(kHostLevels[kLevel14].has_flag == 0);
 }
 
 TEST_CASE("mario_1_1_walks_sixteen_goombas") {
@@ -7858,12 +7899,14 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(kLevel13Grid[2][12] == kBlockCastleDoor);
     REQUIRE(!solid_at(kHostLevels[kLevel13], 2, 12));
 
-    // the two lift decks the engine has slots for: the map draws the first at 55-57 on row 6 and
-    // the second at 86-88 on row 8, and each is compiled at the left end of the pit it bridges with
-    // its travel packed into the object's span byte. the smbd map's third deck (92-94, row 9) is
-    // recorded in the bible with "live": false - two slots is all mario.h kLiftSlots has
+    // all three lift decks the map draws, now that mario.h kLiftSlots is three: the first at 55-57
+    // on row 6, the second at 86-88 on row 8 and the third at 92-94 on row 9, each compiled at the
+    // left end of the pit it bridges with its travel packed into the object's span byte. the third
+    // starts at the far end (kLiftReverse) so the two decks sharing the second pit are never on top
+    // of each other, and its four sprites come out of the firebar/bowser slots - which is why the
+    // level is not allowed to carry either of those
     const HostLevel& lv = kHostLevels[kLevel13];
-    REQUIRE(lv.object_count == 2);
+    REQUIRE(lv.object_count == 3);
     REQUIRE(lv.objects[0].kind == kObjLiftH);
     REQUIRE(lv.objects[0].column == 47);
     REQUIRE(lv.objects[0].row == 6);
@@ -7872,6 +7915,15 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(lv.objects[1].column == 82);
     REQUIRE(lv.objects[1].row == 8);
     REQUIRE((lv.objects[1].param & kLiftSpanMask) == 13);
+    REQUIRE(lv.objects[2].kind == kObjLiftH);
+    REQUIRE(lv.objects[2].column == 89);
+    REQUIRE(lv.objects[2].row == 9);
+    REQUIRE((lv.objects[2].param & kLiftSpanMask) == 6);
+    REQUIRE((lv.objects[2].param & kLiftReverse) != 0);
+    for (int i = 0; i < lv.object_count; ++i) {
+        REQUIRE(lv.objects[i].kind != kObjFirebar);
+        REQUIRE(lv.objects[i].kind != kObjBowser);
+    }
 
     // the closing staircase is not smb's usual one-column steps: 1-3 ends on three tiers two
     // columns wide, three then five then seven blocks tall (smbd's, at 136-141; the nes map's is
@@ -7888,16 +7940,77 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(kLevel13Grid[135][12] == kBlockEmpty);
     REQUIRE(kLevel13Grid[142][12] == kBlockEmpty);
 
-    // the pole stands eight columns past the staircase's last column, which is smbd's spacing, and
-    // the castle's tower lines up with the one the rip draws at 155-157
+    // the pole stands eight columns past the staircase's last column, which is smbd's spacing: the
+    // rip's green shaft runs rows 3-11, the ball caps row 2 and it stands on smb's hard block at
+    // row 12 rather than straight on the grass
     REQUIRE(LEVEL_1_3_FLAG_COLUMN == 149);
-    REQUIRE(LEVEL_1_3_CASTLE_COLUMN == 154);
+    REQUIRE(LEVEL_1_3_FLAG_TOP_ROW == 3);
+    REQUIRE(LEVEL_1_3_FLAG_BASE_ROW == 11);
     for (uint8_t row = LEVEL_1_3_FLAG_TOP_ROW; row <= LEVEL_1_3_FLAG_BASE_ROW; ++row) {
         REQUIRE(kLevel13Grid[149][row] == kBlockFlagPole);
     }
-    REQUIRE(kLevel13Grid[149][3] == kBlockFlagBall);
-    REQUIRE(kLevel13Grid[156][8] == kBlockCastleCrenel);
+    REQUIRE(kLevel13Grid[149][2] == kBlockFlagBall);
+    REQUIRE(kLevel13Grid[149][12] == kBlockHard);
+
+    // and 1-3 ends on the big castle, not the small one: nine columns at 152-160 and eleven rows
+    // from 2 to 12, transcribed cell for cell from the smbd rip. the keep's battlement row is 7
+    // with the middle tier's at 4 and the tower's at 2; the tower carries two one-row windows, the
+    // middle tier one two-row arch at 156, the upper keep two at 155/157 and the lower keep three
+    // at 154/156/158. the ninth column falls past the map's own last column in both rips, so it is
+    // clipped here the same way
+    REQUIRE(LEVEL_1_3_CASTLE_COLUMN == 152);
     REQUIRE(LEVEL_1_3_LENGTH_COLUMNS == 160);
+    const char* keep[11] = {
+        "...CCC...",
+        "...WKW...",
+        "..CIIIC..",
+        "..KKTKK..",
+        "..KKDKK..",
+        "CCIIIIICC",
+        "KKKTKTKKK",
+        "KKKDKDKKK",
+        "KKKKKKKKK",
+        "KKTKTKTKK",
+        "KKDKDKDKK",
+    };
+    for (int dy = 0; dy < 11; ++dy) {
+        for (int dx = 0; dx < 9; ++dx) {
+            const int column = 152 + dx;
+            if (column >= static_cast<int>(LEVEL_1_3_LENGTH_COLUMNS)) {
+                continue;
+            }
+            uint8_t want = kBlockEmpty;
+            switch (keep[dy][dx]) {
+            case 'C':
+                want = kBlockCastleCrenel;
+                break;
+            case 'I':
+                want = kBlockCastleCrenelInner;
+                break;
+            case 'K':
+                want = kBlockCastle;
+                break;
+            case 'W':
+                want = kBlockCastleWindow;
+                break;
+            case 'T':
+                want = kBlockCastleDoorTop;
+                break;
+            case 'D':
+                want = kBlockCastleDoor;
+                break;
+            default:
+                break;
+            }
+            CAPTURE(column, dy);
+            REQUIRE(kLevel13Grid[column][2 + dy] == want);
+            // scenery, every cell of it: the clear walk goes through the keep to its door
+            REQUIRE(!solid_at(kHostLevels[kLevel13], column, 2 + dy));
+        }
+    }
+    // the door the clear walk stops at is CASTLE_DOOR_OFFSET columns in, which lands on the
+    // leftmost of the keep's three arches
+    REQUIRE(kLevel13Grid[152 + kCastleDoorOffset][12] == kBlockCastleDoor);
 }
 
 TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
@@ -8768,6 +8881,48 @@ TEST_CASE("mario_lift_deck_does_not_linger_after_a_respawn") {
     // and nothing left over from the last life's deck is still sitting in oam
     run(gameboy, 4);
     REQUIRE(!sprite_box(gameboy, kTileLiftDeck, kTileLiftDeck).found);
+}
+
+// m18 raised kLiftSlots to three for 1-3's third deck, and oam was already exactly full at two.
+// the third deck's four sprites come out of the flame/bowser run (hazards.c lift_slot), so the two
+// can never be loaded together: hazards.c caps the deck count at kLiftSlotsShared the moment it
+// sees a bar or a bowser in the object list, and compile_level.py refuses to build a level that
+// would hit that cap. this checks the budget arithmetic and that no compiled level breaks the rule
+TEST_CASE("mario_third_lift_borrows_the_firebar_slots") {
+    // sprite slots: 32-39 hold the first two decks and 24-29/30-31 the flames and the bowser, so
+    // the third deck's four fit exactly in 24-27 and the whole oam stays inside its 40
+    constexpr int kSpriteFlameFirst = 24;
+    constexpr int kSpriteLiftFirst = 32;
+    constexpr int kOamSlots = 40;
+    REQUIRE(kSpriteLiftFirst + kLiftSlotsShared * 4 == kOamSlots);
+    REQUIRE(kSpriteFlameFirst + (kLiftSlots - kLiftSlotsShared) * 4 <= kSpriteLiftFirst);
+
+    for (const int index : {kLevel11, kLevel12, kLevel13, kLevel14}) {
+        const HostLevel& lv = kHostLevels[index];
+        int lifts = 0;
+        int bars = 0;
+
+        for (int i = 0; i < lv.object_count; ++i) {
+            const uint8_t kind = lv.objects[i].kind;
+
+            if (kind == kObjLiftH || kind == kObjLiftV) {
+                ++lifts;
+            } else if (kind == kObjFirebar || kind == kObjBowser) {
+                ++bars;
+            }
+        }
+        CAPTURE(index, lifts, bars);
+        REQUIRE(lifts <= kLiftSlots);
+        REQUIRE((lifts <= kLiftSlotsShared || bars == 0));
+    }
+    // 1-3 is the level that spends the third slot; 1-4 is the one that spends the borrowed ones
+    int lifts_13 = 0;
+    for (int i = 0; i < kHostLevels[kLevel13].object_count; ++i) {
+        if (kHostLevels[kLevel13].objects[i].kind == kObjLiftH) {
+            ++lifts_13;
+        }
+    }
+    REQUIRE(lifts_13 == 3);
 }
 
 TEST_CASE("mario_firebar_damages_and_rotates") {

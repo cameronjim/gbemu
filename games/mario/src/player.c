@@ -455,16 +455,19 @@ static void step_anim(void) {
 }
 
 // the pole's cells are walk-through, so contact is a box overlap against the compiled shaft rather
-// than a terrain_solid_at hit
+// than a terrain_solid_at hit. the span tested is his drawn box, not his hit box: the hard block
+// at the pole's foot stops the hit box a column short, and smb grabs the pole the moment he is up
+// against that block. the base row is the shaft's last cell, and the block under it is the row he
+// can still be standing on when he reaches it
 static uint8_t touching_flag(void) {
     if (level->has_flag == 0U) {
         return 0;
     }
-    if (col_of(hit_left()) > (int16_t)level->flag_column ||
-        col_of(hit_right()) < (int16_t)level->flag_column) {
+    if (col_of(x_pos) > (int16_t)level->flag_column ||
+        col_of((uint16_t)(x_pos + kPlayerWidthPx - 1U)) < (int16_t)level->flag_column) {
         return 0;
     }
-    return (row_of(head_y()) <= (int16_t)level->flag_base_row &&
+    return (row_of(head_y()) <= (int16_t)(level->flag_base_row + 1U) &&
             row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)level->flag_top_row)
                ? 1U
                : 0U;
@@ -691,9 +694,15 @@ void player_begin_clear(uint8_t from) {
     flow_flag_arm();
 }
 
-// the pole's base: the row under the shaft's last cell is the ground mario's feet come to rest on
+// the pole's base: the hard block under the shaft's last cell is what the slide comes to rest on
 static int16_t clear_base_y(void) {
     return (int16_t)((int16_t)((int16_t)(level->flag_base_row + 1U) << 4) - (int16_t)foot_h());
+}
+
+// and the hop off the pole clears that block: he lands a row lower, on the ground the walk to the
+// castle runs along
+static int16_t clear_walk_y(void) {
+    return (int16_t)(clear_base_y() + kBlockPx);
 }
 
 // the column the walk-off ends at: the castle's door when the level closes with one, and otherwise
@@ -755,7 +764,7 @@ uint8_t player_clear_update(void) {
         x_pos = (uint16_t)(x_pos + kClearWalkPx);
         ++clear_timer;
         if (clear_timer >= (uint8_t)kClearHopFrames) {
-            y_pos = base_y;
+            y_pos = clear_walk_y();
             clear_phase = kClearWalk;
             clear_timer = 0;
         }

@@ -24,8 +24,8 @@
     {"kind": "tree", "x0": 76, "x1": 81, "y": 6, "confidence": "measured", "notes": "a goomba walks its right end; the lift gap opens past it"},
     {"kind": "lift_platform", "x0": 82, "x1": 96, "y": 8, "live": true, "confidence": "approx",
      "notes": "the deck the map draws at columns 86-88 on row 8. a map rip is one instant of a moving platform, so its row is measured and its travel is not: the span here is the pit it has to bridge, from the lip at 81 to the canopy at 96"},
-    {"kind": "lift_platform", "x0": 89, "x1": 96, "y": 9, "live": false, "confidence": "measured",
-     "notes": "the smbd map's second deck in this same pit, drawn at columns 92-94 on row 9. the engine has two lift slots in total (mario.h kLiftSlots) and 1-3 has two pits to bridge, so this one is recorded and not compiled; the deck above it carries the whole pit instead"},
+    {"kind": "lift_platform", "x0": 89, "x1": 96, "y": 9, "live": true, "reverse": true, "confidence": "approx",
+     "notes": "the smbd map's second deck in this same pit, drawn at columns 92-94 on row 9. row measured, travel inferred like the other two: it runs the right half of the same pit and starts at the far end, so the two decks in this pit are never on top of each other. it is the third live lift, which mario.h kLiftSlots was raised to three for - the fourth sprite pair comes out of the firebar/bowser slots, so a level may have this or a bar, never both"},
     {"kind": "tree", "x0": 96, "x1": 99, "y": 11, "confidence": "measured"},
     {"kind": "tree", "x0": 102, "x1": 109, "y": 7, "confidence": "measured", "notes": "eight columns wide, a red koopa on its right end"},
     {"kind": "tree", "x0": 111, "x1": 113, "y": 13, "confidence": "measured", "notes": "three coins on the row above it"},
@@ -84,7 +84,7 @@
     {"kind": "cloud", "x": 150, "y": 7, "width": 2, "confidence": "measured", "notes": "the narrow one between the pole and the castle"}
   ],
   "flag": {"x": 149, "confidence": "measured", "notes": "eight columns past the last staircase column, smbd's spacing (the nes map puts it nine past, at 152)"},
-  "castle_end": {"x": 154, "confidence": "measured", "notes": "the column that lines our five-wide small castle's three-wide tower up with the tower the map draws at 155-157. both rips end 1-3 with the big castle - a taller keep on a crenellated wall that runs to the end of the map - and the engine only has the small one, so the height is a delta, not a measurement"},
+  "castle_end": {"x": 152, "big": true, "confidence": "measured", "notes": "the big castle every x-3 closes with, transcribed cell for cell from the smbd rip: a nine-wide keep at 152-160 with its battlement row at 7, a five-wide middle tier at 154-158 over it and the three-wide tower at 155-157, eleven rows in all from row 2 to row 12. the nes rip draws the same three tiers three columns right (keep from 155, tower 158-160), so the shape is measured twice. the keep's ninth column falls past the map's own last column in both rips and is clipped here the same way"},
   "warps": [],
   "smbd": {
     "red_coins": [

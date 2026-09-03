@@ -10090,9 +10090,10 @@ TEST_CASE("mario_bowser_is_32x32") {
     CAPTURE(seen, widest, tallest);
     REQUIRE(seen > 100);
     REQUIRE(widest == kBowserWidthPx);
-    // his art leaves a transparent row along the top of the 32 and another along the bottom - his
-    // horns start on row 1 and his claws end on row 30 - so 30 lit rows is the whole of him
-    REQUIRE(tallest == kBowserHeightPx - 2);
+    // the old hand-drawn art left a transparent row along the top of the 32 and another along the
+    // bottom, so it only ever lit 30. the deluxe sprite he is redrawn from lights row 0 (the tip
+    // of the near horn) and row 31 (his back foot) in both walk frames, so the whole 32 is his now
+    REQUIRE(tallest == kBowserHeightPx);
 }
 
 // and he breathes: a 24x8 dart out of his jaw that flies left at a pixel and a half a frame, at the

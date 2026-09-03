@@ -2816,55 +2816,65 @@ static const uint8_t kHazardTiles[96] = {
 };
 // clang-format on
 
-// m20's fake bowser: roster.json gives him 4x4 tiles, so a 32x32 body in two frames of sixteen
-// tiles. the layout is the eight 8x16 sprites hazards.c draws him out of, in the order it walks
-// them - upper row left to right, then the lower row - and each sprite's own pair is its upper 8x8
-// followed by its lower one. he faces left, which is the way he faces on the bridge; walking right
-// draws the same tiles with S_FLIPX and the column order reversed.
+// m20's fake bowser, redrawn pixel for pixel off the deluxe sprite (mariowiki
+// SMBDX_Bowser_sprite.png) - the same 32x32 art smb1 walks on the nes, which is where the second
+// frame comes from: the nes walk gif's frame 0 is byte for byte the deluxe sprite, so its frame 1
+// is deluxe's other frame. he is the hunched, head-low pose of the real thing, not a standing
+// lizard: jaw open low on the left with the teeth in it, brow and horns above, the shell's spikes
+// climbing to the top right, tail behind, one claw out under the chin.
 //
-// color 1 is the shell's green, 2 the body's orange and 3 the white of his horns, eyes, teeth,
-// spikes and claws, per the castle re-tint of kPalKoopa. his black outline is color 0 - a sprite's
-// transparent index - which costs nothing at all against a castle's black backdrop, exactly the
-// black the nes rip outlines him in.
+// roster.json gives him 4x4 tiles, so a 32x32 body in two frames of sixteen tiles. the layout is
+// the eight 8x16 sprites hazards.c draws him out of, in the order it walks them - upper row left to
+// right, then the lower row - and each sprite's own pair is its upper 8x8 followed by its lower one.
+// he faces left, which is the way he faces on the bridge; walking right draws the same tiles with
+// S_FLIPX and the column order reversed.
 //
-// frame 1 opens the jaw (a transparent gap between two rows of teeth) and swaps his stride, so the
-// two of them read as one walking, roaring animal rather than as a shape that twitches
+// the sprite uses exactly three colors and so does the castle re-tint of kPalKoopa: color 1 is the
+// green of his shell and hide, 2 the orange of his brow, mouth, belly plates and claws, and 3 the
+// white of his horns, teeth, eyes and shell spikes. color 0 is a sprite's transparent index, which
+// against a castle's black backdrop reads as exactly the black the original outlines him in.
+//
+// the two frames differ only below row 24: the body, head and shell are identical and the feet
+// swap stride, which is the whole of the real animation. he fills all 32 rows and all 32 columns
+// in both frames
 // clang-format off
 static const uint8_t kBowserTiles[512] = {
     // frame 0 row 0 col 0, upper half
     0x00, 0x00, // ........
-    0x10, 0x10, // ...#....
-    0x38, 0x38, // ..###...
-    0x28, 0x38, // ..#+#...
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x18, 0x7F, // .++##+++
-    0x18, 0xFF, // +++##+++
-    0x00, 0xFF, // ++++++++
-    0x7C, 0xFF, // +#####++
-    0x44, 0xFF, // +#+++#++
-    0x7C, 0x7F, // .#####++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x0F, // ....++++
-    0x10, 0x1F, // ...#++++
-    // frame 0 row 0 col 1, upper half
     0x00, 0x00, // ........
+    0x01, 0x00, // .......-
+    0x07, 0x06, // .....##-
+    0x0F, 0x46, // .+..-##-
+    0x1F, 0xA6, // +.+--##-
+    0x1F, 0xFC, // +++###--
+    0x0F, 0xF8, // ++++#---
+    // frame 0 row 0 col 0, lower half
+    0x8C, 0xF3, // #+++--++
+    0x41, 0x5E, // .#.++++-
+    0x5F, 0x5A, // .#.##-#-
     0x08, 0x08, // ....#...
-    0x1C, 0x1C, // ...###..
-    0x14, 0x1C, // ...#+#..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFE, // +++++++.
-    0x30, 0xFE, // ++##+++.
-    0x30, 0xFF, // ++##++++
-    0x00, 0xFF, // ++++++++
-    0x01, 0xFE, // +++++++-
-    0x03, 0xFC, // ++++++--
-    0x07, 0xF8, // +++++---
-    0x0F, 0xF0, // ++++----
-    0x1F, 0xE2, // +++---#-
-    0x3F, 0xC0, // ++------
-    0x3F, 0xC4, // ++---#--
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x02, 0x03, // ......#+
+    0x00, 0x01, // .......+
+    // frame 0 row 0 col 1, upper half
+    0x0E, 0x0E, // ....###.
+    0xF8, 0x3C, // --###+..
+    0xF0, 0x3C, // --##++..
+    0xE4, 0x18, // ---++-..
+    0xFC, 0x00, // ------..
+    0xFE, 0x00, // -------.
+    0xBE, 0x40, // -+-----.
+    0x1E, 0xE0, // +++----.
+    // frame 0 row 0 col 1, lower half
+    0xDF, 0xA1, // #-+----#
+    0xDF, 0x21, // --+----#
+    0xDF, 0x61, // -#+----#
+    0x9F, 0x63, // -++---##
+    0x9F, 0xE7, // #++--###
+    0x3F, 0xCE, // ++--###-
+    0x3F, 0xCE, // ++--###-
+    0x1F, 0x87, // +..--###
     // frame 0 row 0 col 2, upper half
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -2873,15 +2883,16 @@ static const uint8_t kBowserTiles[512] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    0x1E, 0x00, // ...----.
+    0x00, 0x00, // ........
+    // frame 0 row 0 col 2, lower half
+    0xF8, 0x88, // #---#...
+    0xFA, 0x9C, // #--##+-.
+    0xF9, 0xBE, // #-###++-
+    0xF3, 0x9C, // #--#++--
     0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
     0xFF, 0x00, // --------
-    0xFF, 0x88, // #---#---
-    0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
-    0xFF, 0x00, // --------
-    0xFF, 0x44, // -#---#--
+    0xFF, 0x07, // -----###
+    0xFE, 0xE7, // ###--##+
     // frame 0 row 0 col 3, upper half
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -2891,116 +2902,123 @@ static const uint8_t kBowserTiles[512] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    0x80, 0x00, // -.......
-    0xC0, 0x00, // --......
-    0xE0, 0x00, // ---.....
-    0xF0, 0x80, // #---....
+    // frame 0 row 0 col 3, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0xE0, 0xE0, // ###.....
+    0xC0, 0xE0, // ##+.....
+    0x98, 0x68, // -++-#...
+    0xF8, 0x08, // ----#...
     0xF8, 0x00, // -----...
-    0xF8, 0x00, // -----...
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
+    0xFC, 0x1C, // ---###..
     // frame 0 row 1 col 0, upper half
-    0x30, 0x3F, // ..##++++
-    0x30, 0x3F, // ..##++++
-    0x10, 0x1F, // ...#++++
-    0x00, 0x0F, // ....++++
-    0x00, 0x07, // .....+++
-    0x00, 0x03, // ......++
-    0x00, 0x01, // .......+
-    0x00, 0x01, // .......+
-    0x00, 0x03, // ......++
-    0x00, 0x07, // .....+++
-    0x00, 0x0F, // ....++++
-    0x00, 0x0F, // ....++++
-    0x10, 0x1F, // ...#++++
-    0x31, 0x3F, // ..##+++#
-    0x31, 0x31, // ..##...#
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // frame 0 row 1 col 0, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
     0x00, 0x00, // ........
     // frame 0 row 1 col 1, upper half
-    0x3F, 0xC0, // ++------
-    0x1F, 0xE2, // +++---#-
-    0x0F, 0xF0, // ++++----
-    0x07, 0xF8, // +++++---
-    0x03, 0xFC, // ++++++--
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xE0, // +++.....
-    0x00, 0x80, // +.......
-    0x00, 0x80, // +.......
-    0x80, 0x80, // #.......
-    0x80, 0x80, // #.......
-    0x80, 0x80, // #.......
+    0x06, 0x01, // .....--+
+    0x02, 0x72, // .+++..#.
+    0x20, 0xEE, // ++#.+++.
+    0x00, 0xCF, // ++..++++
+    0x40, 0xDF, // +#.+++++
+    0x00, 0x9F, // +..+++++
+    0x40, 0x5F, // .#.+++++
+    0x10, 0x1E, // ...#+++.
+    // frame 0 row 1 col 1, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
     0x00, 0x00, // ........
     // frame 0 row 1 col 2, upper half
-    0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x41, 0x7F, // .#+++++#
-    0xC3, 0xFF, // ##++++##
-    0xC3, 0xC3, // ##....##
-    0x00, 0x00, // ........
+    0x3C, 0xF3, // ++##--++
+    0x1F, 0xF8, // +++##---
+    0x9F, 0xE8, // #++-#---
+    0x3F, 0x08, // ..--#---
+    0x7F, 0xCC, // +#--##--
+    0xFF, 0x0C, // ----##--
+    0xFF, 0x0C, // ----##--
+    0xFF, 0x04, // -----#--
+    // frame 0 row 1 col 2, lower half
+    0xFF, 0x06, // -----##-
+    0x7F, 0x03, // .-----##
+    0x3F, 0x01, // ..-----#
+    0x1F, 0x20, // ..+-----
+    0x66, 0x79, // .##++--+
+    0xE0, 0xFF, // ###+++++
+    0x0C, 0x0F, // ....##++
+    0x1D, 0x1F, // ...###+#
     // frame 0 row 1 col 3, upper half
-    0xFC, 0x00, // ------..
-    0xFC, 0x00, // ------..
-    0xFC, 0x00, // ------..
-    0xF8, 0x00, // -----...
-    0xF0, 0x00, // ----....
-    0xC6, 0x00, // --...--.
-    0x1F, 0x80, // +..-----
-    0x3E, 0x00, // ..-----.
-    0x78, 0x80, // +----...
-    0x00, 0x80, // +.......
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
+    0xF8, 0x1C, // ---##+..
+    0xF0, 0x0C, // ----++..
+    0xFE, 0x02, // ------#.
+    0xFD, 0xE3, // ###---+#
+    0xDC, 0xE0, // ##+---..
+    0x9E, 0x66, // -++--##.
+    0xFF, 0x07, // -----###
+    0xF8, 0x36, // --##-++.
+    // frame 0 row 1 col 3, lower half
+    0xDA, 0x24, // --+--+-.
+    0xFE, 0x80, // #------.
+    0xFE, 0xE0, // ###----.
+    0xFF, 0x7F, // -#######
+    0x1F, 0xFF, // +++#####
+    0x06, 0xFE, // +++++##.
+    0xC0, 0xFC, // ##++++..
+    0xC0, 0xFE, // ##+++++.
     // frame 1 row 0 col 0, upper half
     0x00, 0x00, // ........
-    0x10, 0x10, // ...#....
-    0x38, 0x38, // ..###...
-    0x28, 0x38, // ..#+#...
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x18, 0x7F, // .++##+++
-    0x18, 0xFF, // +++##+++
-    0x00, 0xFF, // ++++++++
-    0x7E, 0xFF, // +######+
-    0x00, 0x80, // +.......
-    0x7E, 0x7F, // .######+
-    0x00, 0x3F, // ..++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x0F, // ....++++
-    0x10, 0x1F, // ...#++++
-    // frame 1 row 0 col 1, upper half
     0x00, 0x00, // ........
+    0x01, 0x00, // .......-
+    0x07, 0x06, // .....##-
+    0x0F, 0x46, // .+..-##-
+    0x1F, 0xA6, // +.+--##-
+    0x1F, 0xFC, // +++###--
+    0x0F, 0xF8, // ++++#---
+    // frame 1 row 0 col 0, lower half
+    0x8C, 0xF3, // #+++--++
+    0x41, 0x5E, // .#.++++-
+    0x5F, 0x5A, // .#.##-#-
     0x08, 0x08, // ....#...
-    0x1C, 0x1C, // ...###..
-    0x14, 0x1C, // ...#+#..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFE, // +++++++.
-    0x30, 0xFE, // ++##+++.
-    0x30, 0xFF, // ++##++++
-    0x00, 0xFF, // ++++++++
-    0x01, 0xFE, // +++++++-
-    0x03, 0xFC, // ++++++--
-    0x07, 0xF8, // +++++---
-    0x0F, 0xF0, // ++++----
-    0x1F, 0xE2, // +++---#-
-    0x3F, 0xC0, // ++------
-    0x3F, 0xC4, // ++---#--
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x02, 0x03, // ......#+
+    0x00, 0x01, // .......+
+    // frame 1 row 0 col 1, upper half
+    0x0E, 0x0E, // ....###.
+    0xF8, 0x3C, // --###+..
+    0xF0, 0x3C, // --##++..
+    0xE4, 0x18, // ---++-..
+    0xFC, 0x00, // ------..
+    0xFE, 0x00, // -------.
+    0xBE, 0x40, // -+-----.
+    0x1E, 0xE0, // +++----.
+    // frame 1 row 0 col 1, lower half
+    0xDF, 0xA1, // #-+----#
+    0xDF, 0x21, // --+----#
+    0xDF, 0x61, // -#+----#
+    0x9F, 0x63, // -++---##
+    0x9F, 0xE7, // #++--###
+    0x3F, 0xCE, // ++--###-
+    0x3F, 0xCE, // ++--###-
+    0x1F, 0x87, // +..--###
     // frame 1 row 0 col 2, upper half
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -3009,15 +3027,16 @@ static const uint8_t kBowserTiles[512] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    0x1E, 0x00, // ...----.
+    0x00, 0x00, // ........
+    // frame 1 row 0 col 2, lower half
+    0xF8, 0x88, // #---#...
+    0xFA, 0x9C, // #--##+-.
+    0xF9, 0xBE, // #-###++-
+    0xF3, 0x9C, // #--#++--
     0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
     0xFF, 0x00, // --------
-    0xFF, 0x88, // #---#---
-    0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
-    0xFF, 0x00, // --------
-    0xFF, 0x44, // -#---#--
+    0xFF, 0x07, // -----###
+    0xFE, 0xE7, // ###--##+
     // frame 1 row 0 col 3, upper half
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -3027,82 +3046,87 @@ static const uint8_t kBowserTiles[512] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    0x80, 0x00, // -.......
-    0xC0, 0x00, // --......
-    0xE0, 0x00, // ---.....
-    0xF0, 0x80, // #---....
+    // frame 1 row 0 col 3, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0xE0, 0xE0, // ###.....
+    0xC0, 0xE0, // ##+.....
+    0x98, 0x68, // -++-#...
+    0xF8, 0x08, // ----#...
     0xF8, 0x00, // -----...
-    0xF8, 0x00, // -----...
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
+    0xFC, 0x1C, // ---###..
     // frame 1 row 1 col 0, upper half
-    0x30, 0x3F, // ..##++++
-    0x30, 0x3F, // ..##++++
-    0x10, 0x1F, // ...#++++
-    0x00, 0x0F, // ....++++
-    0x00, 0x07, // .....+++
-    0x00, 0x03, // ......++
-    0x00, 0x01, // .......+
-    0x00, 0x01, // .......+
-    0x00, 0x03, // ......++
-    0x00, 0x03, // ......++
-    0x00, 0x07, // .....+++
-    0x00, 0x07, // .....+++
-    0x08, 0x0F, // ....#+++
-    0x18, 0x1F, // ...##+++
-    0x18, 0x18, // ...##...
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // frame 1 row 1 col 0, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
     0x00, 0x00, // ........
     // frame 1 row 1 col 1, upper half
-    0x3F, 0xC0, // ++------
-    0x1F, 0xE2, // +++---#-
-    0x0F, 0xF0, // ++++----
-    0x07, 0xF8, // +++++---
-    0x03, 0xFC, // ++++++--
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xF0, // ++++....
-    0x00, 0xC0, // ++......
-    0x00, 0xC0, // ++......
-    0x40, 0xC0, // +#......
-    0xC0, 0xC0, // ##......
-    0xC0, 0xC0, // ##......
+    0x06, 0x01, // .....--+
+    0x02, 0x72, // .+++..#.
+    0x20, 0xEE, // ++#.+++.
+    0x00, 0xCF, // ++..++++
+    0x40, 0xDF, // +#.+++++
+    0x00, 0x9F, // +..+++++
+    0x40, 0x5F, // .#.+++++
+    0x10, 0x1E, // ...#+++.
+    // frame 1 row 1 col 1, lower half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
     0x00, 0x00, // ........
     // frame 1 row 1 col 2, upper half
-    0xFF, 0x00, // --------
-    0xFF, 0x22, // --#---#-
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x21, 0x3F, // ..#++++#
-    0x31, 0x3F, // ..##+++#
-    0x31, 0x31, // ..##...#
-    0x00, 0x00, // ........
+    0x3C, 0xF3, // ++##--++
+    0x1F, 0xF8, // +++##---
+    0x9F, 0xE8, // #++-#---
+    0x3F, 0x08, // ..--#---
+    0x7F, 0xCC, // +#--##--
+    0xFF, 0x0C, // ----##--
+    0xFF, 0x0C, // ----##--
+    0xFF, 0x04, // -----#--
+    // frame 1 row 1 col 2, lower half
+    0xFF, 0x06, // -----##-
+    0x7F, 0x03, // .-----##
+    0x3F, 0x01, // ..-----#
+    0x1F, 0x00, // ...-----
+    0x06, 0x19, // ...++--+
+    0x03, 0x3F, // ..++++##
+    0x67, 0x7F, // .##++###
+    0xE0, 0xFF, // ###+++++
     // frame 1 row 1 col 3, upper half
-    0xFC, 0x00, // ------..
-    0xFC, 0x00, // ------..
-    0xFC, 0x00, // ------..
-    0xF8, 0x00, // -----...
-    0xF0, 0x00, // ----....
-    0xC6, 0x00, // --...--.
-    0x1F, 0x80, // +..-----
-    0x3E, 0x00, // ..-----.
-    0x78, 0x80, // +----...
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x80, 0x80, // #.......
-    0x80, 0x80, // #.......
-    0x00, 0x00, // ........
+    0xF8, 0x1C, // ---##+..
+    0xF0, 0x0C, // ----++..
+    0xFE, 0x02, // ------#.
+    0xFD, 0xE3, // ###---+#
+    0xDC, 0xE0, // ##+---..
+    0x9E, 0x66, // -++--##.
+    0xFF, 0x07, // -----###
+    0xF8, 0x36, // --##-++.
+    // frame 1 row 1 col 3, lower half
+    0xDA, 0x24, // --+--+-.
+    0xFE, 0x00, // -------.
+    0xFE, 0xE0, // ###----.
+    0xFF, 0x7F, // -#######
+    0x1F, 0xFF, // +++#####
+    0x36, 0xFE, // ++##+##.
+    0x70, 0xFF, // +###++++
+    0x00, 0xC0, // ++......
 };
 // clang-format on
 
@@ -3330,13 +3354,13 @@ void assets_load_hud_font(void) BANKED {
 
 void assets_load_enemy_palettes_castle(void) BANKED {
     // no koopa and no piranha stands in a castle, so the koopa slot is re-tinted for the fake
-    // bowser. m20 took it from roster.json's grayish-blue-and-yellow note - which describes the
-    // nes bowser's hair, not the sprite the rip actually draws - to the three colors the rip does
-    // use: a green shell, an orange body and white horns, teeth, spikes and claws. color 0 is a
-    // sprite's transparent index, so his outline is whatever is behind him, which in a castle is
-    // the black the rip outlines him in
+    // bowser, in the deluxe sprite's own three colors read straight off its palette chunk:
+    // 0x008010 green for the shell and hide, 0xf8b010 orange for the brow, mouth, belly and claws,
+    // and white for the horns, teeth, eyes and spikes. that is every color the sprite has - color 0
+    // is a sprite's transparent index, so his outline is whatever is behind him, which in a castle
+    // is the black deluxe outlines him in
     palette_color_t goomba[4] = {RGB(0, 0, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
-    palette_color_t bowser[4] = {RGB(0, 0, 0), RGB(0, 21, 0), RGB(31, 19, 7), RGB(31, 31, 31)};
+    palette_color_t bowser[4] = {RGB(0, 0, 0), RGB(0, 16, 2), RGB(31, 22, 2), RGB(31, 31, 31)};
     // and the star slot becomes the castle's one fire ramp, which the firebar flames and bowser's
     // breath both burn in: white at the core, orange through the body, dark red at the rim. no
     // castle grid holds a star or a flower - the two items that borrow this slot - and the only

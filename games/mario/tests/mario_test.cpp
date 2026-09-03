@@ -90,8 +90,13 @@ void press(gb::Gameboy& gameboy, gb::Button button, uint32_t frames) {
 // while the lcd is off; the host's run_frame() approximates real time in whole-frame budgets, so a
 // display-off burst this size can outrun a single call and needs a few frames to fully drain before
 // per-frame button timing (as goto_xy relies on) is trustworthy again
-void enter_camera(gb::Gameboy& gameboy) {
+void enter_camera(gb::Gameboy& gameboy, int level = 0) {
     run(gameboy, kBootFrames);
+    // right walks the title's level picker along, so the camera can open on any of the four
+    for (int i = 0; i < level; ++i) {
+        press(gameboy, gb::Button::Right, 2);
+        run(gameboy, 2);
+    }
     press(gameboy, gb::Button::B, 2);
     run(gameboy, 64);
 }
@@ -209,7 +214,10 @@ constexpr uint8_t kBlockFlagPoleCloth = 47;
 // 1-4's cut-stone masonry: solid and, unlike a grid brick, not something a grown mario can punch
 // out of a castle wall
 constexpr uint8_t kBlockCastleBrick = 48;
-constexpr uint8_t kBlockKindCount = 49;
+// and the rows of a lava pit under its surface one: BLOCK_LAVA's wave belongs at the top of a pit
+// and nowhere else, so the compiler fills the cells below it with this flat-red kind
+constexpr uint8_t kBlockLavaFill = 49;
+constexpr uint8_t kBlockKindCount = 50;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -367,14 +375,17 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile == 0xFE;
     case kBlockLava:
         return tile == 0x20;
+    case kBlockLavaFill:
+        return tile == 0x18;
     // m20 moved the bridge and the axe into vram bank 1 and gave each of them two tiles, and put
-    // the castle's masonry course beside them: bank-1 bg 0x12-0x16 (mario.h kTileCastleBrick)
+    // the castle's two masonry courses beside them: bank-1 bg 0x12-0x17 (mario.h's castle run)
     case kBlockBridge:
         return tile >= 0x15 && tile <= 0x16;
     case kBlockAxe:
         return tile >= 0x13 && tile <= 0x14;
+    // the masonry's two courses: a cell's top pair is the upper one, its bottom pair the lower
     case kBlockCastleBrick:
-        return tile == 0x12;
+        return tile == 0x17;
     case kBlockCloudTl:
     case kBlockCloudTr:
         return tile >= 0x35 && tile <= 0x36;
@@ -805,6 +816,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
     0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0, kFloorSolid,
+    0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -978,7 +990,8 @@ constexpr uint8_t kTileBowserFireHi = 0xBB;
 constexpr uint8_t kTileBridge = 0x15;
 constexpr uint8_t kTileBridgeHi = 0x16;
 [[maybe_unused]] constexpr uint8_t kTileAxe = 0x13;
-constexpr uint8_t kTileCastleBrick = 0x12;
+constexpr uint8_t kTileCastleBrickLower = 0x12;
+[[maybe_unused]] constexpr uint8_t kTileCastleBrickUpper = 0x17;
 // hazards.c's lift deck plank, mirrored from mario.h's kTileLiftDeck
 constexpr uint8_t kTileLiftDeck = 0x88;
 
@@ -8604,6 +8617,9 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
             REQUIRE(kind != kBlockBrick);
             REQUIRE(kind != kBlockGround);
             REQUIRE(kind != kBlockGroundFill);
+            // kBlockStair wears the hard block's warm brown; the rips draw the opening flight as
+            // the same grey masonry as the wall behind it, so a castle lays its steps in stone
+            REQUIRE(kind != kBlockStair);
         }
         REQUIRE(kLevel14Grid[column][2] == kBlockCastleBrick); // the roof, unbroken end to end
     }
@@ -8669,23 +8685,32 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
     };
     const std::vector<Pit> pits = {{13, 14, 12}, {26, 28, 13}, {32, 34, 13}, {128, 140, 13}};
     std::vector<std::pair<int, int>> lava;
+    std::vector<std::pair<int, int>> fill;
     for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
         for (uint8_t row = 0; row < kHostLevelRows; ++row) {
             if (kLevel14Grid[column][row] == kBlockLava) {
                 lava.push_back({column, row});
+            } else if (kLevel14Grid[column][row] == kBlockLavaFill) {
+                fill.push_back({column, row});
             }
         }
     }
+    // the wave belongs to the surface row alone; the rows under it are flat red, so a three-deep
+    // pit reads as one pool and not as three
     std::vector<std::pair<int, int>> want_lava;
+    std::vector<std::pair<int, int>> want_fill;
     for (const Pit& pit : pits) {
         for (int column = pit.x0; column <= pit.x1; ++column) {
-            for (int row = pit.y0; row < kHostLevelRows; ++row) {
-                want_lava.push_back({column, row});
+            want_lava.push_back({column, pit.y0});
+            for (int row = pit.y0 + 1; row < kHostLevelRows; ++row) {
+                want_fill.push_back({column, row});
             }
         }
     }
     std::sort(want_lava.begin(), want_lava.end());
+    std::sort(want_fill.begin(), want_fill.end());
     REQUIRE(lava == want_lava);
+    REQUIRE(fill == want_fill);
     // lava is scenery over the death plane, so a pit is a pit: below the roof, whose thickest run
     // reaches row 5, nothing in one is standable - the bridge deck over the last pit excepted
     for (const Pit& pit : pits) {
@@ -8696,6 +8721,152 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
             }
         }
     }
+}
+
+// the masonry the rom actually puts on screen. the rip lays its wall in running bond - 8px bricks
+// whose courses step half a brick every 8 rows - so inside one 16px cell the mortar joint falls
+// four columns in along the upper course and in the last column along the lower one, and every
+// course closes with a mortar row. a single tile stamped four times, which is what the placeholder
+// was, would put the same joint in all four quadrants and read as a grid of squares
+TEST_CASE("mario_castle_masonry_is_laid_in_running_bond") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy, kLevel14);
+
+    // three cells of the opening floor's stone stacked, so the sampled window is masonry on every
+    // side and no sky, lava or block edge can be mistaken for a joint
+    for (int row = 10; row <= 14; ++row) {
+        for (int column = 7; column <= 9; ++column) {
+            REQUIRE(kLevel14Grid[column][row] == kBlockCastleBrick);
+        }
+    }
+
+    Camera camera;
+    camera.goto_xy(gameboy, scx_for_column(6), scy_for_row(14));
+
+    // the window: one cell across, three down. the debug camera's own scroll can sit a couple of
+    // pixels off where the host's mirror of it says, so nothing here assumes a course begins on a
+    // cell line - the mortar rows are found, not predicted
+    const int x0 = 8 * kBlockPx - camera.x;
+    const int y0 = 11 * kBlockPx - camera.y;
+    REQUIRE(x0 >= 0);
+    REQUIRE(y0 >= 0);
+    REQUIRE(y0 + 3 * kBlockPx <= static_cast<int>(gb::kLcdHeight));
+
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    const auto at = [&](int x, int y) { return colors[static_cast<size_t>(y0 + y) * gb::kLcdWidth + x0 + x]; };
+    // the mortar: color 0 of the castle set's ground slot, and the only black in a wall
+    constexpr uint16_t kMortar = 0;
+    const int window = 3 * kBlockPx;
+
+    // a course closes with a mortar line all the way across, so the wall's own 8px rhythm is
+    // readable straight off the screen
+    std::vector<int> lines;
+    for (int y = 0; y < window; ++y) {
+        bool all_mortar = true;
+        for (int x = 0; x < kBlockPx; ++x) {
+            all_mortar = all_mortar && at(x, y) == kMortar;
+        }
+        if (all_mortar) {
+            lines.push_back(y);
+        }
+    }
+    REQUIRE(lines.size() >= 4u);
+    for (size_t i = 1; i < lines.size(); ++i) {
+        CAPTURE(i, lines[i], lines[i - 1]);
+        REQUIRE(lines[i] - lines[i - 1] == 8);
+    }
+
+    // and each course between two of those lines carries two vertical joints, one per 8px brick
+    std::vector<int> joints;
+    for (size_t i = 1; i < lines.size(); ++i) {
+        std::vector<int> lit;
+
+        for (int x = 0; x < kBlockPx; ++x) {
+            bool all_mortar = true;
+            for (int y = lines[i - 1] + 1; y < lines[i]; ++y) {
+                all_mortar = all_mortar && at(x, y) == kMortar;
+            }
+            if (all_mortar) {
+                lit.push_back(x);
+            }
+        }
+        CAPTURE(i, lit.size());
+        REQUIRE(lit.size() == 2u);
+        REQUIRE(lit[1] - lit[0] == 8);
+        joints.push_back(lit[0]);
+    }
+
+    // the bond: every course steps half a brick against the one over it, and back again the course
+    // after, which is what a single tile stamped in all four quadrants could never draw
+    REQUIRE(joints.size() >= 3u);
+    for (size_t i = 1; i < joints.size(); ++i) {
+        CAPTURE(i, joints[i], joints[i - 1]);
+        REQUIRE(std::abs(joints[i] - joints[i - 1]) == 4);
+    }
+}
+
+// and the pit: the rip breaks a wave along the surface of its lava and paints flat red under it,
+// so only the top cell of a pit carries any foam. the compiler says so with kBlockLavaFill, whose
+// four quadrants are kTileLavaDeep - the deepest of 1-4's four pits is three rows, which is where
+// a crest per row showed
+TEST_CASE("mario_lava_waves_only_at_the_surface") {
+    // the surface row is the wave kind and the rows under it the fill kind, in every pit
+    REQUIRE(kLevel14Grid[13][12] == kBlockLava);
+    REQUIRE(kLevel14Grid[13][13] == kBlockLavaFill);
+    REQUIRE(kLevel14Grid[13][14] == kBlockLavaFill);
+    REQUIRE(kLevel14Grid[128][13] == kBlockLava);
+    REQUIRE(kLevel14Grid[128][14] == kBlockLavaFill);
+    // both are scenery: nothing keys death off the kind, the pit kills through the death plane
+    REQUIRE(kBlockFloorTable[kBlockLava] == 0);
+    REQUIRE(kBlockFloorTable[kBlockLavaFill] == 0);
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy, kLevel14);
+
+    Camera camera;
+    camera.goto_xy(gameboy, scx_for_column(11), scy_for_row(14));
+
+    // the crest's own tile family on the surface row, the flat fill on the two under it
+    const uint8_t surface = block_tile(gameboy, 13, 12, camera.x, camera.y);
+    REQUIRE(tile_in_kind_family(surface, kBlockLava));
+    for (uint8_t row = 13; row <= 14; ++row) {
+        const uint8_t tile = block_tile(gameboy, 13, row, camera.x, camera.y);
+
+        CAPTURE(row, tile);
+        REQUIRE(tile_in_kind_family(tile, kBlockLavaFill));
+    }
+
+    // and the foam is drawn once down the pit rather than once a row. the foam is the lava slot's
+    // white; the surface cell owns the top 16 rows of the three-deep pit, so anything past 20 is
+    // safely below it whichever way the debug camera's scroll rounded
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    constexpr uint16_t kFoam = 31 | (31 << 5) | (31 << 10);
+    const int x0 = 13 * kBlockPx - camera.x;
+    const int y0 = 12 * kBlockPx - camera.y;
+    REQUIRE(y0 + 3 * kBlockPx <= static_cast<int>(gb::kLcdHeight));
+    int surface_foam = 0;
+    int deep_foam = 0;
+    for (int y = 0; y < 3 * kBlockPx; ++y) {
+        for (int x = 2; x < kBlockPx - 2; ++x) {
+            if (colors[static_cast<size_t>(y0 + y) * gb::kLcdWidth + x0 + x] != kFoam) {
+                continue;
+            }
+            if (y < kBlockPx) {
+                ++surface_foam;
+            } else if (y >= 20) {
+                ++deep_foam;
+            }
+        }
+    }
+    CAPTURE(surface_foam, deep_foam);
+    REQUIRE(surface_foam > 0);
+    REQUIRE(deep_foam == 0);
 }
 
 TEST_CASE("mario_1_4_blocks_firebars_and_the_bridge_match_the_measured_map") {
@@ -9151,7 +9322,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 49);
+    REQUIRE(kBlockKindCount == 50);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);
@@ -9853,6 +10024,10 @@ void watch_the_bridge(gb::Gameboy& gameboy, const Route& route) {
     gameboy.set_button(gb::Button::B, false);
 }
 
+// how long left has to be held from there to walk him back to the deck's near end, ninety pixels of
+// walking, which is what puts bowser's jaw off the right edge
+constexpr uint32_t kBridgeBackOffFrames = 60;
+
 } // namespace
 
 // roster.json gives bowser four tiles by four, and hazards.c draws that as eight 8x16 sprites out
@@ -9893,7 +10068,14 @@ TEST_CASE("mario_bowser_is_32x32") {
 }
 
 // and he breathes: a 24x8 dart out of his jaw that flies left at a pixel and a half a frame, at the
-// height of a body standing on the deck he is standing on
+// height of a body standing on the deck he is standing on.
+//
+// the measured bridge room is thirteen cells wide and the route leaves mario a cell and a half from
+// bowser's own body, which is close enough that the first dart burns him after twelve pixels - and a
+// death freezes the world with bank 5's sprites still drawn, so the dart hangs in the air at the
+// pixel it killed him on for the whole beat. so back him off to the near end of the deck first: from
+// there the throw leaves the jaw off the right edge and the dart crosses most of the view before it
+// reaches him. the full hundred-frame life is the twin's to prove (mario_bowser_dart_flies_its_life)
 TEST_CASE("mario_bowser_breathes_fire_left") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const Route route = plan_level(kLevel14, 6000);
@@ -9903,6 +10085,9 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
     REQUIRE(gameboy.load_rom(rom));
     enter_level(gameboy, kLevel14);
     watch_the_bridge(gameboy, route);
+    gameboy.set_button(gb::Button::Left, true);
+    run(gameboy, kBridgeBackOffFrames);
+    gameboy.set_button(gb::Button::Left, false);
 
     std::vector<int> lefts;
     int widest = 0;
@@ -9938,6 +10123,51 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
     REQUIRE(lefts.front() - lefts.back() > 40);
     // and it crosses the band a body on the bridge stands in rather than sailing over his head
     REQUIRE(band_top > 16);
+}
+
+// what the rom cannot show without a body in the way: the whole hundred-frame life, a pixel and a
+// half a frame of it, ending nine and a half cells back down the deck. nothing probes terrain on
+// the way - the dart flies over the pillar before the bridge rather than breaking on it
+TEST_CASE("mario_bowser_dart_flies_its_life") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.bowser_live == 1);
+
+    // his feet come back to the deck row, so his jaw is a block above it either way
+    const int16_t deck_top = static_cast<int16_t>(lv.bridge_row * kBlockPx);
+    REQUIRE(sim.bowser_deck_y + kBowserHeightPx == deck_top);
+
+    // the throw he happens to be grounded for, so the band is the deck's own and not a hop's
+    int waited = 0;
+    while ((sim.fire_ttl == 0 || sim.bowser_airborne != 0) && waited < 8 * kBowserFireFrames) {
+        sim.hazards_step();
+        ++waited;
+    }
+    REQUIRE(sim.fire_ttl == kBowserFireLifeFrames);
+    const uint16_t jaw = sim.fire_x;
+
+    REQUIRE(jaw == static_cast<uint16_t>(sim.bowser_x - kBowserFireWidthPx));
+    // the cell a standing body fills, which is the one over the deck
+    REQUIRE(sim.fire_y >= deck_top - kBlockPx);
+    REQUIRE(sim.fire_y + kBowserFireHeightPx <= deck_top);
+
+    uint16_t low = jaw;
+    int flown = 0;
+    while (sim.fire_ttl != 0 && flown < 4 * kBowserFireLifeFrames) {
+        const uint16_t before = sim.fire_x;
+
+        sim.hazards_step();
+        ++flown;
+        REQUIRE(sim.fire_x <= before);
+        low = sim.fire_x;
+    }
+    CAPTURE(jaw, low, flown);
+    REQUIRE(flown == kBowserFireLifeFrames);
+    // 384/256 of a pixel a frame over the whole life
+    REQUIRE(jaw - low == kBowserFireLifeFrames * kBowserFireSubpx / 256);
+    // which is over half the deck he is standing on, wherever along it he threw from
+    REQUIRE(static_cast<int>(jaw - low) > (lv.bridge_x1 - lv.bridge_x0) * kBlockPx / 2);
 }
 
 // hazards.c decodes a bar's whole variant out of its object_param: kFirebarParamSegMask segments,

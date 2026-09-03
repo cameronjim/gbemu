@@ -206,7 +206,13 @@
 // answers a grid brick straight off the grid and a grown mario breaks one, which in a castle would
 // mean punching a hole through the wall into the lava. solid, unbreakable, never in a block list
 #define kBlockCastleBrick 48U
-#define kBlockKindCount 49U
+// the rest of a lava pit. kBlockLava wears the rip's breaking wave along its top and flat red under
+// it, which is right for the cell at the surface and wrong for every cell below - a three-deep pit
+// stamped with it alone reads as three separate pools. so the compiler stamps the surface row with
+// kBlockLava and fills the rows under it with this, whose four quadrants are all flat red. scenery
+// like the lava itself: the pit kills through the death plane, not through a kind
+#define kBlockLavaFill 49U
+#define kBlockKindCount 50U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -387,18 +393,29 @@
 #define kTileTrunk 0x11U
 #define kTileTreeCount 8U
 
-// --- m20's castle run, 0x12-0x16, in VRAM BANK 1 -----------------------------------------------
-// the five bg tiles the castle pass needed and bank 0 had no ids for. the masonry course is one
-// tile stamped in all four quadrants of kBlockCastleBrick, the way the old castle wall already
-// was; the bridge and the axe each get two, because the rip's bridge is a full 16px of chain and
-// its axe is a symmetric double blade no single tile can be. bank-1 bg 0x17-0x1f and 0x5c-0x5f
-// are still unclaimed
-#define kTileCastleBrick 0x12U
+// --- m20's castle run, 0x12-0x17, in VRAM BANK 1 -----------------------------------------------
+// the six bg tiles the castle pass needed and bank 0 had no ids for. the bridge and the axe each
+// get two, because the rip's bridge is a full 16px of chain and its axe is a symmetric double
+// blade no single tile can be.
+//
+// the masonry takes the other two: the rip lays its wall in running bond, 8px bricks whose courses
+// step half a brick every 8 rows, so a 16px cell is one course over another offset one. the joint
+// falls at the same place in both halves of a course, which is why two tiles cover it - the upper
+// one stamps kBlockCastleBrick's top pair and the lower one its bottom pair (and the same pairing
+// overwrites the ground family at a castle load, so a ground cell tiles into the bond too).
+// bank-1 bg 0x19-0x1f and 0x5c-0x5f are still unclaimed
+#define kTileCastleBrickLower 0x12U
 #define kTileAxe 0x13U
 #define kTileAxeRight 0x14U
 #define kTileBridge 0x15U
 #define kTileBridgeLower 0x16U
-#define kTileCastleRunCount 5U
+#define kTileCastleBrickUpper 0x17U
+#define kTileCastleRunCount 6U
+// and the seventh, which the lava pass needed: kTileLavaFill is the second half of the rip's
+// breaking crest, foam and all, so it is right under the pit's surface cell and wrong everywhere
+// below it. this is the flat red the rip paints the rest of a pit, stamped in all four quadrants
+// of kBlockLavaFill
+#define kTileLavaDeep 0x18U
 
 // the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
 // transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes

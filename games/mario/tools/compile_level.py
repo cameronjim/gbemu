@@ -85,6 +85,11 @@ BLOCK_FLAG_POLE_CLOTH = 47
 # either: blocks_head_bump answers a grid brick off the grid, and a grown mario takes one out. a
 # castle wall a super mario could punch a hole in is a hole into the lava
 BLOCK_CASTLE_BRICK = 48
+# the rows of a lava pit under its surface one. BLOCK_LAVA wears the rip's breaking wave along its
+# top, which is right at the surface and wrong below it - a pit filled with it alone reads as a
+# stack of separate pools - so settle_lava keeps it on the topmost cell of every run and drops this
+# flat-red kind into the rest. scenery like the lava itself: a pit kills through the death plane
+BLOCK_LAVA_FILL = 49
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -136,6 +141,7 @@ KIND_NAMES = {
     BLOCK_TRUNK: "TRUNK",
     BLOCK_FLAG_POLE_CLOTH: "FLAG_POLE_CLOTH",
     BLOCK_CASTLE_BRICK: "CASTLE_BRICK",
+    BLOCK_LAVA_FILL: "LAVA_FILL",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -436,6 +442,23 @@ def settle_ground(grid, probes=None):
                 probes[i] = (column, row, BLOCK_GROUND_FILL)
 
 
+def settle_lava(grid, probes=None):
+    # BLOCK_LAVA is the surface of a pit: the rip's breaking wave along its top and flat red under
+    # it. every cell below the surface is that same red the whole way down, so only the topmost cell
+    # of each vertical run of lava keeps the wave and the rest become BLOCK_LAVA_FILL. run this once
+    # nothing else is still writing lava, and rewrite any probe it moves out from under
+    moved = set()
+    for x, col in enumerate(grid):
+        for row in range(LEVEL_ROWS - 1, 0, -1):
+            if col[row] == BLOCK_LAVA and col[row - 1] == BLOCK_LAVA:
+                col[row] = BLOCK_LAVA_FILL
+                moved.add((x, row))
+    if probes is not None:
+        for i, (column, row, kind) in enumerate(probes):
+            if kind == BLOCK_LAVA and (column, row) in moved:
+                probes[i] = (column, row, BLOCK_LAVA_FILL)
+
+
 def apply_gap(grid, x0, x1, fill=BLOCK_EMPTY):
     x0, x1 = clamp_span(grid, x0, x1)
     for x in range(x0, x1 + 1):
@@ -477,7 +500,7 @@ def apply_pipe(grid, x, height):
         grid[x + 1][row] = BLOCK_PIPE_BODY_R
 
 
-def apply_stair_heights(grid, x0, heights):
+def apply_stair_heights(grid, x0, heights, kind=BLOCK_STAIR):
     # the measured form: one explicit block height per column, which is the only way to write smb's
     # descending flights (4,3,2,1) and its flat-topped ones (1,2,3,4,4) without inventing a slope rule
     for i, height in enumerate(heights):
@@ -485,10 +508,10 @@ def apply_stair_heights(grid, x0, heights):
         if col < 0 or col >= len(grid):
             continue
         for row in range(GROUND_ROW - height, GROUND_ROW):
-            grid[col][row] = BLOCK_STAIR
+            grid[col][row] = kind
 
 
-def apply_stairs(grid, x0, x1, step_height):
+def apply_stairs(grid, x0, x1, step_height, kind=BLOCK_STAIR):
     # a positive step_height climbs one row per column up to its cap; a negative one is the bible's
     # descending castle opening, which starts |step_height| rows up and walks back down to the floor
     x0, x1 = clamp_span(grid, x0, x1)
@@ -500,7 +523,7 @@ def apply_stairs(grid, x0, x1, step_height):
             top = -step_height
             step = top - (top * (col - x0)) // span
         for row in range(GROUND_ROW - step, GROUND_ROW):
-            grid[col][row] = BLOCK_STAIR
+            grid[col][row] = kind
 
 
 def apply_elevation(grid, x0, x1, y):
@@ -895,20 +918,24 @@ def compile_grid(bible, level_type):
             # out to the flag are the ground the pole and the walk-off need
             if has_islands:
                 apply_ground(grid, t["x0"], length_columns - 1)
+            # a castle has no dressed-stone staircase: BLOCK_STAIR wears the hard block's warm
+            # brown art, and both 1-4 rips draw its opening flight as the same grey masonry as the
+            # wall behind it. so a castle-typed level lays its steps in masonry instead
+            stair_kind = BLOCK_CASTLE_BRICK if level_type == TYPE_CASTLE else BLOCK_STAIR
             if t.get("heights"):
                 heights = t["heights"]
-                apply_stair_heights(grid, t["x0"], heights)
-                probes.append((t["x0"], GROUND_ROW - heights[0], BLOCK_STAIR))
+                apply_stair_heights(grid, t["x0"], heights, stair_kind)
+                probes.append((t["x0"], GROUND_ROW - heights[0], stair_kind))
                 last = min(len(heights) - 1, t["x1"] - t["x0"])
-                probes.append((t["x0"] + last, GROUND_ROW - heights[last], BLOCK_STAIR))
+                probes.append((t["x0"] + last, GROUND_ROW - heights[last], stair_kind))
                 continue
-            apply_stairs(grid, t["x0"], t["x1"], t["step_height"])
+            apply_stairs(grid, t["x0"], t["x1"], t["step_height"], stair_kind)
             if t["step_height"] >= 0:
-                probes.append((t["x0"], GROUND_ROW - 1, BLOCK_STAIR))
+                probes.append((t["x0"], GROUND_ROW - 1, stair_kind))
                 last_step = min(t["x1"] - t["x0"] + 1, t["step_height"])
-                probes.append((t["x1"], GROUND_ROW - last_step, BLOCK_STAIR))
+                probes.append((t["x1"], GROUND_ROW - last_step, stair_kind))
             else:
-                probes.append((t["x0"], GROUND_ROW + t["step_height"], BLOCK_STAIR))
+                probes.append((t["x0"], GROUND_ROW + t["step_height"], stair_kind))
         elif t["kind"] == "elevation":
             apply_elevation(grid, t["x0"], t["x1"], t["y"])
             probes.append((t["x0"], t["y"], BLOCK_GROUND))
@@ -1099,6 +1126,7 @@ def compile_grid(bible, level_type):
     # the bible's own scenery, stamped last so it can only ever land on sky
     probes.extend(apply_decor(grid, bible))
     settle_ground(grid, probes)
+    settle_lava(grid, probes)
 
     # a jump's landing row can only be read off the grid once every terrain run - including
     # whatever segment the target column falls in - has finished settling
@@ -1288,6 +1316,7 @@ def compile_measured_area(area, kind):
     if exit_column is None:
         exit_column = length_columns - 2
     settle_ground(grid, probes)
+    settle_lava(grid, probes)
 
     start = area.get("start") or {}
     start_column = int(start.get("x", 0))
@@ -1343,6 +1372,7 @@ def compile_area(area, bible, level_ids):
     probes.append((exit_column, exit_top_row, BLOCK_PIPE_TL))
     probes.append((exit_column + 1, exit_top_row, BLOCK_PIPE_TR))
     settle_ground(grid, probes)
+    settle_lava(grid, probes)
 
     return {
         "kind": kind,
@@ -1382,6 +1412,7 @@ def compile_warp_area(area, bible, level_ids):
         cells.append((column, target))
 
     settle_ground(grid, probes)
+    settle_lava(grid, probes)
 
     # the room has no exit pipe of its own: the three warps are the way out. the exit fields still
     # carry the last pipe so a player who takes none of them is not stranded

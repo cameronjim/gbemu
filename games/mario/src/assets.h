@@ -14,10 +14,11 @@
 // ids past mario's last sprite frame
 void assets_load_bg_tiles(void) BANKED;
 
-// and the castle's own override of that: 1-4's floors, ceilings and walls are the grey masonry
-// course of kCastleBrickTile, not the overworld's grass-capped ground, so a castle load redraws
-// the six ids of the ground family with it. call it after assets_load_bg_tiles, and only for a
-// castle - the plain loader above is what puts the grass back
+// and the castle's own override of that: 1-4's floors, ceilings and walls are the grey masonry of
+// kCastleBrickUpperTile/kCastleBrickLowerTile, not the overworld's grass-capped ground, so a castle
+// load redraws the six ids of the ground family with whichever course belongs in each quadrant.
+// call it after assets_load_bg_tiles, and only for a castle - the plain loader above puts the grass
+// back
 void assets_load_bg_tiles_castle(void) BANKED;
 
 // and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into

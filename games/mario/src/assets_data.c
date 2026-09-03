@@ -1178,14 +1178,47 @@ static const uint8_t kLavaTiles[32] = {
 };
 // clang-format on
 
-// the castle's masonry, one 8px course: a white highlight along the top and left of each brick, a
-// light stone face, a shadow down the right and along the bottom, and the black mortar the rip
-// leaves in the last column and row. the courses in 1-4 do not run in bond - every brick sits
-// squarely above the one below - so this single tile stamps the whole of every wall, floor and
-// ceiling in the level (kBlockCastleBrick, and the ground family the castle set overwrites)
+// under a pit's surface cell. kLavaTiles' second tile still has the crest's foam breaking across
+// its top four rows, which is exactly right for the bottom half of the cell at the surface and
+// wrong for every cell below it, so those get this instead: the lava's own red, flat, all 64 px
 // clang-format off
-static const uint8_t kCastleBrickTile[16] = {
-    // one 8px course of castle masonry
+static const uint8_t kLavaDeepTile[16] = {
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+};
+// clang-format on
+
+// the castle's masonry: a white highlight along the top and left of each brick, a light stone face,
+// a shadow down its right and along its bottom, and the black mortar the rip leaves in the joint
+// column and the row under every course.
+//
+// the rip lays it in running bond - bricks 8 px wide and 8 tall, each course stepped half a brick
+// against the one over it - so a 16 px cell is two courses and the joint falls at the same column
+// in both halves of either. that is two tiles: the upper course carries its joint four columns in
+// and the lower one carries it in the last column, and each stamps both halves of its own row
+// (kBlockCastleBrick's top pair and bottom pair, and the ground family a castle load overwrites)
+// clang-format off
+static const uint8_t kCastleBrickUpperTile[16] = {
+    // the cell's upper course, its joint four columns in
+    0xEF, 0x20, // --#.----
+    0x28, 0xE7, // ++#.-+++
+    0x28, 0xE7, // ++#.-+++
+    0x28, 0xE7, // ++#.-+++
+    0x28, 0xE7, // ++#.-+++
+    0x28, 0xE7, // ++#.-+++
+    0xEF, 0xEF, // ###.####
+    0x00, 0x00, // ........
+};
+// clang-format on
+// clang-format off
+static const uint8_t kCastleBrickLowerTile[16] = {
+    // and the course under it, stepped half a brick along
     0xFE, 0x02, // ------#.
     0x82, 0x7E, // -+++++#.
     0x82, 0x7E, // -+++++#.
@@ -1314,19 +1347,22 @@ void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
 }
 
-// a castle's floors, ceilings and walls are the same grey masonry course as its scenery, not the
+// a castle's floors, ceilings and walls are the same grey masonry as its scenery, not the
 // overworld's grass-capped ground: rather than recompile every castle grid onto a second terrain
-// kind, the ground family's own tiles are overwritten with that course at a castle load. the six
-// ids are the whole family - the surface block's two upper quadrants, its two lower ones, and the
-// buried fill block's upper pair - and the castle bg set colors kCamPalGround to match. every
-// other level type reloads the family from assets_load_bg_tiles above, so nothing leaks out
+// kind, the ground family's own tiles are overwritten with it at a castle load. the six ids are the
+// whole family - the surface block's two upper quadrants, its two lower ones, and the buried fill
+// block's upper pair - and the castle bg set colors kCamPalGround to match. each of them takes the
+// course kBlockCastleBrick puts in the same quadrant, so a ground cell tiles into the same running
+// bond a wall of masonry does. every other level type reloads the family from assets_load_bg_tiles
+// above, so nothing leaks out. the measured 1-4 has no ground cell left at all, but a castle grid
+// compiled off prose still can
 void assets_load_bg_tiles_castle(void) BANKED {
-    set_bkg_data(kTileGroundTopL, 1, kCastleBrickTile);
-    set_bkg_data(kTileGroundTopR, 1, kCastleBrickTile);
-    set_bkg_data(kTileGroundFillBl, 1, kCastleBrickTile);
-    set_bkg_data(kTileGroundFillBr, 1, kCastleBrickTile);
-    set_bkg_data(kTileGroundFillTl, 1, kCastleBrickTile);
-    set_bkg_data(kTileGroundFillTr, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundTopL, 1, kCastleBrickUpperTile);
+    set_bkg_data(kTileGroundTopR, 1, kCastleBrickUpperTile);
+    set_bkg_data(kTileGroundFillTl, 1, kCastleBrickUpperTile);
+    set_bkg_data(kTileGroundFillTr, 1, kCastleBrickUpperTile);
+    set_bkg_data(kTileGroundFillBl, 1, kCastleBrickLowerTile);
+    set_bkg_data(kTileGroundFillBr, 1, kCastleBrickLowerTile);
 }
 
 // the same call writes vram bank 1 with vbk pointing there, so the scenery lands beside the font
@@ -1349,10 +1385,12 @@ void assets_load_scenery_tiles(void) BANKED {
     set_bkg_data(kTilePipeSideTl, 9, kPipeSideTiles);
     // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
     set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
-    // m20's castle run right above it: the masonry course, the axe's two blades and the bridge's
-    // two halves. all three are terrain rather than scenery, but bank 0 is out of bg ids and a
-    // kCamAttrVram1 attribute reads them back the same way
-    set_bkg_data(kTileCastleBrick, 1, kCastleBrickTile);
+    // m20's castle run right above it: the masonry's two courses, the axe's two blades and the
+    // bridge's two halves. all three are terrain rather than scenery, but bank 0 is out of bg ids
+    // and a kCamAttrVram1 attribute reads them back the same way
+    set_bkg_data(kTileCastleBrickLower, 1, kCastleBrickLowerTile);
+    set_bkg_data(kTileCastleBrickUpper, 1, kCastleBrickUpperTile);
+    set_bkg_data(kTileLavaDeep, 1, kLavaDeepTile);
     set_bkg_data(kTileAxe, 2, kAxeTiles);
     set_bkg_data(kTileBridge, 2, kBridgeTiles);
     VBK_REG = VBK_BANK_0;

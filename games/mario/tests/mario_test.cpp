@@ -329,8 +329,7 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockStair:
         return tile >= 0xFA && tile <= 0xFD;
     case kBlockBrick:
-    // the castle's masonry wears the cave brick's four quadrants as a placeholder until the art
-    // pass cuts its own, so it answers the same family
+        return tile >= 0xA4 && tile <= 0xA7;
     case kBlockQuestion:
         return tile >= 0xA8 && tile <= 0xAB;
     case kBlockPipeTl:

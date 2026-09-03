@@ -81,7 +81,7 @@ jobs:
       - name: build
         run: cmake --build build -j
       - name: test
-        run: ctest --test-dir build -R 'flappy|crossy|mario' --output-on-failure
+        run: ctest --test-dir build -R 'flappy|crossy|mario|tetris' --output-on-failure
 
   wasm:
     runs-on: ubuntu-latest

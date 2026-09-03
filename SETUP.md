@@ -23,9 +23,9 @@ anywhere. The examples below use `C:\tools`.
   unzip it to `C:\tools\SDL2-2.32.10`. No PATH needed, just remember the
   folder.
 - **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020/releases).**
-  Optional, only needed if you want to change the Flappy Bird or Crossy
-  Road game code. Skip it if you just want to play: ready-made game files
-  are already in the repo (`assets/roms/`).
+  Optional, only needed if you want to change the Tetris, Flappy Bird or
+  Crossy Road game code. Skip it if you just want to play: ready-made game
+  files are already in the repo (`assets/roms/`).
 
 **Adding a folder to PATH:** press the Windows key, type `env`, open "Edit
 environment variables for your account", pick `Path` under your user
@@ -105,7 +105,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 gbdk-2020 is optional here too. Without it the script uses the game files
 already in the repo. With it, pass `--gbdk-home /path/to/gbdk` to rebuild
-Flappy Bird and Crossy Road from source.
+all three games from source.
 
 ## 5. Building by hand
 
@@ -130,18 +130,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j && ctest --t
 ```
 
 No SDL2 found skips the `gbemu-sdl` window (the core library and tests
-still build). No `GBDK_HOME` skips rebuilding Flappy Bird and Crossy Road.
-To rebuild just one game, add `-DGBDK_HOME="C:\tools\gbdk"` at configure
-time, then run `cmake --build build --target flappy` (swap in `crossy` for
-the other game). The finished rom lands at `build/flappy.gb` (or
-`build/crossy.gb`).
-
-## 6. Optional
-
-Tetris: the copy in the repo already has its piece-editor glyphs patched.
-If you ever start from a stock Adjustris download instead, this swaps its
-spin-direction glyphs for a plain check mark and X:
-
-```
-python tools/patch_spin_icons.py path/to/rom.gb
-```
+still build). No `GBDK_HOME` skips rebuilding the games. To rebuild just one,
+add `-DGBDK_HOME="C:\tools\gbdk"` at configure time, then run
+`cmake --build build --target tetris` (swap in `flappy` or `crossy` for the
+other games). The finished rom lands at `build/tetris.gb`.

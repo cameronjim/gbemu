@@ -66,7 +66,7 @@ const char* cart_type_name(gb::CartType type) {
 }
 
 // which colorizer dresses the frame; unknown games stay plain gray
-enum class Look : uint8_t { Plain, Tetris, Crossy, Flappy };
+enum class Look : uint8_t { Plain, Crossy, Flappy };
 
 Look detect_look(std::span<const uint8_t> bytes) {
     const std::optional<gb::Cartridge> cart = gb::Cartridge::parse(bytes);
@@ -79,21 +79,17 @@ Look detect_look(std::span<const uint8_t> bytes) {
     if (cart->title() == "FLAPPY") {
         return Look::Flappy;
     }
-    if (cart->title().rfind("TETRIS", 0) == 0) {
-        return Look::Tetris;
-    }
     return Look::Plain;
 }
 
-uint32_t shade_pixel(Look look, uint16_t id, uint8_t shade, uint32_t x, uint32_t y, uint16_t block_mask,
-                     uint16_t sprite_mask) {
+uint32_t shade_pixel(Look look, uint16_t id, uint8_t shade) {
     if (look == Look::Crossy) {
         return colorize_crossy(id, shade);
     }
     if (look == Look::Flappy) {
         return colorize_flappy(id, shade);
     }
-    return colorize(id, shade, x, y, block_mask, sprite_mask);
+    return colorize(shade);
 }
 
 std::string save_path(const char* rom_path) {
@@ -188,8 +184,7 @@ struct FlatMemory final : gb::Memory {
     std::array<uint8_t, 0x10000> mem{};
 };
 
-bool write_ppm(const gb::Gameboy& gameboy, Look look, uint16_t block_mask, uint16_t sprite_mask,
-               const char* path) {
+bool write_ppm(const gb::Gameboy& gameboy, Look look, const char* path) {
     std::ofstream out(path, std::ios::binary);
     if (!out) {
         std::fprintf(stderr, "cannot open %s\n", path);
@@ -211,7 +206,7 @@ bool write_ppm(const gb::Gameboy& gameboy, Look look, uint16_t block_mask, uint1
     for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
         for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
             const size_t i = y * gb::kLcdWidth + x;
-            const uint32_t rgb = shade_pixel(look, ids[i], fb[i], x, y, block_mask, sprite_mask);
+            const uint32_t rgb = shade_pixel(look, ids[i], fb[i]);
             const char px[3] = {static_cast<char>(rgb >> 16), static_cast<char>(rgb >> 8),
                                 static_cast<char>(rgb)};
             out.write(px, 3);
@@ -353,12 +348,7 @@ int run_doctor(std::span<const uint8_t> rom, const char* out_path, uint64_t trac
 struct App {
     std::unique_ptr<gb::Gameboy> gameboy;
     Options opt;
-    // the 16 block-style tile bitmaps harvested from the loaded rom
-    std::array<std::array<uint8_t, 16>, 16> styles{};
-    bool have_styles = false;
     Look look = Look::Plain;
-    // which button the held esc key is standing in for
-    gb::Button esc_button = gb::Button::B;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
     SDL_Window* window = nullptr;
@@ -380,62 +370,10 @@ App g_app;
 
 void main_loop_step(void* arg);
 
-// fingerprint the block-style bank so only real blocks get colorized
-void harvest_styles(App& app, std::span<const uint8_t> rom) {
-    // the solid bank of our patched tetris, or style 0 of the stock game;
-    // absent in other games, which then render plain white-on-black
-    std::array<uint8_t, 16> solid{};
-    for (size_t i = 0; i < 16; i += 2) {
-        solid[i] = 0x00;
-        solid[i + 1] = 0xFF;
-    }
-    constexpr std::array<uint8_t, 16> kStyle0 = {0xFF, 0xFF, 0xFF, 0x81, 0xFF, 0x81, 0xE7, 0x99,
-                                                 0xE7, 0x99, 0xFF, 0x81, 0xFF, 0x81, 0xFF, 0xFF};
-    app.have_styles = false;
-    for (size_t off = 0; off + 16 * 16 <= rom.size(); ++off) {
-        const auto begin = rom.begin() + static_cast<ptrdiff_t>(off);
-        const bool solid_bank =
-            std::equal(solid.begin(), solid.end(), begin) && std::equal(begin, begin + 16 * 15, begin + 16);
-        if (solid_bank || std::equal(kStyle0.begin(), kStyle0.end(), begin)) {
-            for (size_t t = 0; t < 16; ++t) {
-                std::copy_n(rom.begin() + static_cast<ptrdiff_t>(off + t * 16), 16, app.styles[t].begin());
-            }
-            app.have_styles = true;
-            return;
-        }
-    }
-}
-
-// picks the frontend's dmg look and harvests tetris styles; a cgb cart renders
-// straight from framebuffer_color, so it gets neither, no matter what its title is
+// picks the frontend's dmg look; a cgb cart renders straight from
+// framebuffer_color, so it never gets one, no matter what its title is
 void configure_look(App& app, const gb::Gameboy& gameboy, std::span<const uint8_t> bytes) {
-    if (gameboy.cgb_mode()) {
-        app.look = Look::Plain;
-        app.have_styles = false;
-        return;
-    }
-    app.look = detect_look(bytes);
-    harvest_styles(app, bytes);
-}
-
-// which tile slots at the given vram base currently hold a block style;
-// 0x800 is the bg block bank, 0x000 the falling piece's sprite mirror
-uint16_t style_mask(const App& app, size_t base) {
-    if (!app.have_styles || app.gameboy == nullptr) {
-        return 0;
-    }
-    const std::span<const uint8_t> vram = app.gameboy->debug_vram();
-    uint16_t mask = 0;
-    for (size_t slot = 0; slot < 16; ++slot) {
-        const size_t at = base + slot * 16;
-        for (const std::array<uint8_t, 16>& style : app.styles) {
-            if (std::equal(style.begin(), style.end(), vram.begin() + static_cast<ptrdiff_t>(at))) {
-                mask = static_cast<uint16_t>(mask | (1u << slot));
-                break;
-            }
-        }
-    }
-    return mask;
+    app.look = gameboy.cgb_mode() ? Look::Plain : detect_look(bytes);
 }
 
 // direction buttons are 0-3 in gb::Button, so they index straight into dpad_held/stick_held
@@ -537,7 +475,7 @@ int dump_framebuffer_ppm(App& app, uint64_t frames, const char* path) {
     for (uint64_t i = 0; i < frames; ++i) {
         app.gameboy->run_frame();
     }
-    return write_ppm(*app.gameboy, app.look, style_mask(app, 0x800), style_mask(app, 0x000), path) ? 0 : 1;
+    return write_ppm(*app.gameboy, app.look, path) ? 0 : 1;
 }
 
 } // namespace
@@ -811,8 +749,7 @@ void main_loop_step(void* arg) {
             }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_F10) {
-                    write_ppm(gameboy, app.look, style_mask(app, 0x800), style_mask(app, 0x000),
-                              "framebuffer.ppm");
+                    write_ppm(gameboy, app.look, "framebuffer.ppm");
                 }
                 if (event.key.keysym.sym == SDLK_t) {
                     tile_viewer.toggle();
@@ -881,12 +818,10 @@ void main_loop_step(void* arg) {
         } else {
             const std::span<const uint8_t> fb = gameboy.framebuffer();
             const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-            const uint16_t block_mask = style_mask(app, 0x800);
-            const uint16_t sprite_mask = style_mask(app, 0x000);
             for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
                 for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
                     const size_t i = y * gb::kLcdWidth + x;
-                    app.pixels[i] = shade_pixel(app.look, ids[i], fb[i], x, y, block_mask, sprite_mask);
+                    app.pixels[i] = shade_pixel(app.look, ids[i], fb[i]);
                 }
             }
         }

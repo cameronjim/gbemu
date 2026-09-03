@@ -346,6 +346,7 @@ int run_doctor(std::span<const uint8_t> rom, const char* out_path, uint64_t trac
 
 // everything the per-frame step touches; static so the emscripten loop outlives main
 struct App {
+    gb::Button esc_button = gb::Button::B;
     std::unique_ptr<gb::Gameboy> gameboy;
     Options opt;
     Look look = Look::Plain;
@@ -669,12 +670,10 @@ void main_loop_step(void* arg) {
                     gameboy.set_button(gb::Button::Start, down);
                     break;
                 case SDLK_ESCAPE:
-                    // esc backs out of menus with b on dmg carts (tetris' block style), but cgb
-                    // carts like mario have no such menu and use esc to pause/unpause with start
+                    // esc is start on a cgb cart (mario pauses and backs out of its menus with
+                    // it) and b on a dmg one; latched on the press so the release matches
                     if (down) {
-                        app.esc_button = (gameboy.cgb_mode() || style_mask(app, 0x800) != 0)
-                                             ? gb::Button::Start
-                                             : gb::Button::B;
+                        app.esc_button = gameboy.cgb_mode() ? gb::Button::Start : gb::Button::B;
                     }
                     gameboy.set_button(app.esc_button, down);
                     break;

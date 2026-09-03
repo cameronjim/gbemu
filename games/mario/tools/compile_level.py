@@ -221,8 +221,13 @@ BLOCK_KIND_MAP = {
 # a rom-measure pass replaces the bible's approx/unknown positions (see SCHEMA.md)
 PAD_COLUMNS = 8
 
-FLAG_POLE_TOP_ROW = 4
-FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
+# the pole, measured off the smbd 1-3 rip: its green shaft runs nine rows with the ball capping the
+# row above, and it stands on a hard block rather than on the grass, so the shaft stops one row
+# short of the ground and the slide ends on top of that block. smb draws the same pole in every
+# level, and 1-1/1-2's rips agree
+FLAG_POLE_TOP_ROW = 3
+FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 2
+FLAG_BASE_ROW = GROUND_ROW - 1
 
 # the castle that closes an overworld level: five blocks wide, five tall, standing this far past
 # the pole. smb puts it a short walk beyond the flag with clear sky between the two
@@ -232,6 +237,11 @@ CASTLE_FLAG_GAP = 3
 # the door sits in the middle of the five-wide keep, which is where the clear walk ends. the
 # contract with mario.h kCastleDoorOffset, which is what player.c ends the clear walk at
 CASTLE_DOOR_OFFSET = 2
+# the big castle every x-3 closes with, measured off the smbd 1-3 rip (and cross-checked against
+# the nes one): a nine-wide keep under a five-wide middle tier under a three-wide tower, eleven
+# rows from the tower's crenels down to the keep's bottom row. same six kinds as the small one
+CASTLE_BIG_WIDTH = 9
+CASTLE_BIG_HEIGHT = 11
 
 # scenery geometry. a hill or a bush stands on the row the ground's grass is about to grow out of;
 # a cloud carries its own row. smb's narrowest bush is its two caps back to back
@@ -255,6 +265,9 @@ FIREBAR_SEGMENTS = 6
 # lift geometry. roster.json gives the lift no size and physics.json's per-type speeds are
 # must-measure, so both the 2-block deck and the travel spans below are ours
 LIFT_BLOCKS = 2
+# contract with mario.h: kSpriteLiftFirst holds four sprites for each of two decks, and a third
+# deck only fits by taking the firebar/bowser slots over
+LIFT_SHARED_SLOTS = 2
 LIFT_MIN_SPAN = 4
 LIFT_SPAN_MASK = 0x3F
 # the second lift of a pair starts at the far end of the same track and runs the other way, so one
@@ -348,7 +361,8 @@ def feature_max_x(bible):
         max_x = max(max_x, flag["x"] + CASTLE_FLAG_GAP + CASTLE_WIDTH)
     castle = bible.get("castle_end") or {}
     if castle.get("x") is not None:
-        max_x = max(max_x, castle["x"])
+        width = CASTLE_BIG_WIDTH if castle.get("big") else CASTLE_WIDTH
+        max_x = max(max_x, castle["x"] + width - 1)
     return max_x
 
 
@@ -507,17 +521,11 @@ def apply_flag_head(grid, col):
         grid[col - 1][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_CLOTH
 
 
-def apply_castle(grid, x0):
-    # smb's small castle: a three-wide tower over a five-wide keep, its bottom row resting on the
-    # row above the ground. every cell is scenery, so it is only ever painted over sky
-    rows = [
-        [None, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL, None],
-        [None, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW, None],
-        [BLOCK_CASTLE_CRENEL_INNER] * 5,
-        [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE, BLOCK_CASTLE],
-        [BLOCK_CASTLE, BLOCK_CASTLE, BLOCK_CASTLE_DOOR, BLOCK_CASTLE, BLOCK_CASTLE],
-    ]
-    top_row = GROUND_ROW - CASTLE_HEIGHT
+def stamp_castle(grid, x0, rows):
+    # every castle cell is scenery, so a template is only ever painted over sky and its bottom row
+    # rests on the row above the ground. a column past the end of the level is dropped, which is
+    # what the smbd 1-3 rip does to the big keep's ninth column at the map edge
+    top_row = GROUND_ROW - len(rows)
     placed = None
     for dy, row in enumerate(rows):
         for dx, kind in enumerate(row):
@@ -532,6 +540,41 @@ def apply_castle(grid, x0):
     return placed
 
 
+def apply_castle(grid, x0):
+    # smb's small castle: a three-wide tower over a five-wide keep
+    C, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    return stamp_castle(grid, x0, [
+        [None, C, C, C, None],
+        [None, W, K, W, None],
+        [BLOCK_CASTLE_CRENEL_INNER] * 5,
+        [K, K, BLOCK_CASTLE_DOOR_TOP, K, K],
+        [K, K, BLOCK_CASTLE_DOOR, K, K],
+    ])
+
+
+def apply_castle_big(grid, x0):
+    # the big castle that closes an x-3, transcribed cell for cell from the smbd 1-3 rip: nine
+    # columns and eleven rows, three tiers each centred on dx 4. the tower carries two one-row
+    # windows, the middle tier one two-row arch, the upper keep two and the lower keep three - all
+    # of them the same door/window kinds the small castle uses. a tier's crenel row is CRENEL where
+    # sky sits above the merlon and CRENEL_INNER where the next tier up does
+    C, I, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    T, D = BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE_DOOR
+    return stamp_castle(grid, x0, [
+        [None, None, None, C, C, C, None, None, None],
+        [None, None, None, W, K, W, None, None, None],
+        [None, None, C, I, I, I, C, None, None],
+        [None, None, K, K, T, K, K, None, None],
+        [None, None, K, K, D, K, K, None, None],
+        [C, C, I, I, I, I, I, C, C],
+        [K, K, K, T, K, T, K, K, K],
+        [K, K, K, D, K, D, K, K, K],
+        [K, K, K, K, K, K, K, K, K],
+        [K, K, T, K, T, K, T, K, K],
+        [K, K, D, K, D, K, D, K, K],
+    ])
+
+
 def apply_flag(grid, x):
     # only the column is sourced ("unknown" confidence per SCHEMA.md); the pole's height is a
     # provisional placeholder. the bible's approx flag x can land inside the end-of-level staircase
@@ -542,9 +585,11 @@ def apply_flag(grid, x):
     for col in range(x, len(grid)):
         if grid[col][GROUND_ROW] != BLOCK_GROUND:
             continue
-        if all(grid[col][row] == BLOCK_EMPTY for row in range(FLAG_POLE_TOP_ROW, FLAG_POLE_BOTTOM_ROW + 1)):
+        if all(grid[col][row] == BLOCK_EMPTY for row in range(FLAG_POLE_TOP_ROW, FLAG_BASE_ROW + 1)):
             for row in range(FLAG_POLE_TOP_ROW, FLAG_POLE_BOTTOM_ROW + 1):
                 grid[col][row] = BLOCK_FLAG_POLE
+            # the pole's foot: smb's own hard block, which is what mario's slide comes to rest on
+            grid[col][FLAG_BASE_ROW] = BLOCK_HARD
             return col
     return None
 
@@ -933,6 +978,15 @@ def compile_grid(bible, level_type):
     # spans, and the pit's real width is only known once every terrain run has been laid down
     objects = [fit_lift(grid, o) for o in objects] + measured_lifts
 
+    # oam is exactly full at two lift decks (mario.h kSpriteLiftFirst), so a third one borrows the
+    # firebar/bowser slots. hazards.c caps the count when a bar or bowser is loaded, which would
+    # silently drop the deck, so a level is never allowed to want both
+    lift_objects = [o for o in objects if o[2] in (OBJ_LIFT_H, OBJ_LIFT_V)]
+    hazard_objects = [o for o in objects if o[2] in (OBJ_FIREBAR, OBJ_BOWSER)]
+    if len(lift_objects) > LIFT_SHARED_SLOTS and hazard_objects:
+        raise SystemExit("a level with more than %d lifts cannot also carry a firebar or bowser"
+                         % LIFT_SHARED_SLOTS)
+
     flag_col = None
     castle_col = None
     flag = bible.get("flag") or {}
@@ -941,15 +995,22 @@ def compile_grid(bible, level_type):
     if flag_col is not None:
         probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE))
         probes.append((flag_col, FLAG_POLE_BOTTOM_ROW, BLOCK_FLAG_POLE))
+        probes.append((flag_col, FLAG_BASE_ROW, BLOCK_HARD))
         apply_flag_head(grid, flag_col)
         probes.append((flag_col, FLAG_POLE_TOP_ROW - 1, BLOCK_FLAG_BALL))
         if flag_col > 0:
             probes.append((flag_col - 1, FLAG_POLE_TOP_ROW, BLOCK_FLAG_CLOTH))
         # a bible that measured the castle's own column places it there; otherwise it stands the
         # default short walk past the pole
-        castle_x = (bible.get("castle_end") or {}).get("x")
+        castle_end = bible.get("castle_end") or {}
+        castle_x = castle_end.get("x")
         castle_col = castle_x if castle_x is not None else flag_col + CASTLE_FLAG_GAP
-        castle = apply_castle(grid, castle_col)
+        # "big": true picks the eleven-row keep every x-3 ends with; the door the clear walk stops
+        # at is CASTLE_DOOR_OFFSET in either way, which is a real arch in both templates
+        if castle_end.get("big"):
+            castle = apply_castle_big(grid, castle_col)
+        else:
+            castle = apply_castle(grid, castle_col)
         if castle is not None:
             probes.append(castle)
         else:
@@ -1294,13 +1355,16 @@ def write_header(out_dir, slug, level, source_path):
         f.write("// the bible's countdown, in smb ticks; the hud spends one every kTimerFramesPerTick\n")
         f.write("#define %s_TIMER %dU\n" % (upper, level["timer"]))
         f.write("// the flag pole shaft: its column and the top/bottom rows apply_flag() filled. the\n")
-        f.write("// pole's own cells are walk-through, so the engine tests contact against these\n")
+        f.write("// pole's own cells are walk-through, so the engine tests contact against these.\n")
+        f.write("// the base row is the shaft's last cell, one row up from the ground: smb's hard\n")
+        f.write("// block stands under it, and the slide ends on top of that block\n")
         f.write("#define %s_HAS_FLAG %dU\n" % (upper, 0 if level["flag_column"] is None else 1))
         f.write("#define %s_FLAG_COLUMN %dU\n" % (upper, level["flag_column"] or 0))
         f.write("#define %s_FLAG_TOP_ROW %dU\n" % (upper, FLAG_POLE_TOP_ROW))
         f.write("#define %s_FLAG_BASE_ROW %dU\n" % (upper, FLAG_POLE_BOTTOM_ROW))
-        f.write("// the castle that closes the level: the column apply_castle() stood its five-wide\n")
-        f.write("// keep at. the clear walk ends at its door, CASTLE_DOOR_OFFSET columns in\n")
+        f.write("// the castle that closes the level: the column the castle template stood its keep\n")
+        f.write("// at. the clear walk ends at its door, CASTLE_DOOR_OFFSET columns in, which is a\n")
+        f.write("// real arch in the small five-wide keep and in the big nine-wide one alike\n")
         f.write("#define %s_HAS_CASTLE %dU\n" % (upper, 0 if level["castle_column"] is None else 1))
         f.write("#define %s_CASTLE_COLUMN %dU\n" % (upper, level["castle_column"] or 0))
         f.write("// a castle ends at the axe instead: touching it drops the bridge span below\n")

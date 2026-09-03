@@ -125,7 +125,7 @@ clouds; 1-3, which is trees over open air, has clouds only.
     {"kind": "cloud", "x": 1, "y": 6, "width": 3, "confidence": "..."}
   ],
   "flag": {"x": <int or null>, "confidence": "..."},
-  "castle_end": {"x": <int>, "notes": "..."},
+  "castle_end": {"x": <int>, "big": <bool>, "notes": "..."},
   "warps": [
     {"from_x": .., "via": "pipe|warp_zone", "to_level": "2-1", "confidence": "..."}
   ],
@@ -208,6 +208,10 @@ that a prose-derived one does not:
   beside it as the shape's nominal height and is what a bible without `heights` still uses.
 - `castle_end.x` places the castle's left column. without it the castle stands a fixed short
   walk past the flagpole, which is what the other three levels still do.
+- `castle_end.big` picks the eleven-row, nine-column keep every x-3 in smb ends with instead of
+  the five-by-five one. same six castle kinds either way, and the clear walk stops at the same
+  `CASTLE_DOOR_OFFSET` column, which is a real arch in both. a keep whose columns run past
+  `length_columns` is clipped there, which is what both 1-3 rips do at the map edge.
 
 ## measured sub-areas
 
@@ -272,8 +276,11 @@ a handful of things the real level does needed bible fields nothing else uses:
   are the travel the deck's own width rides between and `y` is its row, instead of the older form's
   "carve a pit and put a pair of decks in it". a map rip catches a moving platform at one instant,
   so the row and the drawn columns are measured and the travel is the pit it has to bridge.
-  `"live": false` records a deck the map draws that the engine has no slot left for - `kLiftSlots`
-  is two - so it is documented and not compiled.
+  `"reverse": true` starts the deck at the far end of that travel, which is how two decks sharing
+  one pit stay off each other. `"live": false` records a deck the map draws that the engine has no
+  slot left for - `kLiftSlots` is three, and the third borrows the firebar/bowser oam slots, so a
+  level may carry a third deck or a bar/bowser and never both (compile_level.py refuses one that
+  wants both).
 - 1-3's decor is clouds and nothing else. over open air there is no ground for a hill or a bush to
   stand on, and neither rip draws one. two of its clouds have their lower row behind a canopy in
   both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire.

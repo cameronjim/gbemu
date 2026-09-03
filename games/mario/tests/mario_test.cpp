@@ -331,8 +331,6 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockBrick:
     // the castle's masonry wears the cave brick's four quadrants as a placeholder until the art
     // pass cuts its own, so it answers the same family
-    case kBlockCastleBrick:
-        return tile >= 0xA4 && tile <= 0xA7;
     case kBlockQuestion:
         return tile >= 0xA8 && tile <= 0xAB;
     case kBlockPipeTl:
@@ -4530,6 +4528,7 @@ TEST_CASE("mario_compiler_probes_match_the_rendered_level") {
         const LevelProbe& probe = kLevel11Probes[i];
         camera.goto_xy(gameboy, scx_for_column(probe.column), scy_for_row(probe.row));
         const uint8_t tile = block_tile(gameboy, probe.column, probe.row, camera.x, camera.y);
+        CAPTURE(i, probe.column, probe.row, probe.kind, tile);
         REQUIRE(tile_in_kind_family(tile, probe.kind));
     }
 }
@@ -9922,7 +9921,11 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
             lefts.push_back(dart.left);
         }
     }
-    CAPTURE(lefts.size(), widest, band_top);
+    std::string trace;
+    for (size_t i = 0; i < lefts.size(); i += 4) {
+        trace += std::to_string(lefts[i]) + " ";
+    }
+    CAPTURE(lefts.size(), widest, band_top, trace);
     REQUIRE(lefts.size() > 20);
     // it is 24 px of dart, of which the tail's last two columns are transparent, and it only ever
     // moves left
@@ -9945,10 +9948,11 @@ TEST_CASE("mario_firebar_param_decodes") {
     PlayerSim sim;
     sim.load_level(kLevel14);
 
-    // the level's own bars are the short six-segment kind, and a param of zero reads as that too
+    // the level's own bars are all the short six-segment kind (the high bar at 88 turns the other
+    // way, which is the direction bit and not a length), and a param of zero reads as six too
     REQUIRE(sim.bar_count == 7);
     for (uint8_t i = 0; i < sim.bar_count; ++i) {
-        REQUIRE(sim.bar_param[i] == kFirebarSegments);
+        REQUIRE((sim.bar_param[i] & kFirebarLenMask) == kFirebarSegments);
         REQUIRE(sim.bar_segments(i) == kFirebarSegments);
     }
     sim.bar_param[0] = 0;

@@ -57,4 +57,3 @@ void level_load(uint8_t next_area) {
     }
     SWITCH_ROM_MBC5(caller_bank);
 }
-

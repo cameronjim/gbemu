@@ -24,8 +24,7 @@ static const int8_t kFragDy[kDebrisCount] = {-5, -5, -3, -3};
 static const uint8_t kFragOx[kDebrisCount] = {0, 8, 0, 8};
 static const uint8_t kFragOy[kDebrisCount] = {0, 0, 8, 8};
 // the spin: one drawn quarter-brick through all four flip orientations reads as a tumbling chip
-static const uint8_t kFragSpin[4] = {0U, (uint8_t)S_FLIPX, (uint8_t)(S_FLIPX | S_FLIPY),
-                                     (uint8_t)S_FLIPY};
+static const uint8_t kFragSpin[4] = {0U, (uint8_t)S_FLIPX, (uint8_t)(S_FLIPX | S_FLIPY), (uint8_t)S_FLIPY};
 
 static int16_t frag_x[kDebrisCount];
 static int16_t frag_y[kDebrisCount];
@@ -43,10 +42,9 @@ static void hide(uint8_t slot) {
 }
 
 static void publish(void) {
-    debris_busy = (uint8_t)((debris_timer != 0U || debris_puff != 0U || frag_shown != 0U ||
-                             puff_shown != 0U)
-                                ? 1U
-                                : 0U);
+    debris_busy =
+        (uint8_t)((debris_timer != 0U || debris_puff != 0U || frag_shown != 0U || puff_shown != 0U) ? 1U
+                                                                                                    : 0U);
 }
 
 void debris_break(uint16_t px, int16_t py) BANKED {
@@ -128,7 +126,7 @@ void debris_frame(uint16_t cam_x, uint8_t cam_y) BANKED {
             puff_shown = 1;
             // the first half of the window is the tight burst, the second the widened one
             set_sprite_tile(oam, debris_puff >= (uint8_t)(kPuffFrames / 2U) ? (uint8_t)kTilePuffA
-                                                                           : (uint8_t)kTilePuffB);
+                                                                            : (uint8_t)kTilePuffB);
             set_sprite_prop(oam, (uint8_t)kPalStar);
             move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
         }

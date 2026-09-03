@@ -933,9 +933,8 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         } else {
             tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
         }
-        prop = (uint8_t)(((para != 0U || tile == kTilePiranha || tile >= kTileShell)
-                              ? (uint8_t)kPalKoopa
-                              : (uint8_t)kPalGoomba) |
+        prop = (uint8_t)(((para != 0U || tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa
+                                                                                     : (uint8_t)kPalGoomba) |
                          flip_y);
         if (para != 0U) {
             prop = (uint8_t)(prop | (uint8_t)S_BANK);

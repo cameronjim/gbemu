@@ -459,8 +459,9 @@ static void step_anim(void) {
 // than a terrain_solid_at hit. the span tested is his drawn box against the shaft's whole cell, not
 // against the shaft's own pixels: the hard block at the pole's foot stops his hit box a column
 // short and the shaft stands in the middle of its cell, so a running mario can never reach the lit
-// columns themselves - smb grabs the pole the moment he is up against that block, and so does this. the base row is the shaft's last cell, and the block under it is the row he
-// can still be standing on when he reaches it
+// columns themselves - smb grabs the pole the moment he is up against that block, and so does this. the base
+// row is the shaft's last cell, and the block under it is the row he can still be standing on when he reaches
+// it
 static uint8_t touching_flag(void) {
     if (level->has_flag == 0U) {
         return 0;

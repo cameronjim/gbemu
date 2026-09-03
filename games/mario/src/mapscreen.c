@@ -577,7 +577,8 @@ static void map_draw_popup(void) {
 
     map_draw_border(kMapPopupTopRow, 0, kMapPopupLeftCol, kMapPopupWidth);
     for (row = (uint8_t)(kMapPopupTopRow + 1U); row < kMapPopupBottomRow; ++row) {
-        const uint8_t attr = row == (uint8_t)kMapPopupPressRow ? (uint8_t)kCamPalQuestion : (uint8_t)kCamPalSky;
+        const uint8_t attr =
+            row == (uint8_t)kMapPopupPressRow ? (uint8_t)kCamPalQuestion : (uint8_t)kCamPalSky;
         map_blank_row(row, (uint8_t)(kMapPopupLeftCol + 1U), (uint8_t)(kMapPopupWidth - 2U), attr);
         map_draw_sides(row, kMapPopupLeftCol, kMapPopupWidth);
     }

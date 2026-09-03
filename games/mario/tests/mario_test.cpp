@@ -834,14 +834,13 @@ constexpr uint8_t kFloorSolid = 1;
 constexpr uint8_t kFloorThin = 2;
 
 constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
-    0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,           kFloorSolid, 0,
-    kFloorThin,  0,           kFloorSolid, 0,           kFloorSolid, 0,           0,
-    0,           0,           0,           0,           0,           0,           0,
-    0,           0,           0,           0,           0,           0,           0,
-    0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0, kFloorSolid,
-    0,
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    kFloorSolid, kFloorSolid, 0,           0,           kFloorSolid, 0,           kFloorThin,  0,
+    kFloorSolid, 0,           kFloorSolid, 0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,           kFloorSolid, kFloorSolid,
+    kFloorSolid, kFloorSolid, 0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
+    kFloorSolid, 0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -1902,8 +1901,8 @@ struct PlayerSim {
                 }
                 item_grounded = 0;
             }
-            const unsigned sum = static_cast<unsigned>(item_accum) +
-                                 (item_kind == 3 ? kStarGravitySubpx : kItemGravitySubpx);
+            const unsigned sum =
+                static_cast<unsigned>(item_accum) + (item_kind == 3 ? kStarGravitySubpx : kItemGravitySubpx);
 
             item_accum = static_cast<uint8_t>(sum);
             if (sum > 0xFFu) {
@@ -2140,8 +2139,7 @@ struct PlayerSim {
         // player.c touching_flag: the span tested is his drawn box, not his hit box, because the
         // hard block at the pole's foot stops the hit box a column short of the shaft
         if (col_of(x_pos) > static_cast<int16_t>(lv->flag_column) ||
-            col_of(static_cast<uint16_t>(x_pos + kPlayerBoxPx - 1)) <
-                static_cast<int16_t>(lv->flag_column)) {
+            col_of(static_cast<uint16_t>(x_pos + kPlayerBoxPx - 1)) < static_cast<int16_t>(lv->flag_column)) {
             return false;
         }
         return row_of(y_pos) <= static_cast<int16_t>(lv->flag_base_row + 1) &&
@@ -2456,8 +2454,8 @@ struct PlayerSim {
         if (bar_count != 0) {
             // both phases turn on every frame a bar is loaded, whichever rates the level uses
             for (int r = 0; r < 2; ++r) {
-                const unsigned sum = static_cast<unsigned>(spin_accum[r]) +
-                                     (r == 0 ? kFirebarSpinRaw : kFirebarSpinFastRaw);
+                const unsigned sum =
+                    static_cast<unsigned>(spin_accum[r]) + (r == 0 ? kFirebarSpinRaw : kFirebarSpinFastRaw);
 
                 spin_accum[r] = static_cast<uint8_t>(sum);
                 if (sum > 0xFFu) {
@@ -2524,8 +2522,7 @@ struct PlayerSim {
             // the block row his feet stand in, or one of the three over it; his own walk tick
             // masked picks which, and no clamp - fire_y is signed
             fire_x = edge;
-            fire_y = static_cast<int16_t>(((feet - 1) & 0xFFF0) -
-                                          (bowser_tick & kBowserFireZoneRowMask) +
+            fire_y = static_cast<int16_t>(((feet - 1) & 0xFFF0) - (bowser_tick & kBowserFireZoneRowMask) +
                                           kBowserFireZoneInsetPx);
         } else {
             // out of his jaw: the dart's right edge starts at his mouth, kBowserJawPx into the box
@@ -2596,8 +2593,7 @@ struct PlayerSim {
         if (bowser_live == 0 || bowser_falling != 0) {
             return false;
         }
-        if (!overlap(px, py, kFireballPx, kFireballPx, bowser_x, bowser_y, kBowserWidthPx,
-                     kBowserHeightPx)) {
+        if (!overlap(px, py, kFireballPx, kFireballPx, bowser_x, bowser_y, kBowserWidthPx, kBowserHeightPx)) {
             return false;
         }
         ++bowser_hits;
@@ -3204,8 +3200,7 @@ Probe probe_option(PlayerSim sim, const Option& option, bool climbs = false) {
     // for px with running; falling is not charged for, because dropping off a canopy onto the next
     // one down is how half of this level is crossed and it pays in x already
     out.rise = climbs ? std::max(0, start_feet - end_feet) : 0;
-    out.score = out.total + out.rise +
-                (out.ended_at >= 0 ? kEndBonus : (out.died_at < 0 ? kAliveBonus : 0));
+    out.score = out.total + out.rise + (out.ended_at >= 0 ? kEndBonus : (out.died_at < 0 ? kAliveBonus : 0));
     return out;
 }
 
@@ -5696,8 +5691,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
             // on the grass a row below it: the block's own cell is the one his feet come alongside,
             // read off the shaft he is holding rather than off the camera, which by then has the
             // ground row off the bottom of the screen
-            if (tile_in_kind_family(bg_tile_at(gameboy, pole, m.top + kPlayerBoxPx + 4),
-                                    kBlockHard)) {
+            if (tile_in_kind_family(bg_tile_at(gameboy, pole, m.top + kPlayerBoxPx + 4), kBlockHard)) {
                 feet_on_base = true;
             }
         }
@@ -6210,8 +6204,7 @@ TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_200") {
 
     const auto castle_cell = [](uint8_t kind) {
         return kind == kBlockCastle || kind == kBlockCastleCrenel || kind == kBlockCastleWindow ||
-               kind == kBlockCastleDoorTop || kind == kBlockCastleDoor ||
-               kind == kBlockCastleCrenelInner;
+               kind == kBlockCastleDoorTop || kind == kBlockCastleDoor || kind == kBlockCastleCrenelInner;
     };
     int first = -1;
     int last = -1;
@@ -6700,8 +6693,7 @@ TEST_CASE("mario_goomba_comes_back_after_a_round_trip") {
             came_back_at = sim.pool[0].pos_x;
         }
         // stop as soon as it is well inside the screen, so the run in never reaches it
-        if (came_back_at != 0 &&
-            static_cast<int>(sim.pool[0].pos_x) - static_cast<int>(sim.cam_x) <= 140) {
+        if (came_back_at != 0 && static_cast<int>(sim.pool[0].pos_x) - static_cast<int>(sim.cam_x) <= 140) {
             break;
         }
     }
@@ -8477,12 +8469,11 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
             canopies.push_back(Canopy{row, static_cast<int>(column), static_cast<int>(end + 1)});
         }
     }
-    std::sort(canopies.begin(), canopies.end(),
-              [](const Canopy& a, const Canopy& b) { return a.x0 < b.x0; });
+    std::sort(canopies.begin(), canopies.end(), [](const Canopy& a, const Canopy& b) { return a.x0 < b.x0; });
     const std::vector<Canopy> want = {
-        {12, 18, 21},  {9, 24, 31},   {5, 26, 30},  {12, 32, 34},  {8, 35, 39},  {4, 40, 46},
-        {10, 50, 53},  {13, 59, 63},  {5, 60, 63},  {13, 65, 69},  {9, 70, 72},  {6, 76, 81},
-        {11, 96, 99},  {7, 102, 109}, {13, 111, 113}, {9, 114, 117}, {9, 120, 123},
+        {12, 18, 21}, {9, 24, 31},   {5, 26, 30},    {12, 32, 34},  {8, 35, 39},   {4, 40, 46},
+        {10, 50, 53}, {13, 59, 63},  {5, 60, 63},    {13, 65, 69},  {9, 70, 72},   {6, 76, 81},
+        {11, 96, 99}, {7, 102, 109}, {13, 111, 113}, {9, 114, 117}, {9, 120, 123},
     };
     REQUIRE(canopies.size() == want.size());
     for (size_t i = 0; i < want.size(); ++i) {
@@ -8606,17 +8597,8 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(LEVEL_1_3_CASTLE_COLUMN == 152);
     REQUIRE(LEVEL_1_3_LENGTH_COLUMNS == 160);
     const char* keep[11] = {
-        "...CCC...",
-        "...WKW...",
-        "..CIIIC..",
-        "..KKTKK..",
-        "..KKDKK..",
-        "CCIIIIICC",
-        "KKKTKTKKK",
-        "KKKDKDKKK",
-        "KKKKKKKKK",
-        "KKTKTKTKK",
-        "KKDKDKDKK",
+        "...CCC...", "...WKW...", "..CIIIC..", "..KKTKK..", "..KKDKK..", "CCIIIIICC",
+        "KKKTKTKKK", "KKKDKDKKK", "KKKKKKKKK", "KKTKTKTKK", "KKDKDKDKK",
     };
     for (int dy = 0; dy < 11; ++dy) {
         for (int dx = 0; dx < 9; ++dx) {
@@ -8672,9 +8654,9 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
         }
     }
     const std::vector<std::pair<int, int>> want_coins = {
-        {27, 4},  {28, 4},  {29, 4},  {33, 11}, {37, 2},  {38, 2},   {50, 6},   {51, 6},
-        {60, 4},  {61, 4},  {62, 4},  {63, 4},  {85, 5},  {86, 5},   {91, 4},   {92, 4},
-        {95, 4},  {96, 4},  {111, 12}, {112, 12}, {113, 12}, {118, 5}, {119, 5},
+        {27, 4}, {28, 4}, {29, 4},   {33, 11},  {37, 2},   {38, 2},  {50, 6},  {51, 6},
+        {60, 4}, {61, 4}, {62, 4},   {63, 4},   {85, 5},   {86, 5},  {91, 4},  {92, 4},
+        {95, 4}, {96, 4}, {111, 12}, {112, 12}, {113, 12}, {118, 5}, {119, 5},
     };
     REQUIRE(coins == want_coins);
 
@@ -8696,8 +8678,8 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
         uint8_t kind;
     };
     const std::vector<Foe> want_foes = {
-        {30, 5, kEnemyKoopaRed},      {44, 4, kEnemyGoomba},   {46, 4, kEnemyGoomba},
-        {74, 5, kEnemyKoopaParaRed},  {80, 6, kEnemyGoomba},   {108, 7, kEnemyKoopaRed},
+        {30, 5, kEnemyKoopaRed},      {44, 4, kEnemyGoomba},     {46, 4, kEnemyGoomba},
+        {74, 5, kEnemyKoopaParaRed},  {80, 6, kEnemyGoomba},     {108, 7, kEnemyKoopaRed},
         {112, 6, kEnemyKoopaParaRed}, {131, 13, kEnemyKoopaRed},
     };
     REQUIRE(lv.enemy_count == static_cast<int>(want_foes.size()));
@@ -8732,10 +8714,24 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
         }
     }
     REQUIRE(hills == 0);
-    REQUIRE(cloud_caps == std::vector<std::pair<int, int>>{
-                              {3, 6},   {9, 7},    {20, 3},   {38, 6},   {46, 7},   {51, 3},
-                              {57, 7},  {66, 4},   {83, 7},   {86, 6},   {92, 10},  {97, 3},
-                              {112, 2}, {123, 10}, {129, 6},  {132, 5},  {144, 3},  {150, 7}});
+    REQUIRE(cloud_caps == std::vector<std::pair<int, int>>{{3, 6},
+                                                           {9, 7},
+                                                           {20, 3},
+                                                           {38, 6},
+                                                           {46, 7},
+                                                           {51, 3},
+                                                           {57, 7},
+                                                           {66, 4},
+                                                           {83, 7},
+                                                           {86, 6},
+                                                           {92, 10},
+                                                           {97, 3},
+                                                           {112, 2},
+                                                           {123, 10},
+                                                           {129, 6},
+                                                           {132, 5},
+                                                           {144, 3},
+                                                           {150, 7}});
     REQUIRE(kLevel13Grid[35][7] == kBlockEmpty);
     REQUIRE(kLevel13Grid[96][10] == kBlockEmpty);
 }
@@ -8783,20 +8779,34 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
         std::vector<std::pair<int, int>> runs;
     };
     const std::vector<Wall> want = {
-        {0, 2, {{2, 4}, {7, 14}}},      {3, 3, {{2, 4}, {8, 14}}},
-        {4, 4, {{2, 4}, {9, 14}}},      {5, 12, {{2, 4}, {10, 14}}},
-        {13, 14, {{2, 4}}},             {15, 22, {{2, 4}, {10, 14}}},
-        {23, 23, {{2, 5}, {10, 14}}},   {24, 25, {{2, 2}, {10, 14}}},
-        {26, 28, {{2, 2}}},             {29, 29, {{2, 2}, {10, 14}}},
-        {30, 30, {{2, 2}, {11, 14}}},   {31, 31, {{2, 2}, {10, 14}}},
-        {32, 34, {{2, 2}}},             {35, 36, {{2, 2}, {9, 14}}},
-        {37, 71, {{2, 5}, {9, 14}}},    {72, 79, {{2, 2}, {10, 14}}},
-        {80, 80, {{2, 3}, {10, 14}}},   {81, 87, {{2, 2}, {10, 14}}},
-        {88, 88, {{2, 3}, {10, 14}}},   {89, 96, {{2, 2}, {10, 14}}},
-        {97, 103, {{2, 4}, {10, 14}}},  {104, 115, {{2, 2}, {13, 14}}},
-        {116, 119, {{2, 2}, {10, 14}}}, {120, 122, {{2, 2}, {13, 14}}},
-        {123, 127, {{2, 4}, {10, 14}}}, {128, 140, {{2, 2}}},
-        {141, 141, {{2, 2}, {9, 14}}},  {142, 143, {{2, 5}, {9, 14}}},
+        {0, 2, {{2, 4}, {7, 14}}},
+        {3, 3, {{2, 4}, {8, 14}}},
+        {4, 4, {{2, 4}, {9, 14}}},
+        {5, 12, {{2, 4}, {10, 14}}},
+        {13, 14, {{2, 4}}},
+        {15, 22, {{2, 4}, {10, 14}}},
+        {23, 23, {{2, 5}, {10, 14}}},
+        {24, 25, {{2, 2}, {10, 14}}},
+        {26, 28, {{2, 2}}},
+        {29, 29, {{2, 2}, {10, 14}}},
+        {30, 30, {{2, 2}, {11, 14}}},
+        {31, 31, {{2, 2}, {10, 14}}},
+        {32, 34, {{2, 2}}},
+        {35, 36, {{2, 2}, {9, 14}}},
+        {37, 71, {{2, 5}, {9, 14}}},
+        {72, 79, {{2, 2}, {10, 14}}},
+        {80, 80, {{2, 3}, {10, 14}}},
+        {81, 87, {{2, 2}, {10, 14}}},
+        {88, 88, {{2, 3}, {10, 14}}},
+        {89, 96, {{2, 2}, {10, 14}}},
+        {97, 103, {{2, 4}, {10, 14}}},
+        {104, 115, {{2, 2}, {13, 14}}},
+        {116, 119, {{2, 2}, {10, 14}}},
+        {120, 122, {{2, 2}, {13, 14}}},
+        {123, 127, {{2, 4}, {10, 14}}},
+        {128, 140, {{2, 2}}},
+        {141, 141, {{2, 2}, {9, 14}}},
+        {142, 143, {{2, 5}, {9, 14}}},
         {144, 159, {{2, 2}, {13, 14}}},
     };
     int covered = 0;
@@ -8901,7 +8911,9 @@ TEST_CASE("mario_castle_masonry_is_laid_in_running_bond") {
     REQUIRE(y0 + 3 * kBlockPx <= static_cast<int>(gb::kLcdHeight));
 
     const std::span<const uint16_t> colors = gameboy.framebuffer_color();
-    const auto at = [&](int x, int y) { return colors[static_cast<size_t>(y0 + y) * gb::kLcdWidth + x0 + x]; };
+    const auto at = [&](int x, int y) {
+        return colors[static_cast<size_t>(y0 + y) * gb::kLcdWidth + x0 + x];
+    };
     // the mortar: color 0 of the castle set's ground slot, and the only black in a wall
     constexpr uint16_t kMortar = 0;
     const int window = 3 * kBlockPx;
@@ -9027,8 +9039,12 @@ TEST_CASE("mario_1_4_blocks_firebars_and_the_bridge_match_the_measured_map") {
         uint8_t kind;
     };
     const std::vector<Listed> want_blocks = {
-        {30, 6, 0},                 {106, 9, kBlockListHidden}, {109, 9, kBlockListHidden},
-        {112, 9, kBlockListHidden}, {107, 5, kBlockListHidden}, {110, 5, kBlockListHidden},
+        {30, 6, 0},
+        {106, 9, kBlockListHidden},
+        {109, 9, kBlockListHidden},
+        {112, 9, kBlockListHidden},
+        {107, 5, kBlockListHidden},
+        {110, 5, kBlockListHidden},
         {113, 5, kBlockListHidden},
     };
     for (size_t i = 0; i < want_blocks.size(); ++i) {
@@ -9061,8 +9077,16 @@ TEST_CASE("mario_1_4_blocks_firebars_and_the_bridge_match_the_measured_map") {
             }
         }
     }
-    REQUIRE(hard == std::vector<std::pair<int, int>>{{23, 6}, {30, 10}, {37, 6}, {49, 6}, {60, 6},
-                                                     {67, 6}, {76, 9}, {80, 4}, {84, 9}, {88, 4},
+    REQUIRE(hard == std::vector<std::pair<int, int>>{{23, 6},
+                                                     {30, 10},
+                                                     {37, 6},
+                                                     {49, 6},
+                                                     {60, 6},
+                                                     {67, 6},
+                                                     {76, 9},
+                                                     {80, 4},
+                                                     {84, 9},
+                                                     {88, 4},
                                                      {92, 9}});
 
     // the seven bars, in column order, with the param compile_level packs them into. all seven are
@@ -9147,7 +9171,7 @@ TEST_CASE("mario_1_2_brick_ledges_are_their_measured_widths") {
     // six over the ceiling coins (84-89), the fourth platform (76-79), the ledge between the lift
     // pits with its power-up brick at its right end (145-150), and the coin room's three
     static const Ledge kLedges[] = {
-        {65, 68, 7},   {82, 85, 9},   {91, 93, 9},   {100, 103, 9}, {108, 113, 7},
+        {65, 68, 7},   {82, 85, 9},   {91, 93, 9},   {100, 103, 9},  {108, 113, 7},
         {108, 113, 8}, {169, 174, 8}, {207, 214, 6}, {202, 203, 10}, {207, 208, 10},
     };
     for (const Ledge& l : kLedges) {
@@ -9179,7 +9203,7 @@ TEST_CASE("mario_1_2_the_one_block_crawl_is_the_only_way_past") {
         }
     }
     REQUIRE(pinches == std::vector<std::pair<uint16_t, uint8_t>>{{kCrawlColumn, kCrawlRow},
-                                                                {kCrawlColumn + 1U, kCrawlRow}});
+                                                                 {kCrawlColumn + 1U, kCrawlRow}});
 
     // the pillar: two columns of brick from row 9 down to row 11 on posts, its cap at rows 3-4, the
     // pocket between them open, and the run's floor under the crawl
@@ -9243,8 +9267,8 @@ TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
     int covered = 0;
     int folded = 0;
     gameboy.set_button(gb::Button::Right, true);
-    for (int i = 0; i < 300 && covered < static_cast<int>((kCrawlColumn + 3U) * kBlockPx) -
-                                              static_cast<int>(sim.x_pos);
+    for (int i = 0;
+         i < 300 && covered < static_cast<int>((kCrawlColumn + 3U) * kBlockPx) - static_cast<int>(sim.x_pos);
          ++i) {
         covered += world_travel(gameboy, 1);
         const Mario m = mario_at(gameboy);
@@ -9684,9 +9708,8 @@ TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
 
     // and once it is down and its shell (if mario's bounce kicked it into one) has settled, it
     // walks, which the flyer never did
-    for (int i = 0; i < static_cast<int>(kShellWakeFrames) + 60 &&
-                    sim.pool[koopa_slot(sim)].state != kEnemyWalk;
-         ++i) {
+    for (int i = 0;
+         i < static_cast<int>(kShellWakeFrames) + 60 && sim.pool[koopa_slot(sim)].state != kEnemyWalk; ++i) {
         sim.step(0);
         REQUIRE(koopa_slot(sim) >= 0);
     }
@@ -9810,8 +9833,7 @@ TEST_CASE("mario_tree_platforms") {
             const uint8_t kind = lv.grid[column][row];
             return kind >= kBlockTreeTopL && kind <= kBlockTreeTopR;
         };
-        if (landed == 0 && s.on_ground != 0 && s.riding == 0xFF &&
-            (s.y_pos + s.foot_h()) % kBlockPx == 0 &&
+        if (landed == 0 && s.on_ground != 0 && s.riding == 0xFF && (s.y_pos + s.foot_h()) % kBlockPx == 0 &&
             (canopy_at(left, feet_row) || canopy_at(right, feet_row))) {
             landed = i;
         }
@@ -10790,8 +10812,8 @@ namespace {
 // the frame of `states` where every column in `pivots` has its pivot between `near_px` and
 // `far_px` across the screen, and mario is still `clear_px` short of each of them - negative when
 // he is meant to be past one of them by then
-size_t frame_watching(const std::vector<PlayerSim>& states, std::initializer_list<int> pivots,
-                      int near_px, int far_px, int clear_px, bool grounded) {
+size_t frame_watching(const std::vector<PlayerSim>& states, std::initializer_list<int> pivots, int near_px,
+                      int far_px, int clear_px, bool grounded) {
     for (size_t i = 1; i < states.size(); ++i) {
         const int cam = static_cast<int>(states[i].cam_x);
         bool all = !grounded || states[i].on_ground != 0;
@@ -11247,7 +11269,6 @@ TEST_CASE("mario_toad_sign_glyphs_cover_its_text") {
     REQUIRE(kToadSignRow[2] - kToadSignRow[1] == 2);
 }
 
-
 // --- m22: the lift the transcription pass lost ------------------------------------------------
 //
 // the cell-by-cell pass read the 32x8 object the nes rip draws at 138-139/6 as a bowser fireball
@@ -11358,7 +11379,6 @@ TEST_CASE("mario_1_4_lift_deck_draws_over_the_bridge") {
     REQUIRE(widest == kLiftBlocks * kBlockPx);
     REQUIRE(band_top >= 0);
 }
-
 
 // --- sub-milestone 8b: hud, lives, cards and the battery slot ----------------------------------
 
@@ -12687,7 +12707,8 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     }
     // a bordered card, not a tint over the strip: its corner tiles sit at the card's four corners
     REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) == kTileMapListCorner);
-    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol + kMapPopupWidth - 1) == kTileMapListCorner);
+    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol + kMapPopupWidth - 1) ==
+            kTileMapListCorner);
     REQUIRE(bg_tile_at(gameboy, kMapPopupBottomRow, kMapPopupLeftCol) == kTileMapListCorner);
     // the card is big enough to cover mario's own walk row, so he is parked off screen while it is
     // up rather than left floating on top of it - map_draw_popup_hide brings him back on dismiss

@@ -548,9 +548,9 @@
 // pair whose lower half is blank, the way the fireball's own pair already is: one quarter-brick
 // fragment, drawn spinning by cycling its flip bits, and the fireball's two-frame puff.
 // 0x92-0x9f, fourteen ids, is still unclaimed
-#define kTileDebris 0x8CU // and 0x8d, its blank lower half
-#define kTilePuffA 0x8EU  // 0x8f blank
-#define kTilePuffB 0x90U  // 0x91 blank
+#define kTileDebris 0x8CU   // and 0x8d, its blank lower half
+#define kTilePuffA 0x8EU    // 0x8f blank
+#define kTilePuffB 0x90U    // 0x91 blank
 #define kDebrisTileCount 6U // 0x8c-0x91
 
 // the fragments a broken brick throws out (games/mario/src/debris.c). smb throws four quarter

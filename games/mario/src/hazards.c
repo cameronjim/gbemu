@@ -111,13 +111,7 @@ uint8_t hazard_clear_busy;
 // slot's tile last, slot_claim is who wants it this frame. a claimant whose slot already held its
 // own art only moves the sprite; one taking a slot off another owner writes tile and palette
 // again; and a slot nobody claims is parked, which is what keeps a stale flame from lingering
-enum {
-    kOwnerNone = 0,
-    kOwnerDeck,
-    kOwnerBowser,
-    kOwnerFire,
-    kOwnerFlame
-};
+enum { kOwnerNone = 0, kOwnerDeck, kOwnerBowser, kOwnerFire, kOwnerFlame };
 static uint8_t slot_owner[kHazardPoolSlots];
 static uint8_t slot_claim[kHazardPoolSlots];
 
@@ -571,8 +565,8 @@ void hazards_clear_step(void) BANKED {
             terrain_clear_cell(collapse_column, (int16_t)level->bridge_row);
             // the cell that goes out from under him is what drops him, exactly as in smb: the
             // collapse runs back from the axe and he is standing somewhere along its way
-            if (bowser_live != 0U && bowser_falling == 0U &&
-                cell < (uint16_t)(bowser_x + kBowserWidthPx) && (uint16_t)(cell + kBlockPx) > bowser_x) {
+            if (bowser_live != 0U && bowser_falling == 0U && cell < (uint16_t)(bowser_x + kBowserWidthPx) &&
+                (uint16_t)(cell + kBlockPx) > bowser_x) {
                 bowser_falling = 1;
                 bowser_dy = 0;
             }
@@ -799,8 +793,7 @@ static void draw_flames(uint16_t cam_x, uint8_t cam_y) {
         bx = (int16_t)((int16_t)centre_x - (kFlamePx / 2) - (int16_t)cam_x);
         by = (int16_t)(centre_y - (kFlamePx / 2) - (int16_t)cam_y);
 
-        for (k = 1; k <= segments && on_bar < (uint8_t)kFlameSlots && drawn < (uint8_t)kFlameDrawCap;
-             ++k) {
+        for (k = 1; k <= segments && on_bar < (uint8_t)kFlameSlots && drawn < (uint8_t)kFlameDrawCap; ++k) {
             const int16_t fx = (int16_t)(bx + seg_x[k]);
             const int16_t fy = (int16_t)(by + seg_y[k]);
             uint8_t slot;
@@ -840,9 +833,8 @@ static void draw_bowser(int16_t sx, int16_t sy) {
     // the tell: over the last stretch of the wait for a throw his head's own sprite swaps for the
     // open-jaw pair, which is smb's half-second of mouth before the flame. read off fire_timer, so
     // it costs no state - and it is only up while there is a throw coming, not during a flight
-    const uint8_t jaw = (uint8_t)(fire_ttl == 0U &&
-                                  fire_timer + (uint8_t)kBowserJawOpenFrames >=
-                                      (uint8_t)kBowserFireFrames);
+    const uint8_t jaw =
+        (uint8_t)(fire_ttl == 0U && fire_timer + (uint8_t)kBowserJawOpenFrames >= (uint8_t)kBowserFireFrames);
     uint8_t i;
 
     // one run of eight rather than two of four: the low two bits of the index are the column and
@@ -852,8 +844,8 @@ static void draw_bowser(int16_t sx, int16_t sy) {
 
         // his tile changes with the walk frame, so this one always writes rather than asking
         (void)claim_slot(slot, (uint8_t)kOwnerBowser);
-        set_sprite_tile(slot, i == 0U && jaw != 0U ? (uint8_t)kTileBowserJaw
-                                                   : (uint8_t)(base + (uint8_t)(i << 1)));
+        set_sprite_tile(slot,
+                        i == 0U && jaw != 0U ? (uint8_t)kTileBowserJaw : (uint8_t)(base + (uint8_t)(i << 1)));
         set_sprite_prop(slot, prop);
         move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)(i & 3U) << 3) + kOamXOffset),
                     (uint8_t)(sy + (int16_t)((uint16_t)(i >> 2) << 4) + kOamYOffset));

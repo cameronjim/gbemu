@@ -8,10 +8,10 @@
 #include "debris.h"
 #include "enemies.h"
 #include "hazards.h"
-#include "states.h"
 #include "hud.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "states.h"
 #include "terrain.h"
 
 #include <gb/gb.h>

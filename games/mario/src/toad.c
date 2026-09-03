@@ -73,8 +73,8 @@ static void put_line(const char* text, uint8_t tile_row, uint8_t tile_col) {
 static void draw_toad(void) {
     const int16_t sx = (int16_t)((int16_t)((uint16_t)level->toad_column << 4) - (int16_t)camera_pos_x);
     // the row the bible names is the one he stands on top of, so his feet are at its top edge
-    const int16_t sy = (int16_t)((int16_t)((uint16_t)level->toad_row << 4) - (int16_t)kToadHeightPx -
-                                 (int16_t)camera_pos_y);
+    const int16_t sy =
+        (int16_t)((int16_t)((uint16_t)level->toad_row << 4) - (int16_t)kToadHeightPx - (int16_t)camera_pos_y);
     const uint8_t prop = (uint8_t)((uint8_t)kPalStar | (uint8_t)S_BANK);
     uint8_t i;
 

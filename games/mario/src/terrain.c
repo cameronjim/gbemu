@@ -86,7 +86,15 @@ static void put_face(int16_t column, uint8_t tile_row, uint8_t kind) {
     const uint8_t bl = kBlockTileBl[kind];
     const uint8_t br = kBlockTileBr[kind];
     const uint8_t pal = kBlockPalette[kind];
+    // the attribute is per tile in the hardware and per cell everywhere in this game, because a
+    // block's four quadrants are one object drawn in one set of colors. the pennant's cell on the
+    // pole is the one exception: its left tile is the flag's white and its right tile the shaft's
+    // greens, and no cgb slot holds both. so that kind's right column takes the plain pole's slot
+    uint8_t pal_r = pal;
 
+    if (kind == (uint8_t)kBlockFlagPoleCloth) {
+        pal_r = kBlockPalette[kBlockFlagPole];
+    }
     VBK_REG = VBK_TILES;
     cell[0] = tl;
     cell[1] = tr;
@@ -94,9 +102,9 @@ static void put_face(int16_t column, uint8_t tile_row, uint8_t kind) {
     cell[kRingTileCols + 1U] = br;
     VBK_REG = VBK_ATTRIBUTES;
     cell[0] = pal;
-    cell[1] = pal;
+    cell[1] = pal_r;
     cell[kRingTileCols] = pal;
-    cell[kRingTileCols + 1U] = pal;
+    cell[kRingTileCols + 1U] = pal_r;
     VBK_REG = VBK_TILES;
 }
 

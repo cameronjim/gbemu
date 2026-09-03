@@ -73,6 +73,12 @@ BLOCK_TREE_TOP_L = 43
 BLOCK_TREE_TOP_M = 44
 BLOCK_TREE_TOP_R = 45
 BLOCK_TRUNK = 46
+# the pole cell the pennant is hanging at. the shaft stands in the middle of its block, so the
+# pennant's 16px body reaches 8px into the pole's own cell to touch it, and that half of the cell is
+# the flag's white while the other half is the shaft's greens - one palette more than a cell gets.
+# so the pole wears this kind at the pennant's row and the plain one everywhere else, and the
+# clear's descent swaps the two down the shaft (mario.h kBlockFlagPoleCloth, flow.c flow_flag_step)
+BLOCK_FLAG_POLE_CLOTH = 47
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -122,12 +128,14 @@ KIND_NAMES = {
     BLOCK_TREE_TOP_M: "TREE_TOP_M",
     BLOCK_TREE_TOP_R: "TREE_TOP_R",
     BLOCK_TRUNK: "TRUNK",
+    BLOCK_FLAG_POLE_CLOTH: "FLAG_POLE_CLOTH",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
 # the decor stamper is allowed to overwrite nothing of
 WALK_THROUGH = frozenset(
-    [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH, BLOCK_COIN, BLOCK_AXE,
+    [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_POLE_CLOTH, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH,
+     BLOCK_COIN, BLOCK_AXE,
      BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
      BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_TRUNK]
     + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
@@ -517,8 +525,12 @@ def apply_flag_head(grid, col):
     ball_row = FLAG_POLE_TOP_ROW - 1
     if ball_row >= 0 and grid[col][ball_row] == BLOCK_EMPTY:
         grid[col][ball_row] = BLOCK_FLAG_BALL
+    # the pennant is 16px wide and the shaft stands in the middle of its cell, so the flag spans two
+    # cells: its near half in the column left of the pole and its far half in the pole's own left
+    # tile, which is what BLOCK_FLAG_POLE_CLOTH draws in place of the plain shaft cell
     if col > 0 and grid[col - 1][FLAG_POLE_TOP_ROW] == BLOCK_EMPTY:
         grid[col - 1][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_CLOTH
+        grid[col][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_POLE_CLOTH
 
 
 def stamp_castle(grid, x0, rows):
@@ -993,13 +1005,15 @@ def compile_grid(bible, level_type):
     if flag.get("x") is not None:
         flag_col = apply_flag(grid, flag["x"])
     if flag_col is not None:
-        probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE))
+        # the shaft's top row is the pennant's, so the plain-shaft probe takes the row under it
+        probes.append((flag_col, FLAG_POLE_TOP_ROW + 1, BLOCK_FLAG_POLE))
         probes.append((flag_col, FLAG_POLE_BOTTOM_ROW, BLOCK_FLAG_POLE))
         probes.append((flag_col, FLAG_BASE_ROW, BLOCK_HARD))
         apply_flag_head(grid, flag_col)
         probes.append((flag_col, FLAG_POLE_TOP_ROW - 1, BLOCK_FLAG_BALL))
         if flag_col > 0:
             probes.append((flag_col - 1, FLAG_POLE_TOP_ROW, BLOCK_FLAG_CLOTH))
+            probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE_CLOTH))
         # a bible that measured the castle's own column places it there; otherwise it stands the
         # default short walk past the pole
         castle_end = bible.get("castle_end") or {}

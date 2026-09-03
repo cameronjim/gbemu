@@ -584,6 +584,11 @@ static uint8_t stomp(Enemy* e) {
         e->y_accum = 0;
         e->lead_col = lead_of(e);
         e->foot_col = foot_of(e);
+        // without this, mario's own stomp bounce keeps his feet over the koopa while it is still
+        // falling barely at all, and an unguarded second touch on the very next bounce puts it
+        // straight into its frozen shell-idle state mid-air - the "floats" bug: shell-idle never
+        // steps gravity at all, so it hangs exactly where it was hit for kShellWakeFrames
+        e->grace = kShellGraceFrames;
         return kEnemyHitStomp;
     }
     if (e->kind == kEnemyKoopa || e->kind == kEnemyKoopaRed) {
@@ -837,6 +842,12 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
                 // smb wakes an untouched shell back into its koopa, walking the way it last faced
                 e->state = kEnemyWalk;
                 e->lead_col = lead_of(e);
+            }
+            // an idle shell is normally already standing on the ground, but a de-winged koopa can
+            // be re-stomped into one before it ever lands - gravity still has to run for it, or it
+            // hangs frozen mid-air for the whole wake timer instead of falling
+            if (e->grounded == 0U) {
+                step_fall(e);
             }
             ++i;
             continue;

@@ -1621,6 +1621,9 @@ struct PlayerSim {
             e.y_accum = 0;
             e.lead_col = e.lead();
             e.foot_col = e.foot();
+            // guards the still-falling koopa from a second stomp on mario's own bounce-back before
+            // it has separated from him - see enemies.c's stomp() for the frozen-shell bug this hits
+            e.grace = kShellGraceFrames;
             return kEnemyHitStomp;
         }
         if (e.kind == kEnemyKoopa || e.kind == kEnemyKoopaRed) {
@@ -1871,6 +1874,10 @@ struct PlayerSim {
                 if (--e.timer == 0) {
                     e.state = kEnemyWalk;
                     e.lead_col = e.lead();
+                }
+                // mirrors enemies.c: a shell idled before it ever landed still has to fall
+                if (e.grounded == 0) {
+                    enemy_step_fall(e);
                 }
                 ++i;
                 continue;
@@ -8759,7 +8766,13 @@ TEST_CASE("mario_paratroopa_flies_in_place") {
 
 // roster.json's line: a paratroopa stomps down into a plain koopa. 1-3's own flyer hangs over a
 // pit, so this hangs one over 1-1's long flat run instead - the same slot fields enemies.c's
-// spawn() gives it - and watches the koopa the stomp leaves fall onto the ground and walk off it
+// spawn() gives it - and watches the koopa the stomp leaves fall onto the ground and walk off it.
+// mario does the actual stomping here (a real fall through enemy_collide_player, not a synthetic
+// enemy_stomp() call) so his own stomp_bounce arc carries him straight back down onto the koopa
+// while it is still hanging near where it was hit - the touch a missing grace window once let
+// through as an unintended second stomp, freezing the koopa mid-air in its shell-idle state for
+// the whole kShellWakeFrames wake timer instead of letting it fall. see enemies.c's stomp() and
+// the kEnemyShellIdle branch in enemies_update() for the fix this pins
 TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
     PlayerSim sim;
     sim.load_level(kLevel11);
@@ -8791,21 +8804,24 @@ TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
     e.pos_x = static_cast<uint16_t>(column << 4);
     e.pos_y = static_cast<int16_t>(6 * kBlockPx);
     e.grounded = 0;
-    e.y_accum = static_cast<uint8_t>(kParaBandPx);
+    // mid-band while it rises, not parked at the centre where it happens to start: a pixel short
+    // of the top of its climb, still heading up when mario's fall catches it
+    e.y_accum = static_cast<uint8_t>(kParaBandPx - 8);
     e.dy = -1;
     e.lead_col = e.lead();
     e.foot_col = e.foot();
 
-    const uint16_t held_x = e.pos_x;
-    const int16_t hit_y = e.pos_y;
-    REQUIRE(sim.enemy_stomp(e) == kEnemyHitStomp);
-    // the wings are gone and it is a plain red koopa where it was hit, falling rather than tucked
-    // into its shell - a second stomp is what puts it in one
-    REQUIRE(e.kind == kEnemyKoopaRed);
-    REQUIRE(e.state == kEnemyWalk);
-    REQUIRE(e.grounded == 0);
-    REQUIRE(e.pos_x == held_x);
-    REQUIRE(e.pos_y == hit_y);
+    // drop mario onto it from above, falling, so the first touch is a genuine from-above stomp
+    // through enemy_collide_player rather than a direct call into enemy_stomp() - it still has a
+    // few frames left to climb before he reaches it. the 240-frame walk-up above left him with his
+    // own rightward speed; that has to go, or it carries him sideways off the koopa before his own
+    // bounce ever brings him back down onto it
+    sim.x_pos = e.pos_x;
+    sim.y_pos = static_cast<int16_t>(e.pos_y - sim.foot_h() - 4);
+    sim.x_speed = 0;
+    sim.x_accum = 0;
+    sim.on_ground = 0;
+    sim.y_speed = 2;
 
     const auto koopa_slot = [](const PlayerSim& s) -> int {
         for (uint8_t i = 0; i < s.live; ++i) {
@@ -8815,18 +8831,42 @@ TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
         }
         return -1;
     };
+    int slot = -1;
+    for (int i = 0; i < 8 && slot < 0; ++i) {
+        sim.step(0);
+        if (sim.contact == kEnemyHitStomp) {
+            slot = koopa_slot(sim);
+        }
+    }
+    REQUIRE(slot >= 0);
+    const int16_t hit_y = sim.pool[slot].pos_y;
+    // the wings are gone and it is a plain red koopa where it was hit, falling rather than tucked
+    // into its shell - a second stomp is what puts it in one
+    REQUIRE(sim.pool[slot].kind == kEnemyKoopaRed);
+    REQUIRE(sim.pool[slot].state == kEnemyWalk);
+    REQUIRE(sim.pool[slot].grounded == 0);
+    REQUIRE(sim.pool[slot].pos_y == hit_y);
+
     int16_t last_y = hit_y;
+    int stall = 0;
     int landed = -1;
     for (int i = 0; i < 240 && landed < 0; ++i) {
         sim.step(0);
-        const int slot = koopa_slot(sim);
+        slot = koopa_slot(sim);
         REQUIRE(slot >= 0);
         if (sim.pool[slot].grounded != 0) {
             landed = i;
             break;
         }
-        // it falls under the walker's own gravity, never back up the way it flew
+        // it falls under the walker's own gravity, never back up the way it flew - and mario's
+        // bounce carrying him back down onto it (the real bug's trigger) must never freeze it. the
+        // gravity accumulator alone can hold y flat for a stretch right after it starts from zero
+        // (kEnemyGravitySubpx=24 needs about eleven frames before the first whole-pixel carry), but
+        // nothing legitimate holds it flat for anywhere near the shell's own wake timer - the frozen
+        // shell-idle bug hangs there for kShellWakeFrames, so a stall a fraction of that is unmissable
         REQUIRE(sim.pool[slot].pos_y >= last_y);
+        stall = (sim.pool[slot].pos_y == last_y) ? stall + 1 : 0;
+        REQUIRE(stall < static_cast<int>(kShellWakeFrames) / 4);
         last_y = sim.pool[slot].pos_y;
     }
     REQUIRE(landed >= 0);
@@ -8835,8 +8875,24 @@ TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
     REQUIRE(sim.pool[rest].pos_y > hit_y);
     REQUIRE(solid_at(*sim.lv, sim.pool[rest].foot_col, (sim.pool[rest].pos_y + kEnemyBoxPx) >> 4));
 
-    // and once it is down it walks, which the flyer never did
-    const uint16_t grounded_x = sim.pool[rest].pos_x;
+    // mario's own bounce is still landing on it every arc, which would keep kicking a shell back
+    // and forth forever - sliding him sideways (rather than lifting him clear vertically, which
+    // would just have gravity carry him straight back down) leaves the rest of his own physics
+    // alone: he lands on the same flat run a few columns over instead of coming back down through
+    // the koopa's own column, and it is left to settle on its own the way it does once he has
+    // actually moved on in a real playthrough
+    sim.x_pos = static_cast<uint16_t>(sim.x_pos + 4 * kBlockPx);
+
+    // and once it is down and its shell (if mario's bounce kicked it into one) has settled, it
+    // walks, which the flyer never did
+    for (int i = 0; i < static_cast<int>(kShellWakeFrames) + 60 &&
+                    sim.pool[koopa_slot(sim)].state != kEnemyWalk;
+         ++i) {
+        sim.step(0);
+        REQUIRE(koopa_slot(sim) >= 0);
+    }
+    REQUIRE(sim.pool[koopa_slot(sim)].state == kEnemyWalk);
+    const uint16_t grounded_x = sim.pool[koopa_slot(sim)].pos_x;
     for (int i = 0; i < 60; ++i) {
         sim.step(0);
         REQUIRE(koopa_slot(sim) >= 0);

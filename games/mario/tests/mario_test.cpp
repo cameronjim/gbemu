@@ -2552,6 +2552,9 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
 // carries the lifts, bars, plants and the fake bowser, so a wait ends the frame its move starts to work
 constexpr int kLevelHorizon = 120;
 constexpr int kLevelTail = 40;
+// how much longer a probe that is still airborne at the end of its window may run before its
+// verdict counts: long enough for the deepest pit in the four levels to finish the fall
+constexpr int kLevelSettle = 120;
 // how far past his leading edge the baseline looks for the end of the ground, and how long the hop
 // it answers with holds a
 constexpr int kEdgeLookPx = 10;
@@ -2679,6 +2682,27 @@ Probe probe_option(PlayerSim sim, const Option& option, bool climbs = false) {
     }
     out.total = end_x - start_x;
     out.tail = end_x - mid_x;
+    // a window that runs out with his feet in the air has proved nothing: over a pit the fall that
+    // kills him is simply further off than the horizon reaches, and a move scored as a survivor
+    // there is committed to and never re-decided, because the next decision frame needs ground.
+    // so let the option play on past its window until he is standing again - a landing settles it,
+    // and the pit under him answers the same way it would have inside the horizon
+    if (out.ended_at < 0 && out.died_at < 0 && sim.on_ground == 0) {
+        for (int i = kLevelHorizon; i < kLevelHorizon + kLevelSettle; ++i) {
+            sim.step(option_input(sim, option, i, reflex));
+            if (sim.reached_end()) {
+                out.ended_at = i;
+                break;
+            }
+            if (sim.dead() || sim.collected) {
+                out.died_at = i;
+                break;
+            }
+            if (sim.on_ground != 0) {
+                break;
+            }
+        }
+    }
     // on a level whose route climbs (1-3 goes up four canopy rows three times over), a move that
     // ends higher up has made progress a purely horizontal score cannot see: two moves that both
     // land him standing still differ by nothing but the row they land on. climbing is credited px

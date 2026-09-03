@@ -783,14 +783,19 @@
 // the run starts at 0x96 rather than 0x95 because an 8x16 sprite ignores the low bit of its tile
 // index; every id below has to be even. bank-1 sprite 0x80-0x8c is the hud font (a bg id past
 // 0x7f reads out of the same 0x8800.. bytes, see kTileHudDigitFirst), 0xc0-0xc7 the paratroopa
-// and 0xe0-0xeb the climb poses, so 0x96-0xbb collides with none of them. bank-1 sprite 0x95 and
-// 0xbc-0xbf are still free
+// and 0xe0-0xeb the climb poses, so 0x96-0xbb collides with none of them. bank-1 sprite 0x95 is
+// still free
 #define kTileBowserFirst 0x96U
 #define kBowserTilesPerFrame 16U
 #define kBowserArtFrames 2U
 // and his fire breath, one 8x16 pair per third of a 24x8 dart, the lower half of each blank
 #define kTileBowserFire 0xB6U
 #define kBowserFireTileCount 6U // 0xb6-0xbb
+// his open jaw, the telegraph the throw wears (kBowserJawOpenFrames). one 8x16 pair, the same
+// sprite as his head's left half in both walk frames with the lower jaw dropped two px and the
+// mouth behind it opened - the whole tell is in that one sprite, so a third full frame of him
+// (sixteen more tiles) was never worth the bank-1 ids
+#define kTileBowserJaw 0xBCU
 
 // the paratroopa's two frames. smb draws it as the koopa with a white wing, so each frame is the
 // koopa's own facing pair with the wing baked into the shell half - four tiles a frame, eight in
@@ -800,6 +805,71 @@
 #define kTileParaFly0 0xC0U
 #define kTileParaFly1 0xC4U
 #define kParaTileCount 8U // bank 1, 0xc0-0xc7
+
+// --- the toad room, the beat past 1-4's axe (games/mario/src/toad.c) ---------------------------
+// smb1 does not end a castle on the axe: the bridge goes, bowser goes with it, and mario walks
+// right off the pedestal into the room past it, drops to its floor and stops in front of the
+// mushroom retainer while the two lines of text go up over him. the bible names the column he
+// stands in (LevelInfo toad_column, level-1-4.json's bridge entry) and the row he stands on.
+//
+// the retainer is 16x24, transcribed off the nes rip cell for cell: two columns of 8x16 sprites
+// and eight tiles, the lower pair of each column carrying his legs over eight transparent rows.
+// he wears the castle's kPalStar - the fire ramp, white/orange/dark red - which is the only sprite
+// slot with a white in it that a castle has anything else in, and nothing else is wearing it once
+// the flames are gone. bank-1 sprite 0xc8-0xcf: the paratroopa is at 0xc0-0xc7, the fireball's
+// spin frame at 0xde and the climb poses at 0xe0, so the run collides with none of them
+#define kTileToadFirst 0xC8U
+#define kToadTileCount 8U // bank 1, 0xc8-0xcf
+// tiles are column-major, so a column's four are its own top-to-bottom 8x16 pair and then the pair
+// under it: (0, 2) is the left column and (4, 6) the right
+#define kToadTilesPerColumn 4U
+#define kToadWidthPx 16
+#define kToadHeightPx 24
+// four oam slots, taken from the throwaway animations' own five (kSpriteFreeFirst). the brick
+// fragments and the fireball's puff are the only things that ever want those, and neither can be
+// alive in a room the player reaches by touching the axe
+#define kSpriteToadFirst kSpriteFreeFirst
+#define kSpriteToadCount 4U
+
+// the sign over him. the nes rip prints "THANK YOU MARIO!" and "BUT OUR PRINCESS IS IN ANOTHER
+// CASTLE!" white on the castle's black in the level's own bg, so this does too - but the gb screen
+// is twenty tiles wide against the nes's thirty-two, so the second sentence takes three lines here
+// where the rip fits it in two
+#define kToadSignLines 4U
+#define kToadSignLine0 "THANK YOU MARIO!"
+#define kToadSignLine1 "BUT OUR PRINCESS"
+#define kToadSignLine2 "IS IN ANOTHER"
+#define kToadSignLine3 "CASTLE!"
+// the longest of them, which is what the glyph run has to be able to lay down in one go
+#define kToadSignCols 16U
+// where the block goes: the lines start this many columns left of the retainer, which on 1-4 is
+// the room's own left lip, and the first one is at this tile row. tile rows rather than block ones
+// because a glyph is 8 px: four lines every other tile row is 8 px of ink and 8 px of black
+// between, which is the spacing the rip has.
+//
+// row 15 is where the block fits between the two things that can eat it. the camera settles at its
+// lowest pan (kScyMax) once he is standing on the room's floor, which puts a tile row at 8R - 96
+// on screen: 15 lands the first line at 24, clear of the hud strip and of the scanline or two the
+// window's own isr latency leaks under it, and 21 lands the last at 72-79, which is the row big
+// mario's cap starts in and no lower
+#define kToadSignColumnsLeft 4U
+#define kToadSignTileRow 15U
+#define kToadSignTileRowStep 2U
+// and how long the whole tableau holds before the course-clear card takes over: three seconds,
+// which is about what smb1 leaves it up for
+#define kToadHoldFrames 180U
+// the glyph run, in vram BANK 1 at bg ids 0xec-0xfd - one id per distinct character of the four
+// lines above, in this order, re-encoded out of the resident font the way the hud row's digits are
+// (assets_data.c hud_glyph): ink on color 1, cell on color 0, which under kToadSignAttr is white
+// text standing on the castle's own black. a space needs no id of its own - kTileHudBlank already
+// re-encodes to an empty cell - and neither does anything else, because these are the only
+// characters the sign has
+#define kTileSignFirst 0xECU
+#define kSignGlyphChars "THANKYOUMRI!BPCESL"
+#define kSignGlyphCount 18U // 0xec-0xfd
+// the same attribute the hud row's glyphs wear (kHudBarAttr): kCamPalSky's color 0 is the level's
+// backdrop in every set and its color 1 is white in every set
+#define kToadSignAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
 
 // the compiled kinds, the contract with compile_level.py's ENEMY_KIND_MAP. roster.json: the red
 // koopa turns at a ledge where the green one walks off, and the piranha lives in a pipe
@@ -1034,10 +1104,24 @@
 // and how long one dart lives: a hundred frames at that speed is 150 px, which clears the widest
 // view he can be seen from. a count rather than a screen test keeps the twin's arithmetic exact
 #define kBowserFireLifeFrames 100U
-// how far down his 32 px body the dart leaves him. his jaw is higher than this, but the fire has
-// to cross the band a body standing on the same deck occupies or it is no threat at all: 18 puts
-// its 8 px squarely inside small mario's 16 and big mario's 32
-#define kBowserFireJawPx 18
+// where in his 32x32 box the dart leaves him. he faces left, so his jaw is the leftmost thing on
+// him: the mouth in kBowserTiles opens at x 0-5, y 4-11 (the orange with the white teeth in it).
+// the dart's RIGHT edge starts at kBowserJawPx, which is inside his head, so the flame is seen to
+// come out of the mouth instead of appearing already clear of him - and that also buys the player
+// most of his body's width in reaction time at the range the bridge fight is actually fought at
+#define kBowserJawPx 8
+// the mouth's own y, which the 8 px dart is centred on
+#define kBowserFireJawPx 6
+// and the swoop. a dart left at the jaw's height sails clean over small mario's head - his box on
+// the deck starts eighteen px down bowser's - so smb1's flame, which tracks mario's row as it
+// flies, is cut down to a fixed sink: one px a frame for this many frames, which lands it on the
+// band the old fixed 18 put it in. the drop is the jaw throw's only; a zone dart is already aimed
+#define kBowserFireDropPx 12
+#define kBowserFireDropFrames 12U
+// the telegraph. smb1 opens his mouth about half a second before the flame, and hazards.c swaps
+// the head sprite for kTileBowserJaw over the last of the throw's wait rather than carrying a
+// third animation frame: the jaw is one 8x16 sprite of his eight, so the tell costs two tiles
+#define kBowserJawOpenFrames 30U
 // the fire zone. smb1 arms his flame spawner several screens before the bridge and the flames come
 // at mario off the RIGHT EDGE of the view while bowser himself is still off screen, at one of a
 // small table of rows smb1 picks from mario's own y; only once he is on screen do they leave his

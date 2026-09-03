@@ -61,6 +61,11 @@ void assets_load_enemy_palettes_castle(void) BANKED;
 // white in all three level sets
 void assets_load_hud_font(void) BANKED;
 
+// and the toad room's: the retainer's eight sprite tiles at kTileToadFirst, plus one re-encoded
+// glyph per distinct character of the sign he stands under, both in vram bank 1. a castle whose
+// bible names a toad column loads them when the axe arms the clear (toad.c)
+void assets_load_toad_tiles(void) BANKED;
+
 // the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5d)
 // never claimed: water and path, a round node marker (one quadrant tile, stamped four times with
 // the cgb flip bits the way a mirrored hill/bush kind already is), and the CLEAR LIST panel's own

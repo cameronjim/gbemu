@@ -162,8 +162,17 @@ clouds; 1-3, which is trees over open air, has clouds only.
   used, now available to a main level's terrain list too)
 - a castle `gap` takes an optional `"lift": false`. a prose-derived castle got a horizontal deck
   thrown across any pit wider than `CASTLE_LIFT_GAP` columns, so an unverified extent could not
-  make the level impossible; a measured pit says `false` and gets what the rip draws, which for
-  1-4's thirteen-column bridge pit is a bridge and no deck at all.
+  make the level impossible; a measured pit says `false` and gets what the rip draws. 1-4's
+  thirteen-column bridge pit says `false` and carries a bridge; the one lift the level does have
+  is a measured `lift_platform` four rows over that bridge, which is a different entry and not
+  this rule's guess.
+- a measured `bridge` entry takes an optional `toad_x`: the column the mushroom retainer stands
+  in, in the room past the axe. smb does not end a castle on the axe - the bridge goes, bowser
+  goes with it, and mario walks right off the pedestal, drops into that room and stops a column
+  short of the retainer while the sign goes up over the two of them. the column compiles to the
+  level's `TOAD_COLUMN`, and the floor row he stands on (scanned from below the pedestal, because
+  a castle's roof is solid over every column) to `TOAD_ROW`; `HAS_TOAD` is 0 on a bridge entry
+  that names none, and there the clear walk ends the old way, a fixed run along the pedestal.
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`

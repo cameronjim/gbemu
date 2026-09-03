@@ -8,6 +8,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "terrain.h"
+#include "toad.h"
 
 #include <gb/gb.h>
 #include <stdint.h>
@@ -706,17 +707,16 @@ static int16_t clear_walk_y(void) {
     return (int16_t)(clear_base_y() + kBlockPx);
 }
 
-// the column the walk-off ends at: the castle's door when the level closes with one, and otherwise
-// the old fixed walk along the closing ground. kept inside the compiled level however short its
-// tail is
+// the column the pole walk-off ends at: the castle's door when the level closes with one, and
+// otherwise a fixed run along the closing ground. kept inside the compiled level however short its
+// tail is. the axe walk has its own end, out of bank 6 - see toad_walk_end
 static uint16_t clear_walk_x(void) {
     uint16_t column;
 
-    if (clear_axe == 0U && level->has_castle != 0U) {
+    if (level->has_castle != 0U) {
         column = (uint16_t)(level->castle_column + (uint16_t)kCastleDoorOffset);
     } else {
-        column = (uint16_t)((clear_axe != 0U ? level->axe_column : level->flag_column) +
-                            (uint16_t)kClearWalkBlocks);
+        column = (uint16_t)(level->flag_column + (uint16_t)kClearWalkBlocks);
     }
     if (column > (uint16_t)(level_columns - 1U)) {
         column = (uint16_t)(level_columns - 1U);
@@ -725,11 +725,12 @@ static uint16_t clear_walk_x(void) {
 }
 
 uint8_t player_clear_update(void) {
-    const int16_t base_y = clear_base_y();
-
     switch (clear_phase) {
-    case kClearSlide:
-        // down the pole in the climb pose, the pennant coming down the column beside him
+    case kClearSlide: {
+        // down the pole in the climb pose, the pennant coming down the column beside him. the
+        // pole's base is worked out here rather than in the prologue: the axe phases never want it
+        const int16_t base_y = clear_base_y();
+
         if (clear_flag_done == 0U) {
             clear_flag_done = flow_flag_step();
         }
@@ -743,6 +744,7 @@ uint8_t player_clear_update(void) {
             clear_timer = 0;
         }
         break;
+    }
     case kClearFlip:
         // and waits there while the flag finishes coming down, which is what holds this phase open
         if (clear_flag_done == 0U) {
@@ -771,6 +773,28 @@ uint8_t player_clear_update(void) {
         }
         break;
     case kClearWalk:
+        if (clear_axe != 0U) {
+            // the axe walk is the one that has somewhere to fall: the pedestal the axe stood on is
+            // four rows over the floor of the room past it, and smb's mario walks off the edge and
+            // drops in. so this one is driven through the physics pass with right held rather than
+            // sliding x_pos along - that is where gravity, the landing and the walk cycle already
+            // live, and bank 0 has no room for a second copy of any of them. where it ends, and
+            // therefore which phase it ends in, is bank 6's to work out
+            uint8_t next;
+
+            (void)player_update((uint8_t)J_RIGHT);
+            next = toad_walk_end();
+            if (next != 0U) {
+                stop_x();
+                anim_frame = kFrameIdle;
+                // he stands beside the retainer for the whole of the sign; a castle whose bible
+                // named no toad room has nothing to stand in front of and keeps the vanishing act
+                clear_gone = (uint8_t)(next == (uint8_t)kClearDoor);
+                clear_phase = next;
+                clear_timer = 0;
+            }
+            break;
+        }
         x_pos = (uint16_t)(x_pos + kClearWalkPx);
         anim_frame = (uint8_t)(kFrameWalk0 + walk_step);
         ++clear_timer;
@@ -786,6 +810,14 @@ uint8_t player_clear_update(void) {
             clear_timer = 0;
         }
         break;
+    case kClearToad: {
+        // the retainer, the sign over him and the hold, all of it out of bank 6. the tick is this
+        // side's, so that side keeps no state at all
+        const uint8_t tick = clear_timer;
+
+        ++clear_timer;
+        return toad_frame(tick);
+    }
     case kClearDoor:
         ++clear_timer;
         if (clear_timer >= (uint8_t)kClearDoorFrames) {

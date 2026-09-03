@@ -8634,9 +8634,10 @@ TEST_CASE("mario_autopilot_completes_1_3") {
 
     const Route route = plan_level(kLevel13, 6000);
     REQUIRE(route.reached);
-    REQUIRE(PlayerSim::col_of(route.end.hit_left()) <=
-            static_cast<int16_t>(kHostLevels[kLevel13].flag_column));
-    REQUIRE(PlayerSim::col_of(route.end.hit_right()) >=
+    // contact is his drawn box, not his hit box: the pole's hard base block parks the hit box one
+    // column short of the shaft (player.c touching_flag)
+    REQUIRE(PlayerSim::col_of(route.end.x_pos) <= static_cast<int16_t>(kHostLevels[kLevel13].flag_column));
+    REQUIRE(PlayerSim::col_of(static_cast<uint16_t>(route.end.x_pos + kPlayerBoxPx - 1)) >=
             static_cast<int16_t>(kHostLevels[kLevel13].flag_column));
 
     gb::Gameboy gameboy;
@@ -8789,7 +8790,8 @@ TEST_CASE("mario_lift_carries") {
     // rather than settling on it - so the ride itself is set up here rather than hoped for. he is
     // dropped onto the middle of the first deck with no button held at all, and everything after
     // that is the engine's doing
-    REQUIRE(planned_states[0].lift_count == 2);
+    // the third deck rides the firebar's oam slots now, so 1-3 fields all three of its decks
+    REQUIRE(planned_states[0].lift_count == 3);
     PlayerSim rider;
     rider.load_level(kLevel13);
     const PlayerSim::LiftSim& deck = rider.lifts[0];

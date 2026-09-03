@@ -2,62 +2,89 @@
   "level": "1-4",
   "type": "castle",
   "timer": 300,
-  "length_columns": null,
-  "length_columns_confidence": "unknown",
-  "start": {"x": 0, "y": 6},
+  "length_columns": 160,
+  "length_columns_confidence": "measured",
+  "start": {"x": 1, "y": 7, "confidence": "approx", "notes": "neither rip draws mario; smb1 stands him on the opening platform, whose surface is row 7"},
   "terrain": [
-    {"kind": "stairs", "x0": 0, "x1": 10, "step_height": -4, "confidence": "sourced", "notes": "mariowiki: 'elevated area with stairs heading downwards, ending at a pit of lava'"},
-    {"kind": "gap", "x0": 10, "x1": 16, "confidence": "sourced", "notes": "lava pit at bottom of the opening stairs"},
-    {"kind": "ground", "x0": 16, "x1": 40, "confidence": "unknown", "notes": "platform surrounded by lava carrying the power-up ? block, exact extent not sourced"},
-    {"kind": "ground", "x0": 40, "x1": 70, "confidence": "unknown", "notes": "corridor of firebars on the ceiling"},
-    {"kind": "ground", "x0": 70, "x1": 100, "confidence": "sourced", "notes": "mariowiki: room with firebars on both ceiling and floor"},
-    {"kind": "ground", "x0": 100, "x1": 130, "confidence": "unknown", "notes": "larger empty space containing the hidden blocks (6 coins + yoshi egg per challenge mode), extent not sourced"},
-    {"kind": "ground", "x0": 130, "x1": 150, "confidence": "sourced", "notes": "bridge leading to the fake bowser encounter"}
+    {"kind": "bricks", "material": "castle", "x0": 0, "x1": 159, "y0": 2, "y1": 2, "confidence": "measured", "notes": "the castle roof: one unbroken row of masonry over every column of the level, the toad room's own ceiling included - the nes rip draws it unbroken from 0 to 159"},
+    {"kind": "bricks", "material": "castle", "x0": 0, "x1": 22, "y0": 3, "y1": 4, "confidence": "measured", "notes": "roof three rows thick from the start to the first ceiling gap"},
+    {"kind": "bricks", "material": "castle", "x0": 23, "x1": 23, "y0": 3, "y1": 5, "confidence": "measured", "notes": "the gap's left jamb steps down one row, and carries the hard block at 23/6"},
+    {"kind": "bricks", "material": "castle", "x0": 37, "x1": 71, "y0": 3, "y1": 5, "confidence": "measured", "notes": "the firebar corridor's roof, four rows thick; its underside is row 5 and the corridor is rows 6-8"},
+    {"kind": "bricks", "material": "castle", "x0": 80, "x1": 80, "y0": 3, "y1": 3, "confidence": "measured", "notes": "a one-column stub hanging off the roof, holding up the hard block at 80/4"},
+    {"kind": "bricks", "material": "castle", "x0": 88, "x1": 88, "y0": 3, "y1": 3, "confidence": "measured", "notes": "its twin, holding the high firebar's pivot at 88/4"},
+    {"kind": "bricks", "material": "castle", "x0": 97, "x1": 103, "y0": 3, "y1": 4, "confidence": "measured"},
+    {"kind": "bricks", "material": "castle", "x0": 123, "x1": 127, "y0": 3, "y1": 4, "confidence": "measured"},
+    {"kind": "bricks", "material": "castle", "x0": 142, "x1": 143, "y0": 3, "y1": 5, "confidence": "measured", "notes": "the jamb over the wall the axe stands on"},
+
+    {"kind": "bricks", "material": "castle", "x0": 0, "x1": 2, "y0": 7, "y1": 14, "confidence": "measured", "notes": "the opening raised platform, surface row 7"},
+    {"kind": "bricks", "material": "castle", "x0": 3, "x1": 3, "y0": 8, "y1": 14, "confidence": "measured", "notes": "first descending step"},
+    {"kind": "bricks", "material": "castle", "x0": 4, "x1": 4, "y0": 9, "y1": 14, "confidence": "measured", "notes": "second descending step"},
+    {"kind": "bricks", "material": "castle", "x0": 5, "x1": 12, "y0": 10, "y1": 14, "confidence": "measured", "notes": "the run out to the first lava pit, surface row 10"},
+    {"kind": "bricks", "material": "castle", "x0": 15, "x1": 25, "y0": 10, "y1": 14, "confidence": "measured"},
+    {"kind": "bricks", "material": "castle", "x0": 29, "x1": 31, "y0": 10, "y1": 14, "confidence": "measured", "notes": "the three-column island between the second and third lava pits; its middle cell is the floor firebar's pivot"},
+    {"kind": "bricks", "material": "castle", "x0": 35, "x1": 71, "y0": 9, "y1": 14, "confidence": "measured", "notes": "the firebar corridor's floor, one row higher than the rest of the level's"},
+    {"kind": "bricks", "material": "castle", "x0": 72, "x1": 103, "y0": 10, "y1": 14, "confidence": "measured", "notes": "the open hall past the corridor, one row back down"},
+    {"kind": "bricks", "material": "castle", "x0": 104, "x1": 115, "y0": 13, "y1": 14, "confidence": "measured", "notes": "the hidden-block room: the floor drops three rows to the level's own ground rows"},
+    {"kind": "bricks", "material": "castle", "x0": 116, "x1": 119, "y0": 10, "y1": 14, "confidence": "measured", "notes": "the first of two pillars before the bridge"},
+    {"kind": "bricks", "material": "castle", "x0": 120, "x1": 122, "y0": 13, "y1": 14, "confidence": "measured"},
+    {"kind": "bricks", "material": "castle", "x0": 123, "x1": 127, "y0": 10, "y1": 14, "confidence": "measured", "notes": "the second pillar, whose top is flush with the bridge deck"},
+    {"kind": "bricks", "material": "castle", "x0": 141, "x1": 143, "y0": 9, "y1": 14, "confidence": "measured", "notes": "the wall past the bridge; its surface is row 9 and the axe stands on top of it"},
+    {"kind": "bricks", "material": "castle", "x0": 144, "x1": 159, "y0": 13, "y1": 14, "confidence": "measured", "notes": "the floor of the room past the axe, two rows deep and running to the end of the level: the clear sequence drops mario off the pedestal onto it and walks him along it to the retainer, so these sixteen columns are the only ground in the level nothing but the ending ever stands on"},
+
+    {"kind": "gap", "x0": 13, "x1": 14, "confidence": "measured", "notes": "first lava pit, two columns"},
+    {"kind": "bricks", "material": "lava", "x0": 13, "x1": 14, "y0": 12, "y1": 12, "confidence": "measured", "notes": "this is the one pit whose lava the rips draw a row higher than the ground rows"},
+    {"kind": "gap", "x0": 26, "x1": 28, "confidence": "measured", "notes": "second lava pit, three columns"},
+    {"kind": "gap", "x0": 32, "x1": 34, "confidence": "measured", "notes": "third lava pit, three columns"},
+    {"kind": "gap", "x0": 128, "x1": 140, "lift": false, "confidence": "measured", "notes": "the bridge's own lava, thirteen columns. \"lift\": false keeps the compiler's wide-castle-gap rule from throwing its own deck across a measured pit - the one deck this level does carry is the measured lift_platform below, not this rule's guess"},
+
+    {"kind": "lift_platform", "x0": 132, "x1": 140, "y": 6, "reverse": false, "confidence": "approx", "notes": "the one lift in the level, four rows over the bridge deck. the nes rip draws a 32x8 plate at columns 138-139 whose pixels are the lift's own art and nothing else's: a white top edge, a red band, then four repeats of an 8 px orange plate with a dark stud, and a red bottom edge. a bowser flame in the same rip - the one it catches at 127/8 - is a wavy 24x8 tongue of dark red with an orange core and no straight edge anywhere in it, so the two cannot be confused, and the transcription pass that called this cell a flame was wrong. what a still frame cannot show is the travel: 138-139 is where the rip caught the deck, and the span written here carries it back over the bridge to 132 and out again, which is the only track a horizontal lift over this pit can have. the smbd challenge rip draws nothing at all in this cell, so the deck is the nes level's and is marked approx on that account too"},
+
+    {"kind": "bridge", "x0": 128, "x1": 140, "y": 10, "axe_x": 141, "axe_y": 8, "toad_x": 153, "confidence": "measured", "notes": "the deck runs level with the pillar before it, four rows up from the lava; the axe stands two rows over the deck on the wall past it. \"toad_x\" is where the retainer stands in the room past the axe, which the clear walk ends in front of: the nes rip draws him 16x24 with his feet on the room's floor row at column 153, nine columns into a room it draws out to 159, and now that this bible carries the whole room his measured cell is the one he stands in. the camera stops at column 147 - mario ends the walk at 151 and rides kCamFollowX four blocks into the view - and shows 147-156, which frames the retainer in the right third with the axe wall out of the picture and the sign centred over both of them"}
   ],
   "blocks": [
-    {"x": 20, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: ? block containing a power-up, above a platform surrounded by lava, early in the level"},
-    {"x": 105, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced", "notes": "one of several hidden blocks 'right before fake Bowser' - mariowiki says 6 coins total across these hidden blocks, only representative entries placed"},
-    {"x": 107, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
-    {"x": 109, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
-    {"x": 111, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
-    {"x": 113, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"},
-    {"x": 115, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "sourced"}
+    {"x": 23, "y": 6, "kind": "hard", "confidence": "measured", "notes": "one of four lone solid blocks both rips draw with no firebar on them; hangs under the ceiling gap's left jamb"},
+    {"x": 30, "y": 6, "kind": "question", "contents": "mushroom_fire", "confidence": "measured", "notes": "the level's only ? block, centred in the ceiling gap over the island; the nes rip draws a mushroom in it and the smbd one a fire flower"},
+    {"x": 37, "y": 6, "kind": "hard", "confidence": "measured", "notes": "the ceiling gap's right jamb, mirroring 23/6"},
+    {"x": 80, "y": 4, "kind": "hard", "confidence": "measured", "notes": "hangs off the roof stub at 80/3, mirroring the firebar pivot at 88/4"},
+    {"x": 92, "y": 9, "kind": "hard", "confidence": "measured", "notes": "a knee-high block on the hall floor, mirroring the two firebar pivots at 76/9 and 84/9"},
+    {"x": 106, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "measured", "notes": "the lower rank of the hidden-block ladder, three blocks four rows over the room's floor"},
+    {"x": 109, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "measured"},
+    {"x": 112, "y": 9, "kind": "hidden", "contents": "coin", "confidence": "measured"},
+    {"x": 107, "y": 5, "kind": "hidden", "contents": "coin", "confidence": "measured", "notes": "the upper rank, four rows over the lower one and offset one column right"},
+    {"x": 110, "y": 5, "kind": "hidden", "contents": "coin", "confidence": "measured", "notes": "the top-middle block: challenge mode hides the yoshi egg in this one"},
+    {"x": 113, "y": 5, "kind": "hidden", "contents": "coin", "confidence": "measured"}
   ],
   "enemies": [
-    {"x": 42, "y": 9, "kind": "firebar", "confidence": "sourced", "notes": "first of the ceiling firebar corridor (7 firebars total across the level per mariowiki)"},
-    {"x": 48, "y": 9, "kind": "firebar", "confidence": "approx"},
-    {"x": 54, "y": 9, "kind": "firebar", "confidence": "approx"},
-    {"x": 60, "y": 9, "kind": "firebar", "confidence": "approx"},
-    {"x": 72, "y": 9, "kind": "firebar", "confidence": "sourced", "notes": "ceiling firebar in the mixed ceiling+floor room"},
-    {"x": 78, "y": 13, "kind": "firebar", "confidence": "sourced", "notes": "floor firebar in the mixed ceiling+floor room"},
-    {"x": 90, "y": 9, "kind": "firebar", "confidence": "approx", "notes": "7th and last firebar, exact placement not individually sourced"},
-    {"x": 140, "y": 9, "kind": "lift_horizontal", "confidence": "sourced", "notes": "mariowiki: horizontally moving lift above the fake bowser bridge"},
-    {"x": 145, "y": 13, "kind": "bowser_fake", "confidence": "sourced", "notes": "mariowiki: 'a Little Goomba in disguise' on the bridge, not the real bowser"}
+    {"x": 30, "y": 10, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured", "notes": "the island bar: its pivot is the island's own middle surface cell, so the bar sweeps the three columns a jumper has to land on"},
+    {"x": 49, "y": 6, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured", "notes": "first of the three that hang from the corridor roof"},
+    {"x": 60, "y": 6, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured"},
+    {"x": 67, "y": 6, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured"},
+    {"x": 76, "y": 9, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured", "notes": "pivot one row over the hall floor, so the block itself is a hop"},
+    {"x": 84, "y": 9, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured"},
+    {"x": 88, "y": 4, "kind": "firebar", "length": 6, "speed": "slow", "direction": "ccw", "confidence": "measured", "notes": "the high bar under the roof stub, out of a walker's reach. the nes rip catches it pointing down-left where all six of the others point down-right by the same angle - the exact mirror, which is a bar turning the other way"},
+    {"x": 135, "y": 9, "kind": "bowser_fake", "fire_from": 92, "confidence": "measured", "notes": "the rip draws him two columns wide and two rows tall with his feet on the bridge deck; mariowiki: a little goomba in disguise. \"fire_from\" is the column his flame spawner arms at: the nes rip draws three of his flames in flight before the bridge room - a 24x8 dart at 101.75-103.19/8.06-8.50, a second at 114.50-115.94/9.06-9.50 and a third at 127.00-128.44/10.06-10.50, so cells 102/8, 115/9 and 127/10 - and smb1 spawns them at the right edge of the view, so a flame the rip catches at column 102 came in while the camera was up to a screen (ten columns) left of it. 92 is that camera: 102 less a screen, in the open hall, and it puts all three of the rip's flames inside the zone"}
   ],
   "areas": [],
-  "castle_end": {"x": 150, "notes": "mariowiki: axe/bridge encounter with fake bowser; exact axe column not sourced"},
+  "castle_end": null,
   "flag": null,
   "warps": [],
   "smbd": {
     "red_coins": [
-      {"x": 20, "y": 6, "notes": "above the ? block near the start", "confidence": "sourced"},
-      {"x": 50, "y": 6, "notes": "within the firebar hallway", "confidence": "sourced"},
-      {"x": 75, "y": 6, "notes": "one of two coins between firebars in the mixed room", "confidence": "sourced"},
-      {"x": 82, "y": 6, "notes": "second of two coins between firebars", "confidence": "sourced"},
-      {"x": 145, "y": 6, "notes": "above the fake bowser", "confidence": "sourced"}
+      {"x": 30, "y": 3, "notes": "three rows over the ? block, inside the ceiling gap", "confidence": "measured"},
+      {"x": 50, "y": 6, "notes": "beside the first corridor firebar's pivot", "confidence": "measured"},
+      {"x": 86, "y": 6, "notes": "in the open hall, under the roof between the two stubs", "confidence": "measured"},
+      {"x": 77, "y": 9, "notes": "beside the first hall firebar's pivot", "confidence": "measured"},
+      {"x": 136, "y": 5, "notes": "five rows over the fake bowser, above the bridge", "confidence": "measured"}
     ],
-    "yoshi_egg": {"x": 108, "y": 5, "notes": "mariowiki: 'top-middle Hidden Block in the larger empty space with the other Hidden Blocks' - i.e. among the 6-coin hidden block cluster before fake bowser", "confidence": "sourced"},
+    "yoshi_egg": {"x": 110, "y": 5, "notes": "the top-middle hidden block of the ladder; the smbd rip draws the egg in the cell the nes rip has a coin block in", "confidence": "measured"},
     "medal_score": 13000,
     "medal_score_jp": 12000
   },
-  "smbd_deltas": "no smbd-specific terrain/block layout changes for 1-4 were found in the sources used, beyond the standard challenge-mode additions. castle levels in nes smb1 reuse a common tile/room template across worlds; whether smbd 1-4 specifically deviates from that template was not established by any source in this pass.",
+  "smbd_deltas": "the smbd challenge rip and the nes rip are the same level. the smbd one is 140 columns and starts at what is column 16 here - all eleven of its solid blocks (seven firebar pivots and four lone ones), both roof stubs, every lava pit, the bridge, the axe and bowser sit exactly sixteen columns left of their nes cells, and a cell-by-cell diff of the 140 x 13 overlap comes out clean apart from tiles a flame or a sprite is drawn over. so nothing in 1-4 moved between smb1 and smbd, and columns 0-15 - the opening raised platform, its three descending steps and the first lava pit - are transcribed off the nes rip, which is the only one that draws them. the two rips do differ past the axe: the nes one draws the toad room's ceiling, its floor and its two sprites out to column 159, the smbd one stops the roof at 143 and shapes the room differently. the bible follows the nes rip and carries the whole room, so it is 160 columns and not the 152 an earlier pass cut it at - the eight columns that pass dropped are nothing but roof and floor, but they are what the ending needs: the camera's last view opens at 147 instead of 142, which puts the axe wall out of the picture and gives the retainer, mario and the sign over them a room to stand in (\"toad_x\" on the bridge entry). challenge mode's own additions, five red coins and the yoshi egg replacing the ladder's top-middle coin, are recorded in \"smbd\" and are not compiled.",
   "sources": [
-    "https://www.mariouniverse.com/maps-gbc-smbd/",
     "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-4.png",
     "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-4.png",
-    "https://themushroomkingdom.net/maps/smb/1-4",
-    "https://www.mariowiki.com/World_1-4_(Super_Mario_Bros.)",
-    "https://vgmaps.de/maps/view.php?m=5495"
+    "https://www.mariowiki.com/World_1-4_(Super_Mario_Bros.)"
   ],
-  "confidence_notes": "all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images. firebar exact count (7) is sourced but only 2 of the 7 individual positions came with landmark context (the mixed ceiling+floor room); the rest are evenly-spaced guesses within the sourced 'corridor' description and should be treated as low-confidence until rom-verified. the axe/bridge exact column, castle length, and start y (castles commonly start Mario partway up a staircase rather than at ground level - used y=6 as a placeholder) are all unverified."
+  "confidence_notes": "1-4 is transcribed cell by cell from the two map rips above, the way 1-1, 1-2 and 1-3 were: every 16x16 cell of both images was hashed and classified against a tile sheet cut from the same image (75 distinct tiles across the nes rip's 158 level columns, 63 across the smbd rip's 140), the two classifications were diffed column by column, and they agree everywhere they overlap (see smbd_deltas). the nes rip is grid-aligned with no offset - image row 13 is the ground row this schema names - and its columns 160-207 are the ripper's caption and legend, not level: the roof's mortar and the floor's both run unbroken to the last pixel of column 159 and there is not a cell of masonry past it. the smbd rip is offset sixteen columns right and one row down and carries no grid row 0, which holds nothing but sky.\n\nthe firebar count is measured and settles what the prose pass guessed at: the rips draw eleven of the castle's lone solid blocks and exactly seven of them carry a flame chain, which is the seven mariowiki names. the two rips caught the bars at different angles (the nes one diagonal, the smbd one straight down) yet the same seven have bars and the same four do not, so the four are blocks and not bars whose chain happened to be hidden inside masonry. each drawn chain reaches three cells from its pivot, which is six segments at the 8 px spacing hazards.c uses, so every \"length\": 6 is measured.\n\nwhat is not measured: each bar's rotation speed and direction. a still frame cannot show either. all seven are written \"slow\" (physics.json's 0x28) because smb1's fast bar is a later-castle object, and six are written \"cw\" against one \"ccw\" at 88/4 - the nes rip has six bars at the same down-right angle and that one at its exact mirror, which is what two bars turning opposite ways from a shared phase look like, but which of the two senses is the clockwise one is a coin flip. speed and direction are therefore the level's one \"approx\" pair even though the entries carry a measured pivot.\n\nthe prose pass got two things wrong that the rips settle: the six coins before bowser are hidden blocks in two ranks of three, not a row of six, and the level has four lava pits, not the one the prose named. and the cell-by-cell pass got one thing wrong that a closer look at the same rip settles back the other way. it classified the 32x8 object at 138-139/6 as a bowser fireball in flight and wrote the bridge gap \"lift\": false on that reading. it is a lift. the plate's own pixels, read out of the nes rip a row at a time, are a white top edge, a solid red band, four repeats of an 8 px orange plate carrying a dark stud, an orange row and a red bottom edge - a straight-edged 32 px deck. the flame the same rip catches at 127/8 is 24x8, has no straight edge in it at all and is a tapered wavy tongue of dark red around an orange core. the two share only a palette. so the deck is restored as a measured lift_platform at row 6 with an approx travel (see the entry), and the gap keeps \"lift\": false for the other reason it was ever wanted: the compiler's wide-castle-gap rule must not throw a second, guessed deck across a pit the rips measured.\n\nthe engine's own compromises, all of them documented rather than hidden: the ground rows 13-14 are castle masonry in the rip and are stamped as such here, so the level has no BLOCK_GROUND cell at all; the four pits are still written as gap runs, because gap is the primitive that fills a castle pit with lava. hazards.c runs one shared spin phase per rate rather than one accumulator per bar, so two bars of the same rate and handedness always point the same way; m21 made every bar whose sweep can reach the view live, drawn and able to burn, so the pair at 84 and 88 - four columns apart - both turn and both burn, and the draw is capped at two full bars nearest the camera centre. and bowser's patrol runs from his measured cell out to the bridge's last column, which keeps him over the deck; the rip catches him at one instant and cannot show how far he paces."
 }

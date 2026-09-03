@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """compiles a games/mario/data/*.json level bible into banked c terrain data plus a host-test
-probe header. run as: compile_level.py <bible.json> <out_dir>
+probe header. run as: compile_level.py <bible.json> <out_dir> [--bank N] [--area-bank M]
 
 the block-kind numbers below are a contract with games/mario/src/mario.h's kBlock* defines and
 must be kept numerically identical by hand; nothing here reads mario.h.
@@ -8,6 +8,7 @@ must be kept numerically identical by hand; nothing here reads mario.h.
 
 import json
 import os
+import re
 import sys
 
 BLOCK_EMPTY = 0
@@ -22,6 +23,73 @@ BLOCK_PIPE_BODY_R = 8
 BLOCK_STAIR = 9
 BLOCK_FLAG_POLE = 10
 BLOCK_CASTLE = 11
+BLOCK_SPENT = 12
+BLOCK_COIN = 13
+# sub-milestone 8a's four: a thin platform is solid to feet coming down onto it and to nothing
+# else, lava is scenery over the death plane, and the bridge/axe are 1-4's ending
+BLOCK_THIN = 14
+BLOCK_LAVA = 15
+BLOCK_BRIDGE = 16
+BLOCK_AXE = 17
+# milestone 18's background pass. a surface ground block wears two rows of grass, so the rows
+# under it are their own kind; the castle became five kinds instead of one slab; the flag grew a
+# ball and a pennant; and the last twelve are scenery, stamped only where the level left sky
+BLOCK_GROUND_FILL = 18
+BLOCK_CASTLE_CRENEL = 19
+BLOCK_CASTLE_WINDOW = 20
+BLOCK_CASTLE_DOOR_TOP = 21
+BLOCK_CASTLE_DOOR = 22
+BLOCK_FLAG_BALL = 23
+BLOCK_FLAG_CLOTH = 24
+BLOCK_CLOUD_TL = 25
+BLOCK_CLOUD_T = 26
+BLOCK_CLOUD_TR = 27
+BLOCK_CLOUD_BL = 28
+BLOCK_CLOUD_B = 29
+BLOCK_CLOUD_BR = 30
+BLOCK_HILL_PEAK = 31
+BLOCK_HILL_SLOPE_L = 32
+BLOCK_HILL_SLOPE_R = 33
+BLOCK_HILL_FILL = 34
+BLOCK_BUSH_L = 35
+BLOCK_BUSH_M = 36
+BLOCK_BUSH_R = 37
+# the sideways pipe 1-2 leaves its underground through: a two-row mouth facing left (rim top/bottom),
+# then one or more columns of horizontal body, then an ordinary vertical shaft of PIPE_BODY_L/R.
+# solid like any pipe; the contract with mario.h's kBlockPipeSide*
+BLOCK_PIPE_SIDE_TL = 38
+BLOCK_PIPE_SIDE_BL = 39
+BLOCK_PIPE_SIDE_BODY_T = 40
+BLOCK_PIPE_SIDE_BODY_B = 41
+# the keep's own battlement row, the five-wide one the three-wide tower stands on. the outer
+# crenel's notches are transparent and let sky through under the tower; this one's are the
+# castle's black. the contract with mario.h's kBlockCastleCrenelInner
+BLOCK_CASTLE_CRENEL_INNER = 42
+# 1-3's tree tops: a one-block-tall canopy - rounded left cap, repeatable middle, rounded right cap
+# - over a column of trunk. the canopy is solid on all four sides the way smb1's tree tops are; the
+# trunk is scenery you walk straight through, but the terrain pass stamps it, not the decor pass,
+# so it stays outside the BLOCK_CLOUD_TL..BLOCK_BUSH_R decor range
+BLOCK_TREE_TOP_L = 43
+BLOCK_TREE_TOP_M = 44
+BLOCK_TREE_TOP_R = 45
+BLOCK_TRUNK = 46
+# the pole cell the pennant is hanging at. the shaft stands in the middle of its block, so the
+# pennant's 16px body reaches 8px into the pole's own cell to touch it, and that half of the cell is
+# the flag's white while the other half is the shaft's greens - one palette more than a cell gets.
+# so the pole wears this kind at the pennant's row and the plain one everywhere else, and the
+# clear's descent swaps the two down the shaft (mario.h kBlockFlagPoleCloth, flow.c flow_flag_step)
+BLOCK_FLAG_POLE_CLOTH = 47
+# 1-4's masonry. the castle's walls, roof and floors are cut stone - two big blocks across a cell -
+# and not the running-bond brick 1-2's cave is built out of (both rips draw them as plainly
+# different shapes), so they cannot share BLOCK_BRICK's art. they must not share its behaviour
+# either: blocks_head_bump answers a grid brick off the grid, and a grown mario takes one out. a
+# castle wall a super mario could punch a hole in is a hole into the lava
+BLOCK_CASTLE_BRICK = 48
+# the rows of a lava pit under its surface one. BLOCK_LAVA wears the rip's breaking wave along its
+# top, which is right at the surface and wrong below it - a pit filled with it alone reads as a
+# stack of separate pools - so settle_lava keeps it on the topmost cell of every run and drops this
+# flat-red kind into the rest. scenery like the lava itself: a pit kills through the death plane
+BLOCK_LAVA_FILL = 49
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -36,14 +104,133 @@ KIND_NAMES = {
     BLOCK_STAIR: "STAIR",
     BLOCK_FLAG_POLE: "FLAG_POLE",
     BLOCK_CASTLE: "CASTLE",
+    BLOCK_SPENT: "SPENT",
+    BLOCK_COIN: "COIN",
+    BLOCK_THIN: "THIN",
+    BLOCK_LAVA: "LAVA",
+    BLOCK_BRIDGE: "BRIDGE",
+    BLOCK_AXE: "AXE",
+    BLOCK_GROUND_FILL: "GROUND_FILL",
+    BLOCK_CASTLE_CRENEL: "CASTLE_CRENEL",
+    BLOCK_CASTLE_WINDOW: "CASTLE_WINDOW",
+    BLOCK_CASTLE_DOOR_TOP: "CASTLE_DOOR_TOP",
+    BLOCK_CASTLE_DOOR: "CASTLE_DOOR",
+    BLOCK_FLAG_BALL: "FLAG_BALL",
+    BLOCK_FLAG_CLOTH: "FLAG_CLOTH",
+    BLOCK_CLOUD_TL: "CLOUD_TL",
+    BLOCK_CLOUD_T: "CLOUD_T",
+    BLOCK_CLOUD_TR: "CLOUD_TR",
+    BLOCK_CLOUD_BL: "CLOUD_BL",
+    BLOCK_CLOUD_B: "CLOUD_B",
+    BLOCK_CLOUD_BR: "CLOUD_BR",
+    BLOCK_HILL_PEAK: "HILL_PEAK",
+    BLOCK_HILL_SLOPE_L: "HILL_SLOPE_L",
+    BLOCK_HILL_SLOPE_R: "HILL_SLOPE_R",
+    BLOCK_HILL_FILL: "HILL_FILL",
+    BLOCK_BUSH_L: "BUSH_L",
+    BLOCK_BUSH_M: "BUSH_M",
+    BLOCK_BUSH_R: "BUSH_R",
+    BLOCK_PIPE_SIDE_TL: "PIPE_SIDE_TL",
+    BLOCK_PIPE_SIDE_BL: "PIPE_SIDE_BL",
+    BLOCK_PIPE_SIDE_BODY_T: "PIPE_SIDE_BODY_T",
+    BLOCK_PIPE_SIDE_BODY_B: "PIPE_SIDE_BODY_B",
+    BLOCK_CASTLE_CRENEL_INNER: "CASTLE_CRENEL_INNER",
+    BLOCK_TREE_TOP_L: "TREE_TOP_L",
+    BLOCK_TREE_TOP_M: "TREE_TOP_M",
+    BLOCK_TREE_TOP_R: "TREE_TOP_R",
+    BLOCK_TRUNK: "TRUNK",
+    BLOCK_FLAG_POLE_CLOTH: "FLAG_POLE_CLOTH",
+    BLOCK_CASTLE_BRICK: "CASTLE_BRICK",
+    BLOCK_LAVA_FILL: "LAVA_FILL",
 }
+
+# every kind a body walks straight through, which is what surface_row has to skip past and what
+# the decor stamper is allowed to overwrite nothing of
+WALK_THROUGH = frozenset(
+    [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_POLE_CLOTH, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH,
+     BLOCK_COIN, BLOCK_AXE,
+     BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
+     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_TRUNK]
+    + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
+)
+
+# the reaction list's own kind numbering, a contract with games/mario/src/mario.h's kBlockList*.
+# it is separate from the render kinds above because a hidden block renders as sky until it is bumped
+LIST_QUESTION = 0
+LIST_BRICK = 1
+LIST_HIDDEN = 2
+
+LIST_KIND_MAP = {"question": LIST_QUESTION, "brick": LIST_BRICK, "hidden": LIST_HIDDEN}
+
+# blocks.contents -> the kContent* contract in games/mario/src/mario.h
+CONTENT_MAP = {
+    "nothing": 0,
+    "coin": 1,
+    "mushroom_fire": 2,
+    "star": 3,
+    "oneup": 4,
+    "multicoin": 5,
+    "vine": 6,
+}
+
+# enemies.kind -> the kEnemy* contract in games/mario/src/mario.h. a kind with no number here is
+# left out of the spawn list entirely rather than guessed at
+ENEMY_KIND_MAP = {
+    "goomba": 0,
+    "koopa_green": 1,
+    "koopa_red": 2,
+    # roster.json: a paratroopa stomps down into a plain koopa. the flyer is its own kind now, and
+    # that stomp is what turns one into a red koopa at the cell it was hit at (see enemies.c)
+    "koopa_para_red": 4,
+    "piranha": 3,
+}
+
+# the object list's kinds, the contract with games/mario/src/mario.h's kObj* defines
+OBJ_PIPE = 0
+OBJ_LIFT_H = 1
+OBJ_LIFT_V = 2
+OBJ_FIREBAR = 3
+OBJ_BOWSER = 4
+OBJ_AXE = 5
+# a pipe with "jump_to" instead of "dest" teleports within the SAME main grid to another column -
+# 1-2's above-ground/underground/above-ground segments, walled off from each other so the only way
+# from one to the next is through one of these. the contract with mario.h's kObjPipeJump
+OBJ_PIPE_JUMP = 6
+# a pipe entered by walking right into its mouth (1-2's underground exit): object column is the rim,
+# object row the mouth's top row, param a jump index exactly like OBJ_PIPE_JUMP. mario.h's kObjPipeSide
+OBJ_PIPE_SIDE = 7
+
+OBJ_NAMES = {
+    OBJ_PIPE: "PIPE",
+    OBJ_LIFT_H: "LIFT_H",
+    OBJ_LIFT_V: "LIFT_V",
+    OBJ_FIREBAR: "FIREBAR",
+    OBJ_BOWSER: "BOWSER",
+    OBJ_AXE: "AXE",
+    OBJ_PIPE_JUMP: "PIPE_JUMP",
+    OBJ_PIPE_SIDE: "PIPE_SIDE",
+}
+
+# level types, the contract with games/mario/src/mario.h's kLevelType*
+TYPE_OVERWORLD = 0
+TYPE_UNDERGROUND = 1
+TYPE_CASTLE = 2
+TYPE_MAP = {"overworld": TYPE_OVERWORLD, "underground": TYPE_UNDERGROUND, "castle": TYPE_CASTLE}
+
+# area kinds, the contract with games/mario/src/mario.h's kArea* defines
+AREA_BONUS = 0
+AREA_WARP = 1
+AREA_KIND_MAP = {"bonus_room": AREA_BONUS, "underground": AREA_BONUS, "warp_zone": AREA_WARP}
 
 # schema.md: 15 block rows, ground surface at row 13, rows 13-14 are the solid ground blocks
 LEVEL_ROWS = 15
 GROUND_ROW = 13
+# each column is stored 16 bytes wide, one padding byte past the 15 real rows: sdcc turns a
+# power-of-two inner dimension into a shift, and the engine probes a cell six times a frame
+ROW_STRIDE = 16
 
 # blocks.kind -> our render kind; "hidden" has no art of its own until something reveals it, so it
-# renders as empty (per SCHEMA.md its contents still exist, physics/items are a later sub-milestone)
+# renders as empty (per SCHEMA.md its contents still exist)
 BLOCK_KIND_MAP = {
     "question": BLOCK_QUESTION,
     "brick": BLOCK_BRICK,
@@ -55,11 +242,105 @@ BLOCK_KIND_MAP = {
 # a rom-measure pass replaces the bible's approx/unknown positions (see SCHEMA.md)
 PAD_COLUMNS = 8
 
-# the bible's terrain list only calls out pits explicitly; ground is the implied default surface
-# everywhere else (see SCHEMA.md's "a pit/gap is a run of columns where the ground terrain is
-# absent" wording), so the grid starts all-ground at row 13-14 and gaps carve it away
-FLAG_POLE_TOP_ROW = 4
-FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 1
+# the pole, measured off the smbd 1-3 rip: its green shaft runs nine rows with the ball capping the
+# row above, and it stands on a hard block rather than on the grass, so the shaft stops one row
+# short of the ground and the slide ends on top of that block. smb draws the same pole in every
+# level, and 1-1/1-2's rips agree
+FLAG_POLE_TOP_ROW = 3
+FLAG_POLE_BOTTOM_ROW = GROUND_ROW - 2
+FLAG_BASE_ROW = GROUND_ROW - 1
+
+# the castle that closes an overworld level: five blocks wide, five tall, standing this far past
+# the pole. smb puts it a short walk beyond the flag with clear sky between the two
+CASTLE_WIDTH = 5
+CASTLE_HEIGHT = 5
+CASTLE_FLAG_GAP = 3
+# the door sits in the middle of the five-wide keep, which is where the clear walk ends. the
+# contract with mario.h kCastleDoorOffset, which is what player.c ends the clear walk at
+CASTLE_DOOR_OFFSET = 2
+# the big castle every x-3 closes with, measured off the smbd 1-3 rip (and cross-checked against
+# the nes one): a nine-wide keep under a five-wide middle tier under a three-wide tower, eleven
+# rows from the tower's crenels down to the keep's bottom row. same six kinds as the small one
+CASTLE_BIG_WIDTH = 9
+CASTLE_BIG_HEIGHT = 11
+
+# scenery geometry. a hill or a bush stands on the row the ground's grass is about to grow out of;
+# a cloud carries its own row. smb's narrowest bush is its two caps back to back
+DECOR_BASE_ROW = GROUND_ROW - 1
+DECOR_BUSH_MIN_WIDTH = 2
+DECOR_CLOUD_MIN_WIDTH = 2
+
+# an underground level's roof: the pixel extraction of the real nes 1-2 map (see n12_kinds.json in
+# the extraction scratch dir) settled this - the solid cave ceiling is exactly one row of brick, at
+# row 2, not the two-row slab of ground this compiler used to stamp at rows 0-1. rows 0-1 above it
+# render nothing (open space the camera never fully reveals); a non-measured underground level with
+# no bible-supplied roof still gets this same one row via apply_ceiling() as a placeholder
+CEILING_ROW = 2
+# rows a floor scan must skip before it can land on real ground: 0-1 are empty and row CEILING_ROW
+# is the roof itself, solid but nobody's floor
+CEILING_ROWS = CEILING_ROW + 1
+
+# a firebar's pivot is a hard block; the roster calls the short bar "about 6 fireball segments",
+# which is what both 1-4 rips draw - a pivot plus three cells of flame, six segments at 8 px
+FIREBAR_SEGMENTS = 6
+# the object_param a firebar compiles to: the segment count in the low nibble, then one bit for the
+# fast rate (physics.json's 0x38 against the slow 0x28) and one for a counter-clockwise sweep. the
+# bible names them per bar as "length"/"speed"/"direction"; hazards.c decodes exactly this
+FIREBAR_LEN_MASK = 0x0F
+FIREBAR_FAST = 0x10
+FIREBAR_CCW = 0x20
+FIREBAR_SPEEDS = {"slow": 0, "fast": FIREBAR_FAST}
+FIREBAR_DIRECTIONS = {"cw": 0, "ccw": FIREBAR_CCW}
+
+
+def firebar_param(enemy):
+    length = int(enemy.get("length", FIREBAR_SEGMENTS)) & FIREBAR_LEN_MASK
+    return (length | FIREBAR_SPEEDS.get(enemy.get("speed", "slow"), 0)
+            | FIREBAR_DIRECTIONS.get(enemy.get("direction", "cw"), 0))
+
+# lift geometry. roster.json gives the lift no size and physics.json's per-type speeds are
+# must-measure, so both the 2-block deck and the travel spans below are ours
+LIFT_BLOCKS = 2
+# contract with mario.h: kSpriteLiftFirst holds four sprites for each of two decks, and a third
+# deck only fits by taking the firebar/bowser slots over
+LIFT_SHARED_SLOTS = 2
+LIFT_MIN_SPAN = 4
+LIFT_SPAN_MASK = 0x3F
+# the second lift of a pair starts at the far end of the same track and runs the other way, so one
+# of them is always somewhere a rider can reach
+LIFT_REVERSE = 0x80
+# a horizontal lift's deck rides one row above the surface it bridges, which is a hop up onto it
+HORIZONTAL_LIFT_ROW = GROUND_ROW - 1
+# a vertical pair runs between these rows; the bible only says "left descends, right ascends"
+VERTICAL_LIFT_TOP_ROW = 3
+VERTICAL_LIFT_SPAN = 8
+
+# a castle lava pit wider than this many columns is spanned by a horizontal lift rather than left
+# as a jump: the bible's castle gap extents are "sourced" only as prose, so a pit it happens to
+# place beyond mario's running jump would make the level impossible. compiler rule, must-verify
+CASTLE_LIFT_GAP = 5
+
+# the bridge that ends a castle, for a bible that only has prose to go on: the last sourced ground
+# run becomes bridge over lava, and the two columns past it carry the axe on solid ground. a
+# measured castle writes a kind:"bridge" terrain run instead and none of this runs
+BRIDGE_TAIL_COLUMNS = 2
+
+# sub-area layout. the bible gives 1-1's bonus room no terrain at all and places none of its coins:
+# only the total ("19 coins total per mariowiki") survives, in the area's notes prose. so the room is
+# laid out here from that count - a walkable row of coins over the default ground, an exit pipe past
+# them - and a rom-measure pass replaces the whole thing once the real room is transcribed
+AREA_COIN_ROW = GROUND_ROW - 1
+AREA_FIRST_COIN_COLUMN = 1
+AREA_EXIT_GAP_COLUMNS = 2
+AREA_EXIT_PIPE_HEIGHT = 2
+AREA_PAD_COLUMNS = 4
+# the warp room's three pipes stand this far apart, starting this far in
+AREA_WARP_FIRST_COLUMN = 3
+AREA_WARP_SPACING = 4
+AREA_WARP_PIPE_HEIGHT = 2
+
+DEFAULT_BANK = 1
+DEFAULT_AREA_BANK = 7
 
 
 def load_bible(path):
@@ -67,42 +348,150 @@ def load_bible(path):
         return json.load(f)
 
 
+# segments: an optional bible list of {"x0", "x1", "type"} column ranges that override the level's
+# own single type for ceiling stamping and (at runtime) the bg palette set. 1-2 is the level this
+# exists for: one "underground" bible type with an "overworld" range at each end so the start and
+# the ending render as open sky instead of cave, without a second grid or a second area system.
+# ranges are walled off from each other in the bible's own terrain (a full-height "elevation" wall
+# at each seam) so a player can only cross between them through a kind:"pipe"/"jump_to" teleport
+def compiled_segments(bible):
+    return [(s["x0"], s["x1"], TYPE_MAP.get(s["type"], TYPE_UNDERGROUND)) for s in bible.get("segments", [])]
+
+
+def type_at(bible, x, default_type):
+    for x0, x1, seg_type in compiled_segments(bible):
+        if x0 <= x <= x1:
+            return seg_type
+    return default_type
+
+
+def first_row_at(bible, x, default_type):
+    return CEILING_ROWS if type_at(bible, x, default_type) == TYPE_UNDERGROUND else 0
+
+
 def feature_max_x(bible):
     max_x = 0
+    for s in bible.get("segments", []):
+        max_x = max(max_x, s["x1"])
     for t in bible.get("terrain", []):
-        if t["kind"] in ("ground", "gap"):
+        if t["kind"] in ("ground", "gap", "stairs", "elevation", "island", "tree", "lift_platform",
+                         "ceiling_gap", "bricks"):
             max_x = max(max_x, t["x1"])
         elif t["kind"] == "pipe":
             max_x = max(max_x, t["x"] + 1)
-        elif t["kind"] == "stairs":
-            max_x = max(max_x, t["x1"])
+        elif t["kind"] == "pipe_side":
+            max_x = max(max_x, t["shaft_x"] + 1)
+        elif t["kind"] == "lift_vertical":
+            max_x = max(max_x, t["x"] + LIFT_BLOCKS - 1)
+        elif t["kind"] == "castle":
+            max_x = max(max_x, t["x0"] + CASTLE_WIDTH - 1)
+        elif t["kind"] == "bridge":
+            max_x = max(max_x, t["axe_x"])
     for b in bible.get("blocks", []):
         if b.get("x") is not None:
             max_x = max(max_x, b["x"])
+    for e in bible.get("enemies", []):
+        if e.get("x") is not None:
+            max_x = max(max_x, e["x"])
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
-        max_x = max(max_x, flag["x"])
+        # the castle stands past the pole, and the level has to be long enough to hold it and
+        # still leave the camera somewhere to stop
+        max_x = max(max_x, flag["x"] + CASTLE_FLAG_GAP + CASTLE_WIDTH)
+    castle = bible.get("castle_end") or {}
+    if castle.get("x") is not None:
+        width = CASTLE_BIG_WIDTH if castle.get("big") else CASTLE_WIDTH
+        max_x = max(max_x, castle["x"] + width - 1)
     return max_x
 
 
-def new_grid(length_columns):
+def padded(col):
+    return list(col) + [BLOCK_EMPTY] * (ROW_STRIDE - LEVEL_ROWS)
+
+
+def new_grid(length_columns, base_ground=True):
     # column-major: grid[col] is one column's 15 row bytes, row 0 at the top
     grid = []
     for _ in range(length_columns):
         col = [BLOCK_EMPTY] * LEVEL_ROWS
-        col[GROUND_ROW] = BLOCK_GROUND
-        col[GROUND_ROW + 1] = BLOCK_GROUND
+        if base_ground:
+            col[GROUND_ROW] = BLOCK_GROUND
+            col[GROUND_ROW + 1] = BLOCK_GROUND
         grid.append(col)
     return grid
 
 
-def apply_gap(grid, x0, x1):
+def clamp_span(grid, x0, x1):
+    return max(0, x0), min(len(grid) - 1, x1)
+
+
+def settle_ground(grid, probes=None):
+    # a ground block wears two rows of grass along its top, so only the topmost block of a stack is
+    # a surface: everything with ground directly above it becomes the plain rubble kind. run this
+    # last, once nothing else is still going to write ground, and it rewrites any probe it moves
+    # out from under so the golden set keeps describing the cell it names
+    moved = set()
+    for x, col in enumerate(grid):
+        for row in range(LEVEL_ROWS - 1, 0, -1):
+            if col[row] == BLOCK_GROUND and col[row - 1] == BLOCK_GROUND:
+                col[row] = BLOCK_GROUND_FILL
+                moved.add((x, row))
+    if probes is not None:
+        for i, (column, row, kind) in enumerate(probes):
+            if kind == BLOCK_GROUND and (column, row) in moved:
+                probes[i] = (column, row, BLOCK_GROUND_FILL)
+
+
+def settle_lava(grid, probes=None):
+    # BLOCK_LAVA is the surface of a pit: the rip's breaking wave along its top and flat red under
+    # it. every cell below the surface is that same red the whole way down, so only the topmost cell
+    # of each vertical run of lava keeps the wave and the rest become BLOCK_LAVA_FILL. run this once
+    # nothing else is still writing lava, and rewrite any probe it moves out from under
+    moved = set()
+    for x, col in enumerate(grid):
+        for row in range(LEVEL_ROWS - 1, 0, -1):
+            if col[row] == BLOCK_LAVA and col[row - 1] == BLOCK_LAVA:
+                col[row] = BLOCK_LAVA_FILL
+                moved.add((x, row))
+    if probes is not None:
+        for i, (column, row, kind) in enumerate(probes):
+            if kind == BLOCK_LAVA and (column, row) in moved:
+                probes[i] = (column, row, BLOCK_LAVA_FILL)
+
+
+def apply_gap(grid, x0, x1, fill=BLOCK_EMPTY):
+    x0, x1 = clamp_span(grid, x0, x1)
     for x in range(x0, x1 + 1):
-        grid[x][GROUND_ROW] = BLOCK_EMPTY
-        grid[x][GROUND_ROW + 1] = BLOCK_EMPTY
+        grid[x][GROUND_ROW] = fill
+        grid[x][GROUND_ROW + 1] = fill
+
+
+def apply_ground(grid, x0, x1):
+    x0, x1 = clamp_span(grid, x0, x1)
+    for x in range(x0, x1 + 1):
+        grid[x][GROUND_ROW] = BLOCK_GROUND
+        grid[x][GROUND_ROW + 1] = BLOCK_GROUND
+
+
+def apply_ceiling(grid):
+    for col in grid:
+        col[CEILING_ROW] = BLOCK_BRICK
+
+
+def apply_ceiling_gap(grid, x0, x1):
+    # 1-2's measured real map cuts deliberate holes in its otherwise-solid underground roof: the
+    # entry shaft the player drops through, the lift shaft that carries a rider up past the ceiling
+    # to the walkable roof-top over the warp zone, and the drop into the warp-zone room. apply_
+    # ceiling() has no way to say "except here", so this is the smallest terrain primitive that can
+    # carve one back out
+    x0, x1 = clamp_span(grid, x0, x1)
+    for x in range(x0, x1 + 1):
+        grid[x][CEILING_ROW] = BLOCK_EMPTY
 
 
 def apply_pipe(grid, x, height):
+    if x + 1 >= len(grid):
+        return
     top_row = GROUND_ROW - height
     grid[x][top_row] = BLOCK_PIPE_TL
     grid[x + 1][top_row] = BLOCK_PIPE_TR
@@ -111,52 +500,518 @@ def apply_pipe(grid, x, height):
         grid[x + 1][row] = BLOCK_PIPE_BODY_R
 
 
-def apply_stairs(grid, x0, x1, step_height):
+def apply_stair_heights(grid, x0, heights, kind=BLOCK_STAIR):
+    # the measured form: one explicit block height per column, which is the only way to write smb's
+    # descending flights (4,3,2,1) and its flat-topped ones (1,2,3,4,4) without inventing a slope rule
+    for i, height in enumerate(heights):
+        col = x0 + i
+        if col < 0 or col >= len(grid):
+            continue
+        for row in range(GROUND_ROW - height, GROUND_ROW):
+            grid[col][row] = kind
+
+
+def apply_stairs(grid, x0, x1, step_height, kind=BLOCK_STAIR):
+    # a positive step_height climbs one row per column up to its cap; a negative one is the bible's
+    # descending castle opening, which starts |step_height| rows up and walks back down to the floor
+    x0, x1 = clamp_span(grid, x0, x1)
+    span = max(1, x1 - x0)
     for col in range(x0, x1 + 1):
-        step = min(col - x0 + 1, step_height)
+        if step_height >= 0:
+            step = min(col - x0 + 1, step_height)
+        else:
+            top = -step_height
+            step = top - (top * (col - x0)) // span
         for row in range(GROUND_ROW - step, GROUND_ROW):
-            grid[col][row] = BLOCK_STAIR
+            grid[col][row] = kind
+
+
+def apply_elevation(grid, x0, x1, y):
+    x0, x1 = clamp_span(grid, x0, x1)
+    for col in range(x0, x1 + 1):
+        for row in range(y, GROUND_ROW + 2):
+            grid[col][row] = BLOCK_GROUND
+
+
+def apply_island(grid, x0, x1, y):
+    # SCHEMA.md's island: a surface at row y over the death plane. at the ground row it is plain
+    # ground; above it, it is the athletic level's thin tree/mushroom platform
+    x0, x1 = clamp_span(grid, x0, x1)
+    if y >= GROUND_ROW:
+        apply_ground(grid, x0, x1)
+        return
+    for col in range(x0, x1 + 1):
+        grid[col][y] = BLOCK_THIN
+
+
+def apply_tree(grid, x0, x1, y):
+    # 1-3's tree: the canopy is terrain and always wins its cells; the trunk under it is scenery and
+    # only ever fills sky, so a tall tree whose trunk hangs down through a shorter tree's canopy
+    # (1-3 stacks two at columns 59-63) leaves that canopy standing. the trunk is the canopy inset
+    # one column at each end, which is what the map draws at every width from three up; a two-wide
+    # canopy is the two caps back to back and has no trunk at all
+    x0, x1 = clamp_span(grid, x0, x1)
+    for col in range(x0, x1 + 1):
+        kind = BLOCK_TREE_TOP_L if col == x0 else (BLOCK_TREE_TOP_R if col == x1 else BLOCK_TREE_TOP_M)
+        grid[col][y] = kind
+    for col in range(x0 + 1, x1):
+        for row in range(y + 1, LEVEL_ROWS):
+            if grid[col][row] == BLOCK_EMPTY:
+                grid[col][row] = BLOCK_TRUNK
 
 
 def apply_block(grid, x, y, kind):
-    grid[x][y] = BLOCK_KIND_MAP.get(kind, BLOCK_EMPTY)
+    if 0 <= x < len(grid):
+        grid[x][y] = BLOCK_KIND_MAP.get(kind, BLOCK_EMPTY)
+
+
+def apply_flag_head(grid, col):
+    # the ball caps the shaft one row above it and the pennant hangs off the pole's left, at the
+    # row under the ball - smb's own arrangement. neither is ever forced: a cell that already
+    # holds something keeps it, and the shaft's own rows (and so the scoring bands, which key off
+    # FLAG_POLE_TOP_ROW/FLAG_POLE_BOTTOM_ROW and not off any cell's kind) are left alone
+    ball_row = FLAG_POLE_TOP_ROW - 1
+    if ball_row >= 0 and grid[col][ball_row] == BLOCK_EMPTY:
+        grid[col][ball_row] = BLOCK_FLAG_BALL
+    # the pennant is 16px wide and the shaft stands in the middle of its cell, so the flag spans two
+    # cells: its near half in the column left of the pole and its far half in the pole's own left
+    # tile, which is what BLOCK_FLAG_POLE_CLOTH draws in place of the plain shaft cell
+    if col > 0 and grid[col - 1][FLAG_POLE_TOP_ROW] == BLOCK_EMPTY:
+        grid[col - 1][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_CLOTH
+        grid[col][FLAG_POLE_TOP_ROW] = BLOCK_FLAG_POLE_CLOTH
+
+
+def stamp_castle(grid, x0, rows):
+    # every castle cell is scenery, so a template is only ever painted over sky and its bottom row
+    # rests on the row above the ground. a column past the end of the level is dropped, which is
+    # what the smbd 1-3 rip does to the big keep's ninth column at the map edge
+    top_row = GROUND_ROW - len(rows)
+    placed = None
+    for dy, row in enumerate(rows):
+        for dx, kind in enumerate(row):
+            col = x0 + dx
+            if kind is None or col < 0 or col >= len(grid):
+                continue
+            if grid[col][top_row + dy] != BLOCK_EMPTY:
+                continue
+            grid[col][top_row + dy] = kind
+            if placed is None:
+                placed = (col, top_row + dy, kind)
+    return placed
+
+
+def apply_castle(grid, x0):
+    # smb's small castle: a three-wide tower over a five-wide keep
+    C, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    return stamp_castle(grid, x0, [
+        [None, C, C, C, None],
+        [None, W, K, W, None],
+        [BLOCK_CASTLE_CRENEL_INNER] * 5,
+        [K, K, BLOCK_CASTLE_DOOR_TOP, K, K],
+        [K, K, BLOCK_CASTLE_DOOR, K, K],
+    ])
+
+
+def apply_castle_big(grid, x0):
+    # the big castle that closes an x-3, transcribed cell for cell from the smbd 1-3 rip: nine
+    # columns and eleven rows, three tiers each centred on dx 4. the tower carries two one-row
+    # windows, the middle tier one two-row arch, the upper keep two and the lower keep three - all
+    # of them the same door/window kinds the small castle uses. a tier's crenel row is CRENEL where
+    # sky sits above the merlon and CRENEL_INNER where the next tier up does
+    C, I, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    T, D = BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE_DOOR
+    return stamp_castle(grid, x0, [
+        [None, None, None, C, C, C, None, None, None],
+        [None, None, None, W, K, W, None, None, None],
+        [None, None, C, I, I, I, C, None, None],
+        [None, None, K, K, T, K, K, None, None],
+        [None, None, K, K, D, K, K, None, None],
+        [C, C, I, I, I, I, I, C, C],
+        [K, K, K, T, K, T, K, K, K],
+        [K, K, K, D, K, D, K, K, K],
+        [K, K, K, K, K, K, K, K, K],
+        [K, K, T, K, T, K, T, K, K],
+        [K, K, D, K, D, K, D, K, K],
+    ])
 
 
 def apply_flag(grid, x):
     # only the column is sourced ("unknown" confidence per SCHEMA.md); the pole's height is a
-    # provisional placeholder. the bible's flagpole column can coincide with the end-of-level
-    # staircase's own last column (both are placeholder-ish end-of-level positions), so the pole
-    # only claims cells still empty - it never overwrites the more-sourced stairs/ground beneath it
-    for row in range(FLAG_POLE_TOP_ROW, FLAG_POLE_BOTTOM_ROW + 1):
-        if grid[x][row] == BLOCK_EMPTY:
-            grid[x][row] = BLOCK_FLAG_POLE
+    # provisional placeholder. the bible's approx flag x can land inside the end-of-level staircase
+    # (1-1: stairs x1 and flag x are both 158) while its own note places the pole "just after the
+    # sourced closing staircase". a pole always stands on ground, so rather than truncating it into
+    # whatever cells the stairs left over, walk right to the first column that has intact ground and
+    # a clear pole shaft. the stairs/ground are never overwritten. returns the column used, or None
+    for col in range(x, len(grid)):
+        if grid[col][GROUND_ROW] != BLOCK_GROUND:
+            continue
+        if all(grid[col][row] == BLOCK_EMPTY for row in range(FLAG_POLE_TOP_ROW, FLAG_BASE_ROW + 1)):
+            for row in range(FLAG_POLE_TOP_ROW, FLAG_POLE_BOTTOM_ROW + 1):
+                grid[col][row] = BLOCK_FLAG_POLE
+            # the pole's foot: smb's own hard block, which is what mario's slide comes to rest on
+            grid[col][FLAG_BASE_ROW] = BLOCK_HARD
+            return col
+    return None
 
 
-def compile_grid(bible):
-    length_columns = feature_max_x(bible) + 1 + PAD_COLUMNS
-    grid = new_grid(length_columns)
-    probes = []
+def surface_row(grid, column, first_row=0):
+    # the topmost solid row of a column, which is the row a body standing there rests on top of.
+    # first_row skips an underground level's roof, which is solid but is nobody's floor
+    if column < 0 or column >= len(grid):
+        return GROUND_ROW
+    for row in range(first_row, LEVEL_ROWS):
+        if grid[column][row] not in WALK_THROUGH:
+            return row
+    return GROUND_ROW
 
+
+def start_row(bible, grid, start_column, level_type):
+    start = bible.get("start") or {}
+    if start.get("y") is not None:
+        return int(start["y"])
+    return surface_row(grid, start_column, first_row_at(bible, start_column, level_type))
+
+
+def entry_pipe_x(bible, level_type):
+    # 1-2's opening pipe is the roof the player falls through, and its column is the start cell. the
+    # entry cutscene is m8b's; until then he walks in, so that pipe is not compiled at all
+    if level_type != TYPE_UNDERGROUND:
+        return None
+    start_x = bible.get("start", {}).get("x")
     for t in bible.get("terrain", []):
+        if t["kind"] == "pipe" and t["x"] == start_x:
+            return start_x
+    return None
+
+
+def lift_span(x0, x1):
+    return min(LIFT_SPAN_MASK, max(LIFT_MIN_SPAN, x1 - x0 - LIFT_BLOCKS))
+
+
+def fit_lift(grid, obj):
+    # a horizontal lift standing over open air rides all the way to the first column that has a
+    # floor again, so its deck ends flush with the lip a rider steps off onto. a lift the bible
+    # places over solid ground is decoration and keeps the span it was given
+    column, row, kind, param = obj
+    if kind != OBJ_LIFT_H or column >= len(grid):
+        return obj
+    if grid[column][GROUND_ROW] not in (BLOCK_EMPTY, BLOCK_LAVA):
+        return obj
+    edge = column
+    while edge < len(grid) and grid[edge][GROUND_ROW] in (BLOCK_EMPTY, BLOCK_LAVA):
+        edge += 1
+    span = min(LIFT_SPAN_MASK, max(1, edge - LIFT_BLOCKS - column))
+    return (column, row, kind, (param & LIFT_REVERSE) | span)
+
+
+def decor_cells(item):
+    # one bible decor entry expanded into (column, row, kind) cells. SCHEMA.md's decor grid is the
+    # level grid: x is a block column, a cloud's y is a block row, and a hill or a bush always
+    # stands on DECOR_BASE_ROW, the row the grass is about to grow out of
+    kind = item.get("kind")
+    x = item.get("x")
+    if x is None:
+        return []
+    if kind == "big_hill":
+        # peak / slope-fill-slope / slope-fill-fill-fill-slope, five wide and three tall
+        return [
+            (x + 2, DECOR_BASE_ROW - 2, BLOCK_HILL_PEAK),
+            (x + 1, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_L),
+            (x + 2, DECOR_BASE_ROW - 1, BLOCK_HILL_FILL),
+            (x + 3, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_R),
+            (x + 0, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_L),
+            (x + 1, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 3, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 4, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_R),
+        ]
+    if kind == "small_hill":
+        return [
+            (x + 1, DECOR_BASE_ROW - 1, BLOCK_HILL_PEAK),
+            (x + 0, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_L),
+            (x + 1, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_R),
+        ]
+    if kind == "bush":
+        # the narrowest bush smb draws is its two caps back to back, so a width of one still
+        # spends two columns rather than inventing a stubbier shape
+        width = max(DECOR_BUSH_MIN_WIDTH, int(item.get("width", DECOR_BUSH_MIN_WIDTH)))
+        cells = [(x, DECOR_BASE_ROW, BLOCK_BUSH_L)]
+        cells += [(x + i, DECOR_BASE_ROW, BLOCK_BUSH_M) for i in range(1, width - 1)]
+        cells.append((x + width - 1, DECOR_BASE_ROW, BLOCK_BUSH_R))
+        return cells
+    if kind == "cloud":
+        y = item.get("y")
+        if y is None:
+            return []
+        width = max(DECOR_CLOUD_MIN_WIDTH, int(item.get("width", DECOR_CLOUD_MIN_WIDTH)))
+        top = [BLOCK_CLOUD_TL] + [BLOCK_CLOUD_T] * (width - 2) + [BLOCK_CLOUD_TR]
+        bottom = [BLOCK_CLOUD_BL] + [BLOCK_CLOUD_B] * (width - 2) + [BLOCK_CLOUD_BR]
+        cells = []
+        for i in range(width):
+            cells.append((x + i, y, top[i]))
+            cells.append((x + i, y + 1, bottom[i]))
+        return cells
+    return []
+
+
+def reserved_cells(bible):
+    # a hidden block renders as sky but its cell is spoken for, and the engine's reaction list
+    # still names it. scenery must not move into one
+    out = set()
+    for b in bible.get("blocks", []):
+        if b.get("x") is not None and b.get("y") is not None:
+            out.add((b["x"], b["y"]))
+    return out
+
+
+def apply_decor(grid, bible):
+    # scenery never displaces anything, and it is placed whole or not at all. a hill is a dome over
+    # a pair of slopes and a bush is two caps around a run of middles: drop one cell of either and
+    # what is left is not a smaller hill, it is a broken one. so a shape whose every cell is not
+    # open sky - inside the compiled level, not already terrain, not a cell the reaction list has
+    # claimed for a hidden block - is skipped entirely and the bible's column is the thing to move.
+    #
+    # returns one probe per decor kind that actually landed, which is what pins the rendered
+    # families in the host test without making the golden set walk the camera past every cloud
+    reserved = reserved_cells(bible)
+    probes = []
+    seen = set()
+    for item in bible.get("decor", []):
+        cells = decor_cells(item)
+        fits = all(0 <= column < len(grid) and 0 <= row < LEVEL_ROWS
+                   and grid[column][row] == BLOCK_EMPTY and (column, row) not in reserved
+                   for column, row, kind in cells)
+        if not fits:
+            continue
+        for column, row, kind in cells:
+            grid[column][row] = kind
+            if kind not in seen:
+                seen.add(kind)
+                probes.append((column, row, kind))
+    return probes
+
+
+def compile_grid(bible, level_type):
+    terrain = bible.get("terrain", [])
+    # an athletic level is platforms over open air, whether the bible writes them as 1-3's measured
+    # trees or as the older prose-derived islands
+    has_islands = any(t["kind"] in ("island", "tree") for t in terrain)
+    # a bible that measured its own extent says so; anything else is still the last positioned
+    # feature plus the provisional padding below
+    stated = bible.get("length_columns")
+    length_columns = int(stated) if isinstance(stated, int) else feature_max_x(bible) + 1 + PAD_COLUMNS
+    # an athletic level is islands over open air: only the runs the bible names are solid, so the
+    # default ground is dropped and everything the level does not place is a pit
+    grid = new_grid(length_columns, base_ground=not has_islands)
+    probes = []
+    objects = []
+    measured_lifts = []  # decks whose travel the bible measured, so fit_lift must not touch them
+    measured_bridge = None  # (x0, x1, row, axe_x, axe_y) when the bible transcribed its own ending
+    jumps = []  # each entry is a target column; the target row is resolved after the grid settles
+    skip_pipe = entry_pipe_x(bible, level_type)
+    gap_fill = BLOCK_LAVA if level_type == TYPE_CASTLE else BLOCK_EMPTY
+    ground_runs = []
+
+    first_row = CEILING_ROWS if level_type == TYPE_UNDERGROUND else 0
+    segments = compiled_segments(bible)
+    if level_type == TYPE_UNDERGROUND:
+        if segments:
+            # a segmented level (1-2) only wears a ceiling inside its underground ranges; the
+            # overworld ranges at each end must read as open sky, not cave with the roof carved
+            # away column by column the way ceiling_gap would have to fake it. the roof itself is
+            # one row of brick (CEILING_ROW), not the old two-row ground slab; the bible's own
+            # ceiling_gap entries (processed later, in the terrain loop) carve the real map's
+            # deliberate holes back out of this blanket stamp
+            for x in range(length_columns):
+                if type_at(bible, x, level_type) == TYPE_UNDERGROUND:
+                    grid[x][CEILING_ROW] = BLOCK_BRICK
+            # golden probes against the middle of an underground range and the middle of an
+            # overworld one, rather than column 0/length-1 which a segmented level may have
+            # re-typed to open sky
+            for x0, x1, seg_type in segments:
+                mid = (x0 + x1) // 2
+                if seg_type == TYPE_UNDERGROUND:
+                    probes.append((mid, CEILING_ROW, BLOCK_BRICK))
+                else:
+                    probes.append((mid, CEILING_ROW, BLOCK_EMPTY))
+        else:
+            apply_ceiling(grid)
+            probes.append((0, CEILING_ROW, BLOCK_BRICK))
+            probes.append((length_columns - 1, CEILING_ROW, BLOCK_BRICK))
+
+    for t in terrain:
         if t["kind"] == "ground":
+            apply_ground(grid, t["x0"], t["x1"])
+            ground_runs.append((t["x0"], t["x1"]))
             probes.append((t["x0"], GROUND_ROW, BLOCK_GROUND))
             probes.append((t["x1"], GROUND_ROW, BLOCK_GROUND))
+        elif t["kind"] == "bricks":
+            # a solid rectangle of terrain, stamped straight into the compiled grid with no
+            # per-cell interactive state - the same primitive an area's own "bricks" kind already
+            # uses (compile_measured_area), now available to a main level's terrain list too. this
+            # is how 1-2's underground interior (stair-step hard blocks, brick platforms, the
+            # coin-room walls) gets built without inflating LEVEL_MAX_BLOCKS: a terrain-fill brick
+            # is solid and walkable-on like any other brick, but is not in the blocks[] list, so it
+            # cannot be bumped, cannot break, and never pays out contents - correct for the ~450
+            # cells of pure background structure the real map has that nothing there ever needs to
+            # hit. "material" is "brick" (default), "hard", or "question" - the last one a real
+            # ? block rendered where the map has one but with no interactive state behind it, used
+            # when a level's own per-level block list (level_N_objects.c, unbanked - see the bank
+            # note on LEVEL_MAX_BLOCKS in blocks.c) has no more room: home bank is a hard shared rom
+            # ceiling across every level's block/enemy/object/jump/segment/area-coin list, measured
+            # empirically at build time (a handful more bytes there and lcc's linker starts bleeding
+            # bank 0 into bank 1's level data - silently corrupting an unrelated level, not just
+            # failing to link), and it is far tighter than LEVEL_MAX_BLOCKS's own raw ram headroom
+            material_map = {"hard": BLOCK_HARD, "question": BLOCK_QUESTION, "coin": BLOCK_COIN,
+                            "castle": BLOCK_CASTLE_BRICK, "lava": BLOCK_LAVA}
+            material = material_map.get(t.get("material"), BLOCK_BRICK)
+            x0, x1 = clamp_span(grid, t["x0"], t["x1"])
+            for column in range(x0, x1 + 1):
+                for row in range(t["y0"], t["y1"] + 1):
+                    grid[column][row] = material
+            probes.append((x0, t["y0"], material))
+            probes.append((x1, t["y1"], material))
         elif t["kind"] == "gap":
-            apply_gap(grid, t["x0"], t["x1"])
-            probes.append((t["x0"], GROUND_ROW, BLOCK_EMPTY))
-            probes.append((t["x1"], GROUND_ROW, BLOCK_EMPTY))
+            apply_gap(grid, t["x0"], t["x1"], gap_fill)
+            probes.append((t["x0"], GROUND_ROW, gap_fill))
+            probes.append((t["x1"], GROUND_ROW, gap_fill))
+            # a wide pit in a prose-derived castle got a deck thrown across it so an unverified
+            # extent could not make the level impossible. a measured pit says so with "lift": false
+            # - 1-4's rips draw no deck anywhere, and its widest pit is the bridge's own span
+            if (level_type == TYPE_CASTLE and t.get("lift", True)
+                    and t["x1"] - t["x0"] >= CASTLE_LIFT_GAP):
+                objects.append((t["x0"] + 1, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, lift_span(t["x0"], t["x1"])))
+        elif t["kind"] == "bridge":
+            # the measured form of a castle's ending: the rips put 1-4's bridge four rows up from
+            # the ground rows, walking out level with the ledge before it and over its own lava pit
+            # rather than in place of the floor, and they put the axe on the wall past it two rows
+            # above the deck. so the span, its row and the axe cell are all read off the bible here
+            # instead of being carved out of the last ground run by apply_bridge()
+            measured_bridge = (t["x0"], t["x1"], t["y"], t["axe_x"], t["axe_y"],
+                               t.get("toad_x"))
+        elif t["kind"] == "ceiling_gap":
+            apply_ceiling_gap(grid, t["x0"], t["x1"])
+            probes.append((t["x0"], 0, BLOCK_EMPTY))
+            probes.append((t["x1"], 0, BLOCK_EMPTY))
         elif t["kind"] == "pipe":
+            if t["x"] == skip_pipe:
+                continue
             apply_pipe(grid, t["x"], t["height"])
             top_row = GROUND_ROW - t["height"]
             probes.append((t["x"], top_row, BLOCK_PIPE_TL))
             probes.append((t["x"] + 1, top_row, BLOCK_PIPE_TR))
+            if t.get("jump_to") is not None:
+                # a same-grid segment teleport (1-2's entrance and exit pipes): recorded now, the
+                # target row is filled in once the whole grid - including the segment the target
+                # column lands in - has finished settling
+                objects.append((t["x"], top_row, OBJ_PIPE_JUMP, len(jumps)))
+                jumps.append((t["jump_to"], t.get("jump_to_row")))
+        elif t["kind"] == "castle":
+            # a decorative castle with no flag beside it - 1-2's above-ground start stands one at
+            # its own left edge, the way the real map does, with nothing to touch or clear
+            placed = apply_castle(grid, t["x0"])
+            if placed is not None:
+                probes.append(placed)
         elif t["kind"] == "stairs":
-            apply_stairs(grid, t["x0"], t["x1"], t["step_height"])
-            probes.append((t["x0"], GROUND_ROW - 1, BLOCK_STAIR))
-            last_step = min(t["x1"] - t["x0"] + 1, t["step_height"])
-            probes.append((t["x1"], GROUND_ROW - last_step, BLOCK_STAIR))
-        # elevation/lift_platform/island: not present in level-1-1.json; a future level's compile
-        # pass adds handling here when the bible actually places one
+            # the bible calls a level's closing staircase its "final stone platform": on an island
+            # level, where nothing is solid unless the bible places it, the staircase and the run
+            # out to the flag are the ground the pole and the walk-off need
+            if has_islands:
+                apply_ground(grid, t["x0"], length_columns - 1)
+            # a castle has no dressed-stone staircase: BLOCK_STAIR wears the hard block's warm
+            # brown art, and both 1-4 rips draw its opening flight as the same grey masonry as the
+            # wall behind it. so a castle-typed level lays its steps in masonry instead
+            stair_kind = BLOCK_CASTLE_BRICK if level_type == TYPE_CASTLE else BLOCK_STAIR
+            if t.get("heights"):
+                heights = t["heights"]
+                apply_stair_heights(grid, t["x0"], heights, stair_kind)
+                probes.append((t["x0"], GROUND_ROW - heights[0], stair_kind))
+                last = min(len(heights) - 1, t["x1"] - t["x0"])
+                probes.append((t["x0"] + last, GROUND_ROW - heights[last], stair_kind))
+                continue
+            apply_stairs(grid, t["x0"], t["x1"], t["step_height"], stair_kind)
+            if t["step_height"] >= 0:
+                probes.append((t["x0"], GROUND_ROW - 1, stair_kind))
+                last_step = min(t["x1"] - t["x0"] + 1, t["step_height"])
+                probes.append((t["x1"], GROUND_ROW - last_step, stair_kind))
+            else:
+                probes.append((t["x0"], GROUND_ROW + t["step_height"], stair_kind))
+        elif t["kind"] == "elevation":
+            apply_elevation(grid, t["x0"], t["x1"], t["y"])
+            probes.append((t["x0"], t["y"], BLOCK_GROUND))
+        elif t["kind"] == "island":
+            apply_island(grid, t["x0"], t["x1"], t["y"])
+            kind = BLOCK_GROUND if t["y"] >= GROUND_ROW else BLOCK_THIN
+            row = GROUND_ROW if t["y"] >= GROUND_ROW else t["y"]
+            probes.append((t["x0"], row, kind))
+            probes.append((t["x1"], row, kind))
+        elif t["kind"] == "tree":
+            # the measured form of an athletic platform: a canopy row from x0 to x1 at row y with a
+            # trunk hanging under its middle columns. 1-3 is built out of nothing else
+            apply_tree(grid, t["x0"], t["x1"], t["y"])
+            probes.append((t["x0"], t["y"], BLOCK_TREE_TOP_L))
+            probes.append((t["x1"], t["y"], BLOCK_TREE_TOP_R))
+        elif t["kind"] == "pipe_side":
+            # the mouth's rim column and top row, the horizontal body out to the shaft, and the
+            # shaft itself rising from shaft_top to the mouth's bottom row (no cap: the map draws
+            # 1-2's shafts running straight up through the ceiling). the rim is the walk-in trigger
+            rim_x, top = t["x"], t["y"]
+            shaft_x, shaft_top = t["shaft_x"], t.get("shaft_top", CEILING_ROW)
+            if 0 <= rim_x < length_columns:
+                grid[rim_x][top] = BLOCK_PIPE_SIDE_TL
+                grid[rim_x][top + 1] = BLOCK_PIPE_SIDE_BL
+            for column in range(rim_x + 1, shaft_x):
+                if 0 <= column < length_columns:
+                    grid[column][top] = BLOCK_PIPE_SIDE_BODY_T
+                    grid[column][top + 1] = BLOCK_PIPE_SIDE_BODY_B
+            for row in range(shaft_top, top + 2):
+                if 0 <= shaft_x < length_columns:
+                    grid[shaft_x][row] = BLOCK_PIPE_BODY_L
+                if 0 <= shaft_x + 1 < length_columns:
+                    grid[shaft_x + 1][row] = BLOCK_PIPE_BODY_R
+            probes.append((rim_x, top, BLOCK_PIPE_SIDE_TL))
+            probes.append((rim_x, top + 1, BLOCK_PIPE_SIDE_BL))
+            probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
+            if t.get("jump_to") is not None:
+                objects.append((rim_x, top, OBJ_PIPE_SIDE, len(jumps)))
+                jumps.append((t["jump_to"], t.get("jump_to_row")))
+        elif t["kind"] == "lift_vertical":
+            # a measured vertical lift: x is the deck's left column, y0 the top row of its travel,
+            # span how many rows it covers, reverse whether it starts at the bottom running up. the
+            # engine bounces the deck between the two ends at kLiftSpeedPx (hazards.c)
+            span = min(LIFT_SPAN_MASK, max(1, int(t["span"])))
+            param = span | (LIFT_REVERSE if t.get("reverse") else 0)
+            objects.append((t["x"], t["y0"], OBJ_LIFT_V, param))
+        elif t["kind"] == "lift_platform" and t.get("y") is not None:
+            # the measured form (1-3): one deck riding row y between columns x0 and x1, its travel
+            # taken from the bible rather than from the width of a carved pit. an athletic level has
+            # no ground under the track to carve and no lip for fit_lift to find, so these are kept
+            # out of that pass entirely. an entry marked "live": false is measured map geometry the
+            # engine has no slot left for (mario.h kLiftSlots is two) and is not compiled
+            if t.get("live", True):
+                span = min(LIFT_SPAN_MASK, max(1, t["x1"] - t["x0"] - LIFT_BLOCKS + 1))
+                param = span | (LIFT_REVERSE if t.get("reverse") else 0)
+                measured_lifts.append((t["x0"], t["y"], OBJ_LIFT_H, param))
+        elif t["kind"] == "lift_platform":
+            # the bible's 1-2 run is a pair of vertical lifts ("left descends, right ascends"), its
+            # 1-3 run a pair of horizontal ones. the ground under a horizontal pair is carved away,
+            # because riding across is the whole point; a vertical pair keeps whatever is under it
+            span = lift_span(t["x0"], t["x1"])
+            if level_type == TYPE_UNDERGROUND:
+                objects.append((t["x0"], VERTICAL_LIFT_TOP_ROW, OBJ_LIFT_V,
+                                VERTICAL_LIFT_SPAN | LIFT_REVERSE))
+                objects.append((t["x1"] - LIFT_BLOCKS, VERTICAL_LIFT_TOP_ROW, OBJ_LIFT_V,
+                                VERTICAL_LIFT_SPAN))
+            else:
+                # the track is the carved pit itself, so a lift at either extent leaves a hop-sized
+                # gap to the island beside it rather than a jump the bible never promised
+                gx0 = t["x0"] - 1
+                gx1 = t["x1"] + 1
+                apply_gap(grid, gx0, gx1, gap_fill)
+                span = min(LIFT_SPAN_MASK, max(LIFT_MIN_SPAN, gx1 - LIFT_BLOCKS + 1 - gx0))
+                objects.append((gx0, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, span))
+                objects.append((gx0, HORIZONTAL_LIFT_ROW, OBJ_LIFT_H, span | LIFT_REVERSE))
 
     for b in bible.get("blocks", []):
         if b.get("x") is None or b.get("y") is None:
@@ -164,111 +1019,888 @@ def compile_grid(bible):
         apply_block(grid, b["x"], b["y"], b["kind"])
         probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
 
+    # loose coins standing in the level's own grid (1-2's underground has thirty-odd): a coin cell is
+    # walk-through and the engine collects it on contact, so it only ever lands on open sky
+    coin_cells = []
+    for c in bible.get("coins", []):
+        column, row = c["x"], c["y"]
+        if 0 <= column < length_columns and 0 <= row < LEVEL_ROWS and grid[column][row] == BLOCK_EMPTY:
+            grid[column][row] = BLOCK_COIN
+            coin_cells.append((column, row))
+    if coin_cells:
+        probes.append((coin_cells[0][0], coin_cells[0][1], BLOCK_COIN))
+        probes.append((coin_cells[-1][0], coin_cells[-1][1], BLOCK_COIN))
+
+    bridge = None
+    bridge_row = GROUND_ROW
+    bowser_fire_column = 0
+    axe_column = None
+    axe_row = GROUND_ROW - 1
+    # the retainer the clear walk ends in front of, in the room past the axe. a castle whose bible
+    # names no column gets none, and there the walk keeps its old fixed run along the pedestal
+    toad_column = None
+    if measured_bridge is not None:
+        x0, x1, bridge_row, axe_column, axe_row, toad_column = measured_bridge
+        x0, x1 = clamp_span(grid, x0, x1)
+        for column in range(x0, x1 + 1):
+            grid[column][bridge_row] = BLOCK_BRIDGE
+        grid[axe_column][axe_row] = BLOCK_AXE
+        bridge = (x0, x1)
+    elif level_type == TYPE_CASTLE and ground_runs:
+        bridge, axe_column = apply_bridge(grid, ground_runs[-1])
+    if bridge is not None:
+        probes.append((bridge[0], bridge_row, BLOCK_BRIDGE))
+        probes.append((bridge[1], bridge_row, BLOCK_BRIDGE))
+        probes.append((axe_column, axe_row, BLOCK_AXE))
+        objects.append((axe_column, axe_row, OBJ_AXE, 0))
+
+    for e in bible.get("enemies", []):
+        if e.get("x") is None or e.get("y") is None:
+            continue
+        if e["kind"] == "firebar":
+            row = min(e["y"], GROUND_ROW - 1)
+            grid[e["x"]][row] = BLOCK_HARD
+            probes.append((e["x"], row, BLOCK_HARD))
+            objects.append((e["x"], row, OBJ_FIREBAR, firebar_param(e)))
+        elif e["kind"] == "bowser_fake":
+            # the bible puts him on the bridge; the patrol runs from the cell the rip caught him
+            # standing on out to the bridge's last column, so he stays over the deck and never
+            # wanders onto the wall the axe stands on. a prose-derived castle has no measured cell,
+            # so it falls back to the bridge's own last stretch
+            if bridge is not None and bridge[0] <= e["x"] <= bridge[1]:
+                column = e["x"]
+                span = max(2, bridge[1] - column)
+            elif bridge is not None:
+                span = max(2, (bridge[1] - bridge[0]) // 2)
+                column = bridge[1] - span
+            else:
+                column, span = e["x"], 4
+            # his own row, when the bible measured it: a scan down column 135 finds the castle roof
+            # long before it finds the bridge deck he is standing on
+            row = e["y"] if e.get("y") is not None else surface_row(grid, column, first_row) - 1
+            objects.append((column, row, OBJ_BOWSER, span))
+            # and the column his flame spawner arms at, when the bible read one off its rip: the
+            # zone runs from there to wherever he is, and hazards.c throws from the right edge of
+            # the view over the whole of it. clamped left of his own cell or there is no zone at all
+            if e.get("fire_from") is not None:
+                bowser_fire_column = max(0, min(int(e["fire_from"]), column - 1))
+        elif e["kind"] == "lift_horizontal":
+            objects.append((e["x"], e["y"], OBJ_LIFT_H, LIFT_MIN_SPAN))
+        elif e["kind"] == "lift_vertical":
+            objects.append((e["x"], e["y"], OBJ_LIFT_V, LIFT_MIN_SPAN))
+
+    # a horizontal lift only earns its keep if its deck actually reaches the far lip of the pit it
+    # spans, and the pit's real width is only known once every terrain run has been laid down
+    objects = [fit_lift(grid, o) for o in objects] + measured_lifts
+
+    # oam is exactly full at two lift decks (mario.h kSpriteLiftFirst), so a third one borrows the
+    # firebar/bowser slots. hazards.c caps the count when a bar or bowser is loaded, which would
+    # silently drop the deck, so a level is never allowed to want both
+    lift_objects = [o for o in objects if o[2] in (OBJ_LIFT_H, OBJ_LIFT_V)]
+    hazard_objects = [o for o in objects if o[2] in (OBJ_FIREBAR, OBJ_BOWSER)]
+    if len(lift_objects) > LIFT_SHARED_SLOTS and hazard_objects:
+        raise SystemExit("a level with more than %d lifts cannot also carry a firebar or bowser"
+                         % LIFT_SHARED_SLOTS)
+
+    flag_col = None
+    castle_col = None
     flag = bible.get("flag") or {}
     if flag.get("x") is not None:
-        apply_flag(grid, flag["x"])
-        probes.append((flag["x"], FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE))
+        flag_col = apply_flag(grid, flag["x"])
+    if flag_col is not None:
+        # the shaft's top row is the pennant's, so the plain-shaft probe takes the row under it
+        probes.append((flag_col, FLAG_POLE_TOP_ROW + 1, BLOCK_FLAG_POLE))
+        probes.append((flag_col, FLAG_POLE_BOTTOM_ROW, BLOCK_FLAG_POLE))
+        probes.append((flag_col, FLAG_BASE_ROW, BLOCK_HARD))
+        apply_flag_head(grid, flag_col)
+        probes.append((flag_col, FLAG_POLE_TOP_ROW - 1, BLOCK_FLAG_BALL))
+        if flag_col > 0:
+            probes.append((flag_col - 1, FLAG_POLE_TOP_ROW, BLOCK_FLAG_CLOTH))
+            probes.append((flag_col, FLAG_POLE_TOP_ROW, BLOCK_FLAG_POLE_CLOTH))
+        # a bible that measured the castle's own column places it there; otherwise it stands the
+        # default short walk past the pole
+        castle_end = bible.get("castle_end") or {}
+        castle_x = castle_end.get("x")
+        castle_col = castle_x if castle_x is not None else flag_col + CASTLE_FLAG_GAP
+        # "big": true picks the eleven-row keep every x-3 ends with; the door the clear walk stops
+        # at is CASTLE_DOOR_OFFSET in either way, which is a real arch in both templates
+        if castle_end.get("big"):
+            castle = apply_castle_big(grid, castle_col)
+        else:
+            castle = apply_castle(grid, castle_col)
+        if castle is not None:
+            probes.append(castle)
+        else:
+            castle_col = None
 
-    # level-1-1.json has no castle_end: per the milestone's instructions, an unpositioned kind is
-    # left out rather than invented; BLOCK_CASTLE still exists in the enum/art for levels that do
+    # the bible's own scenery, stamped last so it can only ever land on sky
+    probes.extend(apply_decor(grid, bible))
+    settle_ground(grid, probes)
+    settle_lava(grid, probes)
 
-    return grid, length_columns, probes
+    # a jump's landing row can only be read off the grid once every terrain run - including
+    # whatever segment the target column falls in - has finished settling
+    # a bible may name the landing row itself: a pipe cap's row makes the player rise out of that pipe,
+    # an open-air row drops him in from above (1-2's entrance shaft). otherwise he lands on the floor
+    jump_targets = []
+    for target_x, explicit_row in jumps:
+        if explicit_row is None:
+            target_row = surface_row(grid, target_x, first_row_at(bible, target_x, level_type))
+        else:
+            target_row = int(explicit_row)
+        jump_targets.append((target_x, target_row))
+        probes.append((target_x, target_row, grid[target_x][target_row] if 0 <= target_x < length_columns else BLOCK_EMPTY))
+
+    return {
+        "grid": grid,
+        "columns": length_columns,
+        "probes": probes,
+        "flag_column": flag_col,
+        "castle_column": castle_col,
+        "objects": objects,
+        "bridge": bridge,
+        "bridge_row": bridge_row,
+        "bowser_fire_column": bowser_fire_column,
+        "axe_column": axe_column,
+        "axe_row": axe_row,
+        "toad_column": toad_column,
+        # the floor he stands on, scanned from below the pedestal the axe is on rather than from
+        # row 0: a castle's roof is solid over every column, so a scan from the top finds that
+        "toad_row": None if toad_column is None else surface_row(grid, toad_column, axe_row + 1),
+        "jumps": jump_targets,
+        "segments": segments,
+    }
+
+
+def apply_bridge(grid, run):
+    # the castle's ending: the bible's last ground run carries the bridge, lava runs under it, and
+    # the two columns past it stay solid so the axe has something to stand on
+    x0, x1 = run
+    x0, x1 = clamp_span(grid, x0, x1)
+    end = max(x0, x1 - BRIDGE_TAIL_COLUMNS)
+    for col in range(x0, end):
+        grid[col][GROUND_ROW] = BLOCK_BRIDGE
+        grid[col][GROUND_ROW + 1] = BLOCK_LAVA
+    axe_column = end
+    grid[axe_column][GROUND_ROW - 1] = BLOCK_AXE
+    return (x0, end - 1), axe_column
+
+
+def compile_block_list(bible):
+    # the reaction list the rom scans on a head bump: every positioned question/brick/hidden block
+    # with its contents. hard blocks never react, so they stay out of it
+    out = []
+    for b in bible.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        kind = LIST_KIND_MAP.get(b["kind"])
+        if kind is None:
+            continue
+        out.append((b["x"], b["y"], kind, CONTENT_MAP.get(b.get("contents", "nothing"), 0)))
+    return out
+
+
+def compile_enemy_list(bible, grid, level_type):
+    # the spawn list the rom scans, so it must be sorted by column: the engine tracks the band of
+    # cells around the camera with two frontier indices that each step one entry at a time. the
+    # bible's count_only entries carry no position and are dropped rather than invented
+    out = []
+    for e in bible.get("enemies", []):
+        if e.get("x") is None or e.get("y") is None:
+            continue
+        kind = ENEMY_KIND_MAP.get(e["kind"])
+        if kind is None:
+            continue
+        row = e["y"]
+        if e["kind"] == "piranha":
+            # the plant lives in a pipe: the roster's rise/sink runs out of the cap it sits on. a
+            # segmented level (1-2) may place a piranha's pipe in either an underground or an
+            # overworld range, so the ceiling-row skip has to be looked up per enemy, not once
+            row = surface_row(grid, e["x"], first_row_at(bible, e["x"], level_type))
+        out.append((e["x"], row, kind))
+    out.sort(key=lambda entry: entry[0])
+    return out
+
+
+def find_pipe_entries(bible, areas):
+    # every terrain pipe the bible gives a dest, matched to the area it leads into by entry_x first
+    # and by the area's kind second, plus any area whose entry_x names a column with no such pipe
+    out = []
+    claimed = set()
+    for t in bible.get("terrain", []):
+        if t["kind"] != "pipe" or not t.get("dest"):
+            continue
+        for index, area in enumerate(areas):
+            if index in claimed:
+                continue
+            if area.get("entry_x") == t["x"] or area.get("kind") == t["dest"]:
+                out.append((t["x"], GROUND_ROW - t["height"], index))
+                claimed.add(index)
+                break
+    for index, area in enumerate(areas):
+        if index in claimed or area.get("entry_x") is None:
+            continue
+        # the bible's warp-zone room is reached "via the lift platforms through a hidden roof
+        # opening" and smbd is confirmed to have changed the room entirely, so the entry is
+        # compiled as a plain ground pipe at the bible's entry_x. must-verify against the rom.
+        # an area may override the default 2-tall cap+body with its own "entry_height" - 1-2's own
+        # warp-zone uses this to shrink to a cap-only stub (no body row at all): the real map's
+        # per-cell classification shows entry_x's column is genuinely open air at every row a taller
+        # synthetic pipe would otherwise stamp, so the shortest shape that still gives the engine's
+        # sub-area trigger somewhere to stand is the one that costs the map fidelity the least
+        height = area.get("entry_height", AREA_EXIT_PIPE_HEIGHT)
+        out.append((area["entry_x"], GROUND_ROW - height, index))
+        claimed.add(index)
+    out.sort(key=lambda entry: entry[0])
+    return out
+
+
+def area_coin_count(area):
+    # the count is prose-only in the bible ("19 coins total per mariowiki"), so it is read out of the
+    # notes rather than duplicated here; a placed-coin json would make this a plain len()
+    match = re.search(r"(\d+)\s+coins", area.get("notes", "") or "")
+    if match:
+        return int(match.group(1))
+    return sum(1 for b in area.get("blocks", []) if b.get("contents") == "coin")
+
+
+# the sentinel a warp pipe's compiled kLevels index carries when the bible names a real world we do
+# not have a level table entry for. flow_warp_under_player() returns this value unchanged and
+# main.c's `if (target != 0xFF)` guard already treats it as "no warp here" - so the pipe still
+# stands in the room, correctly numbered, and pressing down on it is a polite no-op instead of a
+# jump into whatever level happened to be last in the table
+WARP_UNBUILT = 0xFF
+
+
+def warp_target(to_level, level_ids):
+    # kLevelCount is 4 (world one only); the bible's own warp targets are worlds 2-4, which SMB1's
+    # real warp zone sends you to and which do not exist in this rom yet. earlier this clamped an
+    # unresolvable target to the last level of world one, which silently teleported a player who
+    # took the "world 4" pipe into 1-4 - never do that again. a name that parses as a world/level
+    # pair but is not in our table compiles to WARP_UNBUILT instead; the minus world is not a pipe
+    # at all (it is a wall-clip trick) so it stays out of the room's pipe list entirely
+    if to_level in level_ids:
+        return level_ids.index(to_level)
+    if re.match(r"^\d+-\d+$", to_level or ""):
+        return WARP_UNBUILT
+    return None
+
+
+def compile_measured_area(area, kind):
+    # the room transcribed cell by cell: the bible names its width, the brick runs that shape it,
+    # the pipes standing in it and every coin. nothing here is synthesised from a prose count
+    length_columns = int(area["columns"])
+    grid = new_grid(length_columns)
+    probes = [(0, GROUND_ROW, BLOCK_GROUND)]
+    exit_column = None
+    exit_top_row = GROUND_ROW - AREA_EXIT_PIPE_HEIGHT
+
+    for t in area.get("terrain", []):
+        if t["kind"] == "bricks":
+            x0, x1 = clamp_span(grid, t["x0"], t["x1"])
+            for column in range(x0, x1 + 1):
+                for row in range(t["y0"], t["y1"] + 1):
+                    grid[column][row] = BLOCK_BRICK
+            probes.append((x0, t["y0"], BLOCK_BRICK))
+            probes.append((x1, t["y1"], BLOCK_BRICK))
+        elif t["kind"] == "pipe":
+            apply_pipe(grid, t["x"], t["height"])
+            top_row = GROUND_ROW - t["height"]
+            probes.append((t["x"], top_row, BLOCK_PIPE_TL))
+            probes.append((t["x"] + 1, top_row, BLOCK_PIPE_TR))
+            if t.get("dest") == "overworld":
+                exit_column = t["x"]
+                exit_top_row = top_row
+
+    for b in area.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        apply_block(grid, b["x"], b["y"], b["kind"])
+        probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    coin_cells = []
+    for c in area.get("coins", []):
+        column, row = c["x"], c["y"]
+        if 0 <= column < length_columns and grid[column][row] == BLOCK_EMPTY:
+            grid[column][row] = BLOCK_COIN
+            coin_cells.append((column, row))
+    if coin_cells:
+        probes.append((coin_cells[0][0], coin_cells[0][1], BLOCK_COIN))
+        probes.append((coin_cells[-1][0], coin_cells[-1][1], BLOCK_COIN))
+
+    if exit_column is None:
+        exit_column = length_columns - 2
+    settle_ground(grid, probes)
+    settle_lava(grid, probes)
+
+    start = area.get("start") or {}
+    start_column = int(start.get("x", 0))
+    # a room whose bible names the start row drops the player in from there (1-2's coin room: the
+    # real game lets him fall down the shaft); otherwise he stands on the column's floor
+    start_row = int(start["y"]) if start.get("y") is not None else surface_row(grid, start_column)
+    return {
+        "kind": kind,
+        "grid": grid,
+        "columns": length_columns,
+        "coins": coin_cells,
+        "warps": [],
+        "exit_column": exit_column,
+        "exit_top_row": exit_top_row,
+        "start_column": start_column,
+        "start_row": start_row,
+        "probes": probes,
+    }
+
+
+def compile_area(area, bible, level_ids):
+    kind = AREA_KIND_MAP.get(area.get("kind"), AREA_BONUS)
+    if kind == AREA_WARP:
+        return compile_warp_area(area, bible, level_ids)
+    if area.get("columns") is not None:
+        return compile_measured_area(area, kind)
+
+    coins = area_coin_count(area)
+    exit_column = AREA_FIRST_COIN_COLUMN + coins + AREA_EXIT_GAP_COLUMNS
+    length_columns = exit_column + 2 + AREA_PAD_COLUMNS
+    grid = new_grid(length_columns)
+    probes = []
+    coin_cells = []
+
+    for i in range(coins):
+        column = AREA_FIRST_COIN_COLUMN + i
+        grid[column][AREA_COIN_ROW] = BLOCK_COIN
+        coin_cells.append((column, AREA_COIN_ROW))
+    apply_pipe(grid, exit_column, AREA_EXIT_PIPE_HEIGHT)
+
+    # the area's own bible blocks render, but only its coins are collectible this pass
+    for b in area.get("blocks", []):
+        if b.get("x") is None or b.get("y") is None:
+            continue
+        apply_block(grid, b["x"], b["y"], b["kind"])
+        probes.append((b["x"], b["y"], BLOCK_KIND_MAP.get(b["kind"], BLOCK_EMPTY)))
+
+    exit_top_row = GROUND_ROW - AREA_EXIT_PIPE_HEIGHT
+    probes.append((0, GROUND_ROW, BLOCK_GROUND))
+    if coin_cells:
+        probes.append((coin_cells[0][0], AREA_COIN_ROW, BLOCK_COIN))
+        probes.append((coin_cells[-1][0], AREA_COIN_ROW, BLOCK_COIN))
+    probes.append((exit_column, exit_top_row, BLOCK_PIPE_TL))
+    probes.append((exit_column + 1, exit_top_row, BLOCK_PIPE_TR))
+    settle_ground(grid, probes)
+    settle_lava(grid, probes)
+
+    return {
+        "kind": kind,
+        "grid": grid,
+        "columns": length_columns,
+        "coins": coin_cells,
+        "warps": [],
+        "exit_column": exit_column,
+        "exit_top_row": exit_top_row,
+        "start_column": 0,
+        "start_row": GROUND_ROW,
+        "probes": probes,
+    }
+
+
+def compile_warp_area(area, bible, level_ids):
+    # the room the bible describes as three pipes side by side, one per destination world. the
+    # ordering (left to right) is the sourced part; the room's own geometry is not
+    warps = []
+    for w in bible.get("warps", []):
+        if w.get("via") != "warp_zone":
+            continue
+        target = warp_target(w.get("to_level"), level_ids)
+        if target is None:
+            continue
+        warps.append(target)
+    warps = warps[:3]
+
+    length_columns = AREA_WARP_FIRST_COLUMN + max(1, len(warps)) * AREA_WARP_SPACING + AREA_PAD_COLUMNS
+    grid = new_grid(length_columns)
+    probes = [(0, GROUND_ROW, BLOCK_GROUND)]
+    cells = []
+    for i, target in enumerate(warps):
+        column = AREA_WARP_FIRST_COLUMN + i * AREA_WARP_SPACING
+        apply_pipe(grid, column, AREA_WARP_PIPE_HEIGHT)
+        probes.append((column, GROUND_ROW - AREA_WARP_PIPE_HEIGHT, BLOCK_PIPE_TL))
+        cells.append((column, target))
+
+    settle_ground(grid, probes)
+    settle_lava(grid, probes)
+
+    # the room has no exit pipe of its own: the three warps are the way out. the exit fields still
+    # carry the last pipe so a player who takes none of them is not stranded
+    exit_column = cells[-1][0] if cells else 0
+    return {
+        "kind": AREA_WARP,
+        "grid": grid,
+        "columns": length_columns,
+        "coins": [],
+        "warps": cells,
+        "exit_column": exit_column,
+        "exit_top_row": GROUND_ROW - AREA_WARP_PIPE_HEIGHT,
+        "start_column": 0,
+        "start_row": GROUND_ROW,
+        "probes": probes,
+    }
 
 
 def slug_for(level_id):
     return "level_" + level_id.replace("-", "_")
 
 
-def write_header(out_dir, slug, length_columns, source_path):
+def to_camel(slug):
+    return "".join(part.capitalize() for part in slug.split("_"))
+
+
+def write_header(out_dir, slug, level, source_path):
     guard = slug.upper() + "_H"
+    upper = slug.upper()
     path = os.path.join(out_dir, slug + ".h")
     with open(path, "w", encoding="utf-8") as f:
         f.write("#ifndef %s\n" % guard)
         f.write("#define %s\n" % guard)
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("\n#include <stdint.h>\n\n")
-        f.write("#define %s_ROWS %dU\n" % (slug.upper(), LEVEL_ROWS))
+        f.write("#define %s_ROWS %dU\n" % (upper, LEVEL_ROWS))
+        f.write("// stored stride: one padding byte past the last row keeps a cell index a shift\n")
+        f.write("#define %s_ROW_STRIDE %dU\n" % (upper, ROW_STRIDE))
+        f.write("// the level's own kLevelType* value, which picks its palette set\n")
+        f.write("#define %s_TYPE %dU\n" % (upper, level["type"]))
+        f.write("// the bible's start column, and the surface row the compiled grid actually put\n")
+        f.write("// there - castles start partway up a staircase the bible only guessed the row of\n")
+        f.write("#define %s_START_COLUMN %dU\n" % (upper, level["start_column"]))
+        f.write("#define %s_START_ROW %dU\n" % (upper, level["start_row"]))
         f.write(
             "// provisional: last positioned bible feature plus %d columns of padding; a rom-measure\n"
             % PAD_COLUMNS
         )
         f.write("// pass will replace this once length_columns is sourced instead of derived\n")
-        f.write("#define %s_LENGTH_COLUMNS %dU\n" % (slug.upper(), length_columns))
-        f.write("// the rom bank the level compiles into; terrain.c switches into it to read a column\n")
-        f.write("#define %s_BANK 1U\n\n" % slug.upper())
+        f.write("#define %s_LENGTH_COLUMNS %dU\n" % (upper, level["columns"]))
+        f.write("// the rom bank the level compiles into; level.c switches into it to unpack the grid\n")
+        f.write("#define %s_BANK %dU\n" % (upper, level["bank"]))
+        f.write("// the bible's countdown, in smb ticks; the hud spends one every kTimerFramesPerTick\n")
+        f.write("#define %s_TIMER %dU\n" % (upper, level["timer"]))
+        f.write("// the flag pole shaft: its column and the top/bottom rows apply_flag() filled. the\n")
+        f.write("// pole's own cells are walk-through, so the engine tests contact against these.\n")
+        f.write("// the base row is the shaft's last cell, one row up from the ground: smb's hard\n")
+        f.write("// block stands under it, and the slide ends on top of that block\n")
+        f.write("#define %s_HAS_FLAG %dU\n" % (upper, 0 if level["flag_column"] is None else 1))
+        f.write("#define %s_FLAG_COLUMN %dU\n" % (upper, level["flag_column"] or 0))
+        f.write("#define %s_FLAG_TOP_ROW %dU\n" % (upper, FLAG_POLE_TOP_ROW))
+        f.write("#define %s_FLAG_BASE_ROW %dU\n" % (upper, FLAG_POLE_BOTTOM_ROW))
+        f.write("// the castle that closes the level: the column the castle template stood its keep\n")
+        f.write("// at. the clear walk ends at its door, CASTLE_DOOR_OFFSET columns in, which is a\n")
+        f.write("// real arch in the small five-wide keep and in the big nine-wide one alike\n")
+        f.write("#define %s_HAS_CASTLE %dU\n" % (upper, 0 if level["castle_column"] is None else 1))
+        f.write("#define %s_CASTLE_COLUMN %dU\n" % (upper, level["castle_column"] or 0))
+        f.write("// a castle ends at the axe instead: touching it drops the bridge span below\n")
+        bridge = level["bridge"] or (0, 0)
+        f.write("#define %s_HAS_AXE %dU\n" % (upper, 0 if level["axe_column"] is None else 1))
+        f.write("#define %s_AXE_COLUMN %dU\n" % (upper, level["axe_column"] or 0))
+        f.write("#define %s_AXE_ROW %dU\n" % (upper, level["axe_row"]))
+        f.write("#define %s_BRIDGE_X0 %dU\n" % (upper, bridge[0]))
+        f.write("#define %s_BRIDGE_X1 %dU\n" % (upper, bridge[1]))
+        f.write("#define %s_BRIDGE_ROW %dU\n" % (upper, level["bridge_row"]))
+        f.write("// the retainer in the room past the axe, and the floor row he stands on. the\n")
+        f.write("// clear walk carries mario off the pedestal, drops him into the room and stops\n")
+        f.write("// him a column short of this one. HAS_TOAD is 0 on a level whose bible names\n")
+        f.write("// none, and there the walk ends the old way, a fixed run along the pedestal\n")
+        f.write("#define %s_HAS_TOAD %dU\n" % (upper, 0 if level["toad_column"] is None else 1))
+        f.write("#define %s_TOAD_COLUMN %dU\n" % (upper, level["toad_column"] or 0))
+        f.write("#define %s_TOAD_ROW %dU\n" % (upper, level["toad_row"] or 0))
+        f.write("// the column the fake bowser's flame spawner arms at (see SCHEMA.md): smb1 has\n")
+        f.write("// his flames come at mario off the right edge of the view for several screens\n")
+        f.write("// before the bridge, and this is where that band starts. 0 on every other level\n")
+        f.write("#define %s_BOWSER_FIRE_COLUMN %dU\n" % (upper, level["bowser_fire_column"]))
+        f.write("// and that column in world px, less one - which comes out 0xffff when the\n")
+        f.write("// level named no zone at all, the same value hazard_min_x means \"no hazard\"\n")
+        f.write("// by. hazards.c reads this and not the column: bank 5 has no room for a shift\n")
+        f.write("#define %s_BOWSER_FIRE_X %dU\n\n"
+                % (upper, ((level["bowser_fire_column"] << 4) - 1) & 0xFFFF))
         f.write(
-            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROWS];\n\n"
-            % (slug, slug.upper(), slug.upper())
+            "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE];\n\n" % (slug, upper, upper)
         )
+
+        f.write("// the head-bump reaction list: every positioned question/brick/hidden block and what\n")
+        f.write("// it holds. kinds are the kBlockList* contract, contents the kContent* one\n")
+        f.write("#define %s_BLOCK_COUNT %dU\n" % (upper, len(level["blocks"])))
+        # unsized declarations: a bible that places none of something still needs an object to
+        # point at, and write_objects pads an empty list with one entry the count never reaches
+        f.write("extern const uint16_t %s_block_column[];\n" % slug)
+        f.write("extern const uint8_t %s_block_row[];\n" % slug)
+        f.write("extern const uint8_t %s_block_kind[];\n" % slug)
+        f.write("extern const uint8_t %s_block_content[];\n\n" % slug)
+
+        f.write("// the position-triggered enemy spawn list, sorted by column so the engine reaches\n")
+        f.write("// the cells near the camera with two frontier indices rather than a scan.\n")
+        f.write("// row is the surface row the enemy stands on top of, the start cell's own convention\n")
+        f.write("#define %s_ENEMY_COUNT %dU\n" % (upper, len(level["enemies"])))
+        f.write("extern const uint16_t %s_enemy_column[];\n" % slug)
+        f.write("extern const uint8_t %s_enemy_row[];\n" % slug)
+        f.write("extern const uint8_t %s_enemy_kind[];\n\n" % slug)
+
+        f.write("// the object list: pipes, lifts, firebars, the fake bowser and the axe, all kept in\n")
+        f.write("// one array because every one of them is a column, a row, a kObj* kind and a span\n")
+        f.write("#define %s_OBJECT_COUNT %dU\n" % (upper, len(level["objects"])))
+        f.write("extern const uint16_t %s_object_column[];\n" % slug)
+        f.write("extern const uint8_t %s_object_row[];\n" % slug)
+        f.write("extern const uint8_t %s_object_kind[];\n" % slug)
+        f.write("extern const uint8_t %s_object_param[];\n\n" % slug)
+
+        f.write("// same-grid segment teleports (kObjPipeJump in the object list above): a pipe's\n")
+        f.write("// object_param indexes here for the column/row it cuts to, with the lcd off, no\n")
+        f.write("// level_load involved because the whole grid is already unpacked into ram\n")
+        f.write("#define %s_JUMP_COUNT %dU\n" % (upper, len(level["jumps"])))
+        f.write("extern const uint16_t %s_jump_target_column[];\n" % slug)
+        f.write("extern const uint8_t %s_jump_target_row[];\n\n" % slug)
+
+        f.write("// column-range overrides on the level's own type: which ranges of a segmented\n")
+        f.write("// level (1-2) render with the overworld palette instead of the level's underground\n")
+        f.write("// one, and get no ceiling stamped in their columns. empty for every non-segmented level\n")
+        f.write("#define %s_SEGMENT_COUNT %dU\n" % (upper, len(level["segments"])))
+        f.write("extern const uint16_t %s_segment_x0[];\n" % slug)
+        f.write("extern const uint16_t %s_segment_x1[];\n" % slug)
+        f.write("extern const uint8_t %s_segment_type[];\n\n" % slug)
+
+        f.write("#define %s_AREA_COUNT %dU\n\n" % (upper, len(level["areas"])))
+        for index, area in enumerate(level["areas"]):
+            name = "%s_AREA%d" % (upper, index)
+            f.write("// sub-area %d: its own banked grid, entered from a pipe in the object list\n" % index)
+            f.write("#define %s_KIND %dU\n" % (name, area["kind"]))
+            f.write("#define %s_COLUMNS %dU\n" % (name, area["columns"]))
+            f.write("#define %s_BANK %dU\n" % (name, level["area_bank"]))
+            f.write("#define %s_START_COLUMN %dU\n" % (name, area["start_column"]))
+            f.write("#define %s_START_ROW %dU\n" % (name, area["start_row"]))
+            f.write("#define %s_EXIT_COLUMN %dU\n" % (name, area["exit_column"]))
+            f.write("#define %s_EXIT_TOP_ROW %dU\n" % (name, area["exit_top_row"]))
+            f.write("#define %s_RETURN_COLUMN %dU\n" % (name, area["return_column"]))
+            f.write("#define %s_RETURN_TOP_ROW %dU\n" % (name, area["return_top_row"]))
+            f.write("#define %s_COIN_COUNT %dU\n" % (name, len(area["coins"])))
+            f.write("#define %s_WARP_COUNT %dU\n" % (name, len(area["warps"])))
+            f.write(
+                "extern const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE];\n"
+                % (slug, index, name, upper)
+            )
+            f.write("extern const uint8_t %s_area%d_coin_column[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_coin_row[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_warp_column[];\n" % (slug, index))
+            f.write("extern const uint8_t %s_area%d_warp_level[];\n\n" % (slug, index))
+
         f.write("#endif\n")
 
 
-def write_source(out_dir, slug, grid, source_path):
+def c_array(f, decl, values):
+    # an empty run still gets one byte of storage, so the header's unsized extern has an object to
+    # name and nothing has to special-case a bible that placed none of something
+    body = ", ".join(str(v) for v in values) if values else "0"
+    f.write("%s[] = {%s};\n" % (decl, body))
+
+
+def write_objects(out_dir, slug, level, source_path):
+    # the reaction/object lists are scanned every frame, so they stay in bank 0 where no bank switch
+    # stands between the engine and a solidity probe; only the grids pay the banking cost
+    upper = slug.upper()
+    path = os.path.join(out_dir, slug + "_objects.c")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
+        f.write('\n#include "%s.h"\n\n' % slug)
+        blocks = level["blocks"]
+        c_array(f, "const uint16_t %s_block_column" % slug, [b[0] for b in blocks])
+        c_array(f, "const uint8_t %s_block_row" % slug, [b[1] for b in blocks])
+        c_array(f, "const uint8_t %s_block_kind" % slug, [b[2] for b in blocks])
+        c_array(f, "const uint8_t %s_block_content" % slug, [b[3] for b in blocks])
+        enemies = level["enemies"]
+        c_array(f, "const uint16_t %s_enemy_column" % slug, [e[0] for e in enemies])
+        c_array(f, "const uint8_t %s_enemy_row" % slug, [e[1] for e in enemies])
+        c_array(f, "const uint8_t %s_enemy_kind" % slug, [e[2] for e in enemies])
+        objects = level["objects"]
+        c_array(f, "const uint16_t %s_object_column" % slug, [o[0] for o in objects])
+        c_array(f, "const uint8_t %s_object_row" % slug, [o[1] for o in objects])
+        c_array(f, "const uint8_t %s_object_kind" % slug, [o[2] for o in objects])
+        c_array(f, "const uint8_t %s_object_param" % slug, [o[3] for o in objects])
+        jumps = level["jumps"]
+        c_array(f, "const uint16_t %s_jump_target_column" % slug, [j[0] for j in jumps])
+        c_array(f, "const uint8_t %s_jump_target_row" % slug, [j[1] for j in jumps])
+        segments = level["segments"]
+        c_array(f, "const uint16_t %s_segment_x0" % slug, [s[0] for s in segments])
+        c_array(f, "const uint16_t %s_segment_x1" % slug, [s[1] for s in segments])
+        c_array(f, "const uint8_t %s_segment_type" % slug, [s[2] for s in segments])
+        for index, area in enumerate(level["areas"]):
+            name = "%s_AREA%d" % (upper, index)
+            c_array(f, "const uint8_t %s_area%d_coin_column" % (slug, index),
+                    [c[0] for c in area["coins"]])
+            c_array(f, "const uint8_t %s_area%d_coin_row" % (slug, index),
+                    [c[1] for c in area["coins"]])
+            c_array(f, "const uint8_t %s_area%d_warp_column" % (slug, index),
+                    [w[0] for w in area["warps"]])
+            c_array(f, "const uint8_t %s_area%d_warp_level" % (slug, index),
+                    [w[1] for w in area["warps"]])
+
+
+def write_areas(out_dir, slug, level, source_path):
+    upper = slug.upper()
+    path = os.path.join(out_dir, slug + "_areas.c")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
+        f.write("// one column-major block grid per sub-area, banked away from the main level's own\n")
+        f.write("#pragma bank %d\n\n" % level["area_bank"])
+        f.write('#include "%s.h"\n\n' % slug)
+        for index, area in enumerate(level["areas"]):
+            name = "%s_AREA%d" % (upper, index)
+            f.write(
+                "const uint8_t %s_area%d_blocks[%s_COLUMNS][%s_ROW_STRIDE] = {\n"
+                % (slug, index, name, upper)
+            )
+            for col in area["grid"]:
+                names = "/".join(KIND_NAMES[v] for v in col if v != BLOCK_EMPTY)
+                comment = (" // %s" % names) if names else ""
+                f.write("    {%s},%s\n" % (", ".join(str(v) for v in padded(col)), comment))
+            f.write("};\n\n")
+
+
+def write_source(out_dir, slug, level, source_path):
     path = os.path.join(out_dir, slug + ".c")
     with open(path, "w", encoding="utf-8") as f:
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
         f.write("// column-major block grid; kind values are the kBlock* contract in games/mario/src/mario.h\n")
-        f.write("#pragma bank 1\n\n")
+        f.write("#pragma bank %d\n\n" % level["bank"])
         f.write('#include "%s.h"\n\n' % slug)
         f.write(
-            "const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROWS] = {\n"
+            "const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE] = {\n"
             % (slug, slug.upper(), slug.upper())
         )
-        for col in grid:
-            row_bytes = ", ".join(str(v) for v in col)
+        for col in level["grid"]:
+            row_bytes = ", ".join(str(v) for v in padded(col))
             names = "/".join(KIND_NAMES[v] for v in col if v != BLOCK_EMPTY)
             comment = (" // %s" % names) if names else ""
             f.write("    {%s},%s\n" % (row_bytes, comment))
         f.write("};\n")
 
 
-def write_probes(out_dir, slug, probes, source_path):
-    path = os.path.join(out_dir, slug + "_probes.h")
-    guard = slug.upper() + "_PROBES_H"
+def write_grid(out_dir, slug, level, source_path):
+    # the same grid the rom reads out of its banked copy, as a host constant: the traversal tests
+    # plan routes against it instead of re-deriving the level from the bible json
+    path = os.path.join(out_dir, slug + "_grid.h")
+    guard = slug.upper() + "_GRID_H"
+    camel = to_camel(slug)
     with open(path, "w", encoding="utf-8") as f:
         f.write("#ifndef %s\n" % guard)
         f.write("#define %s\n" % guard)
         f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
-        f.write(
-            "// golden probes derived directly from the bible json's terrain runs and blocks; the host\n"
-        )
-        f.write("// test reads these instead of hand-duplicating level-1-1.json's positions\n")
         f.write("\n#include <cstdint>\n\n")
-        f.write("struct LevelProbe {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n\n")
-        f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % to_camel(slug))
-        for column, row, kind in probes:
+        f.write("#ifndef MARIO_LEVEL_TYPES\n#define MARIO_LEVEL_TYPES\n")
+        f.write("struct LevelBlock {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t content;\n};\n")
+        f.write("struct LevelEnemy {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n")
+        f.write("struct LevelObject {\n")
+        f.write("    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n    uint8_t param;\n};\n")
+        f.write("struct LevelWarp {\n    uint8_t column;\n    uint8_t level;\n};\n")
+        f.write("struct LevelJump {\n    uint16_t column;\n    uint8_t row;\n};\n")
+        f.write("struct LevelSegment {\n    uint16_t x0;\n    uint16_t x1;\n    uint8_t type;\n};\n")
+        f.write("#endif\n\n")
+
+        f.write("inline constexpr uint8_t k%sGrid[%d][%d] = {\n" % (camel, len(level["grid"]), LEVEL_ROWS))
+        for col in level["grid"]:
+            f.write("    {%s},\n" % ", ".join(str(v) for v in col))
+        f.write("};\n\n")
+
+        # every list ends in one padding entry the count never reaches: a level that places none of
+        # something would otherwise declare a zero-length array
+        f.write("inline constexpr LevelBlock k%sBlocks[] = {\n" % camel)
+        for column, row, kind, content in level["blocks"]:
+            f.write("    {%d, %d, %d, %d},\n" % (column, row, kind, content))
+        f.write("    {0, 0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sBlockCount = %d;\n\n" % (camel, len(level["blocks"])))
+
+        f.write("inline constexpr LevelEnemy k%sEnemies[] = {\n" % camel)
+        for column, row, kind in level["enemies"]:
+            f.write("    {%d, %d, %d},\n" % (column, row, kind))
+        f.write("    {0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sEnemyCount = %d;\n\n" % (camel, len(level["enemies"])))
+
+        f.write("inline constexpr LevelObject k%sObjects[] = {\n" % camel)
+        for column, row, kind, param in level["objects"]:
+            f.write("    {%d, %d, %d, %d}, // %s\n" % (column, row, kind, param, OBJ_NAMES[kind]))
+        f.write("    {0, 0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sObjectCount = %d;\n\n" % (camel, len(level["objects"])))
+
+        f.write("inline constexpr LevelJump k%sJumps[] = {\n" % camel)
+        for column, row in level["jumps"]:
+            f.write("    {%d, %d},\n" % (column, row))
+        f.write("    {0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sJumpCount = %d;\n\n" % (camel, len(level["jumps"])))
+
+        f.write("inline constexpr LevelSegment k%sSegments[] = {\n" % camel)
+        for x0, x1, seg_type in level["segments"]:
+            f.write("    {%d, %d, %d},\n" % (x0, x1, seg_type))
+        f.write("    {0, 0, 0},\n};\n")
+        f.write("inline constexpr uint16_t k%sSegmentCount = %d;\n\n" % (camel, len(level["segments"])))
+
+        for index, area in enumerate(level["areas"]):
+            f.write(
+                "inline constexpr uint8_t k%sArea%dGrid[%d][%d] = {\n"
+                % (camel, index, area["columns"], LEVEL_ROWS)
+            )
+            for col in area["grid"]:
+                f.write("    {%s},\n" % ", ".join(str(v) for v in col))
+            f.write("};\n\n")
+            f.write("inline constexpr LevelWarp k%sArea%dWarps[] = {\n" % (camel, index))
+            for column, target in area["warps"]:
+                f.write("    {%d, %d},\n" % (column, target))
+            f.write("    {0, 0},\n};\n")
+            f.write("inline constexpr uint16_t k%sArea%dWarpCount = %d;\n\n"
+                    % (camel, index, len(area["warps"])))
+        f.write("#endif\n")
+
+
+def write_probes(out_dir, slug, level, source_path):
+    path = os.path.join(out_dir, slug + "_probes.h")
+    guard = slug.upper() + "_PROBES_H"
+    camel = to_camel(slug)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("#ifndef %s\n" % guard)
+        f.write("#define %s\n" % guard)
+        f.write("// generated by games/mario/tools/compile_level.py from %s - do not edit\n" % source_path)
+        f.write("// golden probes derived directly from the bible json's terrain runs and blocks; the host\n")
+        f.write("// test reads these instead of hand-duplicating the level json's positions\n")
+        f.write("\n#include <cstdint>\n\n")
+        f.write("#ifndef MARIO_LEVEL_PROBE\n#define MARIO_LEVEL_PROBE\n")
+        f.write("struct LevelProbe {\n    uint16_t column;\n    uint8_t row;\n    uint8_t kind;\n};\n")
+        f.write("#endif\n\n")
+        f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % camel)
+        for column, row, kind in level["probes"]:
             f.write("    {%d, %d, %d}, // %s\n" % (column, row, kind, KIND_NAMES[kind]))
         f.write("};\n\n")
         f.write(
             "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
-            % (to_camel(slug), to_camel(slug), to_camel(slug))
+            % (camel, camel, camel)
         )
+        for index, area in enumerate(level["areas"]):
+            name = "%sArea%d" % (camel, index)
+            f.write("inline constexpr LevelProbe k%sProbes[] = {\n" % name)
+            for column, row, kind in area["probes"]:
+                f.write("    {%d, %d, %d}, // %s\n" % (column, row, kind, KIND_NAMES[kind]))
+            f.write("};\n\n")
+            f.write(
+                "inline constexpr uint16_t k%sProbeCount = sizeof(k%sProbes) / sizeof(k%sProbes[0]);\n\n"
+                % (name, name, name)
+            )
         f.write("#endif\n")
 
 
-def to_camel(slug):
-    return "".join(part.capitalize() for part in slug.split("_"))
+# the levels we can actually warp into; anything else compiles to WARP_UNBUILT (see warp_target)
+LEVEL_IDS = ["1-1", "1-2", "1-3", "1-4"]
+
+
+def compile_level(bible, bank, area_bank):
+    level_type = TYPE_MAP.get(bible.get("type"), TYPE_OVERWORLD)
+    built = compile_grid(bible, level_type)
+    grid = built["grid"]
+    areas = []
+    bible_areas = bible.get("areas", [])
+    entries = find_pipe_entries(bible, bible_areas)
+    entry_of = {index: (column, top_row) for column, top_row, index in entries}
+    # an area the bible reaches some other way than a terrain pipe still needs one to stand in
+    for column, top_row, _ in entries:
+        if grid[column][top_row] != BLOCK_PIPE_TL:
+            apply_pipe(grid, column, GROUND_ROW - top_row)
+            built["probes"].append((column, top_row, BLOCK_PIPE_TL))
+
+    for index, area in enumerate(bible_areas):
+        compiled = compile_area(area, bible, LEVEL_IDS)
+        # the bible's exit prose for 1-1 is "same pipe, returns to overworld near entry", so the
+        # return column is the entry pipe's own; an area with no compiled pipe returns to the start
+        entry = entry_of.get(index, (bible.get("start", {}).get("x", 0), GROUND_ROW - 2))
+        # a room that comes back up a different pipe than it went down (1-2's coin room returns
+        # through the third piranha pipe) names that pipe's column as return_x
+        return_x = area.get("return_x")
+        if return_x is not None:
+            for t in bible.get("terrain", []):
+                if t["kind"] == "pipe" and t["x"] == return_x:
+                    entry = (return_x, GROUND_ROW - t["height"])
+        compiled["return_column"] = entry[0]
+        compiled["return_top_row"] = entry[1]
+        areas.append(compiled)
+
+    objects = built["objects"]
+    for column, top_row, index in entries:
+        objects.append((column, top_row, OBJ_PIPE, index))
+    objects.sort(key=lambda o: (o[0], o[2]))
+
+    start_column = bible["start"]["x"]
+    return {
+        "type": level_type,
+        "bank": bank,
+        "area_bank": area_bank,
+        "timer": bible["timer"],
+        "grid": grid,
+        "columns": built["columns"],
+        "probes": built["probes"],
+        "flag_column": built["flag_column"],
+        "castle_column": built["castle_column"],
+        "bridge": built["bridge"],
+        "bridge_row": built["bridge_row"],
+        "bowser_fire_column": built["bowser_fire_column"],
+        "axe_column": built["axe_column"],
+        "axe_row": built["axe_row"],
+        "toad_column": built["toad_column"],
+        "toad_row": built["toad_row"],
+        "start_column": start_column,
+        # a measured bible names the surface row it stands him on, which is the only thing that can
+        # be right in a castle: 1-4's roof is three rows of masonry over his own column, so a scan
+        # down from the top lands on the ceiling instead of the platform he starts on
+        "start_row": start_row(bible, grid, start_column, level_type),
+        "blocks": compile_block_list(bible),
+        "enemies": compile_enemy_list(bible, grid, level_type),
+        "objects": objects,
+        "jumps": built["jumps"],
+        "segments": built["segments"],
+        "areas": areas,
+    }
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("usage: compile_level.py <bible.json> <out_dir>", file=sys.stderr)
+    args = sys.argv[1:]
+    bank = DEFAULT_BANK
+    area_bank = DEFAULT_AREA_BANK
+    positional = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--bank":
+            bank = int(args[i + 1])
+            i += 2
+        elif args[i] == "--area-bank":
+            area_bank = int(args[i + 1])
+            i += 2
+        else:
+            positional.append(args[i])
+            i += 1
+    if len(positional) != 2:
+        print("usage: compile_level.py <bible.json> <out_dir> [--bank N] [--area-bank M]", file=sys.stderr)
         return 1
 
-    in_path, out_dir = sys.argv[1], sys.argv[2]
+    in_path, out_dir = positional
     os.makedirs(out_dir, exist_ok=True)
 
     bible = load_bible(in_path)
     slug = slug_for(bible["level"])
-    grid, length_columns, probes = compile_grid(bible)
+    level = compile_level(bible, bank, area_bank)
 
-    write_header(out_dir, slug, length_columns, in_path)
-    write_source(out_dir, slug, grid, in_path)
-    write_probes(out_dir, slug, probes, in_path)
+    write_header(out_dir, slug, level, in_path)
+    write_source(out_dir, slug, level, in_path)
+    write_objects(out_dir, slug, level, in_path)
+    write_areas(out_dir, slug, level, in_path)
+    write_grid(out_dir, slug, level, in_path)
+    write_probes(out_dir, slug, level, in_path)
 
     print(
-        "compiled %s: %d columns, %d probes -> %s"
-        % (bible["level"], length_columns, len(probes), out_dir)
+        "compiled %s: type %d bank %d, %d columns, %d probes, %d blocks, %d enemies, %d objects, "
+        "%d areas, flag column %s -> %s"
+        % (bible["level"], level["type"], bank, level["columns"], len(level["probes"]),
+           len(level["blocks"]), len(level["enemies"]), len(level["objects"]), len(level["areas"]),
+           level["flag_column"], out_dir)
     )
     return 0
 

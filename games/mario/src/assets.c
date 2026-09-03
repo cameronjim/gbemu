@@ -1,128 +1,182 @@
+// m18's art pass took the block tables from eighteen kinds to thirty-eight (forty-eight now that
+// 1-2's sideways pipe, 1-3's tree and the centred flag's pennant cell are in), and six tables of
+// that length is 288 bytes bank 0 no longer had. so they ride with the rest of the art and are
+// staged into ram at a level load, the
+// way level.c already stages the level table: the streamer's reads stay plain loads with no bank
+// switch behind them, and bank 0 carries none of the bytes
+#pragma bank 4
+
 #include "assets.h"
 
-#include <gb/cgb.h>
-#include <gb/gb.h>
+#include <stdint.h>
+#include <string.h>
 
-// low byte then high byte per row, leftmost pixel in bit 7; index = (hi bit, lo bit)
-// three tiles: ground top (grass edge over dirt), ground fill (dirt only), hard/stair (bordered stone)
-const uint8_t kGroundTiles[48] = {
-    0xFF, 0xFF, // 33333333 grass edge
-    0xFF, 0xFF, // 33333333 grass edge
-    0xFF, 0x00, // 11111111 dirt
-    0xDD, 0x00, // 11011101
-    0xFF, 0x00, // 11111111
-    0xBB, 0x00, // 10111011
-    0xFF, 0x00, // 11111111
-    0xFF, 0x00, // 11111111
-    0xFF, 0x00, // 11111111 dirt (fill tile)
-    0xDD, 0x00, // 11011101
-    0xFF, 0x00, // 11111111
-    0xBB, 0x00, // 10111011
-    0xFF, 0x00, // 11111111
-    0xEE, 0x00, // 11101110
-    0xFF, 0x00, // 11111111
-    0x77, 0x00, // 01110111
-    0xFF, 0xFF, // 33333333 border (hard/stair tile)
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 border
+// the staged copies, which are what terrain.c actually reads
+uint8_t kBlockTileTl[kBlockKindCount];
+uint8_t kBlockTileTr[kBlockKindCount];
+uint8_t kBlockTileBl[kBlockKindCount];
+uint8_t kBlockTileBr[kBlockKindCount];
+uint8_t kBlockFloor[kBlockKindCount];
+uint8_t kBlockPalette[kBlockKindCount];
+
+// index = kBlock* from mario.h. every block is 2x2 tiles and m18's art pass gives most of them
+// four distinct quadrants; the ones that still repeat a tile do it because the shape genuinely
+// repeats (a pipe's body has no vertical variation, a castle wall's masonry tiles at 8px, and a
+// decorative cell's unused half is sky).
+//
+// 1-3's four tree kinds close each table: the three canopy caps wear the thin platform's deck art
+// and the trunk is sky, placeholders until the art pass draws them
+//
+// index 47 is the parallel flagpole pass's kBlockFlagPoleCloth: a reserved sky row here, so the
+// castle's stone keeps index 48 whichever pass merges first
+//
+// kBlockCastleBrick comes after that, its top pair the masonry's upper course and its bottom pair
+// the one offset half a brick under it, which is the running bond the rip lays its wall in; then
+// kBlockLavaFill, kTileLavaDeep in all four quadrants, which is a pit's rows under the surface one
+//
+// the four mirrored kinds - the right cloud caps, the right hill slope, the right bush cap - carry
+// the same tiles as their left twin with the two columns swapped, and set kCamAttrXFlip in their
+// palette byte so the hardware does the mirroring, which halves what the scenery costs
+// clang-format off
+static const uint8_t kTileTlRom[kBlockKindCount] = {
+    kTileSky,            kTileGroundTopL,      kTileBrickTl,       kTileQuestionTl,
+    kTileHardTl,         kTilePipeLipL,        kTilePipeLipM,      kTilePipeBodyL,
+    kTilePipeBodyM,      kTileHardTl,          kTileFlagPoleL,     kTileCastleWall,
+    kTileSpentTl,        kTileCoinTl,          kTileThin,          kTileLavaTop,
+    kTileBridge,         kTileAxe,             kTileGroundFillTl,  kTileCastleCrenel,
+    kTileCastleWindowTl, kTileCastleDoorTopTl, kTileCastleDoorTl,  kTileFlagBallL,
+    kTileScenBlank,      kTileCloudCapTl,      kTileCloudMidTl,    kTileCloudCapTr,
+    kTileCloudCapBl,     kTileCloudMidBl,      kTileCloudCapBr,    kTileHillPeakTl,
+    kTileHillSlopeTl,    kTileHillSlopeTr,     kTileHillFillTl,    kTileBushCapTl,
+    kTileBushMidTl,      kTileBushCapTr,
+    kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
+    kTileCastleCrenelInner,
+    kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
+    kTileFlagClothPoleT, kTileCastleBrickUpper, kTileLavaDeep,
 };
-
-// brick: mortar lines top and mid, fill between
-const uint8_t kBrickTile[16] = {
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 mortar
-    0x00, 0xFF, // 22222222
+// clang-format on
+// clang-format off
+static const uint8_t kTileTrRom[kBlockKindCount] = {
+    kTileSky,            kTileGroundTopR,      kTileBrickTr,       kTileQuestionTr,
+    kTileHardTr,         kTilePipeLipM,        kTilePipeLipR,      kTilePipeBodyM,
+    kTilePipeBodyR,      kTileHardTr,          kTileFlagPoleR,     kTileCastleWall,
+    kTileSpentTr,        kTileCoinTr,          kTileThin,          kTileLavaTop,
+    kTileBridge,         kTileAxeRight,        kTileGroundFillTr,  kTileCastleCrenel,
+    kTileCastleWindowTr, kTileCastleDoorTopTr, kTileCastleDoorTr,  kTileFlagBallR,
+    kTileFlagClothT,     kTileCloudCapTr,      kTileCloudMidTr,    kTileCloudCapTl,
+    kTileCloudCapBr,     kTileCloudMidBr,      kTileCloudCapBl,    kTileHillPeakTr,
+    kTileHillSlopeTr,    kTileHillSlopeTl,     kTileHillFillTr,    kTileBushCapTr,
+    kTileBushMidTr,      kTileBushCapTl,
+    kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
+    kTileCastleCrenelInner,
+    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
+    kTileFlagPoleR,      kTileCastleBrickUpper, kTileLavaDeep,
 };
-
-// question block face: solid quadrant shading stands in for the "?" glyph this pass; a future art
-// pass can trace real glyph pixels once the block is interactive. tiles in id order: top-left
-// (dark outline), top-right (gold fill), bottom-left (gold fill), bottom-right (dark outline)
-const uint8_t kQuestionTiles[64] = {
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-// pipe: dark rim cap over a two-tone body. tiles in id order: top-left cap (rim + dark fill),
-// top-right cap (rim + light fill), body-left (dark, no rim), body-right (light, no rim)
-const uint8_t kPipeTiles[64] = {0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00,
-                                0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00,
-                                0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00,
-                                0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00,
-                                0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00};
-
-// flag pole: a thin vertical line down the tile's center, sky everywhere else
-// castle: stone block, same shape as hard but its own tile id per the family map
-const uint8_t kFlagCastleTiles[32] = {
-    0x18, 0x18, // ...33... pole
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0x18, 0x18, // ...33...
-    0xFF, 0xFF, // 33333333 border
-    0x00, 0xFF, // 22222222 fill
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0x00, 0xFF, // 22222222
-    0xFF, 0xFF, // 33333333 border
+// clang-format on
+// clang-format off
+static const uint8_t kTileBlRom[kBlockKindCount] = {
+    kTileSky,            kTileGroundFillBl,    kTileBrickBl,       kTileQuestionBl,
+    kTileHardBl,         kTilePipeLipLb,       kTilePipeLipMb,     kTilePipeBodyL,
+    kTilePipeBodyM,      kTileHardBl,          kTileFlagPoleL,     kTileCastleWall,
+    kTileSpentBl,        kTileCoinBl,          kTileThinUnder,     kTileLavaFill,
+    kTileBridgeLower,    kTileSky,             kTileGroundFillBl,  kTileCastleWall,
+    kTileCastleWindowBl, kTileCastleDoorTopBl, kTileCastleDoorBl,  kTileFlagPoleL,
+    kTileScenBlank,      kTileCloudCapMl,      kTileCloudMidMl,    kTileCloudCapMr,
+    kTileCloudCapFl,     kTileCloudMidFl,      kTileCloudCapFr,    kTileHillPeakBl,
+    kTileHillSlopeBl,    kTileHillSlopeBr,     kTileHillFillBl,    kTileBushCapBl,
+    kTileBushMidBl,      kTileBushCapBr,
+    kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileCastleWall,
+    kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
+    kTileFlagClothPoleB, kTileCastleBrickLower, kTileLavaDeep,
 };
+// clang-format on
+// clang-format off
+static const uint8_t kTileBrRom[kBlockKindCount] = {
+    kTileSky,            kTileGroundFillBr,    kTileBrickBr,       kTileQuestionBr,
+    kTileHardBr,         kTilePipeLipMb,       kTilePipeLipRb,     kTilePipeBodyM,
+    kTilePipeBodyR,      kTileHardBr,          kTileFlagPoleR,     kTileCastleWall,
+    kTileSpentBr,        kTileCoinBr,          kTileThinUnder,     kTileLavaFill,
+    kTileBridgeLower,    kTileSky,             kTileGroundFillBr,  kTileCastleWall,
+    kTileCastleWindowBr, kTileCastleDoorTopBr, kTileCastleDoorBr,  kTileFlagPoleR,
+    kTileFlagClothB,     kTileCloudCapMr,      kTileCloudMidMr,    kTileCloudCapMl,
+    kTileCloudCapFr,     kTileCloudMidFr,      kTileCloudCapFl,    kTileHillPeakBr,
+    kTileHillSlopeBr,    kTileHillSlopeBl,     kTileHillFillBr,    kTileBushCapBr,
+    kTileBushMidBr,      kTileBushCapBl,
+    kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileCastleWall,
+    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
+    kTileFlagPoleR,      kTileCastleBrickLower, kTileLavaDeep,
+};
+// clang-format on
+// sky, the flag's four cells, a world coin, the axe, lava and every scenery kind are all
+// walk-through; a thin platform stops only feet that crossed its deck line, which is the caller's
+// test to make. the castle is scenery too - mario's walk-off after the flag ends inside it
+// clang-format off
+static const uint8_t kFloorRom[kBlockKindCount] = {
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
+    kFloorSolid, 0,           kFloorThin,  0,           kFloorSolid, 0,
+    kFloorSolid, 0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,
+    0,           0,           0,           0,           0,           0,
+    0,           0,
+    kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
+    0,
+    kFloorSolid, kFloorSolid, kFloorSolid, 0,
+    0, kFloorSolid, 0,
+};
+// clang-format on
+// lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge takes
+// the neutral one (whose unused color 3 the castle set turns into its chain's red), the axe the
+// question block's gold and the thin platform the neutral one too. the hills, the bushes and the flag
+// share the pipe's greens, the castle shares the brick's browns, and the clouds and the pennant
+// share the sky's whites - and the sideways pipe is the vertical one rotated, so it shares those
+// greens too, and so does 1-3's tree canopy, whose four rip colors are exactly the pipe slot's
+// (sky, bright green, dark green, black); its trunk takes the brick's browns - which is how eight
+// cgb slots still cover all forty-eight kinds.
+//
+// kBlockFlagPoleCloth is the one kind whose entry only covers half its cell: its left tile is the
+// pennant's white and its right tile the shaft's greens, and put_face gives the right tile column
+// kBlockFlagPole's slot instead (terrain.c). the shaft's left outline is color 3 in both slots, so
+// the plain pole's own left tile reads the same under either
+//
+// the kScen* entries add kCamAttrVram1: every kind whose art assets_load_scenery_tiles put in vram
+// bank 1 has to say so here, because the attribute byte is what picks the bank a cell reads from
+#define kScenSky (kCamPalSky | kCamAttrVram1)
+#define kScenPipe (kCamPalPipe | kCamAttrVram1)
+#define kScenBrick (kCamPalBrick | kCamAttrVram1)
+// m20's castle terrain: the masonry course, the bridge's two halves and the axe's two blades all
+// live in vram bank 1 too, because bank 0's bg map is out of ids. the brick takes the ground slot,
+// whose colors a castle load turns into the course's own four greys; the axe takes the question
+// block's gold rather than the bridge's grey, which is the orange the rip paints its blades
+#define kScenGround (kCamPalGround | kCamAttrVram1)
+#define kScenNeutral (kCamPalNeutral | kCamAttrVram1)
+#define kScenQuestion (kCamPalQuestion | kCamAttrVram1)
+// clang-format off
+static const uint8_t kPaletteRom[kBlockKindCount] = {
+    kCamPalSky,     kCamPalGround,  kCamPalBrick,   kCamPalQuestion,
+    kCamPalBrick,   kCamPalPipe,    kCamPalPipe,    kCamPalPipe,
+    kCamPalPipe,    kCamPalBrick,   kScenPipe,      kScenBrick,
+    kCamPalSpent,   kCamPalCoin,    kCamPalNeutral, kCamPalCoin | kCamAttrVram1,
+    kScenNeutral,   kScenQuestion,  kCamPalGround,  kScenBrick,
+    kScenBrick,     kScenBrick,     kScenBrick,     kScenPipe,
+    kScenSky,       kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
+    kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
+    kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
+    kScenBrick,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
+    kScenSky,       kScenGround,   kCamPalCoin | kCamAttrVram1,
+};
+// clang-format on
 
-void assets_load_bg_tiles(void) {
-    set_bkg_data(kTileGroundTop, 3, kGroundTiles);
-    set_bkg_data(kTileBrick, 1, kBrickTile);
-    set_bkg_data(kTileQuestionTl, 4, kQuestionTiles);
-    set_bkg_data(kTilePipeTl, 4, kPipeTiles);
-    set_bkg_data(kTileFlagPole, 2, kFlagCastleTiles);
+void assets_load_block_tables(void) BANKED {
+    memcpy(kBlockTileTl, kTileTlRom, kBlockKindCount);
+    memcpy(kBlockTileTr, kTileTrRom, kBlockKindCount);
+    memcpy(kBlockTileBl, kTileBlRom, kBlockKindCount);
+    memcpy(kBlockTileBr, kTileBrRom, kBlockKindCount);
+    memcpy(kBlockFloor, kFloorRom, kBlockKindCount);
+    memcpy(kBlockPalette, kPaletteRom, kBlockKindCount);
 }
-
-void assets_load_bg_palettes(void) {
-    palette_color_t sky[4] = {RGB(24, 28, 31), RGB(16, 20, 31), RGB(8, 12, 28), RGB(2, 4, 16)};
-    palette_color_t ground[4] = {RGB(4, 3, 2), RGB(16, 10, 5), RGB(12, 12, 10), RGB(22, 16, 8)};
-    palette_color_t brick[4] = {RGB(6, 3, 2), RGB(14, 6, 3), RGB(20, 8, 4), RGB(10, 4, 2)};
-    palette_color_t question[4] = {RGB(6, 4, 0), RGB(24, 18, 3), RGB(28, 22, 4), RGB(20, 14, 2)};
-    palette_color_t pipe[4] = {RGB(1, 4, 1), RGB(10, 28, 10), RGB(4, 20, 6), RGB(2, 10, 3)};
-    palette_color_t neutral[4] = {RGB(8, 8, 8), RGB(22, 22, 22), RGB(16, 16, 16), RGB(28, 28, 28)};
-    set_bkg_palette(kCamPalSky, 1, sky);
-    set_bkg_palette(kCamPalGround, 1, ground);
-    set_bkg_palette(kCamPalBrick, 1, brick);
-    set_bkg_palette(kCamPalQuestion, 1, question);
-    set_bkg_palette(kCamPalPipe, 1, pipe);
-    set_bkg_palette(kCamPalNeutral, 1, neutral);
-}
-
-// index = kBlock* from mario.h; empty and the two pipe-body kinds fill all four corners alike
-const uint8_t kBlockTileTl[kBlockKindCount] = {
-    kTileSky,    kTileGroundTop, kTileBrick,     kTileQuestionTl, kTileHard,     kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL, kTilePipeBodyR, kTileHard,       kTileFlagPole, kTileCastle,
-};
-const uint8_t kBlockTileTr[kBlockKindCount] = {
-    kTileSky,    kTileGroundTop, kTileBrick,     kTileQuestionTr, kTileHard, kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL, kTilePipeBodyR, kTileHard,       kTileSky,  kTileCastle,
-};
-const uint8_t kBlockTileBl[kBlockKindCount] = {
-    kTileSky,    kTileGroundFill, kTileBrick,     kTileQuestionBl, kTileHard,     kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL,  kTilePipeBodyR, kTileHard,       kTileFlagPole, kTileCastle,
-};
-const uint8_t kBlockTileBr[kBlockKindCount] = {
-    kTileSky,    kTileGroundFill, kTileBrick,     kTileQuestionBr, kTileHard, kTilePipeTl,
-    kTilePipeTr, kTilePipeBodyL,  kTilePipeBodyR, kTileHard,       kTileSky,  kTileCastle,
-};
-const uint8_t kBlockPalette[kBlockKindCount] = {
-    kCamPalSky,  kCamPalGround, kCamPalBrick, kCamPalQuestion, kCamPalGround,  kCamPalPipe,
-    kCamPalPipe, kCamPalPipe,   kCamPalPipe,  kCamPalGround,   kCamPalNeutral, kCamPalNeutral,
-};

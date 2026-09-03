@@ -37,7 +37,7 @@ size_t count_lit_pixels(std::span<const uint8_t> fb) {
 constexpr uint32_t kBootFrames = 120;
 
 // the hover banner covers screen rows 1..5: pad, title, prompt, BEST, then the digit sprites
-constexpr uint32_t kBannerTopRow = 1;
+[[maybe_unused]] constexpr uint32_t kBannerTopRow = 1;
 constexpr uint32_t kBannerTitleRow = 2;
 constexpr uint32_t kBannerPromptRow = 3;
 constexpr uint32_t kBannerBestRow = 4;

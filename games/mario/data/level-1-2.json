@@ -2,107 +2,1209 @@
   "level": "1-2",
   "type": "underground",
   "timer": 400,
-  "length_columns": null,
-  "length_columns_confidence": "unknown",
-  "start": {"x": 0, "y": 13},
+  "length_columns": 249,
+  "length_columns_confidence": "measured",
+  "start": {
+    "x": 6,
+    "y": 13
+  },
+  "segments": [
+    {
+      "x0": 0,
+      "x1": 23,
+      "type": "overworld",
+      "confidence": "measured",
+      "notes": "the above-ground start from the nes map's band 0 cols 0-23: castle, flat ground, the entrance pipe"
+    },
+    {
+      "x0": 24,
+      "x1": 216,
+      "type": "underground",
+      "confidence": "measured",
+      "notes": "the smbd map's underground run, real cols 0-192, shifted +24 to sit behind the start segment. col 192 is the right column of the coin room's exit shaft, which the rip leaves undrawn"
+    },
+    {
+      "x0": 217,
+      "x1": 248,
+      "type": "overworld",
+      "confidence": "measured",
+      "notes": "the above-ground ending: smbd map cols 193-223 shifted +25 (pipe, staircase, flag, castle), plus one empty sky column at 217 between the exit shaft and the map's first drawn ending column"
+    }
+  ],
   "terrain": [
-    {"kind": "pipe", "x": 0, "height": 3, "dest": null, "confidence": "sourced", "notes": "mariowiki: player enters by falling through a roof pipe"},
-    {"kind": "ground", "x0": 0, "x1": 30, "confidence": "unknown"},
-    {"kind": "ground", "x0": 30, "x1": 60, "confidence": "unknown", "notes": "block-tower / brick formation area, no landmark spacing sourced"},
-    {"kind": "gap", "x0": 95, "x1": 97, "confidence": "approx", "notes": "'a pit' between the mid-section power-up block and the 1-up platform"},
-    {"kind": "pipe", "x": 110, "height": 3, "dest": "bonus_room", "confidence": "sourced", "notes": "mariowiki: first of three piranha pipes, leads to bonus room with 27 coins + 10-coin block"},
-    {"kind": "pipe", "x": 118, "height": 3, "dest": null, "confidence": "sourced", "notes": "second piranha pipe"},
-    {"kind": "pipe", "x": 126, "height": 3, "dest": null, "confidence": "sourced", "notes": "third piranha pipe"},
-    {"kind": "gap", "x0": 140, "x1": 142, "confidence": "approx", "notes": "first of the 'two gaps with ground blocks and brick blocks between them' near the end"},
-    {"kind": "ground", "x0": 142, "x1": 148, "confidence": "approx"},
-    {"kind": "gap", "x0": 148, "x1": 150, "confidence": "approx"},
-    {"kind": "stairs", "x0": 155, "x1": 160, "step_height": 4, "confidence": "approx", "notes": "half-pyramid structure before the lifts"},
-    {"kind": "lift_platform", "x0": 165, "x1": 175, "confidence": "sourced", "notes": "mariowiki: rising/falling lifts, left descends, right ascends, platform between them"},
-    {"kind": "stairs", "x0": 185, "x1": 193, "step_height": 8, "confidence": "sourced", "notes": "mariowiki: 'a staircase made out of Hard Blocks that allows the player to jump on top of the flagpole'"}
+    {
+      "kind": "castle",
+      "x0": 0,
+      "confidence": "measured",
+      "notes": "the above-ground start's decorative castle, nes map band 0 cols 0-4 rows 8-12; no flag beside it"
+    },
+    {
+      "kind": "pipe",
+      "x": 10,
+      "height": 2,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "the short decorative pipe left of the entrance, nes map band 0 rows 11-12"
+    },
+    {
+      "kind": "pipe",
+      "x": 12,
+      "height": 4,
+      "dest": null,
+      "jump_to": 27,
+      "jump_to_row": 2,
+      "confidence": "measured",
+      "notes": "the entrance pipe mario takes down. jump_to lands him at the top of the underground entry shaft (real col 3, ceiling row 2) and he falls the eleven rows to the floor exactly as the real game drops him in; the wall at column 24 and the closed roof either side of cols 25-29 keep him in the shaft"
+    },
+    {
+      "kind": "ceiling_gap",
+      "x0": 25,
+      "x1": 29,
+      "confidence": "measured",
+      "notes": "the entry shaft: the roof is open where mario drops in (real cols 1-5)"
+    },
+    {
+      "kind": "ceiling_gap",
+      "x0": 162,
+      "x1": 184,
+      "confidence": "measured",
+      "notes": "the lift shaft: open roof over both moving-platform pits, so the rising lift carries him onto the roof walk (real cols 138-160)"
+    },
+    {
+      "kind": "ceiling_gap",
+      "x0": 211,
+      "x1": 214,
+      "confidence": "measured",
+      "notes": "the four-column hole in the roof he drops through into the coin room that replaces the nes warp zone (real cols 187-190)"
+    },
+    {
+      "kind": "gap",
+      "x0": 104,
+      "x1": 106,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 80-82"
+    },
+    {
+      "kind": "gap",
+      "x0": 144,
+      "x1": 145,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 120-121"
+    },
+    {
+      "kind": "gap",
+      "x0": 148,
+      "x1": 149,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 124-125"
+    },
+    {
+      "kind": "gap",
+      "x0": 162,
+      "x1": 168,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 138-144"
+    },
+    {
+      "kind": "gap",
+      "x0": 177,
+      "x1": 183,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 153-159"
+    },
+    {
+      "kind": "gap",
+      "x0": 201,
+      "x1": 201,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 177-177"
+    },
+    {
+      "kind": "gap",
+      "x0": 210,
+      "x1": 210,
+      "confidence": "measured",
+      "notes": "floor pit, real cols 186-186"
+    },
+    {
+      "kind": "pipe",
+      "x": 127,
+      "height": 3,
+      "dest": "bonus_room",
+      "confidence": "measured",
+      "notes": "first piranha pipe (real col 103), the way down into the coin room"
+    },
+    {
+      "kind": "pipe",
+      "x": 133,
+      "height": 4,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "second piranha pipe (real col 109)"
+    },
+    {
+      "kind": "pipe",
+      "x": 139,
+      "height": 2,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "third piranha pipe (real col 115); the coin room's exit pipe brings mario back up out of this one"
+    },
+    {
+      "kind": "pipe_side",
+      "x": 190,
+      "y": 8,
+      "shaft_x": 192,
+      "shaft_top": 2,
+      "jump_to": 220,
+      "jump_to_row": 11,
+      "confidence": "measured",
+      "notes": "the underground's exit: the sideways pipe at the end of the brick platform (real mouth col 166, rows 8-9), its shaft rising through the ceiling at real cols 168-169. walking right into the mouth takes him up out of the ending's pipe"
+    },
+    {
+      "kind": "pipe_side",
+      "x": 213,
+      "y": 11,
+      "shaft_x": 215,
+      "shaft_top": 0,
+      "jump_to": 220,
+      "jump_to_row": 11,
+      "confidence": "measured",
+      "notes": "the coin room's own sideways exit (real mouth col 189, rows 11-12), shaft at real cols 191-192 running to the top of the grid so it also seals the seam between the underground and the ending; same destination"
+    },
+    {
+      "kind": "lift_vertical",
+      "x": 164,
+      "y0": 3,
+      "span": 9,
+      "reverse": false,
+      "confidence": "approx",
+      "notes": "the first pit's platform (real pit 138-144): smb's descends; ours starts at the top and bounces between rows 3 and 12. the deck's two columns sit centred in the seven-column pit"
+    },
+    {
+      "kind": "lift_vertical",
+      "x": 179,
+      "y0": 1,
+      "span": 11,
+      "reverse": true,
+      "confidence": "approx",
+      "notes": "the second pit's platform (real pit 153-159): smb's rises to the roof; ours starts at the bottom and climbs to row 1, one row above the ceiling, so a rider steps off onto the roof walk"
+    },
+    {
+      "kind": "pipe",
+      "x": 220,
+      "height": 2,
+      "dest": null,
+      "confidence": "measured",
+      "notes": "the ending's piranha pipe (smbd map col 195), the one both sideways pipes deliver mario up out of"
+    },
+    {
+      "kind": "stairs",
+      "x0": 222,
+      "x1": 229,
+      "step_height": 7,
+      "heights": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        7
+      ],
+      "confidence": "measured",
+      "notes": "the closing staircase as the smbd map draws it: eight columns, seven blocks tall with a flat two-column top (the nes original is nine columns and eight tall; the gbc port trimmed it, and the flag stands eight columns past its last step instead of nine)"
+    },
+    {
+      "kind": "bricks",
+      "x0": 24,
+      "x1": 24,
+      "y0": 0,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 78,
+      "x1": 79,
+      "y0": 3,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 82,
+      "x1": 87,
+      "y0": 3,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 90,
+      "x1": 93,
+      "y0": 3,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 100,
+      "x1": 103,
+      "y0": 3,
+      "y1": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 194,
+      "x1": 200,
+      "y0": 3,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 76,
+      "x1": 77,
+      "y0": 5,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 86,
+      "x1": 87,
+      "y0": 5,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 91,
+      "x1": 91,
+      "y0": 5,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 96,
+      "x1": 97,
+      "y0": 5,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 203,
+      "x1": 203,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 207,
+      "x1": 214,
+      "y0": 6,
+      "y1": 6,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 63,
+      "x1": 63,
+      "y0": 7,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 65,
+      "x1": 68,
+      "y0": 7,
+      "y1": 7,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 108,
+      "x1": 113,
+      "y0": 7,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 209,
+      "x1": 210,
+      "y0": 7,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 65,
+      "x1": 65,
+      "y0": 8,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 68,
+      "x1": 68,
+      "y0": 8,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 70,
+      "x1": 70,
+      "y0": 8,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 96,
+      "x1": 96,
+      "y0": 8,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 169,
+      "x1": 173,
+      "y0": 8,
+      "y1": 8,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 64,
+      "x1": 64,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 69,
+      "x1": 69,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 78,
+      "x1": 79,
+      "y0": 9,
+      "y1": 11,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 82,
+      "x1": 85,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 92,
+      "x1": 93,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 97,
+      "x1": 97,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 100,
+      "x1": 103,
+      "y0": 9,
+      "y1": 9,
+      "confidence": "measured",
+      "notes": "the fourth hanging platform (real cols 76-79). the first pass read this as two lone bricks at its ends because the two goombas standing on it hash over the middle two cells; both map rips draw four bricks in a row, and the goomba at 102 had nothing under it"
+    },
+    {
+      "kind": "bricks",
+      "x0": 146,
+      "x1": 147,
+      "y0": 10,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 184,
+      "x1": 193,
+      "y0": 10,
+      "y1": 12,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 202,
+      "x1": 203,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 207,
+      "x1": 208,
+      "y0": 10,
+      "y1": 10,
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 47,
+      "x1": 47,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 49,
+      "x1": 49,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 160,
+      "x1": 161,
+      "y0": 9,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 45,
+      "x1": 45,
+      "y0": 10,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 51,
+      "x1": 51,
+      "y0": 10,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 55,
+      "x1": 55,
+      "y0": 10,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 159,
+      "x1": 159,
+      "y0": 10,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 43,
+      "x1": 43,
+      "y0": 11,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 57,
+      "x1": 57,
+      "y0": 11,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 158,
+      "x1": 158,
+      "y0": 11,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 41,
+      "x1": 41,
+      "y0": 12,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    },
+    {
+      "kind": "bricks",
+      "x0": 157,
+      "x1": 157,
+      "y0": 12,
+      "y1": 12,
+      "material": "hard",
+      "confidence": "measured"
+    }
   ],
   "blocks": [
-    {"x": 5, "y": 9, "kind": "question", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: first of five ? blocks in the opening room, contains Super Mushroom or Fire Flower"},
-    {"x": 6, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 7, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 8, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 9, "y": 9, "kind": "question", "contents": "coin", "confidence": "sourced"},
-    {"x": 35, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "mariowiki: brick block tower area, ten coins"},
-    {"x": 45, "y": 9, "kind": "brick", "contents": "star", "confidence": "sourced", "notes": "mariowiki: one brick in the large brick-filled area contains a Starman"},
-    {"x": 90, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: brick block with a power-up before the pit/1-up platform section"},
-    {"x": 100, "y": 5, "kind": "hidden", "contents": "oneup", "confidence": "sourced", "notes": "mariowiki: 1-up hidden in a ceiling brick block, reached via block platform"},
-    {"x": 178, "y": 9, "kind": "brick", "contents": "mushroom_fire", "confidence": "sourced", "notes": "mariowiki: platform between the two lifts has a koopa troopa and a power-up brick block"}
+    {
+      "x": 34,
+      "y": 9,
+      "kind": "question",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the power-up block that opens the underground run"
+    },
+    {
+      "x": 35,
+      "y": 9,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 36,
+      "y": 9,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 37,
+      "y": 9,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 38,
+      "y": 9,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured",
+      "notes": "the challenge-mode map paints this one's coin red; in the nes and smbd original modes it is a plain coin block"
+    },
+    {
+      "x": 53,
+      "y": 8,
+      "kind": "brick",
+      "contents": "multicoin",
+      "confidence": "measured",
+      "notes": "the map draws a coin on this brick over the first stair-step blocks: smb has no single-coin brick, so it is the ten-coin kind"
+    },
+    {
+      "x": 70,
+      "y": 7,
+      "kind": "brick",
+      "contents": "star",
+      "confidence": "measured",
+      "notes": "the starman brick at the top right of the two arches"
+    },
+    {
+      "x": 93,
+      "y": 8,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the power-up brick at the right end of the third hanging platform"
+    },
+    {
+      "x": 97,
+      "y": 8,
+      "kind": "brick",
+      "contents": "multicoin",
+      "confidence": "measured",
+      "notes": "the coin brick in the side of the goomba's pillar"
+    },
+    {
+      "x": 113,
+      "y": 2,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the famous power-up hidden in the ceiling over the six coins"
+    },
+    {
+      "x": 174,
+      "y": 8,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "the power-up brick capping the ledge platform between the two lift pits"
+    },
+    {
+      "x": 201,
+      "y": 10,
+      "kind": "brick",
+      "contents": "multicoin",
+      "confidence": "measured",
+      "notes": "coin room: the coin brick at the left end of the room's low platform"
+    },
+    {
+      "x": 204,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured",
+      "notes": "coin room: three question blocks set into the high platform"
+    },
+    {
+      "x": 205,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 206,
+      "y": 6,
+      "kind": "question",
+      "contents": "coin",
+      "confidence": "measured"
+    },
+    {
+      "x": 211,
+      "y": 10,
+      "kind": "brick",
+      "contents": "mushroom_fire",
+      "confidence": "measured",
+      "notes": "coin room: the power-up brick beside the exit pipe"
+    }
+  ],
+  "coins": [
+    {
+      "x": 204,
+      "y": 4
+    },
+    {
+      "x": 205,
+      "y": 4
+    },
+    {
+      "x": 206,
+      "y": 4
+    },
+    {
+      "x": 65,
+      "y": 5
+    },
+    {
+      "x": 66,
+      "y": 5
+    },
+    {
+      "x": 67,
+      "y": 5
+    },
+    {
+      "x": 68,
+      "y": 5
+    },
+    {
+      "x": 108,
+      "y": 5
+    },
+    {
+      "x": 109,
+      "y": 5
+    },
+    {
+      "x": 110,
+      "y": 5
+    },
+    {
+      "x": 111,
+      "y": 5
+    },
+    {
+      "x": 112,
+      "y": 5
+    },
+    {
+      "x": 113,
+      "y": 5
+    },
+    {
+      "x": 64,
+      "y": 8
+    },
+    {
+      "x": 69,
+      "y": 8
+    },
+    {
+      "x": 82,
+      "y": 8
+    },
+    {
+      "x": 83,
+      "y": 8
+    },
+    {
+      "x": 84,
+      "y": 8
+    },
+    {
+      "x": 85,
+      "y": 8
+    },
+    {
+      "x": 92,
+      "y": 8
+    },
+    {
+      "x": 211,
+      "y": 8
+    },
+    {
+      "x": 212,
+      "y": 8
+    },
+    {
+      "x": 213,
+      "y": 8
+    },
+    {
+      "x": 214,
+      "y": 8
+    },
+    {
+      "x": 207,
+      "y": 9
+    },
+    {
+      "x": 208,
+      "y": 9
+    }
   ],
   "enemies": [
-    {"x": 4, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "mariowiki: two little goombas in the opening room"},
-    {"x": 10, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 36, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "one goomba at the block-tower structure"},
-    {"x": 47, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "two koopa troopas 'lurk underneath' near the starman brick"},
-    {"x": 49, "y": 13, "kind": "koopa_green", "confidence": "sourced"},
-    {"x": 55, "y": 13, "kind": "koopa_green", "confidence": "sourced", "notes": "large brick-filled area: 1 koopa troopa + 5 goombas"},
-    {"x": 57, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 59, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 61, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 63, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 65, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 105, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "two goombas preceding the three-pipe section"},
-    {"x": 107, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 110, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in first pipe"},
-    {"x": 118, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in second pipe"},
-    {"x": 126, "y": 11, "kind": "piranha", "confidence": "sourced", "notes": "in third pipe; mariowiki lists 4 piranha plants total in pipes for this level, 4th likely in the bonus-room exit pipe or overworld-exit pipe"},
-    {"x": 200, "y": 11, "kind": "piranha", "confidence": "approx", "notes": "4th piranha plant per mariowiki count; mariowiki notes the regular exit pipe leads to an overworld area containing a piranha plant"},
-    {"x": 158, "y": 13, "kind": "goomba", "confidence": "sourced", "notes": "half-pyramid structure before lifts has 2 goombas"},
-    {"x": 160, "y": 13, "kind": "goomba", "confidence": "sourced"},
-    {"x": 178, "y": 13, "kind": "koopa_red", "confidence": "sourced", "notes": "1 red koopa troopa on the platform between the two lifts"}
+    {
+      "x": 40,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the first pair, one on the floor"
+    },
+    {
+      "x": 41,
+      "y": 12,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "and one on the lone one-high block"
+    },
+    {
+      "x": 53,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "between the two stair-step groups"
+    },
+    {
+      "x": 68,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured",
+      "notes": "the two koopa troopas under the arches"
+    },
+    {
+      "x": 70,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured"
+    },
+    {
+      "x": 83,
+      "y": 13,
+      "kind": "koopa_green",
+      "confidence": "measured",
+      "notes": "the koopa under the hanging s-shaped wall"
+    },
+    {
+      "x": 86,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the pair under the middle hanging block"
+    },
+    {
+      "x": 88,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 96,
+      "y": 5,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "on top of the coin-brick pillar"
+    },
+    {
+      "x": 100,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the pair on the fourth hanging platform"
+    },
+    {
+      "x": 102,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 123,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the three before the piranha pipes"
+    },
+    {
+      "x": 124,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 126,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 137,
+      "y": 13,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "between the second and third pipes"
+    },
+    {
+      "x": 159,
+      "y": 10,
+      "kind": "goomba",
+      "confidence": "measured",
+      "notes": "the two on the staircase before the lift pits"
+    },
+    {
+      "x": 161,
+      "y": 9,
+      "kind": "goomba",
+      "confidence": "measured"
+    },
+    {
+      "x": 169,
+      "y": 13,
+      "kind": "koopa_red",
+      "confidence": "measured",
+      "notes": "the red koopa on the ledge between the pits; it turns at the edges"
+    },
+    {
+      "x": 127,
+      "y": 11,
+      "kind": "piranha",
+      "confidence": "measured",
+      "notes": "piranha in the first pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
+    },
+    {
+      "x": 133,
+      "y": 11,
+      "kind": "piranha",
+      "confidence": "measured",
+      "notes": "piranha in the second pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
+    },
+    {
+      "x": 139,
+      "y": 11,
+      "kind": "piranha",
+      "confidence": "measured",
+      "notes": "piranha in the third pipe (nes map; the smbd rip leaves plants undrawn but the gbc game keeps them)"
+    },
+    {
+      "x": 220,
+      "y": 11,
+      "kind": "piranha",
+      "confidence": "measured",
+      "notes": "piranha in the ending's pipe"
+    }
   ],
   "areas": [
     {
-      "id": "bonus-1",
+      "id": "coin-room",
       "kind": "bonus_room",
-      "entry_x": 110,
-      "exit": "rightward exit pipe",
-      "terrain": [],
-      "blocks": [
-        {"x": 5, "y": 9, "kind": "brick", "contents": "multicoin", "confidence": "sourced", "notes": "10-coin brick block in the bonus room"}
+      "entry_x": 127,
+      "return_x": 139,
+      "columns": 17,
+      "start": {
+        "x": 1,
+        "y": 2
+      },
+      "exit": "the short pipe at the right, which brings mario up out of the third piranha pipe",
+      "terrain": [
+        {
+          "kind": "bricks",
+          "x0": 0,
+          "x1": 0,
+          "y0": 0,
+          "y1": 12,
+          "confidence": "measured",
+          "notes": "the wall down the room's left edge; mario drops in past it through the two-column shaft"
+        },
+        {
+          "kind": "bricks",
+          "x0": 3,
+          "x1": 14,
+          "y0": 2,
+          "y1": 5,
+          "confidence": "measured",
+          "notes": "the four-row brick ceiling block right of the shaft"
+        },
+        {
+          "kind": "bricks",
+          "x0": 13,
+          "x1": 14,
+          "y0": 6,
+          "y1": 10,
+          "confidence": "measured",
+          "notes": "the inner right wall, from the ceiling block down to the exit pipe's cap"
+        },
+        {
+          "kind": "bricks",
+          "x0": 3,
+          "x1": 11,
+          "y0": 9,
+          "y1": 9,
+          "confidence": "measured",
+          "notes": "the one-row platform the upper coins sit on"
+        },
+        {
+          "kind": "pipe",
+          "x": 13,
+          "height": 2,
+          "dest": "overworld",
+          "confidence": "measured",
+          "notes": "the exit pipe"
+        },
+        {
+          "kind": "pipe",
+          "x": 15,
+          "height": 11,
+          "confidence": "measured",
+          "notes": "the shaft rising out of the room beside the exit pipe"
+        }
       ],
-      "notes": "27 coins total in the room per mariowiki, individual coin layout not sourced"
-    },
-    {
-      "id": "warp-zone",
-      "kind": "warp_zone",
-      "entry_x": 175,
-      "exit": "n/a - overworld warp-zone room reached via the lift platforms through a hidden roof opening",
-      "terrain": [],
       "blocks": [],
-      "notes": "mariowiki: reached by using the rising/falling lifts to access a hidden opening in the roof; contains 3 pipes side by side, left-to-right: World 2, World 3, World 4. Passing through the left wall of the room instead gives access to the Minus World (World -1). THIS IS NES SMB1 GEOMETRY - smbd is confirmed to change this room, see smbd_deltas."
+      "coins": [
+        {
+          "x": 3,
+          "y": 8
+        },
+        {
+          "x": 4,
+          "y": 8
+        },
+        {
+          "x": 5,
+          "y": 8
+        },
+        {
+          "x": 6,
+          "y": 8
+        },
+        {
+          "x": 7,
+          "y": 8
+        },
+        {
+          "x": 8,
+          "y": 8
+        },
+        {
+          "x": 9,
+          "y": 8
+        },
+        {
+          "x": 10,
+          "y": 8
+        },
+        {
+          "x": 12,
+          "y": 9
+        },
+        {
+          "x": 3,
+          "y": 12
+        },
+        {
+          "x": 4,
+          "y": 12
+        },
+        {
+          "x": 5,
+          "y": 12
+        },
+        {
+          "x": 6,
+          "y": 12
+        },
+        {
+          "x": 7,
+          "y": 12
+        },
+        {
+          "x": 8,
+          "y": 12
+        },
+        {
+          "x": 9,
+          "y": 12
+        },
+        {
+          "x": 10,
+          "y": 12
+        },
+        {
+          "x": 11,
+          "y": 12
+        }
+      ],
+      "confidence": "measured",
+      "notes": "18 coins total: eight over the platform, one at the platform's right end where the map's challenge-mode red coin stands, nine along the floor. transcribed cell by cell from the smbd map's lower band (cols 102-118) cross-checked against the nes map's band 2 (cols 100-116), which agree exactly"
     }
   ],
-  "flag": {"x": 193, "confidence": "unknown", "notes": "placed just after the sourced hard-block staircase; exact column not sourced"},
-  "warps": [
-    {"from_x": 175, "via": "warp_zone", "to_level": "2-1", "confidence": "sourced", "notes": "leftmost of 3 warp pipes in the nes warp zone room"},
-    {"from_x": 178, "via": "warp_zone", "to_level": "3-1", "confidence": "sourced", "notes": "middle pipe"},
-    {"from_x": 181, "via": "warp_zone", "to_level": "4-1", "confidence": "sourced", "notes": "rightmost pipe"},
-    {"from_x": 175, "via": "warp_zone", "to_level": "-1", "confidence": "sourced", "notes": "minus world - reached by clipping through the warp-zone room's left wall instead of taking a pipe (nes-only trick, needs rom verification for smbd/gbc behavior)"}
+  "decor": [
+    {
+      "kind": "cloud",
+      "x": 3,
+      "y": 7,
+      "width": 4,
+      "confidence": "measured",
+      "notes": "start segment clouds from the nes map, moved four rows down like 1-1's so they fall inside the nine-row window"
+    },
+    {
+      "kind": "cloud",
+      "x": 18,
+      "y": 6,
+      "width": 4,
+      "confidence": "measured"
+    },
+    {
+      "kind": "cloud",
+      "x": 221,
+      "y": 5,
+      "width": 4,
+      "confidence": "measured",
+      "notes": "ending clouds at the smbd map's own rows"
+    },
+    {
+      "kind": "cloud",
+      "x": 232,
+      "y": 6,
+      "width": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "cloud",
+      "x": 244,
+      "y": 6,
+      "width": 3,
+      "confidence": "measured"
+    },
+    {
+      "kind": "big_hill",
+      "x": 232,
+      "confidence": "measured",
+      "notes": "the map stands it one column further right with its right slope hidden behind the flag's base block; our scenery is placed whole or not at all, so it steps one column left of the pole"
+    },
+    {
+      "kind": "bush",
+      "x": 239,
+      "width": 2,
+      "confidence": "measured"
+    }
   ],
+  "flag": {
+    "x": 237,
+    "confidence": "measured",
+    "notes": "eight columns past the staircase's last column, as the smbd map draws it (the nes original stands nine past a nine-column staircase)"
+  },
+  "castle_end": {
+    "x": 241,
+    "confidence": "measured",
+    "notes": "four columns past the flag; the castle occupies the last five columns before the map's right edge"
+  },
+  "warps": [],
   "smbd": {
     "red_coins": [
-      {"x": 9, "y": 9, "notes": "last ? block in the opening row", "confidence": "sourced"},
-      {"x": 35, "y": 5, "notes": "above the brick block formation near the start", "confidence": "sourced"},
-      {"x": 45, "y": 5, "notes": "on the large pillar with the 10-coin block", "confidence": "approx"},
-      {"x": 110, "y": 5, "notes": "in the bonus room's 10-coin block, requires collecting all its coins first", "confidence": "sourced"},
-      {"x": 155, "y": 9, "notes": "above the stone stairs before the lifts", "confidence": "sourced"}
+      {
+        "x": 38,
+        "y": 9
+      },
+      {
+        "x": 66,
+        "y": 5
+      },
+      {
+        "x": 97,
+        "y": 4
+      },
+      {
+        "x": 161,
+        "y": 3
+      },
+      {
+        "x": 138,
+        "y": 9,
+        "notes": "in the coin room, at the platform's right end"
+      }
     ],
-    "yoshi_egg": {"x": 130, "y": 9, "notes": "mariowiki: hidden block at the end of the underground area, above the exit pipe", "confidence": "sourced"},
-    "medal_score": 38000,
-    "medal_score_jp": 26000
+    "yoshi_egg": {
+      "x": 191,
+      "y": 5,
+      "notes": "beside the exit pipe's shaft"
+    },
+    "medal_score": 21000,
+    "medal_score_jp": 18000
   },
-  "smbd_deltas": "confirmed per mariowiki: smbd replaces the nes warp-zone room's 3-pipe world-select with a room containing brick blocks, three ? blocks, 22 coins, and a power-up brick block - i.e. smbd 1-2 likely has no functional warp zone / world skip in this spot, or it is relocated elsewhere (not found in sources used). the warp_zone area entry and warps[] array above describe the NES layout; do not assume they apply unmodified to smbd until verified against the rom. total coin count also differs: 68 coins (nes) vs 90 coins (smbd challenge mode) per mariowiki, implying additional coins were added somewhere in the smbd layout beyond just the warp-zone-room replacement.",
+  "smbd_deltas": "the smbd map replaces the nes warp zone (real cols 177-190) with an enclosed coin room: brick platforms, three question blocks, eleven coins, a coin brick, a power-up brick and its own sideways exit pipe, reached only by riding the second lift onto the roof and dropping through the hole at cols 187-190. that room is what this file builds. the smbd map also trims the closing staircase to eight columns and seven blocks and pulls the flag one column closer. everything else matches the nes map cell for cell",
   "sources": [
-    "https://www.mariouniverse.com/maps-gbc-smbd/",
-    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png",
     "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-2.png",
-    "https://themushroomkingdom.net/maps/smb/1-2",
-    "https://www.mariowiki.com/World_1-2_(Super_Mario_Bros.)",
-    "https://vgmaps.de/maps/view.php?m=20519"
+    "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png"
   ],
-  "confidence_notes": "this is the densest and most important level (warp zone) per the task brief. all x/y coordinates are sequence-derived placeholders per SCHEMA.md, not measured from map images - the warp zone pipe ordering (world 2/3/4 left-to-right) IS sourced/confirmed text, but the exact tile column of the room itself is approximate. the smbd warp-zone replacement is the single most important must-verify item in this whole file: mariowiki confirms it changed but does not describe the replacement room's exact block layout or whether smbd 1-2 has ANY way to skip worlds. do not build warp logic for smbd off the nes warps[] array without rom verification."
+  "confidence_notes": "every cell of this file was read off the smbd challenge-mode map rip by hashing each 16x16 cell of the image and labelling the distinct tiles, then cross-checked cell by cell against the nes map rip, which agrees on the whole underground run. the start segment (castle, pipes, ground 0-23) comes from the nes map, which is the only rip that draws it. enemies are placed at the column the smbd rip draws them; a sprite the rip straddles across two columns is put on one of them. piranha plants are not drawn in the smbd rip but stand on the same pipes in the gbc game, so they are taken from the nes rip. the two vertical lifts are ours in size and speed (a two-block deck bouncing at one pixel a frame, one deck per pit, the engine having two lift slots); their pits, the open roof above them and the roof walk they lead to are measured. challenge-mode-only content (red coins, the yoshi egg) is recorded under smbd and not built."
 }

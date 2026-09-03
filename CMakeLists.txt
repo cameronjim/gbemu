@@ -201,44 +201,137 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         message(WARNING "python3 not found; skipping mario rom target (needs the level compiler)")
     else()
         set(GB_MARIO_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
-        set(GB_MARIO_LEVEL_C ${GB_MARIO_GEN_DIR}/level_1_1.c)
-        set(GB_MARIO_LEVEL_H ${GB_MARIO_GEN_DIR}/level_1_1.h)
-        set(GB_MARIO_LEVEL_PROBES_H ${GB_MARIO_GEN_DIR}/level_1_1_probes.h)
-        add_custom_command(
-            OUTPUT ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/compile_level.py
-                    ${CMAKE_SOURCE_DIR}/games/mario/data/level-1-1.json ${GB_MARIO_GEN_DIR}
-            DEPENDS games/mario/tools/compile_level.py games/mario/data/level-1-1.json
-            COMMENT "compiling mario level 1-1 bible json to banked c data"
-            VERBATIM)
-        add_custom_target(mario_level DEPENDS ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H}
-                                               ${GB_MARIO_LEVEL_PROBES_H})
+        # sub-milestone 8a bank map, as m22 left it. bank 0 is the engine minus enemies.c,
+        # hazards.c and powerup.c; bank 3 is hazards.c, which m22 moved out of bank 5 when the
+        # fire and toad-room work filled it - it is the one module in bank 5 whose whole surface
+        # is BANKED, and everything else there reaches its neighbours with plain calls that only
+        # land while their shared bank is switched in. bank 4 is the enemy code and every tile
+        # array, bank 5 the powerup chain and the between-levels code, bank 6 the draw passes and
+        # the toad room, bank 7 every sub-area grid, and each level's own grid shares a bank
+        set(GB_MARIO_LEVELS 1-1 1-2 1-3 1-4)
+        set(GB_MARIO_LEVEL_BANKS 1 2 3 6)
+        set(GB_MARIO_AREA_BANK 7)
+        set(GB_MARIO_LEVEL_C "")
+        set(GB_MARIO_LEVEL_H "")
+        set(GB_MARIO_LEVEL_DEPS "")
+        list(LENGTH GB_MARIO_LEVELS GB_MARIO_LEVEL_N)
+        math(EXPR GB_MARIO_LEVEL_LAST "${GB_MARIO_LEVEL_N} - 1")
+        foreach(i RANGE ${GB_MARIO_LEVEL_LAST})
+            list(GET GB_MARIO_LEVELS ${i} lvl)
+            list(GET GB_MARIO_LEVEL_BANKS ${i} bank)
+            string(REPLACE "-" "_" slug "level_${lvl}")
+            set(json ${CMAKE_SOURCE_DIR}/games/mario/data/level-${lvl}.json)
+            set(outs ${GB_MARIO_GEN_DIR}/${slug}.c ${GB_MARIO_GEN_DIR}/${slug}.h
+                     ${GB_MARIO_GEN_DIR}/${slug}_probes.h ${GB_MARIO_GEN_DIR}/${slug}_grid.h
+                     ${GB_MARIO_GEN_DIR}/${slug}_areas.c ${GB_MARIO_GEN_DIR}/${slug}_objects.c)
+            add_custom_command(
+                OUTPUT ${outs}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/compile_level.py
+                        ${json} ${GB_MARIO_GEN_DIR} --bank ${bank}
+                        --area-bank ${GB_MARIO_AREA_BANK}
+                DEPENDS games/mario/tools/compile_level.py ${json}
+                COMMENT "compiling mario level ${lvl} bible json to banked c data"
+                VERBATIM)
+            list(APPEND GB_MARIO_LEVEL_C ${GB_MARIO_GEN_DIR}/${slug}.c
+                                          ${GB_MARIO_GEN_DIR}/${slug}_areas.c
+                                          ${GB_MARIO_GEN_DIR}/${slug}_objects.c)
+            list(APPEND GB_MARIO_LEVEL_H ${GB_MARIO_GEN_DIR}/${slug}.h)
+            list(APPEND GB_MARIO_LEVEL_DEPS ${outs})
+        endforeach()
 
+        # and the index that binds the four into the one table the rom walks
+        set(GB_MARIO_LEVELS_C ${GB_MARIO_GEN_DIR}/levels.c)
+        set(GB_MARIO_LEVELS_H ${GB_MARIO_GEN_DIR}/levels.h)
+        set(GB_MARIO_LEVELS_HOST_H ${GB_MARIO_GEN_DIR}/levels_host.h)
+        add_custom_command(
+            OUTPUT ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H} ${GB_MARIO_LEVELS_HOST_H}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/gen_levels.py
+                    ${GB_MARIO_GEN_DIR} --bank ${GB_MARIO_AREA_BANK} ${GB_MARIO_LEVELS}
+            DEPENDS games/mario/tools/gen_levels.py ${GB_MARIO_LEVEL_H}
+            COMMENT "binding the mario level table"
+            VERBATIM)
+        add_custom_target(mario_level DEPENDS ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C}
+                                              ${GB_MARIO_LEVELS_H} ${GB_MARIO_LEVELS_HOST_H})
+
+        # sub-milestone 3: the physics bible generates the one header both the rom and the host
+        # golden tests read, so no constant is ever hand-transcribed twice
+        set(GB_MARIO_PHYSICS_H ${GB_MARIO_GEN_DIR}/physics_constants.h)
+        add_custom_command(
+            OUTPUT ${GB_MARIO_PHYSICS_H}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/gen_physics.py
+                    ${CMAKE_SOURCE_DIR}/games/mario/research/physics.json
+                    ${CMAKE_SOURCE_DIR}/games/mario/research/roster.json ${GB_MARIO_GEN_DIR}
+            DEPENDS games/mario/tools/gen_physics.py games/mario/research/physics.json
+                    games/mario/research/roster.json
+            COMMENT "generating mario physics constants from the research bible"
+            VERBATIM)
+        add_custom_target(mario_physics DEPENDS ${GB_MARIO_PHYSICS_H})
+
+        # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
+        # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a
+        # few hundred cycles a frame for free
         set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
         add_custom_command(
             OUTPUT ${GB_MARIO_ROM}
-            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8 -I${GB_MARIO_GEN_DIR}
+            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8
+                    -Wf--max-allocs-per-node50000 -I${GB_MARIO_GEN_DIR}
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/level.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/camera.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/blocks.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/blocks_draw.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/debris.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/toad.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/mapscreen.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/flow.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/states.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/hud.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/save.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
+                    ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
+                    games/mario/src/level.c games/mario/src/level.h
                     games/mario/src/terrain.c games/mario/src/terrain.h
+                    games/mario/src/camera.c games/mario/src/camera.h
+                    games/mario/src/player.c games/mario/src/player.h
+                    games/mario/src/blocks.c games/mario/src/blocks.h
+                    games/mario/src/blocks_draw.c
+                    games/mario/src/debris.c games/mario/src/debris.h
+                    games/mario/src/toad.c games/mario/src/toad.h
+                    games/mario/src/powerup.c games/mario/src/powerup.h
+                    games/mario/src/hazards.c games/mario/src/hazards.h
+                    games/mario/src/title.c games/mario/src/title.h
+                    games/mario/src/mapscreen.c games/mario/src/mapscreen.h
+                    games/mario/src/flow.c games/mario/src/flow.h
+                    games/mario/src/states.c games/mario/src/states.h
+                    games/mario/src/hud.c games/mario/src/hud.h
+                    games/mario/src/save.c games/mario/src/save.h
+                    games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
-                    ${GB_MARIO_LEVEL_C} ${GB_MARIO_LEVEL_H} ${GB_MARIO_LEVEL_PROBES_H}
+                    games/mario/src/assets_data.c
+                    ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
+                    ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "building mario.gbc with gbdk lcc"
             VERBATIM)
         add_custom_target(mario DEPENDS ${GB_MARIO_ROM})
-        add_dependencies(mario mario_level)
+        add_dependencies(mario mario_level mario_physics)
 
         add_executable(mario_tests games/mario/tests/mario_test.cpp)
         target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
         target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
         target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR})
         target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
-        add_dependencies(mario_tests mario mario_level)
+        add_dependencies(mario_tests mario mario_level mario_physics)
         catch_discover_tests(mario_tests)
     endif()
 else()

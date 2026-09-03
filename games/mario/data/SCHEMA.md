@@ -168,7 +168,7 @@ clouds; 1-3, which is trees over open air, has clouds only.
   this rule's guess.
 - a measured `bridge` entry takes an optional `toad_x`: the column the mushroom retainer stands
   in, in the room past the axe. smb does not end a castle on the axe - the bridge goes, bowser
-  goes with it, and mario walks right off the pedestal, drops into that room and stops a column
+  goes with it, and mario walks right off the pedestal, drops into that room and stops two columns
   short of the retainer while the sign goes up over the two of them. the column compiles to the
   level's `TOAD_COLUMN`, and the floor row he stands on (scanned from below the pedestal, because
   a castle's roof is solid over every column) to `TOAD_ROW`; `HAS_TOAD` is 0 on a bridge entry

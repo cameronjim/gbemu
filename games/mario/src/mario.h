@@ -809,7 +809,7 @@
 // --- the toad room, the beat past 1-4's axe (games/mario/src/toad.c) ---------------------------
 // smb1 does not end a castle on the axe: the bridge goes, bowser goes with it, and mario walks
 // right off the pedestal into the room past it, drops to its floor and stops in front of the
-// mushroom retainer while the two lines of text go up over him. the bible names the column he
+// mushroom retainer while the sign's three lines go up over him. the bible names the column he
 // stands in (LevelInfo toad_column, level-1-4.json's bridge entry) and the row he stands on.
 //
 // the retainer is 16x24, transcribed off the nes rip cell for cell: two columns of 8x16 sprites
@@ -830,35 +830,48 @@
 // alive in a room the player reaches by touching the axe
 #define kSpriteToadFirst kSpriteFreeFirst
 #define kSpriteToadCount 4U
+// and where the walk off the pedestal stops: this many blocks short of him. one block put the two
+// sprites shoulder to shoulder and dragged the view a block further left with them; two leaves a
+// block of the room's floor between them and lands the camera on 147, which is a block boundary,
+// so the sign's own tile columns fall where kToadSignLine0Col..2 say they do
+#define kToadStopBlocks 2U
 
-// the sign over him. the nes rip prints "THANK YOU MARIO!" and "BUT OUR PRINCESS IS IN ANOTHER
-// CASTLE!" white on the castle's black in the level's own bg, so this does too - but the gb screen
-// is twenty tiles wide against the nes's thirty-two, so the second sentence takes three lines here
-// where the rip fits it in two
-#define kToadSignLines 4U
+// the sign over him, in smb's own wording and smb's own line breaks: the rip prints "THANK YOU
+// MARIO!", a blank line, then "BUT OUR PRINCESS IS IN" / "ANOTHER CASTLE!". nineteen tiles is the
+// most the gb's twenty-column view can hold with a column of air either side, so the second
+// sentence breaks one word earlier than the rip's - three lines where an earlier pass took four,
+// which is a whole line of ink out of a band that only ever had seven rows to spend
+#define kToadSignLines 3U
 #define kToadSignLine0 "THANK YOU MARIO!"
-#define kToadSignLine1 "BUT OUR PRINCESS"
-#define kToadSignLine2 "IS IN ANOTHER"
-#define kToadSignLine3 "CASTLE!"
+#define kToadSignLine1 "BUT OUR PRINCESS IS"
+#define kToadSignLine2 "IN ANOTHER CASTLE!"
 // the longest of them, which is what the glyph run has to be able to lay down in one go
-#define kToadSignCols 16U
-// where the block goes: the lines start this many columns left of the retainer, which on 1-4 is
-// the room's own left lip, and the first one is at this tile row. tile rows rather than block ones
-// because a glyph is 8 px: four lines every other tile row is 8 px of ink and 8 px of black
-// between, which is the spacing the rip has.
+#define kToadSignCols 19U
+// where the block goes. the base is this many columns left of the retainer, which on 1-4 is the
+// block the camera's last view opens on: mario ends the walk kToadStopBlocks short of the retainer
+// at column 151 and rides kCamFollowX four blocks into the view, so the view starts at 147 and the
+// base is 153 - 6. each line then takes its own tile offset into those twenty columns, which is
+// what centres it: 19 sits flush, 18 one in, 16 two in
+#define kToadSignColumnsLeft 6U
+#define kToadSignLine0Col 2U
+#define kToadSignLine1Col 0U
+#define kToadSignLine2Col 1U
+// and the world tile row each prints on. tile rows rather than block ones because a glyph is 8 px,
+// and the rip's own spacing: it prints its three lines four tile rows, then two tile rows apart -
+// 8 px of ink with 8 px of black under the pair and 24 px under the first line.
 //
-// row 15 is where the block fits between the two things that can eat it. the camera settles at its
-// lowest pan (kScyMax) once he is standing on the room's floor, which puts a tile row at 8R - 96
-// on screen: 15 lands the first line at 24, clear of the hud strip and of the scanline or two the
-// window's own isr latency leaks under it, and 21 lands the last at 72-79, which is the row big
-// mario's cap starts in and no lower
-#define kToadSignColumnsLeft 4U
-#define kToadSignTileRow 15U
-#define kToadSignTileRowStep 2U
+// the band is boxed in on both sides and 15-21 is the whole of it. the camera settles at its lowest
+// pan (kScyMax) once he is standing on the room's floor, which puts a tile row at 8R - 96 on
+// screen: 15 lands the first line at 24, clear of the hud strip and of the scanline or two the
+// window's own isr latency leaks under it, and 21 lands the last at 72-79, the row big mario's cap
+// starts in and no lower. what the room past the axe bought is horizontal, not vertical
+#define kToadSignLine0Row 15U
+#define kToadSignLine1Row 19U
+#define kToadSignLine2Row 21U
 // and how long the whole tableau holds before the course-clear card takes over: three seconds,
 // which is about what smb1 leaves it up for
 #define kToadHoldFrames 180U
-// the glyph run, in vram BANK 1 at bg ids 0xec-0xfd - one id per distinct character of the four
+// the glyph run, in vram BANK 1 at bg ids 0xec-0xfd - one id per distinct character of the three
 // lines above, in this order, re-encoded out of the resident font the way the hud row's digits are
 // (assets_data.c hud_glyph): ink on color 1, cell on color 0, which under kToadSignAttr is white
 // text standing on the castle's own black. a space needs no id of its own - kTileHudBlank already

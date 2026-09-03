@@ -1,7 +1,7 @@
 // smb does not end a castle on the axe. the bridge goes, bowser goes into the lava with it, and
 // mario walks right off the pedestal the axe stood on, drops into the room past it and stops in
-// front of the mushroom retainer while two lines of text go up over him - and only then does the
-// course-clear card take the screen. player.c's clear sequence owns the walk, because that is the
+// front of the mushroom retainer while the sign's three lines go up over him - and only then does
+// the course-clear card take the screen. player.c's clear sequence owns the walk, because that is the
 // physics pass; everything the walk ends in is here, in bank 6 with the other draw passes, because
 // bank 0 has sixty-odd bytes left in it and bank 5 seventeen
 #pragma bank 6
@@ -46,11 +46,13 @@ static uint8_t sign_glyph(char c) {
     return kTileHudBlank;
 }
 
-// one line of it, left to right from the room's own lip. the tiles go down in one pass and the
-// attributes in another, so the two vram bank switches are paid once a line instead of once a cell
-static void put_line(const char* text, uint8_t tile_row) {
+// one line of it, left to right from tile_col of the view the camera settles on - which is what
+// centres a line inside the twenty columns rather than hanging all three off the room's left lip.
+// the tiles go down in one pass and the attributes in another, so the two vram bank switches are
+// paid once a line instead of once a cell
+static void put_line(const char* text, uint8_t tile_row, uint8_t tile_col) {
     uint8_t* const row = kBgMapBase + ((uint16_t)tile_row << 5);
-    const uint8_t first = sign_tile_col();
+    const uint8_t first = (uint8_t)(sign_tile_col() + tile_col);
     uint8_t i;
 
     VBK_REG = VBK_TILES;
@@ -88,9 +90,10 @@ static void draw_toad(void) {
 }
 
 uint8_t toad_walk_end(void) BANKED {
-    // a column short of the retainer, so he stops beside him facing his way. a castle with no
-    // retainer keeps the old fixed run along the pedestal, and either is clamped inside the level
-    uint16_t column = level->has_toad != 0U ? (uint16_t)(level->toad_column - 1U)
+    // kToadStopBlocks short of the retainer, so he stops beside him facing his way with a block of
+    // the room's floor between them. a castle with no retainer keeps the old fixed run along the
+    // pedestal, and either is clamped inside the level
+    uint16_t column = level->has_toad != 0U ? (uint16_t)(level->toad_column - (uint16_t)kToadStopBlocks)
                                             : (uint16_t)(level->axe_column + kClearWalkBlocks);
 
     if (column > (uint16_t)(level_columns - 1U)) {
@@ -107,12 +110,13 @@ uint8_t toad_walk_end(void) BANKED {
 uint8_t toad_frame(uint8_t tick) BANKED {
     if (tick == 0U) {
         // his art and the sign's glyphs are only ever wanted here, so they are loaded here rather
-        // than at every level's load: eight sprite tiles and eighteen bg ones, all in vram bank 1
+        // than at every level's load: eight sprite tiles and eighteen bg ones, all in vram bank 1.
+        // the three lines go up on this one frame and nothing repaints the ring afterwards: mario
+        // is stopped, so the camera's x never moves again and no column is streamed over them
         assets_load_toad_tiles();
-        put_line(kToadSignLine0, (uint8_t)kToadSignTileRow);
-        put_line(kToadSignLine1, (uint8_t)(kToadSignTileRow + kToadSignTileRowStep));
-        put_line(kToadSignLine2, (uint8_t)(kToadSignTileRow + 2U * kToadSignTileRowStep));
-        put_line(kToadSignLine3, (uint8_t)(kToadSignTileRow + 3U * kToadSignTileRowStep));
+        put_line(kToadSignLine0, (uint8_t)kToadSignLine0Row, (uint8_t)kToadSignLine0Col);
+        put_line(kToadSignLine1, (uint8_t)kToadSignLine1Row, (uint8_t)kToadSignLine1Col);
+        put_line(kToadSignLine2, (uint8_t)kToadSignLine2Row, (uint8_t)kToadSignLine2Col);
     }
     draw_toad();
     return (uint8_t)(tick + 1U >= (uint8_t)kToadHoldFrames);

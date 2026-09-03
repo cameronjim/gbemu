@@ -792,24 +792,29 @@ constexpr int kFlagShaftPx = 8;
 // mario.h kCastleDoorOffset: the column the clear walk ends at, counted in from the keep's left
 constexpr int kCastleDoorOffset = 2;
 // and mario.h kClearWalkBlocks: the run a level whose compiler placed no castle and no retainer
-// falls back to. 1-4 has a retainer, so its own walk stops at toad_column - 1 instead
+// falls back to. 1-4 has a retainer, so its own walk stops kToadStopBlocks short of him instead
 constexpr int kClearWalkBlocks = 5;
+constexpr int kToadStopBlocks = 2;
 // the toad room past 1-4's axe (mario.h, games/mario/src/toad.c)
 constexpr int kToadWidthPx = 16;
 constexpr int kToadHeightPx = 24;
 constexpr uint8_t kToadHoldFrames = 180;
 constexpr uint8_t kTileToadFirst = 0xC8;
 constexpr uint8_t kTileToadLast = 0xCF;
-// the sign: one re-encoded glyph id per distinct character of its four lines, in this order, at
-// bg ids 0xec-0xfd in vram bank 1, laid down four columns left of the retainer
+// the sign: one re-encoded glyph id per distinct character of its three lines, in this order, at
+// bg ids 0xec-0xfd in vram bank 1. the base block is kToadSignColumnsLeft left of the retainer,
+// which is the block the camera's last view opens on, and each line then takes its own tile offset
+// into that view - which is what centres it inside the twenty columns
 constexpr uint8_t kTileSignFirst = 0xEC;
 constexpr uint8_t kTileSignLast = 0xFD;
-constexpr int kToadSignLines = 4;
-constexpr int kToadSignColumnsLeft = 4;
-constexpr int kToadSignTileRow = 15;
-constexpr int kToadSignTileRowStep = 2;
-constexpr const char* kToadSignText[kToadSignLines] = {"THANK YOU MARIO!", "BUT OUR PRINCESS",
-                                                       "IS IN ANOTHER", "CASTLE!"};
+constexpr int kToadSignLines = 3;
+constexpr int kToadSignColumnsLeft = 6;
+constexpr const char* kToadSignText[kToadSignLines] = {"THANK YOU MARIO!", "BUT OUR PRINCESS IS",
+                                                       "IN ANOTHER CASTLE!"};
+// mario.h kToadSignLine0Col..2Col and kToadSignLine0Row..2Row: the tile column inside the view and
+// the world tile row each of the three prints at
+constexpr int kToadSignCol[kToadSignLines] = {2, 0, 1};
+constexpr int kToadSignRow[kToadSignLines] = {15, 19, 21};
 constexpr const char* kSignGlyphChars = "THANKYOUMRI!BPCESL";
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
@@ -2148,11 +2153,12 @@ struct PlayerSim {
         return at_flag() || axed;
     }
 
-    // toad.c's toad_walk_end: the column the walk off the axe pedestal stops in, a block short of
-    // the retainer where the bible named one and the old fixed run along the pedestal where it did
-    // not, clamped inside the level either way
+    // toad.c's toad_walk_end: the column the walk off the axe pedestal stops in, kToadStopBlocks
+    // short of the retainer where the bible named one and the old fixed run along the pedestal
+    // where it did not, clamped inside the level either way
     uint16_t clear_walk_stop_x() const {
-        int column = lv->has_toad != 0 ? lv->toad_column - 1 : lv->axe_column + kClearWalkBlocks;
+        int column =
+            lv->has_toad != 0 ? lv->toad_column - kToadStopBlocks : lv->axe_column + kClearWalkBlocks;
 
         if (column > lv->columns - 1) {
             column = lv->columns - 1;
@@ -8750,7 +8756,7 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
     // the cut-stone kind rather than the cave brick: blocks_head_bump answers a grid brick off the
     // grid and a grown mario breaks one, and a hole in a castle wall is a hole into the lava
     const HostLevel& lv = kHostLevels[kLevel14];
-    REQUIRE(lv.columns == 152);
+    REQUIRE(lv.columns == 160);
     REQUIRE(lv.start_column == 1);
     REQUIRE(lv.start_row == 7); // standing on the opening platform, four rows above the ground rows
     for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
@@ -8773,7 +8779,9 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
     // descending steps at 0-4, the roof thickening over the corridor at 37-71 and thinning to one
     // row over each ceiling gap, the two floor levels either side of column 72, the drop to the
     // ground rows in the hidden-block room at 104-115, the two pillars before the bridge, and the
-    // wall at 141-143 the axe stands on. the island at 29-31 shows its firebar through the table:
+    // wall at 141-143 the axe stands on, and the toad room's roof and floor out to 159 - where the
+    // nes rip's masonry ends and its caption begins. the island at 29-31 shows its firebar through
+    // the table:
     // column 30's stone starts a row lower because the bar's pivot block is its surface cell
     struct Wall {
         int x0;
@@ -8795,7 +8803,7 @@ TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
         {116, 119, {{2, 2}, {10, 14}}}, {120, 122, {{2, 2}, {13, 14}}},
         {123, 127, {{2, 4}, {10, 14}}}, {128, 140, {{2, 2}}},
         {141, 141, {{2, 2}, {9, 14}}},  {142, 143, {{2, 5}, {9, 14}}},
-        {144, 151, {{2, 2}, {13, 14}}},
+        {144, 159, {{2, 2}, {13, 14}}},
     };
     int covered = 0;
     for (const Wall& wall : want) {
@@ -10999,13 +11007,18 @@ TEST_CASE("mario_clear_walk_drops_off_the_axe_pedestal") {
     const HostLevel& lv = kHostLevels[kLevel14];
 
     REQUIRE(lv.has_toad == 1);
-    REQUIRE(lv.toad_column == 148);
+    // the rip's own cell, now that the bible carries the whole room out to 159
+    REQUIRE(lv.toad_column == 153);
     REQUIRE(lv.toad_row == 13);
     // the room's floor is four rows below the pedestal the axe stands on, so the walk has a fall
     // in it. that is the whole reason it goes through the physics pass rather than sliding x along
     REQUIRE(lv.toad_row > lv.axe_row + 1);
-    // and the retainer stands inside the level with room for mario at his left
-    REQUIRE(lv.toad_column + 1 < lv.columns);
+    // and the retainer stands inside the level with room for mario at his left and floor behind him
+    REQUIRE(lv.toad_column + kToadStopBlocks < lv.columns);
+    for (int column = lv.toad_column - kToadStopBlocks; column < lv.columns; ++column) {
+        CAPTURE(column);
+        REQUIRE(solid_at(lv, column, lv.toad_row));
+    }
     REQUIRE(solid_at(lv, lv.toad_column, lv.toad_row));
     REQUIRE(!solid_at(lv, lv.toad_column, lv.toad_row - 1));
 
@@ -11021,7 +11034,7 @@ TEST_CASE("mario_clear_walk_drops_off_the_axe_pedestal") {
     CAPTURE(from_row, sim.x_pos, sim.y_pos, sim.on_ground);
     REQUIRE(from_row <= lv.axe_row + 1);
     REQUIRE(from_row < lv.toad_row - 1);
-    REQUIRE(sim.clear_walk_stop_x() == static_cast<uint16_t>((lv.toad_column - 1) * kBlockPx));
+    REQUIRE(sim.clear_walk_stop_x() == static_cast<uint16_t>((lv.toad_column - kToadStopBlocks) * kBlockPx));
 
     const int frames = sim.clear_walk_off_axe(600);
     CAPTURE(frames, sim.x_pos, sim.y_pos, sim.on_ground);
@@ -11029,17 +11042,58 @@ TEST_CASE("mario_clear_walk_drops_off_the_axe_pedestal") {
     // he ends the column before the retainer, standing on the room's own floor - not out in the
     // air at the pedestal's height, which is what the walk used to do
     REQUIRE(sim.x_pos >= sim.clear_walk_stop_x());
-    REQUIRE(sim.x_pos / kBlockPx == lv.toad_column - 1);
+    REQUIRE(sim.x_pos / kBlockPx == lv.toad_column - kToadStopBlocks);
     REQUIRE(sim.on_ground != 0);
     REQUIRE(sim.y_pos + sim.foot_h() == lv.toad_row * kBlockPx);
     REQUIRE(!sim.damaged);
-    // and he is beside the retainer, not inside him
-    REQUIRE(static_cast<int>(sim.x_pos) + kPlayerBoxPx <= lv.toad_column * kBlockPx + 1);
+    // and he is beside the retainer with a block of the room's floor between them, not shoulder to
+    // shoulder with him: that block is what frames the two of them under the sign
+    REQUIRE(static_cast<int>(sim.x_pos) + kPlayerBoxPx <=
+            (lv.toad_column - kToadStopBlocks + 1) * kBlockPx + 1);
+    // the view that follows from it opens on a block boundary, which is what lets the sign's own
+    // tile offsets land where kToadSignCol says they do
+    REQUIRE((sim.x_pos - kCamFollowX) % kBlockPx == 0);
+    REQUIRE((sim.x_pos - kCamFollowX) / kBlockPx == lv.toad_column - kToadSignColumnsLeft);
 }
 
-// and the whole beat in the rom: the retainer drawn where the bible put him, the two sentences of
-// the sign standing in the bg over him with mario still on screen beside them, the hold, and only
-// then the card and the map
+// the sign as the screen sees it: for every screen tile row, the first and last tile column of it
+// carrying a glyph out of the run. a row with no ink at all is not in the answer, so the size of it
+// is the number of lines that are actually up
+struct SignRow {
+    int row = 0;
+    int first = -1;
+    int last = -1;
+};
+
+std::vector<SignRow> sign_rows(const gb::Gameboy& gameboy) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    std::vector<SignRow> out;
+    for (int ty = 0; ty < 18; ++ty) {
+        SignRow line;
+        line.row = ty;
+        for (int tx = 0; tx < 20; ++tx) {
+            const uint16_t id =
+                ids[static_cast<size_t>(ty * 8 + 3) * gb::kLcdWidth + static_cast<size_t>(tx * 8 + 3)];
+            if ((id & 0x100u) != 0) {
+                continue;
+            }
+            const uint8_t tile = static_cast<uint8_t>(id & 0xFFu);
+            if (tile < kTileSignFirst || tile > kTileSignLast) {
+                continue;
+            }
+            line.first = line.first < 0 ? tx : line.first;
+            line.last = tx;
+        }
+        if (line.first >= 0) {
+            out.push_back(line);
+        }
+    }
+    return out;
+}
+
+// and the whole beat in the rom: the retainer drawn where the bible put him, the three lines of the
+// sign standing in the bg over him with mario still on screen beside them, the hold, and only then
+// the card and the map
 TEST_CASE("mario_toad_room_ends_1_4") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const Route route = plan_level(kLevel14, 6000);
@@ -11072,7 +11126,7 @@ TEST_CASE("mario_toad_room_ends_1_4") {
     REQUIRE(toad.bottom - toad.top + 1 == kToadHeightPx);
 
     // the sign went up on the same frame, in the bg, with a cell for every character of ink the
-    // four lines carry - a space takes the hud's own blank and is not one of these ids
+    // three lines carry - a space takes the hud's own blank and is not one of these ids
     int ink = 0;
     for (int i = 0; i < kToadSignLines; ++i) {
         for (const char* c = kToadSignText[i]; *c != 0; ++c) {
@@ -11092,6 +11146,10 @@ TEST_CASE("mario_toad_room_ends_1_4") {
     REQUIRE(mario.found);
     REQUIRE(mario.right < toad.left);
     REQUIRE(mario.bottom >= toad.bottom - 1);
+    // with a gap between them rather than shoulder to shoulder: the walk stops kToadStopBlocks
+    // short of him, so a block of the room's floor shows between the two sprites
+    CAPTURE(mario.left, mario.right);
+    REQUIRE(toad.left - mario.right >= kBlockPx / 2);
 
     // the tableau holds. a good way into it all three are still up, the retainer has not moved
     // along the floor and the sign is entire. he can still slide a few px up the screen: the
@@ -11107,30 +11165,62 @@ TEST_CASE("mario_toad_room_ends_1_4") {
     REQUIRE((sprite_rect(gameboy, kMarioFirstTile, kMarioLastTile).found ||
              sprite_rect(gameboy, kSuperFirstTile, kSuperLastTile).found));
 
+    // and this is what the user asked for: three lines, each one whole and centred in the twenty
+    // columns, on the screen rows the band was laid out for. the pan has settled by now - it eases
+    // to kScyMax the moment he is grounded and standing - so a world tile row R is at R - 12
+    const std::vector<SignRow> rows = sign_rows(gameboy);
+    REQUIRE(rows.size() == static_cast<size_t>(kToadSignLines));
+    for (int i = 0; i < kToadSignLines; ++i) {
+        const int len = static_cast<int>(std::string(kToadSignText[i]).size());
+
+        CAPTURE(i, len, rows[i].row, rows[i].first, rows[i].last);
+        REQUIRE(rows[i].row == kToadSignRow[i] - (kLevelHeightPx - kScreenHeightPx) / 8);
+        // clear of the hud's own window, which owns the top two tile rows of the screen
+        REQUIRE(rows[i].row >= 2);
+        REQUIRE(rows[i].first == kToadSignCol[i]);
+        REQUIRE(rows[i].last == kToadSignCol[i] + len - 1);
+        // centred: the margin either side of it differs by at most a column
+        REQUIRE(std::abs(rows[i].first - (19 - rows[i].last)) <= 1);
+    }
+    // the rip's own spacing - a blank tile row under the first line on top of the one every line
+    // gets, and the pair tight under it
+    REQUIRE(rows[1].row - rows[0].row == 4);
+    REQUIRE(rows[2].row - rows[1].row == 2);
+    // and the whole band clears both heads: the retainer's, and mario's whichever body he wears
+    const SpriteRect over = sprite_rect(gameboy, kTileToadFirst, kTileToadLast);
+    REQUIRE(rows[kToadSignLines - 1].row * 8 + 7 < over.top);
+    REQUIRE(rows[kToadSignLines - 1].row * 8 + 7 < mario.top);
+
     // then the card and the map, which is where the level ended before any of this
     REQUIRE(wait_for_map(gameboy, 1200) >= 0);
 }
 
 // the sign's glyphs are the resident font re-encoded into vram bank 1, the way the hud row's
-// digits are, so every character the four lines use has to have an id in the run
+// digits are, so every character the three lines use has to have an id in the run
 TEST_CASE("mario_toad_sign_glyphs_cover_its_text") {
     const std::string chars = kSignGlyphChars;
 
     REQUIRE(static_cast<int>(chars.size()) == kTileSignLast - kTileSignFirst + 1);
+    // the base block the offsets are measured from is the block the camera's last view opens on:
+    // mario ends the walk kToadStopBlocks short of the retainer and rides kCamFollowX four blocks
+    // into the view, so the two have to agree or a centred line is not centred on anything
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const int view = lv.toad_column - kToadStopBlocks - kCamFollowX / kBlockPx;
+    CAPTURE(view);
+    REQUIRE(lv.toad_column - kToadSignColumnsLeft == view);
+    // and that view is a whole screen inside the level, which is what the eight columns the room
+    // grew by bought: the axe wall at 141-143 is behind its left edge
+    REQUIRE(view + static_cast<int>(kScreenWidthPx / kBlockPx) <= static_cast<int>(lv.columns));
+    REQUIRE(view > 143);
     for (int i = 0; i < kToadSignLines; ++i) {
         const std::string line = kToadSignText[i];
 
-        // and each line fits between where it starts and the right edge of the twenty tile
-        // columns the gb has, which is what the rip's two sentences had to be broken up for: the
-        // block it starts in is kToadSignColumnsLeft left of the retainer, and the camera's last
-        // view of a 152 column level starts ten blocks from its end
+        // and each line fits inside the twenty tile columns the gb has at the offset that centres
+        // it, which is what the rip's two sentences had to be re-broken for
         CAPTURE(i, line);
-        const int start_tile = (kHostLevels[kLevel14].toad_column - kToadSignColumnsLeft -
-                                (kHostLevels[kLevel14].columns - kScreenWidthPx / kBlockPx)) *
-                               2;
-
-        REQUIRE(start_tile >= 0);
-        REQUIRE(start_tile + static_cast<int>(line.size()) <= 20);
+        REQUIRE(kToadSignCol[i] >= 0);
+        REQUIRE(kToadSignCol[i] + static_cast<int>(line.size()) <= 20);
+        REQUIRE(std::abs(kToadSignCol[i] - (20 - kToadSignCol[i] - static_cast<int>(line.size()))) <= 1);
         for (const char c : line) {
             CAPTURE(c);
             REQUIRE((c == ' ' || chars.find(c) != std::string::npos));
@@ -11145,14 +11235,22 @@ TEST_CASE("mario_toad_sign_glyphs_cover_its_text") {
         CAPTURE(c);
         REQUIRE(used);
     }
-    // the four rows it prints on are clear of the room's roof and of the floor he stands on
+    // the three rows it prints on are clear of the room's roof and of the floor he stands on, and
+    // the band is inside the seven screen tile rows it has to live in: the hud's window owns 0-1
+    // and big mario's cap starts at 10, so 3-9 is the whole of it
     for (int i = 0; i < kToadSignLines; ++i) {
-        const int row = (kToadSignTileRow + i * kToadSignTileRowStep) / 2;
+        const int row = kToadSignRow[i] / 2;
+        const int screen = kToadSignRow[i] - (kLevelHeightPx - kScreenHeightPx) / 8;
 
-        CAPTURE(i, row);
+        CAPTURE(i, row, screen);
         REQUIRE(row > 2);
-        REQUIRE(row < kHostLevels[kLevel14].toad_row - 1);
+        REQUIRE(row < lv.toad_row - 1);
+        REQUIRE(screen >= 2);
+        REQUIRE(screen <= 9);
     }
+    // laid out with the rip's own spacing: four tile rows to the second line, two to the third
+    REQUIRE(kToadSignRow[1] - kToadSignRow[0] == 4);
+    REQUIRE(kToadSignRow[2] - kToadSignRow[1] == 2);
 }
 
 

@@ -22,8 +22,15 @@ int8_t hazard_lift_dy[kLiftSlots];
 uint8_t hazard_lift_count;
 uint16_t hazard_min_x;
 uint16_t hazard_max_x;
-// the bar the contact pass picked this frame, so the draw does not walk the list a second time
-static uint8_t live_bar = 0xFFU;
+// the bars whose sweep can reach the view this frame, nearest the camera centre first: the draw
+// hands its oam out in this order and the contact pass walks the whole list. worked out once per
+// camera position, so the contact pass and the draw that follows it share the one answer
+static uint8_t live_bars[LEVEL_MAX_OBJECTS];
+// each one's distance to the camera centre, kept only to insert the next bar in the right place.
+// a bar in view is at most 80 px plus its own reach from the centre, which is inside a byte
+static uint8_t live_gap[LEVEL_MAX_OBJECTS];
+static uint8_t live_count;
+static uint16_t live_cam = 0xFFFFU;
 
 // a lift's own track and which way along it the deck is running
 static uint16_t lift_min[kLiftSlots];
@@ -87,12 +94,21 @@ static int16_t collapse_column;
 static uint8_t collapse_timer;
 uint8_t hazard_clear_busy;
 
-// oam bookkeeping: the slots written last frame, so a quiet frame writes none at all. a flame and
-// a lift plank never change tile or palette, so a slot already in use is only ever moved
-static uint8_t flames_shown;
-static uint8_t lift_sprites_shown;
-static uint8_t bowser_shown;
-static uint8_t fire_shown;
+// oam bookkeeping. slots kHazardPoolFirst..+kHazardPoolSlots (24-39) are one pool shared by the
+// deck planks, bowser's body, his breath and a firebar's flames, and which of them holds a slot
+// changes from frame to frame. so the pool carries an owner byte each: slot_owner is what wrote a
+// slot's tile last, slot_claim is who wants it this frame. a claimant whose slot already held its
+// own art only moves the sprite; one taking a slot off another owner writes tile and palette
+// again; and a slot nobody claims is parked, which is what keeps a stale flame from lingering
+enum {
+    kOwnerNone = 0,
+    kOwnerDeck,
+    kOwnerBowser,
+    kOwnerFire,
+    kOwnerFlame
+};
+static uint8_t slot_owner[kHazardPoolSlots];
+static uint8_t slot_claim[kHazardPoolSlots];
 
 // this frame's segment offsets, worked out once for every bar rather than once per bar: seven bars
 // times six segments was forty two multiplies a frame on a budget that had none to give
@@ -141,37 +157,50 @@ static void note_segments(uint8_t step) {
     }
 }
 
-// the circle a bar of the given length sweeps, plus the widest box that could touch it. it is the
-// chosen bar's own length and not the longest a level may hold: a bar only ever goes live where it
-// could actually burn him, so a level's long bar does not wake its short ones up early
-#define kBarReachPx(segments) ((uint16_t)((segments) * kFirebarRadiusPx + kBlockPx))
-
-// the bible spaces 1-4's bars six columns apart, so two of them can share the ten column screen -
-// twelve flames, and the corridor was already the heaviest stretch the engine has. only the bar
-// nearest the given world x is live: it is the only one drawn and the only one that can burn him,
-// which keeps the two answers the same. its neighbour reaches at most to the midpoint between them,
-// so the strip it goes cold over is a few pixels wide. must-verify against the rom pass
 static uint16_t bar_centre_x(uint8_t i);
 static int16_t bar_centre_y(uint8_t i);
 
-static uint8_t nearest_bar(uint16_t px) {
-    uint8_t best = 0xFFU;
-    uint16_t closest = 0xFFFFU;
+// how far out from its pivot a bar of this length reaches, plus the flame's own 8 px: a pivot this
+// far outside the view can still put a flame on screen. it is the bar's own length and not the
+// longest a level may hold, so a level's long bar does not wake its short ones up early
+static uint16_t bar_reach(uint8_t i) {
+    return (uint16_t)(((uint16_t)bar_segments(i) * kFirebarRadiusPx) + kFlamePx);
+}
+
+// every bar whose sweep can reach the view, in order of how near its pivot is to the camera
+// centre. smb draws them all: a bar's rotation is the whole of its timing, so one that only wakes
+// up when mario is under it cannot be jumped, and the pivot is on screen long before that. the
+// phases are shared per rate (see hazards_step), so a bar going live costs nothing to step
+static void note_live_bars(uint16_t cam_x) {
+    const uint16_t centre = (uint16_t)(cam_x + (kScreenWidthPx / 2U));
     uint8_t i;
 
+    if (live_cam == cam_x) {
+        return;
+    }
+    live_cam = cam_x;
+    live_count = 0;
     for (i = 0; i < bar_count; ++i) {
+        const uint16_t reach = bar_reach(i);
         const uint16_t cx = bar_centre_x(i);
-        const uint16_t gap = (cx > px) ? (uint16_t)(cx - px) : (uint16_t)(px - cx);
+        uint8_t gap;
+        uint8_t at;
 
-        if (gap < closest) {
-            closest = gap;
-            best = i;
+        if ((uint16_t)(cx + reach) < cam_x || cx >= (uint16_t)(cam_x + kScreenWidthPx + reach)) {
+            continue;
         }
+        gap = (uint8_t)((cx > centre) ? (uint16_t)(cx - centre) : (uint16_t)(centre - cx));
+        // an insertion sort over a handful of bars, so the nearest gets the first slots
+        at = live_count;
+        while (at != 0U && live_gap[at - 1U] > gap) {
+            live_bars[at] = live_bars[at - 1U];
+            live_gap[at] = live_gap[at - 1U];
+            --at;
+        }
+        live_bars[at] = i;
+        live_gap[at] = gap;
+        ++live_count;
     }
-    if (best == 0xFFU) {
-        return 0xFFU;
-    }
-    return (closest <= kBarReachPx(bar_segments(best))) ? best : 0xFFU;
 }
 
 static uint8_t boxes_overlap(uint16_t ax, int16_t ay, uint8_t aw, uint8_t ah, uint16_t bx, int16_t by,
@@ -209,11 +238,8 @@ void hazards_load_level(void) BANKED {
     spin_phase[0] = 0;
     spin_phase[1] = 0;
     seg_step = 0xFF;
-    flames_shown = 0;
-    lift_sprites_shown = 0;
-    bowser_shown = 0;
-    fire_shown = 0;
-    live_bar = 0xFFU;
+    live_count = 0;
+    live_cam = 0xFFFFU;
     collapse_column = -1;
     collapse_timer = 0;
     hazard_clear_busy = 0;
@@ -221,14 +247,11 @@ void hazards_load_level(void) BANKED {
 
     // hazards_draw only runs once a hazard is back in range (kHazardMarginPx), so a level load far
     // from any of them would otherwise leave the last life's lift/flame/bowser sprites sitting in
-    // oam forever. park every slot this module owns up front, regardless of hazard_near
-    for (i = 0; i < (uint8_t)(kLiftSlots * 4U); ++i) {
-        park(lift_slot(i));
-    }
-    // the pool bowser's body takes covers the flame run and the two slots past it, so one loop
-    // over kSpriteBowserCount parks whichever of the two the last life left drawn
-    for (i = 0; i < (uint8_t)kSpriteBowserCount; ++i) {
-        park((uint8_t)(kSpriteBowserFirst + i));
+    // oam forever. park the whole pool up front, regardless of hazard_near
+    for (i = 0; i < (uint8_t)kHazardPoolSlots; ++i) {
+        park((uint8_t)(kHazardPoolFirst + i));
+        slot_owner[i] = (uint8_t)kOwnerNone;
+        slot_claim[i] = (uint8_t)kOwnerNone;
     }
 
     // the borrowed slots belong to the bar and the bowser first, so a level carrying either keeps
@@ -542,22 +565,27 @@ uint8_t hazards_contact(uint16_t player_px, int16_t player_py, uint8_t player_h,
                                         kBowserFireWidthPx, kBowserFireHeightPx) != 0U) {
         return kHazardDamage;
     }
-    i = nearest_bar((uint16_t)(left + (kPlayerHitWidthPx / 2U)));
-    live_bar = i;
-    if (i == 0xFFU) {
-        return kHazardNone;
-    }
-    note_segments(bar_step(i));
-    {
+    // every live bar's whole segment list, however few of them the draw found oam for: what burns
+    // him is never a question of what fitted in sprites
+    note_live_bars(camera_pos_x);
+    for (i = 0; i < live_count; ++i) {
+        const uint8_t bar = live_bars[i];
         // the pivot's own corner, worked out once: the segment offsets are all that change per
         // flame. every call this needs is made before any of the arithmetic and its result parked
         // in a local: sdcc will otherwise keep an operand of the subtraction in a register across
         // one of them and read back whatever the callee left there (see draw_flames)
-        const uint8_t segments = bar_segments(i);
-        const uint16_t centre_x = bar_centre_x(i);
-        const int16_t centre_y = bar_centre_y(i);
-        const int16_t bx = (int16_t)((int16_t)centre_x - (kFlamePx / 2));
-        const int16_t by = (int16_t)(centre_y - (kFlamePx / 2));
+        uint8_t segments;
+        uint16_t centre_x;
+        int16_t centre_y;
+        int16_t bx;
+        int16_t by;
+
+        note_segments(bar_step(bar));
+        segments = bar_segments(bar);
+        centre_x = bar_centre_x(bar);
+        centre_y = bar_centre_y(bar);
+        bx = (int16_t)((int16_t)centre_x - (kFlamePx / 2));
+        by = (int16_t)(centre_y - (kFlamePx / 2));
 
         for (k = 1; k <= segments; ++k) {
             const int16_t fx = (int16_t)(bx + seg_x[k]);
@@ -622,6 +650,39 @@ static void park(uint8_t slot) {
     move_sprite(slot, 0, 0);
 }
 
+// takes a pool slot for `owner` and says whether its tile and palette have to be written again: a
+// slot keeps whatever art it already has for as long as its owner does not change
+static uint8_t claim_slot(uint8_t slot, uint8_t owner) {
+    const uint8_t at = (uint8_t)(slot - kHazardPoolFirst);
+    const uint8_t fresh = (uint8_t)((slot_owner[at] != owner) ? 1U : 0U);
+
+    slot_claim[at] = owner;
+    return fresh;
+}
+
+static uint8_t slot_free(uint8_t slot) {
+    return (uint8_t)((slot_claim[slot - kHazardPoolFirst] == (uint8_t)kOwnerNone) ? 1U : 0U);
+}
+
+// the end of the frame's oam pass: a slot that changed hands keeps its new owner, and one nobody
+// claimed goes back to 0,0. this is what parks a bar's flames when it scrolls out of view or a
+// nearer bar takes its slots, without any of the four claimants knowing about the others
+static void settle_slots(void) {
+    uint8_t i;
+
+    for (i = 0; i < (uint8_t)kHazardPoolSlots; ++i) {
+        if (slot_claim[i] == (uint8_t)kOwnerNone) {
+            if (slot_owner[i] != (uint8_t)kOwnerNone) {
+                park((uint8_t)(kHazardPoolFirst + i));
+                slot_owner[i] = (uint8_t)kOwnerNone;
+            }
+            continue;
+        }
+        slot_owner[i] = slot_claim[i];
+        slot_claim[i] = (uint8_t)kOwnerNone;
+    }
+}
+
 static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
     uint8_t drawn = 0;
     uint8_t i;
@@ -635,12 +696,11 @@ static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
             sx >= (int16_t)kScreenWidthPx) {
             continue;
         }
-        // a deck is 32 px of 8 px sprites; the pair's lower tile is blank so the plank reads 8 tall.
-        // a slot already showing a plank keeps its tile and palette and is only moved
+        // a deck is 32 px of 8 px sprites; the pair's lower tile is blank so the plank reads 8 tall
         for (half = 0; half < 4U; ++half) {
             const uint8_t slot = lift_slot(drawn);
 
-            if (drawn >= lift_sprites_shown) {
+            if (claim_slot(slot, (uint8_t)kOwnerDeck) != 0U) {
                 set_sprite_tile(slot, (uint8_t)kTileLiftDeck);
                 set_sprite_prop(slot, (uint8_t)kPalGoomba);
             }
@@ -649,63 +709,67 @@ static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
             ++drawn;
         }
     }
-    for (i = drawn; i < lift_sprites_shown; ++i) {
-        park(lift_slot(i));
-    }
-    lift_sprites_shown = drawn;
 }
 
+// every live bar, nearest the camera centre first, into whatever the decks, bowser and his breath
+// left of the pool. the cap is kFlameDrawCap - two full bars, which is what 1-4's pair four
+// columns apart needs - and a third bar in view draws however many flames are still going rather
+// than none, so it still reads as a hazard while the two in front of it hold their sprites
 static void draw_flames(uint16_t cam_x, uint8_t cam_y) {
     uint8_t drawn = 0;
-    uint8_t i = live_bar;
-    uint8_t k;
-    uint8_t segments;
-    uint16_t centre_x;
-    int16_t centre_y;
-    int16_t bx;
-    int16_t by;
+    uint8_t next = 0;
+    uint8_t n;
 
-    if (i == 0xFFU) {
-        for (i = 0; i < flames_shown; ++i) {
-            park((uint8_t)(kSpriteFlameFirst + i));
-        }
-        flames_shown = 0;
-        return;
-    }
-    // every call this pass needs, made before a single subtraction: the pivot's screen corner used
-    // to be one expression with bar_centre_x() inside it, and sdcc kept cam_x in a register across
-    // that call and then subtracted whatever the callee had left there - a bar's flames all landed
-    // twenty thousand pixels off screen and none of them was ever drawn or ever burned him
-    note_segments(bar_step(i));
-    segments = bar_segments(i);
-    centre_x = bar_centre_x(i);
-    centre_y = bar_centre_y(i);
-    // the pivot's screen corner, camera and oam offset folded in once for the whole bar: the flame
-    // loop is the heaviest thing on a castle frame and it was rebuilding this six times
-    bx = (int16_t)((int16_t)centre_x - (kFlamePx / 2) - (int16_t)cam_x);
-    by = (int16_t)(centre_y - (kFlamePx / 2) - (int16_t)cam_y);
+    for (n = 0; n < live_count && drawn < (uint8_t)kFlameDrawCap; ++n) {
+        const uint8_t bar = live_bars[n];
+        // every call this pass needs, made before a single subtraction: the pivot's screen corner
+        // used to be one expression with bar_centre_x() inside it, and sdcc kept cam_x in a
+        // register across that call and then subtracted whatever the callee had left there - a
+        // bar's flames all landed twenty thousand pixels off screen and none was ever drawn
+        uint8_t segments;
+        uint16_t centre_x;
+        int16_t centre_y;
+        int16_t bx;
+        int16_t by;
+        uint8_t on_bar = 0;
+        uint8_t k;
 
-    for (k = 1; k <= segments && drawn < (uint8_t)kFlameSlots; ++k) {
-        const int16_t fx = (int16_t)(bx + seg_x[k]);
-        const int16_t fy = (int16_t)(by + seg_y[k]);
-        uint8_t slot;
+        note_segments(bar_step(bar));
+        segments = bar_segments(bar);
+        centre_x = bar_centre_x(bar);
+        centre_y = bar_centre_y(bar);
+        // the pivot's screen corner, camera and oam offset folded in once for the whole bar: the
+        // flame loop is the heaviest thing on a castle frame and it was rebuilding this six times
+        bx = (int16_t)((int16_t)centre_x - (kFlamePx / 2) - (int16_t)cam_x);
+        by = (int16_t)(centre_y - (kFlamePx / 2) - (int16_t)cam_y);
 
-        if (fx <= -kFlamePx || fx >= (int16_t)kScreenWidthPx || fy <= -kFlamePx ||
-            fy >= (int16_t)kScreenHeightPx) {
-            continue;
+        for (k = 1; k <= segments && on_bar < (uint8_t)kFlameSlots && drawn < (uint8_t)kFlameDrawCap;
+             ++k) {
+            const int16_t fx = (int16_t)(bx + seg_x[k]);
+            const int16_t fy = (int16_t)(by + seg_y[k]);
+            uint8_t slot;
+
+            if (fx <= -kFlamePx || fx >= (int16_t)kScreenWidthPx || fy <= -kFlamePx ||
+                fy >= (int16_t)kScreenHeightPx) {
+                continue;
+            }
+            while (next < (uint8_t)kHazardPoolSlots && slot_claim[next] != (uint8_t)kOwnerNone) {
+                ++next;
+            }
+            if (next >= (uint8_t)kHazardPoolSlots) {
+                return;
+            }
+            slot = (uint8_t)(kHazardPoolFirst + next);
+            ++next;
+            if (claim_slot(slot, (uint8_t)kOwnerFlame) != 0U) {
+                set_sprite_tile(slot, (uint8_t)kTileFlame);
+                set_sprite_prop(slot, (uint8_t)kPalStar);
+            }
+            move_sprite(slot, (uint8_t)(fx + kOamXOffset), (uint8_t)(fy + kOamYOffset));
+            ++drawn;
+            ++on_bar;
         }
-        slot = (uint8_t)(kSpriteFlameFirst + drawn);
-        if (drawn >= flames_shown) {
-            set_sprite_tile(slot, (uint8_t)kTileFlame);
-            set_sprite_prop(slot, (uint8_t)kPalStar);
-        }
-        move_sprite(slot, (uint8_t)(fx + kOamXOffset), (uint8_t)(fy + kOamYOffset));
-        ++drawn;
     }
-    for (i = drawn; i < flames_shown; ++i) {
-        park((uint8_t)(kSpriteFlameFirst + i));
-    }
-    flames_shown = drawn;
 }
 
 // his 32x32 body: two rows of four 8x16 sprites, so a scanline crossing him draws four - mario's
@@ -724,6 +788,8 @@ static void draw_bowser(int16_t sx, int16_t sy) {
         for (c = 0; c < 4U; ++c) {
             const uint8_t slot = (uint8_t)(kSpriteBowserFirst + (r << 2) + c);
 
+            // his tile changes with the walk frame, so this one always writes rather than asking
+            (void)claim_slot(slot, (uint8_t)kOwnerBowser);
             set_sprite_tile(slot, (uint8_t)(base + (((r << 2) + c) << 1)));
             set_sprite_prop(slot, prop);
             move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)c << 3) + kOamXOffset),
@@ -732,54 +798,48 @@ static void draw_bowser(int16_t sx, int16_t sy) {
     }
 }
 
-static void park_bowser(void) {
-    uint8_t i;
-
-    for (i = 0; i < (uint8_t)kSpriteBowserCount; ++i) {
-        park((uint8_t)(kSpriteBowserFirst + i));
-    }
-}
-
-// the breath, three 8x16 sprites off the top of the lift run. draw_lifts has already run this
-// frame and published how many deck sprites it took, so the test is against the decks actually on
-// screen rather than the ones the level loaded: 1-4 carries two lifts a hundred and thirty columns
-// apart and never shows both, so the breath always has its slots. on a frame that did show two the
-// dart still flies and still burns, it is only not drawn
+// the breath, three 8x16 sprites off the top of the pool. draw_lifts has already claimed this
+// frame, so the test is against the decks actually on screen rather than the ones the level
+// loaded: 1-4 carries two lifts a hundred and thirty columns apart and never shows both, so the
+// breath always has its slots. on a frame that did show two the dart still flies and still burns,
+// it is only not drawn
 static void draw_bowser_fire(uint16_t cam_x, uint8_t cam_y) {
-    uint8_t drawn = 0;
+    int16_t sx;
+    int16_t sy;
     uint8_t i;
 
-    if (fire_ttl != 0U && lift_sprites_shown <= (uint8_t)kSpriteLiftPerDeck) {
-        const int16_t sx = (int16_t)((int16_t)fire_x - (int16_t)cam_x);
-        const int16_t sy = (int16_t)(fire_y - (int16_t)cam_y);
-
-        if (sx > -(int16_t)kBowserFireWidthPx && sx < (int16_t)kScreenWidthPx && sy > -8 &&
-            sy < (int16_t)kScreenHeightPx) {
-            for (i = 0; i < (uint8_t)kSpriteBowserFireCount; ++i) {
-                const uint8_t slot = (uint8_t)(kSpriteBowserFireFirst + i);
-
-                if (i >= fire_shown) {
-                    set_sprite_tile(slot, (uint8_t)(kTileBowserFire + (i << 1)));
-                    set_sprite_prop(slot, (uint8_t)((uint8_t)kPalStar | (uint8_t)S_BANK));
-                }
-                move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)i << 3) + kOamXOffset),
-                            (uint8_t)(sy + kOamYOffset));
-            }
-            drawn = (uint8_t)kSpriteBowserFireCount;
+    if (fire_ttl == 0U) {
+        return;
+    }
+    for (i = 0; i < (uint8_t)kSpriteBowserFireCount; ++i) {
+        if (slot_free((uint8_t)(kSpriteBowserFireFirst + i)) == 0U) {
+            return;
         }
     }
-    // a frame that took the breath's slots for a second deck must not park them again
-    if (lift_sprites_shown <= (uint8_t)kSpriteLiftPerDeck) {
-        for (i = drawn; i < fire_shown; ++i) {
-            park((uint8_t)(kSpriteBowserFireFirst + i));
-        }
+    sx = (int16_t)((int16_t)fire_x - (int16_t)cam_x);
+    sy = (int16_t)(fire_y - (int16_t)cam_y);
+    if (sx <= -(int16_t)kBowserFireWidthPx || sx >= (int16_t)kScreenWidthPx || sy <= -8 ||
+        sy >= (int16_t)kScreenHeightPx) {
+        return;
     }
-    fire_shown = drawn;
+    for (i = 0; i < (uint8_t)kSpriteBowserFireCount; ++i) {
+        const uint8_t slot = (uint8_t)(kSpriteBowserFireFirst + i);
+
+        if (claim_slot(slot, (uint8_t)kOwnerFire) != 0U) {
+            set_sprite_tile(slot, (uint8_t)(kTileBowserFire + (i << 1)));
+            set_sprite_prop(slot, (uint8_t)((uint8_t)kPalStar | (uint8_t)S_BANK));
+        }
+        move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)i << 3) + kOamXOffset),
+                    (uint8_t)(sy + kOamYOffset));
+    }
 }
 
+// the frame's whole oam pass over the shared pool, claimants in priority order: the decks first,
+// then bowser's body, then his breath, and the flames into whatever is left. he beats a bar for
+// the front of the pool because a bowser drawn as six of his sixteen tiles would read as nothing
+// at all, where a bar drawing four flames instead of six still reads as a bar - and smb never
+// puts the two in one room anyway. settle_slots then parks whatever nobody took
 void hazards_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
-    uint8_t body = 0;
-
     draw_lifts(cam_x, cam_y);
     if (bowser_live != 0U) {
         const int16_t sx = (int16_t)((int16_t)bowser_x - (int16_t)cam_x);
@@ -788,24 +848,10 @@ void hazards_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         if (sx > -(int16_t)kBowserWidthPx && sx < (int16_t)kScreenWidthPx && sy > -(int16_t)kBowserHeightPx &&
             sy < (int16_t)kScreenHeightPx) {
             draw_bowser(sx, sy);
-            body = 1;
         }
+        draw_bowser_fire(cam_x, cam_y);
     }
-    // he and a firebar share one pool of eight slots and smb never puts them in the same room, so
-    // the frame simply gives it to whichever of the two is on screen. he wins a tie: a bowser
-    // drawn as six of his sixteen tiles would read as nothing at all, where a bar losing its
-    // flames for a few frames only loses the flames
-    if (body != 0U) {
-        if (flames_shown != 0U) {
-            flames_shown = 0;
-        }
-        bowser_shown = 1;
-    } else {
-        if (bowser_shown != 0U) {
-            bowser_shown = 0;
-            park_bowser();
-        }
-        draw_flames(cam_x, cam_y);
-    }
-    draw_bowser_fire(cam_x, cam_y);
+    note_live_bars(cam_x);
+    draw_flames(cam_x, cam_y);
+    settle_slots();
 }

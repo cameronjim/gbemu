@@ -2555,27 +2555,55 @@ struct PlayerSim {
         return ay + ah > by && by + bh > ay;
     }
 
-    // hazards.c's nearest_bar: the bible spaces 1-4's bars six columns apart so two share the
-    // screen, and only the one nearest him is live - the only one drawn and the only one that burns
-    uint8_t nearest_bar(uint16_t px) const {
-        uint8_t best = 0xFF;
-        int closest = 0xFFFF;
+    // hazards.c's bar_reach: how far out from its pivot a bar of this length puts a flame, plus
+    // the flame's own 8 px. it is the bar's own length and not the longest a level may hold
+    int bar_reach(uint8_t i) const {
+        return bar_segments(i) * kFirebarRadiusPx + kFlamePx;
+    }
+
+    // hazards.c's note_live_bars: every bar whose sweep can reach the view, nearest the camera
+    // centre first. m21 - all of them rotate, all of them burn, and the draw hands its oam out in
+    // this order, so a bar is on screen from the moment it scrolls in and its jump can be timed.
+    // the twin runs this on every planned frame, so it fills a fixed array rather than allocating
+    struct LiveBars {
+        std::array<uint8_t, kBarSlots> index{};
+        uint8_t count = 0;
+
+        const uint8_t* begin() const {
+            return index.data();
+        }
+        const uint8_t* end() const {
+            return index.data() + count;
+        }
+    };
+
+    LiveBars live_bars() const {
+        const int centre = static_cast<int>(cam_x) + kScreenWidthPx / 2;
+        std::array<int, kBarSlots> gap{};
+        LiveBars out;
 
         for (uint8_t i = 0; i < bar_count; ++i) {
+            const int reach = bar_reach(i);
             const int cx = bar_column[i] * kBlockPx + kBlockPx / 2;
-            const int gap = std::abs(cx - static_cast<int>(px));
 
-            if (gap < closest) {
-                closest = gap;
-                best = i;
+            if (cx + reach < static_cast<int>(cam_x) ||
+                cx >= static_cast<int>(cam_x) + kScreenWidthPx + reach) {
+                continue;
             }
+            // the module's own insertion sort, ties left in bar order
+            const int here = std::abs(cx - centre);
+            uint8_t at = out.count;
+
+            while (at != 0 && gap[at - 1] > here) {
+                out.index[at] = out.index[at - 1];
+                gap[at] = gap[at - 1];
+                --at;
+            }
+            out.index[at] = i;
+            gap[at] = here;
+            ++out.count;
         }
-        if (best == 0xFF) {
-            return 0xFF;
-        }
-        // the chosen bar's own reach, not the longest a level may hold: a long bar does not wake
-        // the short ones up early
-        return closest <= bar_segments(best) * kFirebarRadiusPx + kBlockPx ? best : uint8_t{0xFF};
+        return out;
     }
 
     uint8_t hazards_contact() const {
@@ -2593,23 +2621,24 @@ struct PlayerSim {
                                      kBowserFireHeightPx)) {
             return kHazardDamage;
         }
-        const uint8_t bar = nearest_bar(static_cast<uint16_t>(left + kHitWidthPx / 2));
-        if (bar == 0xFF) {
-            return kHazardNone;
-        }
-        const int cx = bar_column[bar] * kBlockPx + kBlockPx / 2;
-        const int cy = bar_row[bar] * kBlockPx + kBlockPx / 2;
-        const uint8_t step = bar_step(bar);
-        for (int k = 1; k <= bar_segments(bar); ++k) {
-            const int fx = cx + kSpinX[step] * k - kFlamePx / 2;
-            const int fy = cy + kSpinY[step] * k - kFlamePx / 2;
+        // every live bar's whole segment list, however few of them the rom found oam for: what
+        // burns him is never a question of what fitted in sprites
+        for (const uint8_t bar : live_bars()) {
+            const int cx = bar_column[bar] * kBlockPx + kBlockPx / 2;
+            const int cy = bar_row[bar] * kBlockPx + kBlockPx / 2;
+            const uint8_t step = bar_step(bar);
 
-            if (fx < 0) {
-                continue;
-            }
-            if (overlap(left, y_pos, kHitWidthPx, height, static_cast<uint16_t>(fx), static_cast<int16_t>(fy),
-                        kFlamePx, kFlamePx)) {
-                return kHazardDamage;
+            for (int k = 1; k <= bar_segments(bar); ++k) {
+                const int fx = cx + kSpinX[step] * k - kFlamePx / 2;
+                const int fy = cy + kSpinY[step] * k - kFlamePx / 2;
+
+                if (fx < 0) {
+                    continue;
+                }
+                if (overlap(left, y_pos, kHitWidthPx, height, static_cast<uint16_t>(fx),
+                            static_cast<int16_t>(fy), kFlamePx, kFlamePx)) {
+                    return kHazardDamage;
+                }
             }
         }
         return kHazardNone;
@@ -10024,9 +10053,8 @@ void watch_the_bridge(gb::Gameboy& gameboy, const Route& route) {
     gameboy.set_button(gb::Button::B, false);
 }
 
-// how long left has to be held from there to walk him back to the deck's near end, ninety pixels of
-// walking, which is what puts bowser's jaw off the right edge
-constexpr uint32_t kBridgeBackOffFrames = 60;
+// the longest walk back down the deck the dart tests will spend getting bowser off the right edge
+constexpr uint32_t kBridgeBackOffCap = 300;
 
 } // namespace
 
@@ -10085,13 +10113,25 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
     REQUIRE(gameboy.load_rom(rom));
     enter_level(gameboy, kLevel14);
     watch_the_bridge(gameboy, route);
+    // how far back is far enough is bowser's own business, not a frame count: his patrol phase at
+    // the axe depends on how long the route took to get there, and a throw from a jaw still on
+    // screen crosses twenty pixels before it reaches mario instead of most of the view. so walk
+    // left until his body is off the right edge, which is what the comment above asks for
     gameboy.set_button(gb::Button::Left, true);
-    run(gameboy, kBridgeBackOffFrames);
+    for (uint32_t f = 0; f < kBridgeBackOffCap; ++f) {
+        gameboy.run_frame();
+        if (!sprite_rect(gameboy, kTileBowserLo, kTileBowserHi).found) {
+            break;
+        }
+    }
     gameboy.set_button(gb::Button::Left, false);
+    REQUIRE(!sprite_rect(gameboy, kTileBowserLo, kTileBowserHi).found);
 
     std::vector<int> lefts;
     int widest = 0;
     int band_top = -1;
+    int held = 0;
+    int last = -1;
     for (int f = 0; f < 400; ++f) {
         gameboy.run_frame();
         const SpriteRect dart = sprite_rect(gameboy, kTileBowserFireLo, kTileBowserFireHi);
@@ -10103,6 +10143,14 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
             widest = std::max(widest, dart.right - dart.left + 1);
             band_top = dart.top;
             lefts.push_back(dart.left);
+            // the dart that stops moving is the world frozen behind the death beat it just
+            // started - it burns him at the end of every one of these flights - and from there
+            // the rect is a sprite left standing rather than a dart in flight
+            held = dart.left == last ? held + 1 : 0;
+            last = dart.left;
+            if (held >= 8) {
+                break;
+            }
         }
     }
     std::string trace;
@@ -10120,7 +10168,12 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
     }
     // a fresh dart restarts at his jaw, so one step back per throw is expected and no more
     REQUIRE(backwards <= 3);
-    REQUIRE(lefts.front() - lefts.back() > 40);
+    // how much of a flight the rom can show is bowser's own patrol phase: he throws every
+    // kBowserFireFrames from wherever on the deck he has walked to, and the dart lives only
+    // kBowserFireLifeFrames, so one thrown from the far end expires before it has crossed the
+    // view. what the rom has to prove is that the dart is drawn and that it goes left; the whole
+    // hundred-frame, hundred-and-fifty-pixel life is the twin's (mario_bowser_dart_flies_its_life)
+    REQUIRE(lefts.front() - lefts.back() >= 12);
     // and it crosses the band a body on the bridge stands in rather than sailing over his head
     REQUIRE(band_top > 16);
 }
@@ -10309,18 +10362,189 @@ TEST_CASE("mario_bridge_drops_cell_by_cell") {
         gameboy.run_frame();
         cells.push_back(bg_family_cells(gameboy, kTileBridge, kTileBridgeHi));
     }
-    // never grows back, ends at nothing, and takes more than a handful of frames getting there
+    // never grows back, ends at nothing, and thins out a cell at a time on the way. how MANY of
+    // the span's cells the axe's camera has on screen is the route's business - it lands mario
+    // somewhere in the last few columns - so the witness is the cadence of the drops rather than
+    // the frame the last visible cell goes
     int first_empty = -1;
+    int drops = 0;
+    int first_drop = -1;
+    int last_drop = -1;
     for (size_t i = 1; i < cells.size(); ++i) {
         REQUIRE(cells[i] <= cells[i - 1]);
+        if (cells[i] < cells[i - 1]) {
+            ++drops;
+            first_drop = first_drop < 0 ? static_cast<int>(i) : first_drop;
+            last_drop = static_cast<int>(i);
+        }
         if (first_empty < 0 && cells[i] == 0) {
             first_empty = static_cast<int>(i);
         }
     }
-    CAPTURE(cells.front(), first_empty);
-    REQUIRE(cells.front() > 0);
-    REQUIRE(first_empty > 8);
+    CAPTURE(cells.front(), first_empty, drops, first_drop, last_drop);
+    // three of the span's cells on screen at the axe, each of them four sampled tiles
+    REQUIRE(cells.front() >= 12);
+    REQUIRE(drops >= 3);
+    REQUIRE(last_drop - first_drop >= 2 * static_cast<int>(kBridgeDropFrames));
+    REQUIRE(first_empty > static_cast<int>(kBridgeDropFrames));
     REQUIRE(cells.back() == 0);
+}
+
+// m21: a bar whose sweep can reach the view rotates, burns AND draws, however far off mario is.
+// hazards.c used to keep only the bar nearest him live, so one ahead of him neither turned nor
+// drew until he was almost under it - and its rotation is the whole of a firebar's timing, so a
+// bar that appears when he is already under it cannot be jumped at all. these two watch the
+// corridor's first roof bar from four columns back, and then the pair seven columns apart that the
+// old rule could only ever show one of.
+//
+// both find their frame in the twin's own trace of the planned route and then park the rom on it:
+// the route is the only way into the corridor, and a frame index off it is stable in a way a
+// column count walked by hand is not
+namespace {
+
+// the frame of `states` where every column in `pivots` has its pivot between `near_px` and
+// `far_px` across the screen, and mario is still `clear_px` short of each of them - negative when
+// he is meant to be past one of them by then
+size_t frame_watching(const std::vector<PlayerSim>& states, std::initializer_list<int> pivots,
+                      int near_px, int far_px, int clear_px, bool grounded) {
+    for (size_t i = 1; i < states.size(); ++i) {
+        const int cam = static_cast<int>(states[i].cam_x);
+        bool all = !grounded || states[i].on_ground != 0;
+
+        for (const int column : pivots) {
+            const int pivot = column * kBlockPx + kBlockPx / 2;
+
+            all = all && pivot - cam >= near_px && pivot - cam <= far_px &&
+                  pivot - static_cast<int>(states[i].x_pos) >= clear_px;
+        }
+        if (all) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+// one bar's flames all run one way out of its pivot, so its whole family is at most its reach plus
+// a flame across. a box wider than this is two bars and cannot be one
+constexpr int kOneBarPx = kFirebarSegments * kFirebarRadiusPx + kFlamePx;
+
+} // namespace
+
+TEST_CASE("mario_firebar_draws_before_he_is_under_it") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel14);
+
+    // the first of the three that hang from the corridor roof, at column 49 (level-1-4.json)
+    const int pivot = 49 * kBlockPx + kBlockPx / 2;
+    const size_t at = frame_watching(states, {49}, 8, kScreenWidthPx - 8, 4 * kBlockPx, true);
+    REQUIRE(at > 0);
+    // the statement: his box is four columns short of the pivot and the bar is on screen anyway.
+    // the twin and the rom are frame-exact over this route (mario_autopilot_completes_1_4), so
+    // parking the rom on this frame parks it on this distance
+    REQUIRE(pivot - static_cast<int>(states[at].x_pos) >= 4 * kBlockPx);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, at);
+
+    // and there he stands. the bar is drawn on every one of these frames and it turns while he
+    // watches, which is a family box that moves; the slow spin is one step every 6.4 frames
+    std::set<std::pair<int, int>> seen;
+    int drawn = 0;
+    int first_gap = -1;
+    int widest = 0;
+    for (int f = 0; f < 48; ++f) {
+        gameboy.run_frame();
+        const SpriteRect flames = sprite_rect(gameboy, kTileFlameLo, kTileFlameHi);
+        const Mario m = mario_at(gameboy);
+
+        if (!flames.found) {
+            continue;
+        }
+        ++drawn;
+        seen.insert({flames.left, flames.top});
+        widest = std::max(widest, flames.right - flames.left + 1);
+        if (m.found && first_gap < 0) {
+            first_gap = flames.left - m.left;
+        }
+    }
+    CAPTURE(at, drawn, seen.size(), first_gap, widest);
+    REQUIRE(drawn == 48);
+    REQUIRE(seen.size() >= 3);
+    // a bar reaches three columns out of its pivot, so the widest strip of clear screen there can
+    // ever be between him and its nearest flame is the fourth column - and that is the strip the
+    // old rule drew nothing in
+    REQUIRE(first_gap >= 2 * kBlockPx);
+    REQUIRE(widest <= kOneBarPx);
+}
+
+// main.c works its gate into bank 5 off hazard_min_x/hazard_max_x, which are the object CELLS and
+// not their reach: a firebar's own sweep is up to twelve segments either side of its pivot. a bar
+// has to be inside the gate for every camera position its flames can land on screen from, or the
+// frame that should have drawn it never enters the module at all. the gate's kScreenWidthPx on the
+// left and kHazardMarginPx on the right are what cover the difference, and this is the arithmetic
+TEST_CASE("mario_firebar_gate_covers_its_whole_reach") {
+    int bars = 0;
+
+    for (const int index : {kLevel11, kLevel12, kLevel13, kLevel14}) {
+        PlayerSim sim;
+        sim.load_level(index);
+        for (uint8_t i = 0; i < sim.bar_count; ++i) {
+            const int cx = sim.bar_column[i] * kBlockPx + kBlockPx / 2;
+            const int reach = sim.bar_reach(i);
+            const int first = std::max(0, cx - kScreenWidthPx - reach);
+            const int last = cx + reach;
+
+            ++bars;
+            for (int cam = first; cam <= last; ++cam) {
+                CAPTURE(index, i, cam, cx, reach, sim.hazard_min_x, sim.hazard_max_x);
+                REQUIRE(cam + kScreenWidthPx + kHazardMarginPx > sim.hazard_min_x);
+                REQUIRE(cam < sim.hazard_max_x + kHazardMarginPx);
+            }
+        }
+    }
+    REQUIRE(bars == 7); // all of world one's are 1-4's
+}
+
+TEST_CASE("mario_two_firebars_draw_at_once") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel14);
+
+    // the second and third roof bars, seven columns apart. 112 px is wider than either one's own
+    // family, and each of them keeps a flame within two columns of its own pivot, so the box the
+    // two make together cannot be mistaken for one bar's however the screen clips them
+    // with the two of them on screen at once his anchor sits between them, so he is already past
+    // the first: -160 asks for no clearance at all
+    const size_t at = frame_watching(states, {60, 67}, 16, kScreenWidthPx - 16, -kScreenWidthPx, false);
+    REQUIRE(at > 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, at);
+
+    int both = 0;
+    int drawn = 0;
+    int widest = 0;
+    for (int f = 0; f < 24; ++f) {
+        gameboy.run_frame();
+        const SpriteRect flames = sprite_rect(gameboy, kTileFlameLo, kTileFlameHi);
+
+        if (!flames.found) {
+            continue;
+        }
+        ++drawn;
+        widest = std::max(widest, flames.right - flames.left + 1);
+        both += flames.right - flames.left + 1 > kOneBarPx ? 1 : 0;
+    }
+    CAPTURE(at, drawn, both, widest);
+    REQUIRE(drawn == 24);
+    REQUIRE(both == 24);
 }
 
 TEST_CASE("mario_axe_ends_1_4") {

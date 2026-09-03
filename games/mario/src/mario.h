@@ -580,31 +580,35 @@
 #define kSpriteCoin 11U
 #define kSpriteFireFirst 12U
 #define kSpriteEnemyFirst 14U
-// m8a's three: a firebar's flames, the fake bowser, and up to two lift decks four sprites wide.
-// 24 + 6 + 2 + 8 = 40 of the 40 slots, exactly full. the per-scanline worst case is documented at
-// kFirebarSlots
+// m8a's three, which m21 turned into one pool: the whole run 24-39 belongs to hazards.c, and
+// every frame it hands the slots out to the deck planks, bowser's body, his breath and then a
+// firebar's flames, in that order, from whatever the earlier claimants left. 24 + 16 = 40 of the
+// 40 slots, exactly full. the per-scanline worst case is documented at kFlameDrawCap
 #define kSpriteFlameFirst 24U
 #define kSpriteLiftFirst 32U
 #define kSpriteLiftCount (kLiftSlotsShared * 4U) // 8
-// m20's 32x32 bowser needs eight slots and oam has none: he takes the whole flame run plus the
-// two the 16x16 fake used, 24-31, as a proximity pool. smb never puts a firebar in the bridge
-// room - 1-4's last bar is fifty columns short of it - so only one of the two is ever on screen,
-// and hazards_draw gives the pool to whichever it is (bowser wins a tie, and the loser's slots
-// are parked). the body is two rows of four 8x16 sprites, so a scanline crossing him draws four
+// the pool itself: sixteen slots, one owner byte each (hazards.c slot_owner), so a slot that
+// changes hands has its tile and palette written again and one that nobody claims is parked
+#define kHazardPoolFirst kSpriteFlameFirst
+#define kHazardPoolSlots 16U
+// m20's 32x32 bowser needs eight slots and oam has none: he takes the front of the pool, 24-31.
+// smb never puts a firebar in the bridge room - 1-4's last bar is fifty columns short of it - so
+// only one of the two is ever on screen; he claims before the flames do, so on a frame that had
+// both he keeps his whole body and the bar draws in what is left. the body is two rows of four
+// 8x16 sprites, so a scanline crossing him draws four
 #define kSpriteBowserFirst kSpriteFlameFirst
 #define kSpriteBowserCount 8U
-// his fire breath is three more 8x16 sprites, 24 px of dart. those come off the top of the lift
-// run, which only a frame drawing two decks at once ever reaches - draw_lifts hands out slots by
-// how many decks are ON SCREEN, not by how many the level loaded, and 1-4's two lifts stand a
-// hundred and thirty columns apart. so a frame showing one deck uses 32-35 and leaves these free;
-// a frame that ever showed two would drop the breath's sprites, not the hazard itself
+// his fire breath is three more 8x16 sprites, 24 px of dart, off the top of the pool. only a frame
+// drawing two decks at once reaches those - the decks claim by how many are ON SCREEN, not by how
+// many the level loaded, and 1-4's two lifts stand a hundred and thirty columns apart - and such a
+// frame drops the breath's sprites, not the hazard itself
 #define kSpriteBowserFireFirst 36U
 #define kSpriteBowserFireCount 3U
-// the deck sprites one visible lift costs, which is what the breath's slots sit above
+// the deck sprites one visible lift costs
 #define kSpriteLiftPerDeck 4U
-// 1-3 draws a third deck, and oam has nothing left. the flame and bowser slots are the only ones
-// idle on a level with no firebar and no bowser, so a third deck borrows them: hazards.c refuses
-// the third lift when either is loaded, and compile_level.py refuses to build such a level at all
+// 1-3 draws a third deck, and oam has nothing left. the front of the pool is the only part idle on
+// a level with no firebar and no bowser, so a third deck borrows it: hazards.c refuses the third
+// lift when either is loaded, and compile_level.py refuses to build such a level at all
 #define kSpriteLiftOverflowFirst kSpriteFlameFirst
 // the hardware's whole oam, which the map screen parks every slot of before drawing its two
 #define kOamSlots 40U
@@ -973,8 +977,7 @@
 #define kFirebarSteps 32U
 #define kFirebarSegments 6U
 // the long bar smbdis's fifth variant is: twelve segments rather than six. only kFlameSlots of a
-// bar's flames are ever drawn (oam has six), which a bar this long clips into anyway - a
-// horizontal one is 192 px across a 160 px screen - but every segment of it can still burn him
+// bar's flames are ever drawn, which a bar this long clips into anyway, but every segment burns
 #define kFirebarSegmentsMax 12U
 #define kFirebarRadiusPx 8
 #define kFlamePx 8
@@ -984,13 +987,21 @@
 #define kFirebarParamSegMask 0x0FU
 #define kFirebarParamFast 0x10U
 #define kFirebarParamCcw 0x20U
-// only the bar nearest mario is ever live, so the pool needs one slot per segment and no more:
-// m8b took the two spare slots back for the hud. sprites are 8x16, so 8 px apart puts two of a
-// vertical bar's flames on any one scanline - plus mario's four and the hud's five, which is
-// eleven, one past the ten the hardware draws per line. the hud and mario are earlier in oam, so
-// the flame is what drops, and only where a bar's top segment reaches the hud band in 1-4
-#define kFirebarSlots 2U
+// how many of a bar's flames are ever drawn. a twelve-segment bar clips off the screen anyway -
+// a horizontal one is 192 px across a 160 px screen - and every segment of it still burns
 #define kFlameSlots kFirebarSegments
+// m21: every bar whose sweep can reach the view rotates, burns AND draws, so a bar is on screen
+// from the moment it scrolls in and the jump onto it can be timed. 1-4 puts two bars four columns
+// apart, so the draw is capped at two full bars and hands its slots out nearest the camera centre
+// first; a third bar in view draws however many flames the pool has left rather than none, and
+// contact walks every live bar's whole segment list regardless of what was drawn.
+//
+// the per-scanline reality: sprites are 8x16, so 8 px apart puts two of a vertical bar's flames on
+// any one line. two vertical bars stacked is four, plus mario's four is eight, inside the ten the
+// hardware draws per line. the hud is on the WINDOW layer and costs no slot. where a third bar's
+// flames land on the same line as those the line drops its tail, which is the cheapest thing on it
+#define kFirebarDrawBars 2U
+#define kFlameDrawCap (kFirebarDrawBars * kFlameSlots) // 12
 
 // the fake bowser. roster.json gives him 4x4 tiles and 5000 points and says five fireballs put
 // him down; it gives no speed, no hop and nothing about the breath's timing, so everything below

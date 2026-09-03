@@ -1656,7 +1656,8 @@ struct PlayerSim {
             if (e.grace != 0) {
                 continue;
             }
-            const bool from_above = y_speed > 0 && feet <= static_cast<int16_t>(e.pos_y + kEnemyStompLinePx);
+            // enemies.c: position only, so a flyer rising into his feet is still stomped
+            const bool from_above = feet <= static_cast<int16_t>(e.pos_y + kEnemyStompLinePx);
             // roster.json: a piranha plant cannot be stomped, only burned or run into
             if (e.kind == kEnemyPiranha) {
                 return kEnemyHitDamage;

@@ -639,7 +639,9 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
             ++i;
             continue;
         }
-        from_above = (player_dy > 0 && feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
+        // smb decides a stomp by where his feet are, not which way he is moving: a paratroopa that
+        // rises into him at the top of his jump still goes under his boots
+        from_above = (feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
         // the star takes anything it touches off the pool outright, stomp or not
         if ((flags & kEnemyFlagStar) != 0U && (from_above == 0U || e->kind == kEnemyPiranha)) {
             award_kill(e->kind);

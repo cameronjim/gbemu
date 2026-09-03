@@ -6,10 +6,12 @@
 
 #include "states.h"
 
+#include "blocks.h"
 #include "camera.h"
 #include "flow.h"
 #include "hazards.h"
 #include "hud.h"
+#include "level.h"
 #include "mapscreen.h"
 #include "mario.h"
 #include "player.h"
@@ -201,3 +203,73 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     }
     return state;
 }
+
+// see the comment on map_popup_line1 in mapscreen.h: bank 5 has no room left for these two literal
+// strings, so they are copied out of this bank's own rodata into mapscreen.c's ram buffers, which a
+// bank-5 card_print_centered can then read correctly regardless of which rom bank is switched in
+void map_popup_load(void) BANKED {
+    const char* a = "WORLD 2 IS";
+    const char* b = "ON ITS WAY!";
+    uint8_t i;
+
+    for (i = 0; a[i] != '\0'; ++i) {
+        map_popup_line1[i] = a[i];
+    }
+    map_popup_line1[i] = '\0';
+    for (i = 0; b[i] != '\0'; ++i) {
+        map_popup_line2[i] = b[i];
+    }
+    map_popup_line2[i] = '\0';
+}
+
+// see the comment on title_line1 in title.h: bank 5 has no room left for the wordmark's own two
+// literal strings either, so the same trick as map_popup_load copies them out of this bank
+void title_text_load(void) BANKED {
+    const char* a = "SUPER MARIO BROS.";
+    const char* b = "REMASTERED";
+    uint8_t i;
+
+    for (i = 0; a[i] != '\0'; ++i) {
+        title_line1[i] = a[i];
+    }
+    title_line1[i] = '\0';
+    for (i = 0; b[i] != '\0'; ++i) {
+        title_line2[i] = b[i];
+    }
+    title_line2[i] = '\0';
+}
+
+#if kDebugCamera
+// moved here from title.c: bank 5 (title.c/mapscreen.c) is nearly full and the title wordmark's
+// second line plus the map's world-two popup left no room for these. neither touches title.c's
+// card machinery or its banked string literals, and every function they call (level_select,
+// blocks_load_level, blocks_enter_area, terrain_init/scroll_x/pan_y/apply_scroll) is bank 0, so the
+// relocation is transparent - title.h still carries both prototypes, unchanged
+
+// bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
+void debug_camera_enter(uint8_t level) BANKED {
+    DISPLAY_OFF;
+    HIDE_SPRITES;
+    level_select(level);
+    blocks_load_level();
+    blocks_enter_area(kAreaMain);
+    terrain_init(kAreaMain);
+    SHOW_BKG;
+    DISPLAY_ON;
+}
+
+void debug_camera_frame(uint8_t keys) BANKED {
+    if ((keys & J_RIGHT) != 0U) {
+        terrain_scroll_x((int8_t)kCamStepPx);
+    } else if ((keys & J_LEFT) != 0U) {
+        terrain_scroll_x(-(int8_t)kCamStepPx);
+    }
+    if ((keys & J_UP) != 0U) {
+        terrain_pan_y(-(int8_t)kCamStepPx);
+    } else if ((keys & J_DOWN) != 0U) {
+        terrain_pan_y((int8_t)kCamStepPx);
+    }
+    // the only bg writes of the camera state happen here, inside vblank
+    terrain_apply_scroll();
+}
+#endif

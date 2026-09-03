@@ -68,6 +68,14 @@
 #define kMapWorldRow 1U
 #define kMapLevelRow 2U
 
+// the "world 2 is on its way" popup, shown once a file's furthest node reaches kLevelCount (world
+// one cleared) every time the map opens. it lands on the strip's fourth (last) block row: the only
+// one of the four the castle's footprint never reaches (that spans the top three - see the comment
+// on kMapRows in mapscreen.c) and, being one row below kMapMarkerRow, one neither a marker nor
+// mario's own sprite is ever drawn over either, so dismissing it only has to repaint that one row
+#define kMapPopupBlockRow 3U
+#define kMapPopupRow ((kMapBandFirstRow + kMapPopupBlockRow) * kTilesPerBlock)
+
 // the footer, rows 12-17: row 12 is padding, 13-16 hold the lives readout and the bordered CLEAR
 // LIST panel side by side (cols 0-6 and 7-19), 17 carries the button hint. the lives readout is
 // plain text, not a mario-shaped icon: a host probe finds mario anywhere on screen by his sprite tile family

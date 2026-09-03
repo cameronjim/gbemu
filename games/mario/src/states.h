@@ -38,4 +38,12 @@ void states_enter_play(void) BANKED;
 // one frame of any state but kStateFront, kStatePlay and kStateCamera; answers the next state
 uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED;
 
+// fills mapscreen.c's map_popup_line1/2 from this bank's own literal text: bank 5 (mapscreen.c) is
+// nearly full, so the map's "world 2 is on its way" popup text lives here instead - see the
+// comment on map_popup_line1 in mapscreen.h
+void map_popup_load(void) BANKED;
+
+// same idea for title.c's title_line1/2 - see the comment on title_line1 in title.h
+void title_text_load(void) BANKED;
+
 #endif

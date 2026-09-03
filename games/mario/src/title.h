@@ -28,6 +28,13 @@ void card_paint_band(uint8_t y0, uint8_t rows, uint8_t palette);
 void card_print_centered(uint8_t y, const char* text);
 void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digits, uint8_t trailing);
 
+// the wordmark's own two lines, filled in by states.c's title_text_load (bank 6): bank 5 is full,
+// but plain ram reads correctly under any rom bank, so title_show's card_print_centered can print
+// straight out of these the same way mapscreen.c's popup does (see map_popup_line1 in mapscreen.h)
+#define kTitleLineWidth 19U
+extern char title_line1[kTitleLineWidth];
+extern char title_line2[kTitleLineWidth];
+
 // the between-states cards, all painted the same lcd-off way the title is: everything freezes
 // while one is up, so the bg map is theirs to overwrite and flow_resume_from_card puts it back
 void card_pause(uint8_t level) BANKED;

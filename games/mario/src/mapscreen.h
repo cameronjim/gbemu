@@ -29,4 +29,11 @@ void front_map(uint8_t level) BANKED;
 // one frame of whichever of the three screens is up; a level it enters is written through `level`
 uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED;
 
+// the "world 2 is on its way" popup's own two lines, filled in by states.c's map_popup_load
+// (bank 6): bank 5 has no room left for the literals themselves, but plain ram reads correctly
+// under any rom bank, so a bank-5 card_print_centered can print straight out of these
+#define kMapPopupLineWidth 12U
+extern char map_popup_line1[kMapPopupLineWidth];
+extern char map_popup_line2[kMapPopupLineWidth];
+
 #endif

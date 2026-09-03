@@ -12,6 +12,7 @@
 #include "level.h"
 #include "mario.h"
 #include "save.h"
+#include "states.h"
 #include "terrain.h"
 
 #include <gb/cgb.h>
@@ -23,6 +24,11 @@
 
 // one bg map row's worth of tile ids or vram bank 1 attribute bytes, reused row by row
 static uint8_t map_row[kRingTileCols];
+
+// the wordmark's two lines; see the comment on these in title.h for why they are plain ram filled
+// in by states.c rather than string literals here
+char title_line1[kTitleLineWidth];
+char title_line2[kTitleLineWidth];
 
 static uint8_t text_len(const char* text) {
     uint8_t n = 0;
@@ -127,9 +133,15 @@ void card_end(void) {
 
 // the whole map is rewritten here, far more vram traffic than a vblank holds, so the lcd is off
 static void title_show(void) {
+    // card_begin's own band is already the right height: padding, kTitleRow, kTitleRow+1 - the
+    // wordmark's two lines fill both text rows the band already covers, so no second paint call is
+    // needed (bank 5 has no room left for one; see the comment above debug_camera_enter's old home)
+    // the literal text lives in bank 6 (states.c's title_text_load); bank 5 is full - see the
+    // comment on title_line1 in title.h
+    title_text_load();
     card_begin(kTitleRow);
-    // "!" pads the wordmark to an even glyph span so it lands pixel-centered
-    card_print_centered(kTitleRow, "MARIO!");
+    card_print_centered(kTitleRow, title_line1);
+    card_print_centered((uint8_t)(kTitleRow + 1U), title_line2);
     // one line, banded the same way every other banner is: a padding row above and below. m19's
     // file select is what start opens now, so the card no longer carries a menu of its own
     card_paint_band((uint8_t)(kPromptRow - 1U), kBannerRows, kPalAccent);
@@ -285,31 +297,8 @@ void card_clear_refresh(void) {
     card_print_value((uint8_t)(kTitleRow + 5U), "SCORE ", hud_score, 5, 1);
 }
 
-#if kDebugCamera
-// bcpd is mode-locked on real hardware: every palette and attribute write lands with the lcd off
-void debug_camera_enter(uint8_t level) BANKED {
-    DISPLAY_OFF;
-    HIDE_SPRITES;
-    level_select(level);
-    blocks_load_level();
-    blocks_enter_area(kAreaMain);
-    terrain_init(kAreaMain);
-    SHOW_BKG;
-    DISPLAY_ON;
-}
-
-void debug_camera_frame(uint8_t keys) BANKED {
-    if ((keys & J_RIGHT) != 0U) {
-        terrain_scroll_x((int8_t)kCamStepPx);
-    } else if ((keys & J_LEFT) != 0U) {
-        terrain_scroll_x(-(int8_t)kCamStepPx);
-    }
-    if ((keys & J_UP) != 0U) {
-        terrain_pan_y(-(int8_t)kCamStepPx);
-    } else if ((keys & J_DOWN) != 0U) {
-        terrain_pan_y((int8_t)kCamStepPx);
-    }
-    // the only bg writes of the camera state happen here, inside vblank
-    terrain_apply_scroll();
-}
-#endif
+// debug_camera_enter/debug_camera_frame moved to states.c (bank 6): bank 5 is nearly full and the
+// title wordmark's second line plus the map's world-two popup left no room for them here. neither
+// touches title.c's card machinery or its banked string literals, and every function they call
+// (level_select, blocks_load_level, blocks_enter_area, terrain_init/scroll_x/pan_y/apply_scroll) is
+// bank 0, so the relocation is transparent - title.h keeps both prototypes, unchanged

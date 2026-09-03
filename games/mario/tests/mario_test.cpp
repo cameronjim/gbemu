@@ -4565,8 +4565,16 @@ TEST_CASE("mario_title_text_is_centered") {
     REQUIRE(gameboy.load_rom(rom));
     run(gameboy, kBootFrames);
 
-    // even-length lines land symmetric around the 20 column grid: left + right == 19
-    for (uint32_t row : {kTitleRow, kPromptRow}) {
+    // even-length lines land symmetric around the 20 column grid: left + right == 19. the
+    // wordmark's second line ("REMASTERED", one row below kTitleRow) and the prompt are both
+    // even; the wordmark's own first line ("SUPER MARIO BROS.") is seventeen glyphs, odd, so its
+    // gotoxy floor-divide leaves it one column short of that symmetry (left + right == 18)
+    {
+        const auto [left, right] = glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile);
+        REQUIRE(left >= 0);
+        REQUIRE(left + right == 18);
+    }
+    for (uint32_t row : {kTitleRow + 1U, kPromptRow}) {
         const auto [left, right] = glyph_span(gameboy, row, kFontFirstTile + 1, kFontLastTile);
         REQUIRE(left >= 0);
         REQUIRE(left + right == 19);
@@ -11224,12 +11232,13 @@ TEST_CASE("mario_lives_and_game_over") {
     REQUIRE(over);
     REQUIRE(card_number(gameboy, kCardOverScoreRow) >= 0);
 
-    // and the card hands back to the title, whose wordmark is the six glyph span
+    // and the card hands back to the title, whose top wordmark line "SUPER MARIO BROS." is a
+    // seventeen glyph span
     bool titled = false;
     for (int i = 0; i < 300 && !titled; ++i) {
         gameboy.run_frame();
         titled =
-            glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{7, 12};
+            glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{1, 17};
     }
     REQUIRE(titled);
 }
@@ -11586,6 +11595,8 @@ constexpr uint32_t kEraseRow = 5;
 // and the map's geometry, from the kMap* block
 constexpr int kMapNodeFirstCol = 1;
 constexpr int kMapNodeStepCol = 2;
+// the "world 2 is on its way" popup's first tile row, from kMapPopupRow in mario.h - (2 + 3) * 2
+constexpr uint32_t kMapPopupRow = 10;
 
 size_t slot_at(int slot) {
     return kSaveSlotBase + static_cast<size_t>(slot) * kSaveSlotStride;
@@ -11723,10 +11734,11 @@ TEST_CASE("mario_file_select_cursor_and_confirm") {
     run(gameboy, kScreenSettleFrames);
     REQUIRE(file_cursor(gameboy) == 2);
 
-    // b walks back to the title, whose wordmark is the six glyph span
+    // b walks back to the title, whose top wordmark line "SUPER MARIO BROS." is a seventeen
+    // glyph span
     step_screen(gameboy, gb::Button::B);
     run(gameboy, kScreenSettleFrames);
-    REQUIRE(glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{7, 12});
+    REQUIRE(glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{1, 17});
 
     // and start off the title opens the card again, cursor back on the first slot
     step_screen(gameboy, gb::Button::Start);
@@ -12059,6 +12071,50 @@ TEST_CASE("mario_map_clear_list_fills_with_progress") {
     run(played, kScreenSettleFrames);
     REQUIRE(clear_list_cell_filled(played, 0));
     REQUIRE_FALSE(clear_list_cell_filled(played, 1));
+}
+
+TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // seeded straight to kHostLevelCount rather than actually playing all four levels: this is the
+    // same save-slot value flow_clear_frame would leave behind the instant 1-4's clear card hands
+    // back to the map (see mario_autopilot_completes_1_4)
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    seed_slot(gameboy.external_ram(), 0, static_cast<uint8_t>(kHostLevelCount), 0);
+    open_file(gameboy, 0);
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+
+    // both of the popup's lines are on screen, centered the way every other banner is. "WORLD 2 IS"
+    // is even-length and lands symmetric (left + right == 19, same as mario_title_text_is_centered);
+    // "ON ITS WAY!" is eleven glyphs, odd, so its gotoxy floor-divide leaves it one column short of
+    // that symmetry, exactly like the title wordmark's own first line
+    {
+        const auto [left, right] = glyph_span(gameboy, kMapPopupRow, kFontFirstTile + 1, kFontLastTile);
+        REQUIRE(left >= 0);
+        REQUIRE(left + right == 19);
+    }
+    {
+        const auto [left, right] =
+            glyph_span(gameboy, kMapPopupRow + 1U, kFontFirstTile + 1, kFontLastTile);
+        REQUIRE(left >= 0);
+        REQUIRE(left + right == 18);
+    }
+    // and mario himself is not drawn under it - the popup covers a row his own walk row never uses
+    REQUIRE(mario_at(gameboy).found);
+
+    // a dismisses it: the lockout that guarded the clear card's own confirm re-arms the instant the
+    // map opens, so this is a fresh press, not the one that opened the file
+    step_screen(gameboy, gb::Button::A);
+    run(gameboy, kScreenSettleFrames);
+    for (uint32_t row : {kMapPopupRow, kMapPopupRow + 1U}) {
+        REQUIRE(glyph_span(gameboy, row, kFontFirstTile + 1, kFontLastTile).first < 0);
+    }
+    // the map still works: mario can walk back off the last node once the popup is gone
+    REQUIRE(mario_at(gameboy).found);
+    press(gameboy, gb::Button::Left, 2);
+    run(gameboy, 120);
+    REQUIRE(mario_at(gameboy).left == map_node_left(2));
 }
 
 TEST_CASE("mario_map_bands_are_black_top_and_bottom") {

@@ -14,6 +14,7 @@
 #include "level.h"
 #include "mario.h"
 #include "save.h"
+#include "states.h"
 #include "terrain.h"
 #include "title.h"
 
@@ -220,6 +221,13 @@ static uint8_t map_facing_left;
 static uint8_t map_anim;
 static uint8_t map_anim_timer;
 static uint16_t map_x;
+
+// set while the "world 2 is on its way" banner sits over the strip; see kMapPopupRow in mario.h
+static uint8_t map_popup;
+// the popup's own two lines; see the comment on these in mapscreen.h for why they are plain ram
+// filled in by states.c rather than string literals here
+char map_popup_line1[kMapPopupLineWidth];
+char map_popup_line2[kMapPopupLineWidth];
 
 // the map strip's backdrop, four block rows (local 0-3, absolute kMapBandFirstRow+0..3) of ten
 // columns. every cell is landscape apart from the six kBlockEmpty ones at the right end, which the
@@ -597,6 +605,18 @@ static void map_reset(uint8_t node) {
     map_draw_lives();
     map_draw_list(map_unlocked);
     draw_mario();
+    // world one is done: every visit to the map from here on gets the popup, until it is dismissed.
+    // two lines banded the same accent the file select's lit slot uses, over the strip's second
+    // block row, so it reads as a card dropped onto the map rather than part of the terrain
+    map_popup = (uint8_t)(map_unlocked >= (uint8_t)kLevelCount);
+    if (map_popup != 0U) {
+        // the literal text lives in bank 6 (states.c's map_popup_load); bank 5 is full - see the
+        // comment on map_popup_line1 in mapscreen.h
+        map_popup_load();
+        card_paint_band(kMapPopupRow, 2, kPalAccent);
+        card_print_centered(kMapPopupRow, map_popup_line1);
+        card_print_centered((uint8_t)(kMapPopupRow + 1U), map_popup_line2);
+    }
     SHOW_BKG;
     SHOW_SPRITES;
     DISPLAY_ON;
@@ -606,6 +626,23 @@ static void map_reset(uint8_t node) {
 static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
     const uint16_t goal = (uint16_t)(node_column(map_target) * kBlockPx);
 
+    // the popup eats every button until it is dismissed - lock_gate already stripped the edge that
+    // was still held from whatever closed the clear card, so this can only fire on a fresh press.
+    // undoes exactly what map_reset drew: the one block row the popup painted over, restored
+    // straight from the strip's own layout table - no DISPLAY_OFF needed, the same mid-frame vram
+    // write style card_clear_refresh already uses to tick the clear card's timer while the display
+    // stays on
+    if (map_popup != 0U) {
+        if ((pressed & (uint8_t)(J_A | J_START | J_B)) != 0U) {
+            uint8_t bx;
+
+            map_popup = 0;
+            for (bx = 0; bx < (uint8_t)kMapBlockCols; ++bx) {
+                put_cell(bx, (uint8_t)(kMapBandFirstRow + kMapPopupBlockRow), kMapRows[kMapPopupBlockRow][bx]);
+            }
+        }
+        return kMapStay;
+    }
     if (map_walking != 0U) {
         if (map_x < goal) {
             map_x = (uint16_t)(map_x + kMapWalkPx);

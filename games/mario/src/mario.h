@@ -268,11 +268,9 @@
 #define kTilePipeBodyL 0xB6U
 #define kTilePipeBodyM 0xB7U
 #define kTilePipeBodyR 0xB8U
-// the bridge deck, the axe, and the world coin's four quadrants. 0xb9 held the pole shaft until the
-// shaft was centred in its cell: a centred shaft straddles the two tiles of its block and bank 0
-// had no second id free, so the whole flag went to bank 1 and 0xb9 is the one spare id here
-#define kTileBridge 0xBAU
-#define kTileAxe 0xBBU
+// 0xb9-0xbb are free: the pole shaft left for bank 1 when the shaft was centred in its cell,
+// and the bridge and the axe followed when the rip gave each of them two tiles (kTileBridge,
+// kTileAxeLeft below). the world coin's four quadrants close the pinned block
 #define kTileCoinTl 0xBCU
 #define kTileCoinTr 0xBDU
 #define kTileCoinBl 0xBEU
@@ -389,6 +387,19 @@
 #define kTileTrunk 0x11U
 #define kTileTreeCount 8U
 
+// --- m20's castle run, 0x12-0x16, in VRAM BANK 1 -----------------------------------------------
+// the five bg tiles the castle pass needed and bank 0 had no ids for. the masonry course is one
+// tile stamped in all four quadrants of kBlockCastleBrick, the way the old castle wall already
+// was; the bridge and the axe each get two, because the rip's bridge is a full 16px of chain and
+// its axe is a symmetric double blade no single tile can be. bank-1 bg 0x17-0x1f and 0x5c-0x5f
+// are still unclaimed
+#define kTileCastleBrick 0x12U
+#define kTileAxe 0x13U
+#define kTileAxeRight 0x14U
+#define kTileBridge 0x15U
+#define kTileBridgeLower 0x16U
+#define kTileCastleRunCount 5U
+
 // the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
 // transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes
 // the rim line down the mouth's left edge and the highlight runs along the pipe's top for its
@@ -486,8 +497,10 @@
 #define kTilePiranha 0x84U
 #define kTileFlame 0x86U
 #define kTileLiftDeck 0x88U
-#define kTileBowser 0x8AU
-#define kHazardTileCount 8U // 0x84-0x8b
+#define kHazardTileCount 6U // 0x84-0x89
+// 0x8a-0x8b held the fake bowser while he was one 16x16 pair; m20's 32x32 body is 32 tiles and
+// bank 0 has nowhere near that many left, so it lives in vram BANK 1 (kTileBowserFirst) and these
+// two bank-0 sprite ids are free
 
 // m19's throwaway animations take six of the twenty ids m8b's hud digit sprites left free at 0x8c
 // (the bar draws its own digits out of the bg font now, see kTileHudDigitFirst). each is an 8x16
@@ -554,9 +567,24 @@
 // 24 + 6 + 2 + 8 = 40 of the 40 slots, exactly full. the per-scanline worst case is documented at
 // kFirebarSlots
 #define kSpriteFlameFirst 24U
-#define kSpriteBowser 30U
 #define kSpriteLiftFirst 32U
 #define kSpriteLiftCount (kLiftSlotsShared * 4U) // 8
+// m20's 32x32 bowser needs eight slots and oam has none: he takes the whole flame run plus the
+// two the 16x16 fake used, 24-31, as a proximity pool. smb never puts a firebar in the bridge
+// room - 1-4's last bar is fifty columns short of it - so only one of the two is ever on screen,
+// and hazards_draw gives the pool to whichever it is (bowser wins a tie, and the loser's slots
+// are parked). the body is two rows of four 8x16 sprites, so a scanline crossing him draws four
+#define kSpriteBowserFirst kSpriteFlameFirst
+#define kSpriteBowserCount 8U
+// his fire breath is three more 8x16 sprites, 24 px of dart. those come off the top of the lift
+// run, which only a frame drawing two decks at once ever reaches - draw_lifts hands out slots by
+// how many decks are ON SCREEN, not by how many the level loaded, and 1-4's two lifts stand a
+// hundred and thirty columns apart. so a frame showing one deck uses 32-35 and leaves these free;
+// a frame that ever showed two would drop the breath's sprites, not the hazard itself
+#define kSpriteBowserFireFirst 36U
+#define kSpriteBowserFireCount 3U
+// the deck sprites one visible lift costs, which is what the breath's slots sit above
+#define kSpriteLiftPerDeck 4U
 // 1-3 draws a third deck, and oam has nothing left. the flame and bowser slots are the only ones
 // idle on a level with no firebar and no bowser, so a third deck borrows them: hazards.c refuses
 // the third lift when either is loaded, and compile_level.py refuses to build such a level at all
@@ -716,6 +744,24 @@
 #define kTileKoopaWalk0 0xC8U
 #define kTileKoopaWalk1 0xCCU
 #define kEnemyTileCount 16U // 0xc0-0xcf
+
+// --- m20's bowser run, 0x96-0xbb, in VRAM BANK 1 -----------------------------------------------
+// roster.json gives bowser 4x4 tiles, so his body is 32x32: two frames of sixteen tiles, drawn as
+// eight 8x16 sprites in two rows of four (see kSpriteBowserFirst). that is 512 bytes of art and
+// vram bank 0 has eight sprite ids left in the whole map, so it goes in bank 1 and the draw sets
+// S_BANK, exactly the way the paratroopa's wing and super mario's jump slab already do.
+//
+// the run starts at 0x96 rather than 0x95 because an 8x16 sprite ignores the low bit of its tile
+// index; every id below has to be even. bank-1 sprite 0x80-0x8c is the hud font (a bg id past
+// 0x7f reads out of the same 0x8800.. bytes, see kTileHudDigitFirst), 0xc0-0xc7 the paratroopa
+// and 0xe0-0xeb the climb poses, so 0x96-0xbb collides with none of them. bank-1 sprite 0x95 and
+// 0xbc-0xbf are still free
+#define kTileBowserFirst 0x96U
+#define kBowserTilesPerFrame 16U
+#define kBowserArtFrames 2U
+// and his fire breath, one 8x16 pair per third of a 24x8 dart, the lower half of each blank
+#define kTileBowserFire 0xB6U
+#define kBowserFireTileCount 6U // 0xb6-0xbb
 
 // the paratroopa's two frames. smb draws it as the koopa with a white wing, so each frame is the
 // koopa's own facing pair with the wing baked into the shell half - four tiles a frame, eight in
@@ -905,10 +951,22 @@
 // bar here spins at the slow one, fed as a 1/256 sub-step into a 32-step circle: 6.4 frames a step,
 // 205 frames a revolution, which is about smb's own. must-measure
 #define kFirebarSpinRaw 0x28U
+// and the other one the same table names, for the bars a level marks fast
+#define kFirebarSpinFastRaw 0x38U
 #define kFirebarSteps 32U
 #define kFirebarSegments 6U
+// the long bar smbdis's fifth variant is: twelve segments rather than six. only kFlameSlots of a
+// bar's flames are ever drawn (oam has six), which a bar this long clips into anyway - a
+// horizontal one is 192 px across a 160 px screen - but every segment of it can still burn him
+#define kFirebarSegmentsMax 12U
 #define kFirebarRadiusPx 8
 #define kFlamePx 8
+// compile_level.py packs a bar's whole variant into its object_param: the low nibble is how many
+// segments it carries, then the two rate/direction bits. a param of zero is read as the short
+// bar's six, so a level compiled before this contract still spins the bars it always did
+#define kFirebarParamSegMask 0x0FU
+#define kFirebarParamFast 0x10U
+#define kFirebarParamCcw 0x20U
 // only the bar nearest mario is ever live, so the pool needs one slot per segment and no more:
 // m8b took the two spare slots back for the hud. sprites are 8x16, so 8 px apart puts two of a
 // vertical bar's flames on any one scanline - plus mario's four and the hud's five, which is
@@ -917,11 +975,41 @@
 #define kFirebarSlots 2U
 #define kFlameSlots kFirebarSegments
 
-// the fake bowser. roster.json calls him "a Little Goomba in disguise" and gives no speed, so he
-// patrols at the goomba's own half a pixel a frame; his fire breath is m9's
-#define kBowserWidthPx 16
-#define kBowserHeightPx 16
-#define kBowserSpeedSubpx 8U
+// the fake bowser. roster.json gives him 4x4 tiles and 5000 points and says five fireballs put
+// him down; it gives no speed, no hop and nothing about the breath's timing, so everything below
+// but the box, the hit count and the points is ours
+#define kBowserWidthPx 32
+#define kBowserHeightPx 32
+// the goomba's own half a pixel a frame, fed as a 1/256 sub-step. roster.json calls him "a Little
+// Goomba in disguise", which is where the walk came from and is all it ever said about it
+#define kBowserWalkSubpx 128U
+// he hops on his own beat rather than at the player: the launch and the fall are a plain ramp, the
+// death beat's own, because bank 0 has no room for a third gravity path
+#define kBowserHopFrames 150U
+#define kBowserHopLaunchPx -4
+#define kBowserHopGravityMask 0x03U
+#define kBowserMaxFallPx 4
+// the breath: a 24x8 dart at the height of his own jaw, thrown every couple of seconds and
+// carried left at a pixel and a half a frame until it leaves the view
+#define kBowserFireFrames 130U
+#define kBowserFireWidthPx 24
+#define kBowserFireHeightPx 8
+#define kBowserFireSubpx 384U
+// and how long one dart lives: a hundred frames at that speed is 150 px, which clears the widest
+// view he can be seen from. a count rather than a screen test keeps the twin's arithmetic exact
+#define kBowserFireLifeFrames 100U
+// how far down his 32 px body the dart leaves him. his jaw is higher than this, but the fire has
+// to cross the band a body standing on the same deck occupies or it is no threat at all: 18 puts
+// its 8 px squarely inside small mario's 16 and big mario's 32
+#define kBowserFireJawPx 18
+// roster.json: five fireballs defeat him and pay 5000. the sixth would be the axe's job
+#define kBowserFireballHits 5U
+// how many frames each of his two drawn frames holds for; a power of two, so the swap is a mask
+#define kBowserAnimFrames 16U
+
+// the bridge under him. smb pulls its cells one at a time from the axe end back toward the far
+// side over about a second; twenty cells at this cadence is sixty frames, which is that
+#define kBridgeDropFrames 3U
 
 // how far outside the view a lift, bar or bowser has to be before the game loop stops calling
 // into bank 5 for it at all. smb runs its objects only while they are near the screen too, and
@@ -988,7 +1076,10 @@
 #define kTileHudLetterFirst 0x8CU // 0x8c, just the x
 #define kHudGlyphChars "x"
 #define kHudBarAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
-#define kHudCoinAttr ((uint8_t)(kCamPalCoin | kCamAttrVram1))
+// the coin icon takes the question block's slot rather than the coin one: color 0 is the level's
+// own sky in all three sets there too, colors 1 and 2 are a gold body and a white slot in all
+// three, and it leaves the castle set's coin slot free to be the lava's white-and-red ramp
+#define kHudCoinAttr ((uint8_t)(kCamPalQuestion | kCamAttrVram1))
 
 // the countdown. the bible pins one tick every 24 frames, but that reads as a broken clock, so
 // ours ticks once per real second (60 frames), from the level json's timer field. hurrying up is

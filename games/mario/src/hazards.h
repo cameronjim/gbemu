@@ -37,8 +37,21 @@ void hazards_step(void) BANKED;
 // kHazard*: what the player's box touched this frame
 uint8_t hazards_contact(uint16_t player_px, int16_t player_py, uint8_t player_h, uint8_t immune) BANKED;
 
-// drops 1-4's bridge into the lava and takes the fake bowser with it
+// arms the collapse of 1-4's bridge: smb pulls its cells one at a time from the axe end back
+// toward the far side, so this clears nothing itself - hazards_clear_step walks it
 void hazards_drop_bridge(void) BANKED;
+
+// one frame of that collapse and of bowser's fall into the lava, for the frames after the axe when
+// the play loop has handed over to the clear sequence and nothing steps this module any more
+void hazards_clear_step(void) BANKED;
+
+// 1 while the collapse still has a cell to take or bowser is still on his way down. the clear
+// sequence reads it as ram rather than through a banked call, the way the lift decks are read
+extern uint8_t hazard_clear_busy;
+
+// a fireball's box against bowser's; 1 when the ball landed on him, which spends it either way.
+// the fifth hit pays kBowserKillPoints and drops him
+uint8_t hazards_fireball_hit(uint16_t px, int16_t py) BANKED;
 
 void hazards_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
 
@@ -47,5 +60,8 @@ uint8_t hazards_spin_step(void) BANKED;
 
 // 1 while the fake bowser is still on the bridge
 uint8_t hazards_bowser_live(void) BANKED;
+
+// how many fireballs have landed on him, 0..kBowserFireballHits
+uint8_t hazards_bowser_hits(void) BANKED;
 
 #endif

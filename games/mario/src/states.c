@@ -8,6 +8,7 @@
 
 #include "camera.h"
 #include "flow.h"
+#include "hazards.h"
 #include "hud.h"
 #include "mapscreen.h"
 #include "mario.h"
@@ -173,6 +174,11 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     }
 
     if (state == kStateClear) {
+        // the bridge is still coming apart a cell at a time behind him and bowser is still on his
+        // way into the lava; the play loop that stepped bank 5 is over, so this frame does it
+        if (hazard_clear_busy != 0U) {
+            hazards_clear_step();
+        }
         if (player_clear_update() != 0U) {
             flow_clear_card();
             state = kStateClearCard;

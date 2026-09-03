@@ -52,7 +52,7 @@ static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
     kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
-    kTileFlagClothPoleT, kTileBrickTl,
+    kTileFlagClothPoleT, kTileCastleBrick,
 };
 // clang-format on
 // clang-format off
@@ -61,7 +61,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileHardTr,         kTilePipeLipM,        kTilePipeLipR,      kTilePipeBodyM,
     kTilePipeBodyR,      kTileHardTr,          kTileFlagPoleR,     kTileCastleWall,
     kTileSpentTr,        kTileCoinTr,          kTileThin,          kTileLavaTop,
-    kTileBridge,         kTileAxe,             kTileGroundFillTr,  kTileCastleCrenel,
+    kTileBridge,         kTileAxeRight,        kTileGroundFillTr,  kTileCastleCrenel,
     kTileCastleWindowTr, kTileCastleDoorTopTr, kTileCastleDoorTr,  kTileFlagBallR,
     kTileFlagClothT,     kTileCloudCapTr,      kTileCloudMidTr,    kTileCloudCapTl,
     kTileCloudCapBr,     kTileCloudMidBr,      kTileCloudCapBl,    kTileHillPeakTr,
@@ -70,7 +70,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
     kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
-    kTileFlagPoleR, kTileBrickTr,
+    kTileFlagPoleR,      kTileCastleBrick,
 };
 // clang-format on
 // clang-format off
@@ -79,7 +79,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTileHardBl,         kTilePipeLipLb,       kTilePipeLipMb,     kTilePipeBodyL,
     kTilePipeBodyM,      kTileHardBl,          kTileFlagPoleL,     kTileCastleWall,
     kTileSpentBl,        kTileCoinBl,          kTileThinUnder,     kTileLavaFill,
-    kTileSky,            kTileSky,             kTileGroundFillBl,  kTileCastleWall,
+    kTileBridgeLower,    kTileSky,             kTileGroundFillBl,  kTileCastleWall,
     kTileCastleWindowBl, kTileCastleDoorTopBl, kTileCastleDoorBl,  kTileFlagPoleL,
     kTileScenBlank,      kTileCloudCapMl,      kTileCloudMidMl,    kTileCloudCapMr,
     kTileCloudCapFl,     kTileCloudMidFl,      kTileCloudCapFr,    kTileHillPeakBl,
@@ -88,7 +88,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
     kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
-    kTileFlagClothPoleB, kTileBrickBl,
+    kTileFlagClothPoleB, kTileCastleBrick,
 };
 // clang-format on
 // clang-format off
@@ -97,7 +97,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileHardBr,         kTilePipeLipMb,       kTilePipeLipRb,     kTilePipeBodyM,
     kTilePipeBodyR,      kTileHardBr,          kTileFlagPoleR,     kTileCastleWall,
     kTileSpentBr,        kTileCoinBr,          kTileThinUnder,     kTileLavaFill,
-    kTileSky,            kTileSky,             kTileGroundFillBr,  kTileCastleWall,
+    kTileBridgeLower,    kTileSky,             kTileGroundFillBr,  kTileCastleWall,
     kTileCastleWindowBr, kTileCastleDoorTopBr, kTileCastleDoorBr,  kTileFlagPoleR,
     kTileFlagClothB,     kTileCloudCapMr,      kTileCloudMidMr,    kTileCloudCapMl,
     kTileCloudCapFr,     kTileCloudMidFr,      kTileCloudCapFl,    kTileHillPeakBr,
@@ -106,7 +106,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
     kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
-    kTileFlagPoleR, kTileBrickBr,
+    kTileFlagPoleR,      kTileCastleBrick,
 };
 // clang-format on
 // sky, the flag's four cells, a world coin, the axe, lava and every scenery kind are all
@@ -127,8 +127,9 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     0, kFloorSolid,
 };
 // clang-format on
-// lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge, the
-// axe and the thin platform are wood and take the neutral one. the hills, the bushes and the flag
+// lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge takes
+// the neutral one (whose unused color 3 the castle set turns into its chain's red), the axe the
+// question block's gold and the thin platform the neutral one too. the hills, the bushes and the flag
 // share the pipe's greens, the castle shares the brick's browns, and the clouds and the pennant
 // share the sky's whites - and the sideways pipe is the vertical one rotated, so it shares those
 // greens too, and so does 1-3's tree canopy, whose four rip colors are exactly the pipe slot's
@@ -145,13 +146,20 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
 #define kScenSky (kCamPalSky | kCamAttrVram1)
 #define kScenPipe (kCamPalPipe | kCamAttrVram1)
 #define kScenBrick (kCamPalBrick | kCamAttrVram1)
+// m20's castle terrain: the masonry course, the bridge's two halves and the axe's two blades all
+// live in vram bank 1 too, because bank 0's bg map is out of ids. the brick takes the ground slot,
+// whose colors a castle load turns into the course's own four greys; the axe takes the question
+// block's gold rather than the bridge's grey, which is the orange the rip paints its blades
+#define kScenGround (kCamPalGround | kCamAttrVram1)
+#define kScenNeutral (kCamPalNeutral | kCamAttrVram1)
+#define kScenQuestion (kCamPalQuestion | kCamAttrVram1)
 // clang-format off
 static const uint8_t kPaletteRom[kBlockKindCount] = {
     kCamPalSky,     kCamPalGround,  kCamPalBrick,   kCamPalQuestion,
     kCamPalBrick,   kCamPalPipe,    kCamPalPipe,    kCamPalPipe,
     kCamPalPipe,    kCamPalBrick,   kScenPipe,      kScenBrick,
     kCamPalSpent,   kCamPalCoin,    kCamPalNeutral, kCamPalCoin | kCamAttrVram1,
-    kCamPalNeutral, kCamPalNeutral, kCamPalGround,  kScenBrick,
+    kScenNeutral,   kScenQuestion,  kCamPalGround,  kScenBrick,
     kScenBrick,     kScenBrick,     kScenBrick,     kScenPipe,
     kScenSky,       kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
     kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
@@ -160,7 +168,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenBrick,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
-    kScenSky, kCamPalBrick,
+    kScenSky,       kScenGround,
 };
 // clang-format on
 

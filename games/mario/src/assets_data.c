@@ -1150,51 +1150,104 @@ static const uint8_t kThinTiles[32] = {
 };
 // clang-format on
 
-// 1-4's lava, painted over the death plane
+// 1-4's lava, painted over the death plane, off the nes rip: a white wave breaking along the top
+// of the pit and flat red under it, with one row of foam still coming apart below the crest. the
+// crest's peak sits at column 4 and its trough spans the tile's own last two columns and the next
+// tile's first two, so an 8px repeat reads as one continuous surf line and not as a stamped shape.
+// color 1 is the foam and color 2 the lava (see the castle set's kCamPalCoin)
 // clang-format off
 static const uint8_t kLavaTiles[32] = {
-    // lava crest
-    0x66, 0x00, // .--..--.
-    0xFF, 0x00, // --------
+    // lava crest: a white wave over the pit
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x08, 0x00, // ....-...
+    0x14, 0x08, // ...-+-..
+    0x24, 0x18, // ..-++-..
+    0xC4, 0x38, // --+++-..
+    // lava fill: foam breaking, then flat red
+    0x03, 0xFC, // ++++++--
+    0x40, 0xBF, // +-++++++
+    0xA1, 0x5E, // -+-++++-
+    0x26, 0xD9, // ++-++--+
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
-    0x22, 0xFF, // ++#+++#+
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // lava fill
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x10, 0xFF, // +++#++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x08, 0xFF, // ++++#+++
     0x00, 0xFF, // ++++++++
     0x00, 0xFF, // ++++++++
 };
 // clang-format on
 
-// the castle's ending pair
+// the castle's masonry, one 8px course: a white highlight along the top and left of each brick, a
+// light stone face, a shadow down the right and along the bottom, and the black mortar the rip
+// leaves in the last column and row. the courses in 1-4 do not run in bond - every brick sits
+// squarely above the one below - so this single tile stamps the whole of every wall, floor and
+// ceiling in the level (kBlockCastleBrick, and the ground family the castle set overwrites)
 // clang-format off
-static const uint8_t kBridgeAxeTiles[32] = {
-    // bridge plank
-    0xFF, 0xFF, // ########
-    0x00, 0xFF, // ++++++++
-    0x4A, 0xFF, // +#++#+#+
-    0x00, 0xFF, // ++++++++
-    0xFF, 0xFF, // ########
+static const uint8_t kCastleBrickTile[16] = {
+    // one 8px course of castle masonry
+    0xFE, 0x02, // ------#.
+    0x82, 0x7E, // -+++++#.
+    0x82, 0x7E, // -+++++#.
+    0x82, 0x7E, // -+++++#.
+    0x82, 0x7E, // -+++++#.
+    0x82, 0x7E, // -+++++#.
+    0xFE, 0xFE, // #######.
     0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // the axe on its handle
-    0x00, 0x00, // ........
-    0x3C, 0x3C, // ..####..
-    0x7E, 0x42, // .#----#.
-    0x7E, 0x42, // .#----#.
-    0x3C, 0x3C, // ..####..
-    0x00, 0x18, // ...++...
-    0x00, 0x18, // ...++...
-    0x00, 0x18, // ...++...
+};
+// clang-format on
+
+// the bridge, a full 16px of it: the rip draws a rail of white chain links over a dark band with a
+// red link running down every fourth column, then the links carrying on out of the bottom. it
+// repeats every 4 px across, so the top tile stamps both upper quadrants of the block and the
+// lower one both of the others. color 1 is the links' white, 2 the band and 3 the red (the castle
+// set's kCamPalNeutral)
+// clang-format off
+static const uint8_t kBridgeTiles[32] = {
+    // bridge deck: the chain links and their rail
+    0x77, 0x00, // .---.---
+    0x77, 0x00, // .---.---
+    0x77, 0x00, // .---.---
+    0x77, 0x00, // .---.---
+    0x00, 0x77, // .+++.+++
+    0x88, 0xFF, // #+++#+++
+    0x88, 0xFF, // #+++#+++
+    0x88, 0xFF, // #+++#+++
+    // bridge underside: the links running out
+    0x88, 0xFF, // #+++#+++
+    0x88, 0xFF, // #+++#+++
+    0x88, 0xFF, // #+++#+++
+    0x00, 0x77, // .+++.+++
+    0x77, 0x77, // .###.###
+    0x77, 0x77, // .###.###
+    0x77, 0x77, // .###.###
+    0x77, 0x77, // .###.###
+};
+// clang-format on
+
+// and the axe: a symmetric double blade on a light shaft, 16 px across, which is why it needs two
+// tiles rather than one stamped twice - the old single tile drew two axes side by side. color 1 is
+// the blade's orange and 2 the shaft, so it wears kCamPalQuestion rather than the bridge's slot
+// clang-format off
+static const uint8_t kAxeTiles[32] = {
+    // axe, left blade
+    0x1E, 0x01, // ...----+
+    0x3E, 0x01, // ..-----+
+    0x7E, 0x01, // .------+
+    0x7E, 0x01, // .------+
+    0x7E, 0x01, // .------+
+    0x3E, 0x01, // ..-----+
+    0x1E, 0x01, // ...----+
+    0x00, 0x01, // .......+
+    // axe, right blade
+    0x78, 0x80, // +----...
+    0x7C, 0x80, // +-----..
+    0x7E, 0x80, // +------.
+    0x7E, 0x80, // +------.
+    0x7E, 0x80, // +------.
+    0x7C, 0x80, // +-----..
+    0x78, 0x80, // +----...
+    0x00, 0x80, // +.......
 };
 // clang-format on
 
@@ -1258,8 +1311,22 @@ void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileHardTl, 4, kHardTiles);
     set_bkg_data(kTilePipeLipL, 9, kPipeTiles);
     set_bkg_data(kTileThin, 2, kThinTiles);
-    set_bkg_data(kTileBridge, 2, kBridgeAxeTiles);
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
+}
+
+// a castle's floors, ceilings and walls are the same grey masonry course as its scenery, not the
+// overworld's grass-capped ground: rather than recompile every castle grid onto a second terrain
+// kind, the ground family's own tiles are overwritten with that course at a castle load. the six
+// ids are the whole family - the surface block's two upper quadrants, its two lower ones, and the
+// buried fill block's upper pair - and the castle bg set colors kCamPalGround to match. every
+// other level type reloads the family from assets_load_bg_tiles above, so nothing leaks out
+void assets_load_bg_tiles_castle(void) BANKED {
+    set_bkg_data(kTileGroundTopL, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundTopR, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundFillBl, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundFillBr, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundFillTl, 1, kCastleBrickTile);
+    set_bkg_data(kTileGroundFillTr, 1, kCastleBrickTile);
 }
 
 // the same call writes vram bank 1 with vbk pointing there, so the scenery lands beside the font
@@ -1282,6 +1349,12 @@ void assets_load_scenery_tiles(void) BANKED {
     set_bkg_data(kTilePipeSideTl, 9, kPipeSideTiles);
     // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
     set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
+    // m20's castle run right above it: the masonry course, the axe's two blades and the bridge's
+    // two halves. all three are terrain rather than scenery, but bank 0 is out of bg ids and a
+    // kCamAttrVram1 attribute reads them back the same way
+    set_bkg_data(kTileCastleBrick, 1, kCastleBrickTile);
+    set_bkg_data(kTileAxe, 2, kAxeTiles);
+    set_bkg_data(kTileBridge, 2, kBridgeTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -1338,14 +1411,23 @@ void assets_load_bg_palettes_castle(void) BANKED {
     // the same eight slots again, drained to castle stone. lava takes the coin slot, which no
     // castle grid paints a world coin with, so the one warm ramp on screen is the pit
     // color 1 is the hud row's ink again, and a castle grid paints no cloud and no pennant either
+    //
+    // m20 matched four of these to the nes rip. the ground slot is the masonry course's own four
+    // shades and its color 0 is the black mortar, not a stone - the course leaves a mortar line
+    // down its last column and along its last row, which is what makes a wall read as brickwork
+    // rather than as a slab. the brick slot goes warm: the rip's hard block (a firebar's pivot)
+    // and its breakable brick are both the same brown-orange inside a dark grey border, and that
+    // border is color 3 in kHardTiles. the lava's own foam is white, not gold - the hud coin used
+    // to borrow this slot's gold and now takes the question slot's instead (kHudCoinAttr) - and
+    // the neutral slot's unused color 3 becomes the bridge chain's red
     palette_color_t sky[4] = {kCastleRgb, RGB(31, 31, 31), RGB(11, 11, 13), RGB(0, 0, 0)};
-    palette_color_t ground[4] = {RGB(9, 9, 11), RGB(21, 20, 19), RGB(12, 11, 11), RGB(0, 0, 0)};
-    palette_color_t brick[4] = {kCastleRgb, RGB(20, 19, 18), RGB(12, 11, 11), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(23, 23, 23), RGB(14, 14, 14)};
+    palette_color_t brick[4] = {kCastleRgb, RGB(28, 12, 2), RGB(25, 9, 1), RGB(14, 14, 14)};
     palette_color_t question[4] = {kCastleRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
     palette_color_t pipe[4] = {kCastleRgb, RGB(22, 22, 24), RGB(13, 13, 15), RGB(0, 0, 0)};
-    palette_color_t neutral[4] = {kCastleRgb, RGB(28, 28, 30), RGB(17, 17, 19), RGB(0, 0, 0)};
+    palette_color_t neutral[4] = {kCastleRgb, RGB(31, 31, 31), RGB(14, 14, 15), RGB(22, 4, 0)};
     palette_color_t spent[4] = {kCastleRgb, RGB(9, 9, 10), RGB(6, 6, 7), RGB(0, 0, 0)};
-    palette_color_t lava[4] = {kCastleRgb, RGB(31, 24, 6), RGB(28, 9, 1), RGB(0, 0, 0)};
+    palette_color_t lava[4] = {kCastleRgb, RGB(31, 31, 31), RGB(27, 5, 0), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);
@@ -2657,7 +2739,7 @@ void assets_load_item_tiles(void) BANKED {
 // edge where the gap is still open, then the gap closes into a solid taper that narrows to a thin
 // stem and flares back out into two leaf tips at the base, right above the pipe cap
 // clang-format off
-static const uint8_t kHazardTiles[128] = {
+static const uint8_t kHazardTiles[96] = {
     // piranha top - two scalloped jaw lobes opening around a gap that narrows going down
     0x20, 0x30, // ..#+....
     0x40, 0x78, // .#+++...
@@ -2676,18 +2758,372 @@ static const uint8_t kHazardTiles[128] = {
     0x04, 0x07, // .....#++
     0x42, 0x63, // .#+...#+
     0x85, 0xF7, // #+++.#+#
-    0x18, 0x18, 0x3C, 0x24, 0x7E, 0x5A, 0x7E, 0x42,
-    0x7E, 0x42, 0x3C, 0x24, 0x18, 0x18, 0x00, 0x00, // flame, upper half of the pair
+    // a firebar segment, redrawn off the rip: a round fireball with a dark red rim, an orange body
+    // and a white-hot core off centre toward the top. it wears the castle set's re-tinted
+    // kPalStar (white, orange, dark red), which is also what bowser's breath burns in
+    0x3C, 0x3C, // ..####..
+    0x66, 0x7A, // .##++-#.
+    0xCD, 0xF3, // ##++--+#
+    0x99, 0xE7, // #++--++#
+    0x81, 0xFF, // #++++++#
+    0x42, 0x7E, // .#++++#.
+    0x3C, 0x3C, // ..####..
+    0x00, 0x00, // ........
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // flame lower half, blank
     0xFF, 0xFF, 0xFF, 0x00, 0xDB, 0xFF, 0xFF, 0x00,
     0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // lift deck, upper half of the pair
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // lift lower half, blank
-    0x00, 0x00, 0x07, 0x07, 0x1F, 0x18, 0x3F, 0x20,
-    0x37, 0x28, 0x3F, 0x20, 0x7F, 0x40, 0x7F, 0x40, // fake bowser top
-    0x7F, 0x58, 0x7F, 0x40, 0x3F, 0x20, 0x3F, 0x30,
-    0x1F, 0x1F, 0x3B, 0x38, 0x33, 0x30, 0x00, 0x00, // fake bowser bottom
+};
+// clang-format on
+
+// m20's fake bowser: roster.json gives him 4x4 tiles, so a 32x32 body in two frames of sixteen
+// tiles. the layout is the eight 8x16 sprites hazards.c draws him out of, in the order it walks
+// them - upper row left to right, then the lower row - and each sprite's own pair is its upper 8x8
+// followed by its lower one. he faces left, which is the way he faces on the bridge; walking right
+// draws the same tiles with S_FLIPX and the column order reversed.
+//
+// color 1 is the shell's green, 2 the body's orange and 3 the white of his horns, eyes, teeth,
+// spikes and claws, per the castle re-tint of kPalKoopa. his black outline is color 0 - a sprite's
+// transparent index - which costs nothing at all against a castle's black backdrop, exactly the
+// black the nes rip outlines him in.
+//
+// frame 1 opens the jaw (a transparent gap between two rows of teeth) and swaps his stride, so the
+// two of them read as one walking, roaring animal rather than as a shape that twitches
+// clang-format off
+static const uint8_t kBowserTiles[512] = {
+    // frame 0 row 0 col 0, upper half
+    0x00, 0x00, // ........
+    0x10, 0x10, // ...#....
+    0x38, 0x38, // ..###...
+    0x28, 0x38, // ..#+#...
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x18, 0x7F, // .++##+++
+    0x18, 0xFF, // +++##+++
+    0x00, 0xFF, // ++++++++
+    0x7C, 0xFF, // +#####++
+    0x44, 0xFF, // +#+++#++
+    0x7C, 0x7F, // .#####++
+    0x00, 0x3F, // ..++++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x0F, // ....++++
+    0x10, 0x1F, // ...#++++
+    // frame 0 row 0 col 1, upper half
+    0x00, 0x00, // ........
+    0x08, 0x08, // ....#...
+    0x1C, 0x1C, // ...###..
+    0x14, 0x1C, // ...#+#..
+    0x00, 0xFC, // ++++++..
+    0x00, 0xFE, // +++++++.
+    0x30, 0xFE, // ++##+++.
+    0x30, 0xFF, // ++##++++
+    0x00, 0xFF, // ++++++++
+    0x01, 0xFE, // +++++++-
+    0x03, 0xFC, // ++++++--
+    0x07, 0xF8, // +++++---
+    0x0F, 0xF0, // ++++----
+    0x1F, 0xE2, // +++---#-
+    0x3F, 0xC0, // ++------
+    0x3F, 0xC4, // ++---#--
+    // frame 0 row 0 col 2, upper half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x1E, 0x00, // ...----.
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x88, // #---#---
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x44, // -#---#--
+    // frame 0 row 0 col 3, upper half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x80, 0x00, // -.......
+    0xC0, 0x00, // --......
+    0xE0, 0x00, // ---.....
+    0xF0, 0x80, // #---....
+    0xF8, 0x00, // -----...
+    0xF8, 0x00, // -----...
+    0xF8, 0x00, // -----...
+    0xFC, 0x00, // ------..
+    // frame 0 row 1 col 0, upper half
+    0x30, 0x3F, // ..##++++
+    0x30, 0x3F, // ..##++++
+    0x10, 0x1F, // ...#++++
+    0x00, 0x0F, // ....++++
+    0x00, 0x07, // .....+++
+    0x00, 0x03, // ......++
+    0x00, 0x01, // .......+
+    0x00, 0x01, // .......+
+    0x00, 0x03, // ......++
+    0x00, 0x07, // .....+++
+    0x00, 0x0F, // ....++++
+    0x00, 0x0F, // ....++++
+    0x10, 0x1F, // ...#++++
+    0x31, 0x3F, // ..##+++#
+    0x31, 0x31, // ..##...#
+    0x00, 0x00, // ........
+    // frame 0 row 1 col 1, upper half
+    0x3F, 0xC0, // ++------
+    0x1F, 0xE2, // +++---#-
+    0x0F, 0xF0, // ++++----
+    0x07, 0xF8, // +++++---
+    0x03, 0xFC, // ++++++--
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xE0, // +++.....
+    0x00, 0x80, // +.......
+    0x00, 0x80, // +.......
+    0x80, 0x80, // #.......
+    0x80, 0x80, // #.......
+    0x80, 0x80, // #.......
+    0x00, 0x00, // ........
+    // frame 0 row 1 col 2, upper half
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x3F, // ..++++++
+    0x00, 0x3F, // ..++++++
+    0x41, 0x7F, // .#+++++#
+    0xC3, 0xFF, // ##++++##
+    0xC3, 0xC3, // ##....##
+    0x00, 0x00, // ........
+    // frame 0 row 1 col 3, upper half
+    0xFC, 0x00, // ------..
+    0xFC, 0x00, // ------..
+    0xFC, 0x00, // ------..
+    0xF8, 0x00, // -----...
+    0xF0, 0x00, // ----....
+    0xC6, 0x00, // --...--.
+    0x1F, 0x80, // +..-----
+    0x3E, 0x00, // ..-----.
+    0x78, 0x80, // +----...
+    0x00, 0x80, // +.......
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // frame 1 row 0 col 0, upper half
+    0x00, 0x00, // ........
+    0x10, 0x10, // ...#....
+    0x38, 0x38, // ..###...
+    0x28, 0x38, // ..#+#...
+    0x00, 0x3F, // ..++++++
+    0x00, 0x7F, // .+++++++
+    0x18, 0x7F, // .++##+++
+    0x18, 0xFF, // +++##+++
+    0x00, 0xFF, // ++++++++
+    0x7E, 0xFF, // +######+
+    0x00, 0x80, // +.......
+    0x7E, 0x7F, // .######+
+    0x00, 0x3F, // ..++++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x0F, // ....++++
+    0x10, 0x1F, // ...#++++
+    // frame 1 row 0 col 1, upper half
+    0x00, 0x00, // ........
+    0x08, 0x08, // ....#...
+    0x1C, 0x1C, // ...###..
+    0x14, 0x1C, // ...#+#..
+    0x00, 0xFC, // ++++++..
+    0x00, 0xFE, // +++++++.
+    0x30, 0xFE, // ++##+++.
+    0x30, 0xFF, // ++##++++
+    0x00, 0xFF, // ++++++++
+    0x01, 0xFE, // +++++++-
+    0x03, 0xFC, // ++++++--
+    0x07, 0xF8, // +++++---
+    0x0F, 0xF0, // ++++----
+    0x1F, 0xE2, // +++---#-
+    0x3F, 0xC0, // ++------
+    0x3F, 0xC4, // ++---#--
+    // frame 1 row 0 col 2, upper half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x1E, 0x00, // ...----.
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x88, // #---#---
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x44, // -#---#--
+    // frame 1 row 0 col 3, upper half
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x80, 0x00, // -.......
+    0xC0, 0x00, // --......
+    0xE0, 0x00, // ---.....
+    0xF0, 0x80, // #---....
+    0xF8, 0x00, // -----...
+    0xF8, 0x00, // -----...
+    0xF8, 0x00, // -----...
+    0xFC, 0x00, // ------..
+    // frame 1 row 1 col 0, upper half
+    0x30, 0x3F, // ..##++++
+    0x30, 0x3F, // ..##++++
+    0x10, 0x1F, // ...#++++
+    0x00, 0x0F, // ....++++
+    0x00, 0x07, // .....+++
+    0x00, 0x03, // ......++
+    0x00, 0x01, // .......+
+    0x00, 0x01, // .......+
+    0x00, 0x03, // ......++
+    0x00, 0x03, // ......++
+    0x00, 0x07, // .....+++
+    0x00, 0x07, // .....+++
+    0x08, 0x0F, // ....#+++
+    0x18, 0x1F, // ...##+++
+    0x18, 0x18, // ...##...
+    0x00, 0x00, // ........
+    // frame 1 row 1 col 1, upper half
+    0x3F, 0xC0, // ++------
+    0x1F, 0xE2, // +++---#-
+    0x0F, 0xF0, // ++++----
+    0x07, 0xF8, // +++++---
+    0x03, 0xFC, // ++++++--
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xF0, // ++++....
+    0x00, 0xC0, // ++......
+    0x00, 0xC0, // ++......
+    0x40, 0xC0, // +#......
+    0xC0, 0xC0, // ##......
+    0xC0, 0xC0, // ##......
+    0x00, 0x00, // ........
+    // frame 1 row 1 col 2, upper half
+    0xFF, 0x00, // --------
+    0xFF, 0x22, // --#---#-
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0xFF, 0x00, // --------
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0x7F, // .+++++++
+    0x00, 0x1F, // ...+++++
+    0x00, 0x1F, // ...+++++
+    0x21, 0x3F, // ..#++++#
+    0x31, 0x3F, // ..##+++#
+    0x31, 0x31, // ..##...#
+    0x00, 0x00, // ........
+    // frame 1 row 1 col 3, upper half
+    0xFC, 0x00, // ------..
+    0xFC, 0x00, // ------..
+    0xFC, 0x00, // ------..
+    0xF8, 0x00, // -----...
+    0xF0, 0x00, // ----....
+    0xC6, 0x00, // --...--.
+    0x1F, 0x80, // +..-----
+    0x3E, 0x00, // ..-----.
+    0x78, 0x80, // +----...
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x80, 0x80, // #.......
+    0x80, 0x80, // #.......
+    0x00, 0x00, // ........
+};
+// clang-format on
+
+// and his fire breath, a 24x8 dart in three 8x16 pairs whose lower halves are blank. it flies
+// left, so the white-hot core leads and the dark red tail frays out behind it; the palette is the
+// firebar flame's, which is the same fire and never on screen at the same time
+// clang-format off
+static const uint8_t kBowserFireTiles[96] = {
+    // breath third 0
+    0x06, 0x06, // .....##.
+    0x39, 0x3F, // ..###++#
+    0x60, 0x5F, // .#-+++++
+    0xE0, 0x9F, // #--+++++
+    0xE0, 0x9F, // #--+++++
+    0x60, 0x5F, // .#-+++++
+    0x39, 0x3F, // ..###++#
+    0x06, 0x06, // .....##.
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // breath third 1
+    0x06, 0x06, // .....##.
+    0xF9, 0xFF, // #####++#
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0x00, 0xFF, // ++++++++
+    0xF9, 0xFF, // #####++#
+    0x06, 0x06, // .....##.
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    // breath third 2
+    0x00, 0x00, // ........
+    0xC0, 0xC0, // ##......
+    0x70, 0xF0, // +###....
+    0x1C, 0xFC, // +++###..
+    0x1C, 0xFC, // +++###..
+    0x70, 0xF0, // +###....
+    0xC0, 0xC0, // ##......
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
+    0x00, 0x00, // ........
 };
 // clang-format on
 
@@ -2786,6 +3222,12 @@ void assets_load_enemy_tiles(void) BANKED {
 
 void assets_load_hazard_tiles(void) BANKED {
     set_sprite_data(kTileHazardFirst, kHazardTileCount, kHazardTiles);
+    // bowser's own 512 bytes go to vram BANK 1: bank 0's sprite map has eight ids left in it and
+    // he wants thirty-two. hazards_draw sets S_BANK on every sprite that reads them back
+    VBK_REG = VBK_BANK_1;
+    set_sprite_data(kTileBowserFirst, (uint8_t)(kBowserTilesPerFrame * kBowserArtFrames), kBowserTiles);
+    set_sprite_data(kTileBowserFire, kBowserFireTileCount, kBowserFireTiles);
+    VBK_REG = VBK_BANK_0;
 }
 
 // the hud row's coin: a gold (color 1) oval with a darker slot (color 2) down the middle, on a
@@ -2850,10 +3292,20 @@ void assets_load_hud_font(void) BANKED {
 
 void assets_load_enemy_palettes_castle(void) BANKED {
     // no koopa and no piranha stands in a castle, so the koopa slot is re-tinted for the fake
-    // bowser: roster.json calls the nes original grayish-blue with yellow hair. m9's real bowser
-    // gets art of his own
+    // bowser. m20 took it from roster.json's grayish-blue-and-yellow note - which describes the
+    // nes bowser's hair, not the sprite the rip actually draws - to the three colors the rip does
+    // use: a green shell, an orange body and white horns, teeth, spikes and claws. color 0 is a
+    // sprite's transparent index, so his outline is whatever is behind him, which in a castle is
+    // the black the rip outlines him in
     palette_color_t goomba[4] = {RGB(0, 0, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
-    palette_color_t bowser[4] = {RGB(0, 0, 0), RGB(30, 28, 8), RGB(9, 14, 12), RGB(3, 5, 6)};
+    palette_color_t bowser[4] = {RGB(0, 0, 0), RGB(0, 21, 0), RGB(31, 19, 7), RGB(31, 31, 31)};
+    // and the star slot becomes the castle's one fire ramp, which the firebar flames and bowser's
+    // breath both burn in: white at the core, orange through the body, dark red at the rim. no
+    // castle grid holds a star or a flower - the two items that borrow this slot - and the only
+    // other things wearing it are a star's palette flash and the fireball's puff, both of which
+    // read as fire in this ramp too
+    palette_color_t fire[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(31, 19, 7), RGB(27, 5, 0)};
     set_sprite_palette(kPalGoomba, 1, goomba);
     set_sprite_palette(kPalKoopa, 1, bowser);
+    set_sprite_palette(kPalStar, 1, fire);
 }

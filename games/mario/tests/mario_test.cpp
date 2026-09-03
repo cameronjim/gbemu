@@ -370,10 +370,14 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile == 0xFE;
     case kBlockLava:
         return tile == 0x20;
+    // m20 moved the bridge and the axe into vram bank 1 and gave each of them two tiles, and put
+    // the castle's masonry course beside them: bank-1 bg 0x12-0x16 (mario.h kTileCastleBrick)
     case kBlockBridge:
-        return tile == 0xBA;
+        return tile >= 0x15 && tile <= 0x16;
     case kBlockAxe:
-        return tile == 0xBB;
+        return tile >= 0x13 && tile <= 0x14;
+    case kBlockCastleBrick:
+        return tile == 0x12;
     case kBlockCloudTl:
     case kBlockCloudTr:
         return tile >= 0x35 && tile <= 0x36;
@@ -923,6 +927,7 @@ constexpr int kLiftWidthPx = kLiftBlocks * kBlockPx;
 constexpr uint8_t kLiftSpanMask = 0x3F;
 constexpr uint8_t kLiftReverse = 0x80;
 constexpr int kFirebarSpinRaw = 0x28;
+constexpr int kFirebarSpinFastRaw = 0x38;
 constexpr int kFirebarSteps = 32;
 constexpr int kFirebarSegments = 6;
 // a firebar's object_param, the contract with compile_level.py's firebar_param(): segments in the
@@ -930,10 +935,30 @@ constexpr int kFirebarSegments = 6;
 constexpr uint8_t kFirebarLenMask = 0x0F;
 constexpr uint8_t kFirebarFast = 0x10;
 constexpr uint8_t kFirebarCcw = 0x20;
+constexpr int kFirebarSegmentsMax = 12;
 constexpr int kFirebarRadiusPx = 8;
 constexpr int kFlamePx = 8;
-constexpr int kBowserWidthPx = 16;
-constexpr int kBowserHeightPx = 16;
+// a bar's own variant, packed into its object_param by compile_level.py (mario.h kFirebarParam*)
+constexpr uint8_t kFirebarParamSegMask = 0x0F;
+constexpr uint8_t kFirebarParamFast = 0x10;
+constexpr uint8_t kFirebarParamCcw = 0x20;
+// m20's bowser: roster.json's 4x4 tiles, and the walk/hop/breath cadence hazards.c gives him
+constexpr int kBowserWidthPx = 32;
+constexpr int kBowserHeightPx = 32;
+constexpr int kBowserWalkSubpx = 128;
+constexpr int kBowserHopFrames = 150;
+constexpr int kBowserHopLaunchPx = -4;
+constexpr uint8_t kBowserHopGravityMask = 0x03;
+constexpr int kBowserMaxFallPx = 4;
+constexpr int kBowserFireFrames = 130;
+constexpr int kBowserFireWidthPx = 24;
+constexpr int kBowserFireHeightPx = 8;
+constexpr int kBowserFireSubpx = 384;
+constexpr int kBowserFireJawPx = 18;
+constexpr int kBowserFireLifeFrames = 100;
+constexpr int kBowserAnimFrames = 16;
+constexpr uint8_t kBowserFireballHits = 5;
+constexpr int kBridgeDropFrames = 3;
 // the same 32-step circle hazards.c spins on; both sides read the same rounded values
 constexpr int8_t kSpinX[kFirebarSteps] = {8,  8,  7,  6,  6,  4,  3,  2,  0, -2, -3, -4, -6, -6, -7, -8,
                                           -8, -8, -7, -6, -6, -4, -3, -2, 0, 2,  3,  4,  6,  6,  7,  8};
@@ -946,10 +971,17 @@ constexpr uint8_t kTileFlameLo = 0x86;
 constexpr uint8_t kTileFlameHi = 0x87;
 [[maybe_unused]] constexpr uint8_t kTileLiftLo = 0x88;
 [[maybe_unused]] constexpr uint8_t kTileLiftHi = 0x89;
-constexpr uint8_t kTileBowserLo = 0x8A;
-constexpr uint8_t kTileBowserHi = 0x8B;
-constexpr uint8_t kTileBridge = 0xBA;
-[[maybe_unused]] constexpr uint8_t kTileAxe = 0xBB;
+// bowser's 32x32 body and his breath, in vram BANK 1 at mario.h's kTileBowserFirst. a
+// framebuffer tile id carries no bank, so a sprite_box over the run names him either way
+constexpr uint8_t kTileBowserLo = 0x96;
+constexpr uint8_t kTileBowserHi = 0xB5;
+constexpr uint8_t kTileBowserFireLo = 0xB6;
+constexpr uint8_t kTileBowserFireHi = 0xBB;
+// and the bridge's two halves and the axe's two blades, which m20 moved to bank 1 as well
+constexpr uint8_t kTileBridge = 0x15;
+constexpr uint8_t kTileBridgeHi = 0x16;
+[[maybe_unused]] constexpr uint8_t kTileAxe = 0x13;
+constexpr uint8_t kTileCastleBrick = 0x12;
 // hazards.c's lift deck plank, mirrored from mario.h's kTileLiftDeck
 constexpr uint8_t kTileLiftDeck = 0x88;
 
@@ -1147,19 +1179,37 @@ struct PlayerSim {
     uint8_t lift_count = 0;
     std::array<uint8_t, kBarSlots> bar_column{};
     std::array<uint8_t, kBarSlots> bar_row{};
+    // the packed variant hazards.c keeps whole: segment count in the low nibble, then the rate and
+    // handedness bits. the two phases are shared by rate, one accumulator each, exactly as there
+    std::array<uint8_t, kBarSlots> bar_param{};
     uint8_t bar_count = 0;
-    uint8_t spin_accum = 0;
-    uint8_t spin_step = 0;
+    std::array<uint8_t, 2> spin_accum{};
+    std::array<uint8_t, 2> spin_step{};
     uint16_t bowser_x = 0;
     int16_t bowser_y = 0;
+    int16_t bowser_deck_y = 0;
     uint16_t bowser_lo = 0;
     uint16_t bowser_hi = 0;
     int8_t bowser_dir = -1;
     uint8_t bowser_force = 0;
     uint8_t bowser_live = 0;
+    uint8_t bowser_tick = 0;
+    uint8_t bowser_frame = 0;
+    uint8_t bowser_hop_timer = 0;
+    int8_t bowser_dy = 0;
+    uint8_t bowser_airborne = 0;
+    uint8_t bowser_falling = 0;
+    uint8_t bowser_hits = 0;
+    uint8_t fire_timer = 0;
+    uint8_t fire_ttl = 0;
+    uint16_t fire_x = 0;
+    int16_t fire_y = 0;
+    uint16_t fire_accum = 0;
     uint16_t axe_x = 0;
     int16_t axe_y = 0;
     uint8_t axe_live = 0;
+    int collapse_column = -1;
+    uint8_t collapse_timer = 0;
     uint8_t hazard_active = 0;
     uint8_t hazard_near = 0;
     uint16_t hazard_min_x = 0xFFFF;
@@ -1208,6 +1258,7 @@ struct PlayerSim {
                 if (bar_count < kBarSlots) {
                     bar_column[bar_count] = static_cast<uint8_t>(o.column);
                     bar_row[bar_count] = o.row;
+                    bar_param[bar_count] = o.param;
                     ++bar_count;
                 }
             } else if (o.kind == kObjLiftH || o.kind == kObjLiftV) {
@@ -1246,7 +1297,10 @@ struct PlayerSim {
             } else if (o.kind == kObjBowser) {
                 bowser_live = 1;
                 bowser_x = static_cast<uint16_t>(o.column * kBlockPx);
-                bowser_y = static_cast<int16_t>(o.row * kBlockPx);
+                // the level's object row stood a 16x16 body on the deck; a 32x32 one starts a
+                // block row higher so its feet land on the same line (hazards.c)
+                bowser_y = static_cast<int16_t>((o.row - 1) * kBlockPx);
+                bowser_deck_y = bowser_y;
                 bowser_lo = bowser_x;
                 bowser_hi = static_cast<uint16_t>((o.column + o.param) * kBlockPx);
                 bowser_dir = -1;
@@ -2311,33 +2365,176 @@ struct PlayerSim {
             }
         }
         if (bar_count != 0) {
-            const unsigned sum = static_cast<unsigned>(spin_accum) + kFirebarSpinRaw;
+            // both phases turn on every frame a bar is loaded, whichever rates the level uses
+            for (int r = 0; r < 2; ++r) {
+                const unsigned sum = static_cast<unsigned>(spin_accum[r]) +
+                                     (r == 0 ? kFirebarSpinRaw : kFirebarSpinFastRaw);
 
-            spin_accum = static_cast<uint8_t>(sum);
-            if (sum > 0xFFu) {
-                spin_step = static_cast<uint8_t>((spin_step + 1) & (kFirebarSteps - 1));
-            }
-        }
-        if (bowser_live != 0) {
-            const unsigned sum = static_cast<unsigned>(bowser_force) + 128u;
-
-            bowser_force = static_cast<uint8_t>(sum);
-            if (sum > 0xFFu) {
-                if (bowser_dir > 0) {
-                    ++bowser_x;
-                    if (bowser_x >= bowser_hi) {
-                        bowser_x = bowser_hi;
-                        bowser_dir = -1;
-                    }
-                } else {
-                    --bowser_x;
-                    if (bowser_x <= bowser_lo) {
-                        bowser_x = bowser_lo;
-                        bowser_dir = 1;
-                    }
+                spin_accum[r] = static_cast<uint8_t>(sum);
+                if (sum > 0xFFu) {
+                    spin_step[r] = static_cast<uint8_t>((spin_step[r] + 1) & (kFirebarSteps - 1));
                 }
             }
         }
+        if (bowser_live != 0) {
+            step_bowser();
+        }
+    }
+
+    // hazards.c's step_bowser_fall: the death beat's own ramp, not the physics accumulator
+    void step_bowser_fall() {
+        ++bowser_tick;
+        if ((bowser_tick & kBowserHopGravityMask) == 0 && bowser_dy < kBowserMaxFallPx) {
+            bowser_dy = static_cast<int8_t>(bowser_dy + 1);
+        }
+        bowser_y = static_cast<int16_t>(bowser_y + bowser_dy);
+        if (bowser_y > kLevelHeightPx + kBowserHeightPx) {
+            bowser_live = 0;
+        }
+    }
+
+    void step_bowser_fire() {
+        if (fire_ttl != 0) {
+            const unsigned sum = static_cast<unsigned>(fire_accum) + kBowserFireSubpx;
+
+            fire_accum = static_cast<uint16_t>(sum & 0xFFu);
+            if ((sum >> 8) >= fire_x) {
+                fire_ttl = 0;
+                return;
+            }
+            fire_x = static_cast<uint16_t>(fire_x - (sum >> 8));
+            --fire_ttl;
+            return;
+        }
+        ++fire_timer;
+        if (fire_timer < kBowserFireFrames) {
+            return;
+        }
+        fire_timer = 0;
+        if (bowser_x < kBowserFireWidthPx) {
+            return;
+        }
+        fire_x = static_cast<uint16_t>(bowser_x - kBowserFireWidthPx);
+        fire_y = static_cast<int16_t>(bowser_y + kBowserFireJawPx);
+        fire_accum = 0;
+        fire_ttl = kBowserFireLifeFrames;
+    }
+
+    void step_bowser() {
+        if (bowser_falling != 0) {
+            step_bowser_fall();
+            return;
+        }
+        ++bowser_tick;
+        if ((bowser_tick & static_cast<uint8_t>(kBowserAnimFrames - 1)) == 0) {
+            bowser_frame = static_cast<uint8_t>(bowser_frame ^ 1);
+        }
+        const unsigned sum = static_cast<unsigned>(bowser_force) + kBowserWalkSubpx;
+
+        bowser_force = static_cast<uint8_t>(sum);
+        if (sum > 0xFFu) {
+            if (bowser_dir > 0) {
+                ++bowser_x;
+                if (bowser_x >= bowser_hi) {
+                    bowser_x = bowser_hi;
+                    bowser_dir = -1;
+                }
+            } else {
+                --bowser_x;
+                if (bowser_x <= bowser_lo) {
+                    bowser_x = bowser_lo;
+                    bowser_dir = 1;
+                }
+            }
+        }
+        if (bowser_airborne == 0) {
+            ++bowser_hop_timer;
+            if (bowser_hop_timer >= kBowserHopFrames) {
+                bowser_hop_timer = 0;
+                bowser_airborne = 1;
+                bowser_dy = kBowserHopLaunchPx;
+            }
+        } else {
+            if ((bowser_tick & kBowserHopGravityMask) == 0 && bowser_dy < kBowserMaxFallPx) {
+                bowser_dy = static_cast<int8_t>(bowser_dy + 1);
+            }
+            bowser_y = static_cast<int16_t>(bowser_y + bowser_dy);
+            if (bowser_dy > 0 && bowser_y >= bowser_deck_y) {
+                bowser_y = bowser_deck_y;
+                bowser_dy = 0;
+                bowser_airborne = 0;
+            }
+        }
+        step_bowser_fire();
+    }
+
+    // hazards.c's hazards_fireball_hit: every ball that lands on him is spent, and the fifth
+    // defeats him. the twin has no fireball pool of its own, so the ball's box is passed in
+    bool bowser_fireball_hit(uint16_t px, int16_t py) {
+        if (bowser_live == 0 || bowser_falling != 0) {
+            return false;
+        }
+        if (!overlap(px, py, kFireballPx, kFireballPx, bowser_x, bowser_y, kBowserWidthPx,
+                     kBowserHeightPx)) {
+            return false;
+        }
+        ++bowser_hits;
+        if (bowser_hits >= kBowserFireballHits) {
+            points = static_cast<uint16_t>(points + kBowserKillPoints / 10);
+            bowser_falling = 1;
+            bowser_dy = 0;
+            fire_ttl = 0;
+        }
+        return true;
+    }
+
+    // hazards.c's hazards_drop_bridge/hazards_clear_step: the span comes apart one cell at a time
+    // from the axe end back, and the cell that goes out from under him is what drops him
+    void arm_bridge_drop() {
+        axe_live = 0;
+        fire_ttl = 0;
+        collapse_column = lv->bridge_x1;
+        collapse_timer = 0;
+    }
+
+    void clear_step() {
+        if (collapse_column >= lv->bridge_x0) {
+            ++collapse_timer;
+            if (collapse_timer >= kBridgeDropFrames) {
+                const uint16_t cell = static_cast<uint16_t>(collapse_column * kBlockPx);
+
+                collapse_timer = 0;
+                if (bowser_live != 0 && bowser_falling == 0 && cell < bowser_x + kBowserWidthPx &&
+                    cell + kBlockPx > bowser_x) {
+                    bowser_falling = 1;
+                    bowser_dy = 0;
+                }
+                --collapse_column;
+            }
+        }
+        if (bowser_live != 0 && bowser_falling != 0) {
+            step_bowser_fall();
+        }
+    }
+
+    // hazards.c's bar_segments/bar_step: a zero param is the short bar, and a ccw one reads the
+    // same 32-step circle backwards
+    uint8_t bar_segments(uint8_t i) const {
+        const uint8_t n = static_cast<uint8_t>(bar_param[i] & kFirebarParamSegMask);
+
+        if (n == 0) {
+            return static_cast<uint8_t>(kFirebarSegments);
+        }
+        return n > kFirebarSegmentsMax ? static_cast<uint8_t>(kFirebarSegmentsMax) : n;
+    }
+
+    uint8_t bar_step(uint8_t i) const {
+        const uint8_t phase = spin_step[(bar_param[i] & kFirebarParamFast) != 0 ? 1 : 0];
+
+        if ((bar_param[i] & kFirebarParamCcw) == 0) {
+            return phase;
+        }
+        return static_cast<uint8_t>((kFirebarSteps - phase) & (kFirebarSteps - 1));
     }
 
     static bool overlap(uint16_t ax, int16_t ay, int aw, int ah, uint16_t bx, int16_t by, int bw, int bh) {
@@ -2363,7 +2560,12 @@ struct PlayerSim {
                 best = i;
             }
         }
-        return closest <= kFirebarSegments * kFirebarRadiusPx + kBlockPx ? best : uint8_t{0xFF};
+        if (best == 0xFF) {
+            return 0xFF;
+        }
+        // the chosen bar's own reach, not the longest a level may hold: a long bar does not wake
+        // the short ones up early
+        return closest <= bar_segments(best) * kFirebarRadiusPx + kBlockPx ? best : uint8_t{0xFF};
     }
 
     uint8_t hazards_contact() const {
@@ -2373,8 +2575,12 @@ struct PlayerSim {
         if (axe_live != 0 && overlap(left, y_pos, kHitWidthPx, height, axe_x, axe_y, kBlockPx, kBlockPx)) {
             return kHazardAxe;
         }
-        if (bowser_live != 0 &&
+        if (bowser_live != 0 && bowser_falling == 0 &&
             overlap(left, y_pos, kHitWidthPx, height, bowser_x, bowser_y, kBowserWidthPx, kBowserHeightPx)) {
+            return kHazardDamage;
+        }
+        if (fire_ttl != 0 && overlap(left, y_pos, kHitWidthPx, height, fire_x, fire_y, kBowserFireWidthPx,
+                                     kBowserFireHeightPx)) {
             return kHazardDamage;
         }
         const uint8_t bar = nearest_bar(static_cast<uint16_t>(left + kHitWidthPx / 2));
@@ -2383,9 +2589,10 @@ struct PlayerSim {
         }
         const int cx = bar_column[bar] * kBlockPx + kBlockPx / 2;
         const int cy = bar_row[bar] * kBlockPx + kBlockPx / 2;
-        for (int k = 1; k <= kFirebarSegments; ++k) {
-            const int fx = cx + kSpinX[spin_step] * k - kFlamePx / 2;
-            const int fy = cy + kSpinY[spin_step] * k - kFlamePx / 2;
+        const uint8_t step = bar_step(bar);
+        for (int k = 1; k <= bar_segments(bar); ++k) {
+            const int fx = cx + kSpinX[step] * k - kFlamePx / 2;
+            const int fy = cy + kSpinY[step] * k - kFlamePx / 2;
 
             if (fx < 0) {
                 continue;
@@ -9521,11 +9728,11 @@ TEST_CASE("mario_firebar_damages_and_rotates") {
     int rightmost = 0;
     for (int i = 0; i < kFirebarSteps * 8; ++i) {
         sim.hazards_step();
-        seen.insert(sim.spin_step);
-        lowest = std::max<int>(lowest, kSpinY[sim.spin_step]);
-        highest = std::min<int>(highest, kSpinY[sim.spin_step]);
-        leftmost = std::min<int>(leftmost, kSpinX[sim.spin_step]);
-        rightmost = std::max<int>(rightmost, kSpinX[sim.spin_step]);
+        seen.insert(sim.spin_step[0]);
+        lowest = std::max<int>(lowest, kSpinY[sim.spin_step[0]]);
+        highest = std::min<int>(highest, kSpinY[sim.spin_step[0]]);
+        leftmost = std::min<int>(leftmost, kSpinX[sim.spin_step[0]]);
+        rightmost = std::max<int>(rightmost, kSpinX[sim.spin_step[0]]);
     }
     REQUIRE(seen.size() == static_cast<size_t>(kFirebarSteps));
     REQUIRE(lowest == kFirebarRadiusPx);
@@ -9595,6 +9802,294 @@ TEST_CASE("mario_firebar_damages_and_rotates") {
     REQUIRE(restarted);
 }
 
+// --- m20: the 32x32 bowser, his breath, the per-bar firebars and the bridge coming apart --------
+
+namespace {
+
+// a sprite family's whole bounding box, which sprite_box() only half answers: bowser is the first
+// actor in this game whose HEIGHT is the thing under test
+struct SpriteRect {
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int bottom = 0;
+    bool found = false;
+};
+
+SpriteRect sprite_rect(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    SpriteRect box;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile < lo || tile > hi) {
+            continue;
+        }
+        const int x = static_cast<int>(i % gb::kLcdWidth);
+        const int y = static_cast<int>(i / gb::kLcdWidth);
+        if (!box.found) {
+            box.left = x;
+            box.right = x;
+            box.top = y;
+            box.bottom = y;
+            box.found = true;
+            continue;
+        }
+        box.left = std::min(box.left, x);
+        box.right = std::max(box.right, x);
+        box.top = std::min(box.top, y);
+        box.bottom = std::max(box.bottom, y);
+    }
+    return box;
+}
+
+// stands the rom on 1-4's bridge with bowser in front of him and the axe still untouched: the
+// route's own last stretch, stopped short and with every button let go
+void watch_the_bridge(gb::Gameboy& gameboy, const Route& route) {
+    replay(gameboy, route.script, 0, route.script.size() - 70);
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::Left, false);
+    gameboy.set_button(gb::Button::A, false);
+    gameboy.set_button(gb::Button::B, false);
+}
+
+} // namespace
+
+// roster.json gives bowser four tiles by four, and hazards.c draws that as eight 8x16 sprites out
+// of the firebar's own oam pool. so the rom has to put a 32 px wide, 32 px tall body on the bridge
+TEST_CASE("mario_bowser_is_32x32") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    watch_the_bridge(gameboy, route);
+
+    int widest = 0;
+    int tallest = 0;
+    int seen = 0;
+    for (int f = 0; f < 260; ++f) {
+        gameboy.run_frame();
+        const SpriteRect body = sprite_rect(gameboy, kTileBowserLo, kTileBowserHi);
+
+        if (!body.found) {
+            continue;
+        }
+        ++seen;
+        // only a frame with him wholly on screen says anything about his size
+        if (body.left > 0 && body.right < static_cast<int>(gb::kLcdWidth) - 1) {
+            widest = std::max(widest, body.right - body.left + 1);
+            tallest = std::max(tallest, body.bottom - body.top + 1);
+        }
+    }
+    CAPTURE(seen, widest, tallest);
+    REQUIRE(seen > 100);
+    REQUIRE(widest == kBowserWidthPx);
+    // his art leaves a transparent row along the top of the 32 and another along the bottom - his
+    // horns start on row 1 and his claws end on row 30 - so 30 lit rows is the whole of him
+    REQUIRE(tallest == kBowserHeightPx - 2);
+}
+
+// and he breathes: a 24x8 dart out of his jaw that flies left at a pixel and a half a frame, at the
+// height of a body standing on the deck he is standing on
+TEST_CASE("mario_bowser_breathes_fire_left") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    watch_the_bridge(gameboy, route);
+
+    std::vector<int> lefts;
+    int widest = 0;
+    int band_top = -1;
+    for (int f = 0; f < 400; ++f) {
+        gameboy.run_frame();
+        const SpriteRect dart = sprite_rect(gameboy, kTileBowserFireLo, kTileBowserFireHi);
+
+        if (!dart.found) {
+            continue;
+        }
+        if (dart.left > 0 && dart.right < static_cast<int>(gb::kLcdWidth) - 1) {
+            widest = std::max(widest, dart.right - dart.left + 1);
+            band_top = dart.top;
+            lefts.push_back(dart.left);
+        }
+    }
+    CAPTURE(lefts.size(), widest, band_top);
+    REQUIRE(lefts.size() > 20);
+    // it is 24 px of dart, of which the tail's last two columns are transparent, and it only ever
+    // moves left
+    REQUIRE(widest == kBowserFireWidthPx - 2);
+    int backwards = 0;
+    for (size_t i = 1; i < lefts.size(); ++i) {
+        backwards += lefts[i] > lefts[i - 1] ? 1 : 0;
+    }
+    // a fresh dart restarts at his jaw, so one step back per throw is expected and no more
+    REQUIRE(backwards <= 3);
+    REQUIRE(lefts.front() - lefts.back() > 40);
+    // and it crosses the band a body on the bridge stands in rather than sailing over his head
+    REQUIRE(band_top > 16);
+}
+
+// hazards.c decodes a bar's whole variant out of its object_param: kFirebarParamSegMask segments,
+// kFirebarParamFast for the second of physics.json's two raw rates, kFirebarParamCcw for the other
+// handedness. the twin is the contract both sides read, and the autopilot proves the rom matches it
+TEST_CASE("mario_firebar_param_decodes") {
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+
+    // the level's own bars are the short six-segment kind, and a param of zero reads as that too
+    REQUIRE(sim.bar_count == 7);
+    for (uint8_t i = 0; i < sim.bar_count; ++i) {
+        REQUIRE(sim.bar_param[i] == kFirebarSegments);
+        REQUIRE(sim.bar_segments(i) == kFirebarSegments);
+    }
+    sim.bar_param[0] = 0;
+    REQUIRE(sim.bar_segments(0) == kFirebarSegments);
+    // the long bar smbdis's fifth variant is, and anything past it clamped rather than run off the
+    // end of the segment tables
+    sim.bar_param[0] = 12;
+    REQUIRE(sim.bar_segments(0) == kFirebarSegmentsMax);
+    sim.bar_param[0] = 15;
+    REQUIRE(sim.bar_segments(0) == kFirebarSegmentsMax);
+    sim.bar_param[0] = static_cast<uint8_t>(kFirebarParamFast | kFirebarParamCcw | 3);
+    REQUIRE(sim.bar_segments(0) == 3);
+
+    // the two rates: 0x28 and 0x38 of a 1/256 step, so a bar takes 205 frames a revolution or 147.
+    // both phases turn on every frame and a bar reads whichever its own bit picks
+    PlayerSim rates;
+    rates.load_level(kLevel14);
+    rates.bar_param[0] = kFirebarSegments;
+    rates.bar_param[1] = static_cast<uint8_t>(kFirebarParamFast | kFirebarSegments);
+    int slow_turns = 0;
+    int fast_turns = 0;
+    uint8_t slow_was = rates.bar_step(0);
+    uint8_t fast_was = rates.bar_step(1);
+    for (int f = 0; f < 1024; ++f) {
+        rates.hazards_step();
+        slow_turns += rates.bar_step(0) != slow_was ? 1 : 0;
+        fast_turns += rates.bar_step(1) != fast_was ? 1 : 0;
+        slow_was = rates.bar_step(0);
+        fast_was = rates.bar_step(1);
+    }
+    CAPTURE(slow_turns, fast_turns);
+    REQUIRE(slow_turns == 1024 * kFirebarSpinRaw / 256);
+    REQUIRE(fast_turns == 1024 * kFirebarSpinFastRaw / 256);
+
+    // and direction: a ccw bar's flames mirror a cw one's across the horizontal, so the two sit at
+    // the same distance either side of the pivot's own row
+    PlayerSim spun;
+    spun.load_level(kLevel14);
+    spun.bar_param[0] = kFirebarSegments;
+    spun.bar_param[1] = static_cast<uint8_t>(kFirebarParamCcw | kFirebarSegments);
+    int mirrored = 0;
+    for (int f = 0; f < 200; ++f) {
+        spun.hazards_step();
+        const uint8_t cw = spun.bar_step(0);
+        const uint8_t ccw = spun.bar_step(1);
+
+        REQUIRE(kSpinY[cw] == -kSpinY[ccw]);
+        REQUIRE(kSpinX[cw] == kSpinX[ccw]);
+        mirrored += kSpinY[cw] != 0 ? 1 : 0;
+    }
+    REQUIRE(mirrored > 100);
+}
+
+// roster.json: five fireballs defeat the fake bowser and pay 5000. the fifth drops him into the
+// lava the axe would have dropped him into, and the four before it leave him walking.
+//
+// the twin is the whole witness here rather than half of it: 1-4 carries no fire flower - its one
+// dispenser pays a mushroom - and a level entered from the title starts a fresh run as small
+// mario, so no reachable state of the rom throws a fireball on that bridge. both sides read the
+// same kBowserFireballHits and kBowserKillPoints out of the bible
+TEST_CASE("mario_five_fireballs_defeat_bowser") {
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.bowser_live == 1);
+
+    // a ball that misses him is not spent and does not count
+    REQUIRE(!sim.bowser_fireball_hit(static_cast<uint16_t>(sim.bowser_x - 64), sim.bowser_y));
+    REQUIRE(sim.bowser_hits == 0);
+
+    for (int hit = 1; hit < kBowserFireballHits; ++hit) {
+        REQUIRE(sim.bowser_fireball_hit(sim.bowser_x, sim.bowser_y));
+        REQUIRE(sim.bowser_hits == hit);
+        REQUIRE(sim.bowser_falling == 0);
+        REQUIRE(sim.points == 0);
+    }
+    REQUIRE(sim.bowser_fireball_hit(sim.bowser_x, sim.bowser_y));
+    REQUIRE(sim.bowser_falling == 1);
+    REQUIRE(sim.points == kBowserKillPoints / 10);
+
+    // he is scenery from that moment: no more hits to take, and he falls out of the level
+    REQUIRE(!sim.bowser_fireball_hit(sim.bowser_x, sim.bowser_y));
+    for (int f = 0; f < 600 && sim.bowser_live != 0; ++f) {
+        sim.step_bowser();
+    }
+    REQUIRE(sim.bowser_live == 0);
+}
+
+// smb pulls the bridge apart one cell at a time from the axe end back toward the far side, and
+// bowser goes down with the cell he is standing on. the rom's bg cells are the witness
+TEST_CASE("mario_bridge_drops_cell_by_cell") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const int span = lv.bridge_x1 - lv.bridge_x0 + 1;
+
+    REQUIRE(span > 8);
+
+    // the twin first: the collapse takes kBridgeDropFrames a cell, and he only drops once it has
+    // reached the cell he stands on rather than on the frame the axe was touched
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.bowser_live == 1);
+    sim.arm_bridge_drop();
+    REQUIRE(sim.bowser_falling == 0);
+    int dropped_at = -1;
+    for (int f = 0; f < span * kBridgeDropFrames + 8; ++f) {
+        sim.clear_step();
+        if (dropped_at < 0 && sim.bowser_falling != 0) {
+            dropped_at = f;
+        }
+    }
+    CAPTURE(dropped_at, span);
+    REQUIRE(dropped_at > kBridgeDropFrames);
+    REQUIRE(sim.collapse_column < lv.bridge_x0);
+
+    // and the rom: the span thins out over the whole run rather than vanishing in one frame
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    std::vector<int> cells;
+    for (int f = 0; f < span * kBridgeDropFrames + 40; ++f) {
+        gameboy.run_frame();
+        cells.push_back(bg_family_cells(gameboy, kTileBridge, kTileBridgeHi));
+    }
+    // never grows back, ends at nothing, and takes more than a handful of frames getting there
+    int first_empty = -1;
+    for (size_t i = 1; i < cells.size(); ++i) {
+        REQUIRE(cells[i] <= cells[i - 1]);
+        if (first_empty < 0 && cells[i] == 0) {
+            first_empty = static_cast<int>(i);
+        }
+    }
+    CAPTURE(cells.front(), first_empty);
+    REQUIRE(cells.front() > 0);
+    REQUIRE(first_empty > 8);
+    REQUIRE(cells.back() == 0);
+}
+
 TEST_CASE("mario_axe_ends_1_4") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -9634,9 +10129,15 @@ TEST_CASE("mario_axe_ends_1_4") {
     REQUIRE(bridge_frames > 30);
     REQUIRE(bowser_frames > 30);
 
-    // and the touch drops the span, takes him down with it, and starts the clear
+    // and the touch pulls the span apart a cell at a time from the axe end back, rather than all
+    // at once: eight frames in, some of it is still standing, and by the time the whole run has
+    // had its kBridgeDropFrames each there is none of it left and bowser has gone with it
     run(gameboy, 8);
-    REQUIRE(bg_family_cells(gameboy, kTileBridge, kTileBridge) == 0);
+    const int mid = bg_family_cells(gameboy, kTileBridge, kTileBridgeHi);
+    REQUIRE(mid > 0);
+    const int span = kHostLevels[kLevel14].bridge_x1 - kHostLevels[kLevel14].bridge_x0 + 1;
+    run(gameboy, span * kBridgeDropFrames + 60);
+    REQUIRE(bg_family_cells(gameboy, kTileBridge, kTileBridgeHi) == 0);
     REQUIRE(!sprite_box(gameboy, kTileBowserLo, kTileBowserHi).found);
 
     REQUIRE(wait_for_map(gameboy, 900) >= 0);

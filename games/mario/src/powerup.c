@@ -7,6 +7,8 @@
 
 #include "debris.h"
 #include "enemies.h"
+#include "hazards.h"
+#include "states.h"
 #include "hud.h"
 #include "mario.h"
 #include "physics_constants.h"
@@ -241,6 +243,11 @@ static uint8_t step_ball(Fireball* f, uint16_t cam_x) {
     }
     if ((int16_t)f->pos_x + kFireballPx < (int16_t)cam_x ||
         (int16_t)f->pos_x > (int16_t)(cam_x + kScreenWidthPx)) {
+        return 1;
+    }
+    // bowser is not in the enemy pool - he lives in bank 5 beside this file - so he is asked
+    // first, and only for a level that actually carries him
+    if (hazard_active != 0U && hazards_fireball_hit(f->pos_x, f->pos_y) != 0U) {
         return 1;
     }
     return enemies_fireball_hit(f->pos_x, f->pos_y);

@@ -239,6 +239,12 @@ void terrain_init(uint8_t next_area) {
     // a respawn all arrive here with the lcd off and nothing loaded, so it is reloaded beside the
     // terrain rather than tracked
     assets_load_scenery_tiles();
+    // a castle's masonry replaces the ground family's grass in place, so a castle grid's floors,
+    // ceilings and walls all read as the rip's brickwork without a second terrain kind. it has to
+    // land after the plain loader above, which is also what restores the grass for every other type
+    if (level->type == (uint8_t)kLevelTypeCastle) {
+        assets_load_bg_tiles_castle();
+    }
 
     world_x = 0;
     world_y = 0;

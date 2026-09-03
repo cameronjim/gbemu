@@ -160,6 +160,8 @@ def build(bible, roster, source_path, roster_path):
     add("// a fireball or a star kill pays a flat per-kind figure instead, and starts no chain")
     add("#define kGoombaKillPoints %d" % score["goomba"])
     add("#define kKoopaKillPoints %d" % score["koopa_troopa_fire_or_star"])
+    add("// and the fake bowser, whose whole defeat is a fireball count rather than one hit")
+    add("#define kBowserKillPoints %d" % score["bowser_fire_5_hits"])
     add("")
     add("// m8b's hud scoring: what a coin, a broken brick and a powerup pay, the flagpole's five")
     add("// height bands from the bottom up, and the clear card's per-tick time bonus")

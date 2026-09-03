@@ -14,6 +14,12 @@
 // ids past mario's last sprite frame
 void assets_load_bg_tiles(void) BANKED;
 
+// and the castle's own override of that: 1-4's floors, ceilings and walls are the grey masonry
+// course of kCastleBrickTile, not the overworld's grass-capped ground, so a castle load redraws
+// the six ids of the ground family with it. call it after assets_load_bg_tiles, and only for a
+// castle - the plain loader above is what puts the grass back
+void assets_load_bg_tiles_castle(void) BANKED;
+
 // and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into
 // vram BANK 1 at 0x20-0x5d. those ids are the font's own glyphs in bank 0 and collide with nothing:
 // a cgb bg map attribute picks a tile's bank per cell, and every scenery kind's kBlockPalette entry

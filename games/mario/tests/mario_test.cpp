@@ -202,7 +202,11 @@ constexpr uint8_t kBlockTreeTopL = 43;
 constexpr uint8_t kBlockTreeTopM = 44;
 constexpr uint8_t kBlockTreeTopR = 45;
 constexpr uint8_t kBlockTrunk = 46;
-constexpr uint8_t kBlockKindCount = 47;
+// the pole cell the pennant hangs at. the shaft stands in the middle of its block, so the flag
+// reaches 8 px into the pole's own cell to touch it: that half of the cell is the pennant's white
+// and the other half the shaft's greens, which is why it is a kind of its own
+constexpr uint8_t kBlockFlagPoleCloth = 47;
+constexpr uint8_t kBlockKindCount = 48;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -330,12 +334,20 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockPipeBodyL:
     case kBlockPipeBodyR:
         return tile >= 0xB0 && tile <= 0xB8;
+    // the whole flag is in vram bank 1 now that the shaft stands in the middle of its block: a
+    // centred shaft straddles the two tiles of its cell and bank 0 had one id free, not two. the
+    // pole's top-left tile is the shaft's black left outline (kTileFlagPoleL, its lit pair is the
+    // right tile at 0x5a), the ball's is its left half, and the pennant is 0x31-0x34 - two tiles in
+    // the cloth cell's right column and two in the pole cell's left one. the cloth cell's own
+    // top-left quadrant is the blank one, because the flag hangs in the right half of that cell
     case kBlockFlagPole:
-        return tile == 0xB9;
+        return tile == 0x59;
     case kBlockFlagBall:
         return tile == 0x30;
     case kBlockFlagCloth:
-        return tile >= 0x31 && tile <= 0x34;
+        return tile == 0x5C;
+    case kBlockFlagPoleCloth:
+        return tile == 0x33;
     case kBlockCastle:
         return tile == 0x22;
     case kBlockCastleCrenel:
@@ -672,8 +684,12 @@ int pipe_face(const gb::Gameboy& gameboy, const Mario& m) {
     return face_of(gameboy, m, 0xB0, 0xB7);
 }
 
+// the shaft's lit column, which is the right tile of the pole's cell (kTileFlagPoleR): its first
+// pixel column is the lit one, so the x this returns is the shaft itself. the cell's left tile is
+// not in the range on purpose - the pennant replaces it at whatever row the flag has reached, and
+// the descent would otherwise move the x this reports by half a cell
 int pole_face(const gb::Gameboy& gameboy, const Mario& m) {
-    return face_of(gameboy, m, 0xB8, 0xBF);
+    return face_of(gameboy, m, 0x5A, 0x5A);
 }
 
 // the level's first pipe, from the compiler's own probes rather than the bible's json
@@ -750,9 +766,11 @@ inline uint8_t cam_ease(uint8_t cam_y, uint8_t want, uint8_t on_ground) {
     return static_cast<uint8_t>(want > cam_y ? cam_y + step : cam_y - step);
 }
 constexpr int kClearSlidePx = 2;
-// mario.h kClearPoleOffsetPx: the clear parks his box this far left of the flag block so the
-// climb pose's gripping hand lands on the shaft, which is painted in that block's left 3 px
-constexpr int kClearPoleOffsetPx = 12;
+// mario.h kClearPoleOffsetPx: the clear parks his box this far left of the flag block so the climb
+// pose's gripping hand lands on the shaft, and mario.h kFlagShaftPx, the shaft's lit column inside
+// that block - px 8, the middle of the 16 px cell
+constexpr int kClearPoleOffsetPx = 6;
+constexpr int kFlagShaftPx = 8;
 // mario.h kCastleDoorOffset: the column the clear walk ends at, counted in from the keep's left
 constexpr int kCastleDoorOffset = 2;
 constexpr int kHitInsetPx = 2;
@@ -779,7 +797,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -5294,10 +5312,11 @@ TEST_CASE("mario_autopilot_completes_1_1") {
         const int pole = pole_face(gameboy, m);
         if (i >= 2) {
             // holding the pole: the clear stands him beside the shaft rather than straddling it
-            // (kClearPoleOffsetPx), so his art starts that far left of the pole's own lit column,
-            // less the one column of transparent art. he only leaves that alignment on the frame
+            // (kClearPoleOffsetPx), so his art starts that far left of the pole's block, less the
+            // one column of transparent art - and the shaft's lit column, which is what pole_face
+            // finds, is kFlagShaftPx into that block. he only leaves that alignment on the frame
             // the slide ends and he flips across to the pole's far side
-            if (pole < 0 || pole - m.left != kClearPoleOffsetPx - kMarioArtInset) {
+            if (pole < 0 || pole - m.left != kFlagShaftPx + kClearPoleOffsetPx - kMarioArtInset) {
                 break;
             }
             ++held_pole;
@@ -5305,7 +5324,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
             // on the grass a row below it: the block's own cell is the one his feet come alongside,
             // read off the shaft he is holding rather than off the camera, which by then has the
             // ground row off the bottom of the screen
-            if (tile_in_kind_family(bg_tile_at(gameboy, pole + 8, m.top + kPlayerBoxPx + 4),
+            if (tile_in_kind_family(bg_tile_at(gameboy, pole, m.top + kPlayerBoxPx + 4),
                                     kBlockHard)) {
                 feet_on_base = true;
             }
@@ -5899,6 +5918,11 @@ TEST_CASE("mario_flagpoles_stand_on_a_hard_block") {
         REQUIRE(solid_at(lv, column, base + 1));
         // and the ball caps the shaft one row above its top, which the rips put at row 2
         REQUIRE(lv.grid[column][lv.flag_top_row - 1] == kBlockFlagBall);
+        // the shaft's own top row is the one the pennant is hanging at, so it wears the kind that
+        // draws the flag's far half in the pole cell's left tile; the rows under it are plain shaft
+        REQUIRE(lv.grid[column][lv.flag_top_row] == kBlockFlagPoleCloth);
+        REQUIRE(lv.grid[column - 1][lv.flag_top_row] == kBlockFlagCloth);
+        REQUIRE(lv.grid[column][lv.flag_top_row + 1] == kBlockFlagPole);
     }
     // 1-4 ends on the axe, so it has no pole and no block under one
     REQUIRE(kHostLevels[kLevel14].has_flag == 0);
@@ -8192,7 +8216,10 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(LEVEL_1_3_FLAG_COLUMN == 149);
     REQUIRE(LEVEL_1_3_FLAG_TOP_ROW == 3);
     REQUIRE(LEVEL_1_3_FLAG_BASE_ROW == 11);
-    for (uint8_t row = LEVEL_1_3_FLAG_TOP_ROW; row <= LEVEL_1_3_FLAG_BASE_ROW; ++row) {
+    // the top row of the shaft is the pennant's, so it is the pole-with-cloth kind rather than the
+    // plain one (mario_flagpoles_stand_on_a_hard_block pins that for all three levels)
+    REQUIRE(kLevel13Grid[149][LEVEL_1_3_FLAG_TOP_ROW] == kBlockFlagPoleCloth);
+    for (uint8_t row = LEVEL_1_3_FLAG_TOP_ROW + 1; row <= LEVEL_1_3_FLAG_BASE_ROW; ++row) {
         REQUIRE(kLevel13Grid[149][row] == kBlockFlagPole);
     }
     REQUIRE(kLevel13Grid[149][2] == kBlockFlagBall);
@@ -8673,11 +8700,16 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 47);
+    REQUIRE(kBlockKindCount == 48);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);
     REQUIRE(kBlockTrunk == 46);
+    // and the pennant's pole cell, appended past them for the centred shaft. walk-through like
+    // every other flag cell, and outside the decor range for the same reason the trunk is
+    REQUIRE(kBlockFlagPoleCloth == 47);
+    REQUIRE(kBlockFloorTable[kBlockFlagPoleCloth] == 0);
+    REQUIRE((kBlockFlagPoleCloth < kBlockFirstDecor || kBlockFlagPoleCloth > kBlockLastDecor));
 
     // the floor table is the whole of terrain.c's answer for a cell
     for (uint8_t kind : {kBlockTreeTopL, kBlockTreeTopM, kBlockTreeTopR}) {

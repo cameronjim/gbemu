@@ -15,7 +15,7 @@
 void assets_load_bg_tiles(void) BANKED;
 
 // and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into
-// vram BANK 1 at 0x20-0x5a. those ids are the font's own glyphs in bank 0 and collide with nothing:
+// vram BANK 1 at 0x20-0x5d. those ids are the font's own glyphs in bank 0 and collide with nothing:
 // a cgb bg map attribute picks a tile's bank per cell, and every scenery kind's kBlockPalette entry
 // carries kCamAttrVram1. terrain_init calls this beside the loader above
 void assets_load_scenery_tiles(void) BANKED;
@@ -54,7 +54,7 @@ void assets_load_enemy_palettes_castle(void) BANKED;
 // white in all three level sets
 void assets_load_hud_font(void) BANKED;
 
-// the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5a)
+// the world map screen's own new tile kinds, all in vram bank 1 at ids the scenery run (0x20-0x5d)
 // never claimed: water and path, a round node marker (one quadrant tile, stamped four times with
 // the cgb flip bits the way a mirrored hill/bush kind already is), and the CLEAR LIST panel's own
 // border/checkbox art - a corner and two straight edges, each reused by flip for the other three

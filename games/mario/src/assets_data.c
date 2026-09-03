@@ -518,34 +518,53 @@ static const uint8_t kPipeSideTiles[144] = {
 };
 // clang-format on
 
-// the flag shaft, which is the only part of the flag inside the pinned terrain block
+// the flag shaft, standing in the middle of its block rather than in the left quarter of it: three
+// px at x7-x9 of the 16px cell, which straddles the cell's two tiles. the left tile carries the
+// shaft's black left outline - the column the pennant's own right edge butts against - and the
+// right tile the two lit columns, bright green then dark. one 8x8 tile could not hold a centred
+// shaft, which is why the flag left vram bank 0 (kTileBridge in mario.h)
 // clang-format off
-static const uint8_t kFlagPoleTile[16] = {
-    // pole: two green pixels with a black shadow
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
+static const uint8_t kFlagPoleTiles[32] = {
+    // left tile: the outline at x7, every row
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    0x01, 0x01, // .......#
+    // right tile: the lit pair at x8-x9
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
+    0x80, 0x40, // -+......
 };
 // clang-format on
 
-// the ball and the white pennant that hangs off the pole's left
+// the ball's left half and the white pennant that hangs off the pole's left. the pennant is the
+// same 16x16 shape it always was, only 8px further right so its black right edge lands on the
+// shaft's outline: that puts its left half in the cloth cell's right tile column (kTileFlagClothT/
+// B) and its right half in the pole cell's left one (kTileFlagClothPoleT/B, the kBlockFlagPoleCloth
+// kind). those two tiles carry the shaft's outline at x7 on every row, the pennant's rows included,
+// so the shaft runs unbroken behind the flag
 // clang-format off
 static const uint8_t kFlagHeadTiles[80] = {
-    // the ball that caps the pole, with the shaft running out of its bottom
+    // the ball's left half. the ball is 6px wide, centred on the shaft at x5-x10, so it straddles
+    // the cell's tiles the way the shaft does; the shaft runs out of its bottom row
     0x00, 0x00, // ........
-    0x78, 0x78, // .####...
-    0xC4, 0xBC, // #-+++#..
-    0xC4, 0xBC, // #-+++#..
-    0x84, 0xFC, // #++++#..
-    0x84, 0xFC, // #++++#..
-    0x78, 0x78, // .####...
-    0x70, 0x10, // .--#....
-    // pennant upper left
+    0x03, 0x03, // ......##
+    0x06, 0x05, // .....#-+
+    0x06, 0x05, // .....#-+
+    0x04, 0x07, // .....#++
+    0x04, 0x07, // .....#++
+    0x03, 0x03, // ......##
+    0x01, 0x01, // .......#
+    // pennant near half, top: the cloth cell's upper right tile
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -554,16 +573,7 @@ static const uint8_t kFlagHeadTiles[80] = {
     0x03, 0x03, // ......##
     0x0F, 0x0C, // ....##--
     0x3F, 0x30, // ..##----
-    // pennant upper right
-    0x00, 0x00, // ........
-    0x03, 0x03, // ......##
-    0x0F, 0x0D, // ....##-#
-    0x3F, 0x31, // ..##---#
-    0xFF, 0xC1, // ##-----#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    // pennant lower left
+    // pennant near half, bottom: the cloth cell's lower right tile
     0x3F, 0x30, // ..##----
     0x0F, 0x0C, // ....##--
     0x03, 0x03, // ......##
@@ -572,7 +582,16 @@ static const uint8_t kFlagHeadTiles[80] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
-    // pennant lower right
+    // pennant far half, top: the pole cell's upper left tile, its last column the shaft's outline
+    0x01, 0x01, // .......#
+    0x03, 0x03, // ......##
+    0x0F, 0x0D, // ....##-#
+    0x3F, 0x31, // ..##---#
+    0xFF, 0xC1, // ##-----#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    // pennant far half, bottom: the pole cell's lower left tile
     0xFF, 0x01, // -------#
     0xFF, 0x01, // -------#
     0xFF, 0x01, // -------#
@@ -580,7 +599,7 @@ static const uint8_t kFlagHeadTiles[80] = {
     0x3F, 0x31, // ..##---#
     0x0F, 0x0D, // ....##-#
     0x03, 0x03, // ......##
-    0x00, 0x00, // ........
+    0x01, 0x01, // .......#
 };
 // clang-format on
 
@@ -1081,20 +1100,12 @@ static const uint8_t kBushTiles[128] = {
 };
 // clang-format on
 
-// a block's four tiles all take one attribute byte, and the ball's block is scenery in vram
-// bank 1 - so the shaft under it and the sky beside it need bank-1 copies of their own
+// the tail of the scenery run: the blank quadrant a bank-1 cell needs (bank 0's sky tile is the map
+// screen's own art over here) and the ball's right half, which is the ball's other three columns
+// over the shaft's two lit ones
 // clang-format off
-static const uint8_t kScenPoleTiles[32] = {
-    // a second copy of the shaft, in vram bank 1
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    0x70, 0x10, // .--#....
-    // the empty cell beside the ball
+static const uint8_t kScenTailTiles[32] = {
+    // the empty half of the cloth cell
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
@@ -1103,6 +1114,15 @@ static const uint8_t kScenPoleTiles[32] = {
     0x00, 0x00, // ........
     0x00, 0x00, // ........
     0x00, 0x00, // ........
+    // the ball's right half, the shaft running out of its bottom row
+    0x00, 0x00, // ........
+    0xC0, 0xC0, // ##......
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0x20, 0xE0, // ++#.....
+    0xC0, 0xC0, // ##......
+    0x80, 0x40, // -+......
 };
 // clang-format on
 
@@ -1225,7 +1245,7 @@ static const uint8_t kCoinTiles[64] = {
 // which is 99 background tiles where the old placeholder art was 21. bank 0's tile space cannot
 // hold that beside the sprites, so the art is split: everything a level's terrain needs stays in
 // vram bank 0, at the pinned 0xa0-0xbf block and the eight ids past mario's last sprite frame, and
-// the scenery - the castle, the flag's head, and 1-1's clouds, hills and bushes - goes to vram
+// the scenery - the castle, the whole flag, and 1-1's clouds, hills and bushes - goes to vram
 // bank 1, which nothing else in the game has ever used for tiles. a cgb bg map attribute picks a
 // tile's bank per cell (kCamAttrVram1 in mario.h), so the two sets coexist with no id conflict at
 // all: the font keeps its own glyph range in bank 0 and never has to be reloaded
@@ -1238,7 +1258,6 @@ void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileHardTl, 4, kHardTiles);
     set_bkg_data(kTilePipeLipL, 9, kPipeTiles);
     set_bkg_data(kTileThin, 2, kThinTiles);
-    set_bkg_data(kTileFlagPole, 1, kFlagPoleTile);
     set_bkg_data(kTileBridge, 2, kBridgeAxeTiles);
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
 }
@@ -1252,11 +1271,12 @@ void assets_load_scenery_tiles(void) BANKED {
     set_bkg_data(kTileLavaTop, 2, kLavaTiles);
     set_bkg_data(kTileCastleWall, 14, kCastleTiles);
     set_bkg_data(kTileCastleCrenelInner, 1, kCastleCrenelInnerTile);
-    set_bkg_data(kTileFlagBall, 5, kFlagHeadTiles);
+    set_bkg_data(kTileFlagBallL, 5, kFlagHeadTiles);
     set_bkg_data(kTileCloudCapTl, 16, kCloudTiles);
     set_bkg_data(kTileHillPeakTl, 12, kHillTiles);
     set_bkg_data(kTileBushCapTl, 8, kBushTiles);
-    set_bkg_data(kTileScenPole, 2, kScenPoleTiles);
+    set_bkg_data(kTileFlagPoleL, 2, kFlagPoleTiles);
+    set_bkg_data(kTileScenBlank, 2, kScenTailTiles);
     // the sideways pipe is solid terrain, not scenery, but vram bank 0 has no tile ids left: it
     // rides here with the scenery and reads back through kCamAttrVram1 the same way
     set_bkg_data(kTilePipeSideTl, 9, kPipeSideTiles);

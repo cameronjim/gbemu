@@ -110,12 +110,18 @@ uint8_t flow_flag_step(void) BANKED {
     ++flag_timer;
     if (flag_timer >= (uint8_t)kClearFlagStepFrames) {
         flag_timer = 0;
-        // the old cell back to sky, the pennant one row lower: the cloth hangs left of the shaft
+        // the old row back to sky and plain shaft, the pennant one row lower. it takes two cells:
+        // the centred shaft leaves only 8px of the pole's own cell for the flag to touch it in, so
+        // the pennant's near half hangs in the column left of the pole and its far half is the
+        // pole cell's own left tile (kBlockFlagPoleCloth)
         terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row,
                          (uint8_t)kBlockEmpty);
+        terrain_set_cell((int16_t)level->flag_column, (int16_t)flag_row, (uint8_t)kBlockFlagPole);
         ++flag_row;
         terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row,
                          (uint8_t)kBlockFlagCloth);
+        terrain_set_cell((int16_t)level->flag_column, (int16_t)flag_row,
+                         (uint8_t)kBlockFlagPoleCloth);
     }
     return (uint8_t)(flag_row >= level->flag_base_row ? 1U : 0U);
 }

@@ -193,7 +193,14 @@
 #define kBlockTreeTopM 44U
 #define kBlockTreeTopR 45U
 #define kBlockTrunk 46U
-#define kBlockKindCount 47U
+// the one pole cell the pennant is hanging at. the shaft is centred in its block now, so the
+// pennant's 16 px body reaches 8 px into the pole's own cell to touch it - and that half of the
+// cell is the flag's white while the other half is the shaft's greens, which is one palette more
+// than a cell gets. so this kind says "pole with the cloth's near half", and put_face gives its
+// right tile column the plain pole's palette (terrain.c). the descent swaps it down the shaft cell
+// by cell against kBlockFlagPole, the way the cloth column swaps against sky
+#define kBlockFlagPoleCloth 47U
+#define kBlockKindCount 48U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -255,8 +262,9 @@
 #define kTilePipeBodyL 0xB6U
 #define kTilePipeBodyM 0xB7U
 #define kTilePipeBodyR 0xB8U
-// the pole shaft, the bridge deck, the axe, and the world coin's four quadrants
-#define kTileFlagPole 0xB9U
+// the bridge deck, the axe, and the world coin's four quadrants. 0xb9 held the pole shaft until the
+// shaft was centred in its cell: a centred shaft straddles the two tiles of its block and bank 0
+// had no second id free, so the whole flag went to bank 1 and 0xb9 is the one spare id here
 #define kTileBridge 0xBAU
 #define kTileAxe 0xBBU
 #define kTileCoinTl 0xBCU
@@ -274,7 +282,7 @@
 #define kTileThin 0xFEU
 #define kTileThinUnder 0xFFU
 
-// --- the scenery run, 0x20-0x5a, in VRAM BANK 1 -------------------------------------------------
+// --- the scenery run, 0x20-0x5d, in VRAM BANK 1 -------------------------------------------------
 // these ids overlap the font's glyphs and half the sprite families, and collide with none of them:
 // a cgb bg map attribute picks a tile's vram bank per cell, so a block tagged kCamAttrVram1 reads
 // its four tiles out of bank 1, which nothing else in this game has ever stored a tile in. bank 0
@@ -296,11 +304,14 @@
 #define kTileCastleDoorTr 0x2DU
 #define kTileCastleDoorBl 0x2EU
 #define kTileCastleDoorBr 0x2FU
-#define kTileFlagBall 0x30U
-#define kTileFlagClothTl 0x31U
-#define kTileFlagClothTr 0x32U
-#define kTileFlagClothBl 0x33U
-#define kTileFlagClothBr 0x34U
+// the flag, all of it in bank 1 since the shaft was centred. the pennant is 16 px wide and its
+// right edge is the shaft's own left outline, so it straddles two cells: its left half is the cloth
+// cell's right tile column and its right half is the pole cell's left one
+#define kTileFlagBallL 0x30U
+#define kTileFlagClothT 0x31U
+#define kTileFlagClothB 0x32U
+#define kTileFlagClothPoleT 0x33U
+#define kTileFlagClothPoleB 0x34U
 // a cloud is one 16x32 mass split into two block rows: the cap's, then the middle's
 #define kTileCloudCapTl 0x35U
 #define kTileCloudCapTr 0x36U
@@ -338,16 +349,21 @@
 #define kTileBushMidTr 0x56U
 #define kTileBushMidBl 0x57U
 #define kTileBushMidBr 0x58U
-// a block's four tiles all take one attribute byte, so the pole ball's cell cannot mix a bank-1
-// tile with the bank-0 shaft beside it: it gets its own copies
-#define kTileScenPole 0x59U
-#define kTileScenBlank 0x5AU
+// the shaft, split across the two tiles of its block so it can stand in the middle of it: the left
+// tile carries its black left outline at px 7 and the right tile the two lit columns at px 8-9. the
+// pair is contiguous because the tests read the lit column off the right tile (pole_face)
+#define kTileFlagPoleL 0x59U
+#define kTileFlagPoleR 0x5AU
 // the inner crenel's one tile, the outer merlon redrawn with its notch and its cap filled in
 #define kTileCastleCrenelInner 0x5BU
-#define kTileSceneryLast 0x5BU
+// the empty half of the cloth cell, and the ball's right half. a bank-1 cell cannot borrow bank 0's
+// sky tile for its blank quadrants, so it gets one of its own
+#define kTileScenBlank 0x5CU
+#define kTileFlagBallR 0x5DU
+#define kTileSceneryLast 0x5DU
 
 // --- 1-3's tree run, 0x0a-0x11, also in VRAM BANK 1 ---------------------------------------------
-// the scenery run above is contiguous and exactly full: 0x5c-0x5f is only four ids and 0x60-0x71
+// the scenery run above is contiguous and exactly full: 0x5e-0x5f is only two ids and 0x60-0x71
 // is the map screen's own bank-1 art. so the tree takes the eight free ids under the map screen's
 // castle instead (bank-1 bg 0x00-0x09, see assets.h), which nothing else in either screen touches.
 //
@@ -620,10 +636,11 @@
 // beat: grab the pole, slide down it with the flag coming down alongside, flip to the pole's far
 // side and wait there while the flag finishes, hop off, walk to the castle and step into the door
 #define kClearSlidePx 2
-// the pole shaft is painted in the left 3 px of its block (kFlagPoleTile), so his box sits this
-// far left of that block while he climbs: it puts the gripping hand of the climb pose on the shaft
-// with his body beside the pole rather than straddling it
-#define kClearPoleOffsetPx 12
+// the shaft's lit column is px 8 of its block - the middle of it (kFlagPoleTiles in assets_data.c)
+// - so his box sits this far left of that block while he climbs: it lands the last lit column of
+// the climb pose on the shaft with his body beside the pole rather than straddling it
+#define kFlagShaftPx 8
+#define kClearPoleOffsetPx 6
 // and the step across to the pole's far side, which is where smb's mario finishes the slide
 #define kClearFlipPx 16
 // the pause on that side. in smb it lasts as long as the flag needs, so this is a floor and the

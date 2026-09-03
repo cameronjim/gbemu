@@ -1032,6 +1032,7 @@ def compile_grid(bible, level_type):
 
     bridge = None
     bridge_row = GROUND_ROW
+    bowser_fire_column = 0
     axe_column = None
     axe_row = GROUND_ROW - 1
     if measured_bridge is not None:
@@ -1074,6 +1075,11 @@ def compile_grid(bible, level_type):
             # long before it finds the bridge deck he is standing on
             row = e["y"] if e.get("y") is not None else surface_row(grid, column, first_row) - 1
             objects.append((column, row, OBJ_BOWSER, span))
+            # and the column his flame spawner arms at, when the bible read one off its rip: the
+            # zone runs from there to wherever he is, and hazards.c throws from the right edge of
+            # the view over the whole of it. clamped left of his own cell or there is no zone at all
+            if e.get("fire_from") is not None:
+                bowser_fire_column = max(0, min(int(e["fire_from"]), column - 1))
         elif e["kind"] == "lift_horizontal":
             objects.append((e["x"], e["y"], OBJ_LIFT_H, LIFT_MIN_SPAN))
         elif e["kind"] == "lift_vertical":
@@ -1150,6 +1156,7 @@ def compile_grid(bible, level_type):
         "objects": objects,
         "bridge": bridge,
         "bridge_row": bridge_row,
+        "bowser_fire_column": bowser_fire_column,
         "axe_column": axe_column,
         "axe_row": axe_row,
         "jumps": jump_targets,
@@ -1487,7 +1494,16 @@ def write_header(out_dir, slug, level, source_path):
         f.write("#define %s_AXE_ROW %dU\n" % (upper, level["axe_row"]))
         f.write("#define %s_BRIDGE_X0 %dU\n" % (upper, bridge[0]))
         f.write("#define %s_BRIDGE_X1 %dU\n" % (upper, bridge[1]))
-        f.write("#define %s_BRIDGE_ROW %dU\n\n" % (upper, level["bridge_row"]))
+        f.write("#define %s_BRIDGE_ROW %dU\n" % (upper, level["bridge_row"]))
+        f.write("// the column the fake bowser's flame spawner arms at (see SCHEMA.md): smb1 has\n")
+        f.write("// his flames come at mario off the right edge of the view for several screens\n")
+        f.write("// before the bridge, and this is where that band starts. 0 on every other level\n")
+        f.write("#define %s_BOWSER_FIRE_COLUMN %dU\n" % (upper, level["bowser_fire_column"]))
+        f.write("// and that column in world px, less one - which comes out 0xffff when the\n")
+        f.write("// level named no zone at all, the same value hazard_min_x means \"no hazard\"\n")
+        f.write("// by. hazards.c reads this and not the column: bank 5 has no room for a shift\n")
+        f.write("#define %s_BOWSER_FIRE_X %dU\n\n"
+                % (upper, ((level["bowser_fire_column"] << 4) - 1) & 0xFFFF))
         f.write(
             "extern const uint8_t %s_blocks[%s_LENGTH_COLUMNS][%s_ROW_STRIDE];\n\n" % (slug, upper, upper)
         )
@@ -1811,6 +1827,7 @@ def compile_level(bible, bank, area_bank):
         "castle_column": built["castle_column"],
         "bridge": built["bridge"],
         "bridge_row": built["bridge_row"],
+        "bowser_fire_column": built["bowser_fire_column"],
         "axe_column": built["axe_column"],
         "axe_row": built["axe_row"],
         "start_column": start_column,

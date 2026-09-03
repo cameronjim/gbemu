@@ -60,7 +60,7 @@
     {"x": 76, "y": 9, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured", "notes": "pivot one row over the hall floor, so the block itself is a hop"},
     {"x": 84, "y": 9, "kind": "firebar", "length": 6, "speed": "slow", "direction": "cw", "confidence": "measured"},
     {"x": 88, "y": 4, "kind": "firebar", "length": 6, "speed": "slow", "direction": "ccw", "confidence": "measured", "notes": "the high bar under the roof stub, out of a walker's reach. the nes rip catches it pointing down-left where all six of the others point down-right by the same angle - the exact mirror, which is a bar turning the other way"},
-    {"x": 135, "y": 9, "kind": "bowser_fake", "confidence": "measured", "notes": "the rip draws him two columns wide and two rows tall with his feet on the bridge deck; mariowiki: a little goomba in disguise"}
+    {"x": 135, "y": 9, "kind": "bowser_fake", "fire_from": 92, "confidence": "measured", "notes": "the rip draws him two columns wide and two rows tall with his feet on the bridge deck; mariowiki: a little goomba in disguise. \"fire_from\" is the column his flame spawner arms at: the nes rip draws three of his flames in flight before the bridge room - a 24x8 dart at 101.75-103.19/8.06-8.50, a second at 114.50-115.94/9.06-9.50 and a third at 127.00-128.44/10.06-10.50, so cells 102/8, 115/9 and 127/10 - and smb1 spawns them at the right edge of the view, so a flame the rip catches at column 102 came in while the camera was up to a screen (ten columns) left of it. 92 is that camera: 102 less a screen, in the open hall, and it puts all three of the rip's flames inside the zone"}
   ],
   "areas": [],
   "castle_end": null,

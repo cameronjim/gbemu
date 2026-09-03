@@ -1030,6 +1030,20 @@
 // to cross the band a body standing on the same deck occupies or it is no threat at all: 18 puts
 // its 8 px squarely inside small mario's 16 and big mario's 32
 #define kBowserFireJawPx 18
+// the fire zone. smb1 arms his flame spawner several screens before the bridge and the flames come
+// at mario off the RIGHT EDGE of the view while bowser himself is still off screen, at one of a
+// small table of rows smb1 picks from mario's own y; only once he is on screen do they leave his
+// jaw. the level says where the band starts (LevelInfo bowser_fire_x, read off 1-4's rip,
+// which draws three flights of it before the bridge room). the table below is ours: the block row
+// mario's feet stand in and the three over it, which is the shape smb1's has - one flame he has
+// to jump, one he takes standing tall, two that sail over small mario's head. four consecutive
+// rows, so hazards.c masks his walk tick for the height rather than carrying a table and an
+// index into it: bank 5 had no bytes for either, and the tick is as good a shuffle as any
+#define kBowserFireZoneRows 4U
+// the mask that picks one of them, in px off his feet row: 0, 16, 32 or 48
+#define kBowserFireZoneRowMask 0x30U
+// where in a 16 px row the 8 px dart flies: centred, so a row's flame reads as that row's
+#define kBowserFireZoneInsetPx 4
 // roster.json: five fireballs defeat him and pay 5000. the sixth would be the axe's job
 #define kBowserFireballHits 5U
 // how many frames each of his two drawn frames holds for; a power of two, so the swap is a mask

@@ -791,6 +791,26 @@ constexpr int kClearPoleOffsetPx = 6;
 constexpr int kFlagShaftPx = 8;
 // mario.h kCastleDoorOffset: the column the clear walk ends at, counted in from the keep's left
 constexpr int kCastleDoorOffset = 2;
+// and mario.h kClearWalkBlocks: the run a level whose compiler placed no castle and no retainer
+// falls back to. 1-4 has a retainer, so its own walk stops at toad_column - 1 instead
+constexpr int kClearWalkBlocks = 5;
+// the toad room past 1-4's axe (mario.h, games/mario/src/toad.c)
+constexpr int kToadWidthPx = 16;
+constexpr int kToadHeightPx = 24;
+constexpr uint8_t kToadHoldFrames = 180;
+constexpr uint8_t kTileToadFirst = 0xC8;
+constexpr uint8_t kTileToadLast = 0xCF;
+// the sign: one re-encoded glyph id per distinct character of its four lines, in this order, at
+// bg ids 0xec-0xfd in vram bank 1, laid down four columns left of the retainer
+constexpr uint8_t kTileSignFirst = 0xEC;
+constexpr uint8_t kTileSignLast = 0xFD;
+constexpr int kToadSignLines = 4;
+constexpr int kToadSignColumnsLeft = 4;
+constexpr int kToadSignTileRow = 15;
+constexpr int kToadSignTileRowStep = 2;
+constexpr const char* kToadSignText[kToadSignLines] = {"THANK YOU MARIO!", "BUT OUR PRINCESS",
+                                                       "IS IN ANOTHER", "CASTLE!"};
+constexpr const char* kSignGlyphChars = "THANKYOUMRI!BPCESL";
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
 constexpr int kLevelHeightPx = 240;
@@ -963,9 +983,21 @@ constexpr int kBowserFireFrames = 130;
 constexpr int kBowserFireWidthPx = 24;
 constexpr int kBowserFireHeightPx = 8;
 constexpr int kBowserFireSubpx = 384;
-constexpr int kBowserFireJawPx = 18;
+// he faces left, so his jaw is the leftmost thing on him: the mouth in kBowserTiles opens at
+// x 0-5, y 4-11 of his box. the dart's RIGHT edge starts at kBowserJawPx - inside his head - so
+// the flame comes out of the mouth instead of appearing already clear of him, and kBowserFireJawPx
+// is the mouth's own y. it would sail over a small mario's head from there, so the dart sinks a px
+// a frame for kBowserFireDropFrames, which lands it on the band the old fixed 18 put it in
+constexpr int kBowserJawPx = 8;
+constexpr int kBowserFireJawPx = 6;
+constexpr int kBowserFireDropPx = 12;
+constexpr uint8_t kBowserFireDropFrames = 12;
 constexpr int kBowserFireLifeFrames = 100;
 constexpr int kBowserAnimFrames = 16;
+// and the tell: hazards.c swaps his head's own sprite for the open-jaw pair over the last of the
+// wait for a throw, which is smb's half-second of mouth before the flame
+constexpr int kBowserJawOpenFrames = 30;
+constexpr uint8_t kTileBowserJaw = 0xBC;
 // m22's fire zone: while the camera is at or past the level's own zone column and bowser is still
 // off the right edge, the dart comes in at that edge instead, at the block row mario's feet stand
 // in or one of the three over it - his own walk tick masked picks which. the four rows are ours;
@@ -1222,6 +1254,10 @@ struct PlayerSim {
     uint16_t fire_x = 0;
     int16_t fire_y = 0;
     uint16_t fire_accum = 0;
+    // how many frames of the jaw throw's swoop are left. a dart out of his mouth leaves it at the
+    // jaw's own height and sinks a px a frame onto the band a body on his deck fills; a zone dart
+    // is aimed at one of mario's own rows to begin with and gets none
+    uint8_t fire_drop = 0;
     uint16_t axe_x = 0;
     int16_t axe_y = 0;
     uint8_t axe_live = 0;
@@ -2112,6 +2148,32 @@ struct PlayerSim {
         return at_flag() || axed;
     }
 
+    // toad.c's toad_walk_end: the column the walk off the axe pedestal stops in, a block short of
+    // the retainer where the bible named one and the old fixed run along the pedestal where it did
+    // not, clamped inside the level either way
+    uint16_t clear_walk_stop_x() const {
+        int column = lv->has_toad != 0 ? lv->toad_column - 1 : lv->axe_column + kClearWalkBlocks;
+
+        if (column > lv->columns - 1) {
+            column = lv->columns - 1;
+        }
+        return static_cast<uint16_t>(column * kBlockPx);
+    }
+
+    // and player.c's kClearWalk for a castle: right held through the physics pass, so gravity
+    // carries him off the lip of the pedestal and into the room past it, until he is on his mark
+    // and back on the ground. answers the frames it took, or -1 if he never got there
+    int clear_walk_off_axe(int cap) {
+        for (int f = 0; f < cap; ++f) {
+            step(kInRight);
+            if (x_pos >= clear_walk_stop_x() && on_ground != 0) {
+                stop_x();
+                return f + 1;
+            }
+        }
+        return -1;
+    }
+
     void stop_x() {
         x_speed = 0;
         x_accum = 0;
@@ -2430,6 +2492,10 @@ struct PlayerSim {
                 return;
             }
             fire_x = static_cast<uint16_t>(fire_x - (sum >> 8));
+            if (fire_drop != 0) {
+                --fire_drop;
+                ++fire_y;
+            }
             --fire_ttl;
             return;
         }
@@ -2438,6 +2504,7 @@ struct PlayerSim {
             return;
         }
         fire_timer = 0;
+        fire_drop = 0;
         const uint16_t edge = static_cast<uint16_t>(cam_x + kScreenWidthPx);
 
         if (bowser_x >= edge) {
@@ -2455,11 +2522,15 @@ struct PlayerSim {
                                           (bowser_tick & kBowserFireZoneRowMask) +
                                           kBowserFireZoneInsetPx);
         } else {
-            if (bowser_x < kBowserFireWidthPx) {
+            // out of his jaw: the dart's right edge starts at his mouth, kBowserJawPx into the box
+            // he faces left out of, so the flame is seen to leave the head rather than appearing
+            // already clear of it - and it swoops from the jaw's height down into a walker's band
+            if (bowser_x + kBowserJawPx < kBowserFireWidthPx) {
                 return;
             }
-            fire_x = static_cast<uint16_t>(bowser_x - kBowserFireWidthPx);
+            fire_x = static_cast<uint16_t>(bowser_x + kBowserJawPx - kBowserFireWidthPx);
             fire_y = static_cast<int16_t>(bowser_y + kBowserFireJawPx);
+            fire_drop = kBowserFireDropFrames;
         }
         fire_accum = 0;
         fire_ttl = kBowserFireLifeFrames;
@@ -9003,10 +9074,10 @@ TEST_CASE("mario_1_4_blocks_firebars_and_the_bridge_match_the_measured_map") {
         if (lv.objects[i].kind == kObjFirebar) {
             bars.push_back(&lv.objects[i]);
         }
-        // neither rip draws a lift anywhere in the level: what the prose pass read as a deck over
-        // the bridge is a bowser fireball in flight, and the bridge's own thirteen-column pit says
-        // "lift": false so the compiler's wide-castle-gap deck stays out of a measured map
-        REQUIRE(lv.objects[i].kind != kObjLiftH);
+        // the one deck the level carries is the measured lift over the bridge, and it is
+        // vertical in neither sense: the compiler's wide-castle-gap rule is still kept off the
+        // bridge's own thirteen-column pit by "lift": false, so nothing here is a guessed deck.
+        // mario_1_4_carries_one_lift_over_the_bridge owns the deck itself
         REQUIRE(lv.objects[i].kind != kObjLiftV);
     }
     REQUIRE(bars.size() == want_bars.size());
@@ -10223,7 +10294,8 @@ TEST_CASE("mario_bowser_dart_flies_its_life") {
     sim.load_level(kLevel14);
     REQUIRE(sim.bowser_live == 1);
 
-    // his feet come back to the deck row, so his jaw is a block above it either way
+    // his feet come back to the deck row whatever his hop is doing, so the box the jaw is
+    // measured off is the same box either way
     const int16_t deck_top = static_cast<int16_t>(lv.bridge_row * kBlockPx);
     REQUIRE(sim.bowser_deck_y + kBowserHeightPx == deck_top);
 
@@ -10241,10 +10313,15 @@ TEST_CASE("mario_bowser_dart_flies_its_life") {
     REQUIRE(sim.fire_ttl == kBowserFireLifeFrames);
     const uint16_t jaw = sim.fire_x;
 
-    REQUIRE(jaw == static_cast<uint16_t>(sim.bowser_x - kBowserFireWidthPx));
-    // the cell a standing body fills, which is the one over the deck
-    REQUIRE(sim.fire_y >= deck_top - kBlockPx);
-    REQUIRE(sim.fire_y + kBowserFireHeightPx <= deck_top);
+    // it starts in his mouth: the right edge lands on kBowserJawPx, which is inside the 32 px
+    // box, so the dart and his body overlap on the throw frame instead of the dart appearing a
+    // clear width to his left (mario_bowser_dart_starts_inside_his_head has the box arithmetic)
+    REQUIRE(jaw == static_cast<uint16_t>(sim.bowser_x + kBowserJawPx - kBowserFireWidthPx));
+    REQUIRE(jaw + kBowserFireWidthPx > sim.bowser_x);
+    // at the jaw's own height, which is the upper third of him and well over the deck
+    REQUIRE(sim.fire_y == sim.bowser_y + kBowserFireJawPx);
+    REQUIRE(sim.fire_y + kBowserFireHeightPx < deck_top - kBlockPx);
+    const int16_t mouth = sim.fire_y;
 
     uint16_t low = jaw;
     int flown = 0;
@@ -10262,6 +10339,101 @@ TEST_CASE("mario_bowser_dart_flies_its_life") {
     REQUIRE(jaw - low == kBowserFireLifeFrames * kBowserFireSubpx / 256);
     // which is over half the deck he is standing on, wherever along it he threw from
     REQUIRE(static_cast<int>(jaw - low) > (lv.bridge_x1 - lv.bridge_x0) * kBlockPx / 2);
+    // and the swoop has run out by the end of it: the dart sank the whole kBowserFireDropPx off
+    // the mouth and is sitting in the band a body standing on the deck fills
+    REQUIRE(sim.fire_y == mouth + kBowserFireDropPx);
+    REQUIRE(sim.fire_y >= deck_top - kBlockPx);
+    REQUIRE(sim.fire_y + kBowserFireHeightPx <= deck_top);
+    REQUIRE(sim.fire_drop == 0);
+}
+
+// the throw the user asked for: the flame has to come out of his mouth. it used to spawn with its
+// right edge on his left edge, a whole dart width clear of the jaw, which reads as a flame that
+// appeared out of nothing an inch away and leaves nothing to react to at the range the bridge
+// fight is fought at. so the dart now starts inside his head and swoops down out of it - and this
+// is the arithmetic that says so, box against box, without a frame of the rom in it
+TEST_CASE("mario_bowser_dart_starts_inside_his_head") {
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.bowser_live == 1);
+
+    // his mouth: he faces left whichever way he walks, so it is the left of his box. the art puts
+    // it at x 0-5, y 4-11 of the 32, and the dart is thrown from inside that
+    REQUIRE(kBowserJawPx < kBowserWidthPx / 2);
+    REQUIRE(kBowserFireJawPx + kBowserFireHeightPx <= kBowserHeightPx / 2);
+
+    sim.cam_x = static_cast<uint16_t>(sim.bowser_x - kScreenWidthPx / 2);
+    REQUIRE(sim.bowser_on_screen() == 1);
+    int waited = 0;
+    while (sim.fire_ttl == 0 && waited < 4 * kBowserFireFrames) {
+        sim.hazards_step();
+        ++waited;
+    }
+    REQUIRE(sim.fire_ttl == kBowserFireLifeFrames);
+
+    // the dart's box on the throw frame overlaps his own on both axes, which is the whole claim
+    const int dart_l = static_cast<int>(sim.fire_x);
+    const int dart_r = dart_l + kBowserFireWidthPx;
+    const int body_l = static_cast<int>(sim.bowser_x);
+    const int body_r = body_l + kBowserWidthPx;
+    CAPTURE(dart_l, dart_r, body_l, body_r, sim.fire_y, sim.bowser_y);
+    REQUIRE(dart_r > body_l);
+    REQUIRE(dart_l < body_r);
+    REQUIRE(sim.fire_y + kBowserFireHeightPx > sim.bowser_y);
+    REQUIRE(sim.fire_y < sim.bowser_y + kBowserHeightPx);
+    // and how far into him: the right edge is on the mouth, not on his left edge
+    REQUIRE(dart_r - body_l == kBowserJawPx);
+
+    // it is a whole body's width of extra warning at the range it matters: where the old throw put
+    // the dart's right edge on his left edge, this one puts it kBowserJawPx inside him, so a dart
+    // aimed at a mario a cell away is visible for that much longer before it reaches him
+    REQUIRE(kBowserJawPx > 0);
+
+    // and the swoop is what keeps it a threat: a dart left at the mouth's height would pass clean
+    // over a small mario standing on the same deck, and after the drop it is inside his box
+    const int16_t deck_top = static_cast<int16_t>(kHostLevels[kLevel14].bridge_row * kBlockPx);
+    const int16_t small_top = static_cast<int16_t>(deck_top - kPlayerBoxPx);
+
+    REQUIRE(sim.fire_y + kBowserFireHeightPx <= small_top);
+    for (int f = 0; f < kBowserFireDropFrames; ++f) {
+        sim.hazards_step();
+    }
+    REQUIRE(sim.fire_drop == 0);
+    REQUIRE(sim.fire_y + kBowserFireHeightPx > small_top);
+    REQUIRE(sim.fire_y < deck_top);
+    // and it stops there rather than sinking through the deck for the rest of its life
+    const int16_t settled = sim.fire_y;
+
+    for (int f = 0; f < 20; ++f) {
+        sim.hazards_step();
+    }
+    REQUIRE(sim.fire_y == settled);
+}
+
+// the zone throw keeps its own aim: those darts come in at the right edge of the view already
+// pointed at one of mario's own rows, so they get no swoop
+TEST_CASE("mario_bowser_zone_dart_takes_no_swoop") {
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.bowser_live == 1);
+
+    // stand the camera inside the zone with his body well off the right edge
+    sim.cam_x = static_cast<uint16_t>(kHostLevels[kLevel14].bowser_fire_x + 1);
+    REQUIRE(sim.bowser_on_screen() == 0);
+    int waited = 0;
+    while (sim.fire_ttl == 0 && waited < 4 * kBowserFireFrames) {
+        sim.hazards_step();
+        ++waited;
+    }
+    REQUIRE(sim.fire_ttl == kBowserFireLifeFrames);
+    REQUIRE(sim.fire_drop == 0);
+
+    const int16_t aimed = sim.fire_y;
+
+    for (int f = 0; f < 2 * kBowserFireDropFrames; ++f) {
+        sim.hazards_step();
+    }
+    REQUIRE(sim.fire_y == aimed);
 }
 
 // the fire zone. the nes 1-4 rip draws three of bowser's flames in flight well before the bridge
@@ -10800,8 +10972,293 @@ TEST_CASE("mario_axe_ends_1_4") {
     REQUIRE(bg_family_cells(gameboy, kTileBridge, kTileBridgeHi) == 0);
     REQUIRE(!sprite_box(gameboy, kTileBowserLo, kTileBowserHi).found);
 
-    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    // the walk into the toad room, the sign's own hold and then the card: the beat between the axe
+    // and the map is m22's and is a good few seconds longer than the old walk-and-vanish was
+    REQUIRE(wait_for_map(gameboy, 1800) >= 0);
 }
+
+// --- m22: the beat past the axe --------------------------------------------------------------
+//
+// smb does not end a castle on the axe. the bridge goes, bowser goes with it, and mario walks
+// right off the pedestal the axe stood on, drops into the room past it and stops in front of the
+// mushroom retainer while the sign goes up over him - and only then does the course-clear card
+// take the screen. before m22 he walked along an invisible line at the pedestal's own height and
+// nothing whatever happened at the end of it, which is what the user reported.
+
+// the walk itself, in the twin: it is driven through the physics pass with right held, so what has
+// to be true is that gravity carries him off the lip and the mark he stops on is the room's floor
+TEST_CASE("mario_clear_walk_drops_off_the_axe_pedestal") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+
+    REQUIRE(lv.has_toad == 1);
+    REQUIRE(lv.toad_column == 148);
+    REQUIRE(lv.toad_row == 13);
+    // the room's floor is four rows below the pedestal the axe stands on, so the walk has a fall
+    // in it. that is the whole reason it goes through the physics pass rather than sliding x along
+    REQUIRE(lv.toad_row > lv.axe_row + 1);
+    // and the retainer stands inside the level with room for mario at his left
+    REQUIRE(lv.toad_column + 1 < lv.columns);
+    REQUIRE(solid_at(lv, lv.toad_column, lv.toad_row));
+    REQUIRE(!solid_at(lv, lv.toad_column, lv.toad_row - 1));
+
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    REQUIRE(route.end.axed);
+
+    PlayerSim sim = route.end;
+    // he reaches the axe over the wall past the bridge, jumping - the blade is a row above that
+    // wall's surface, so his feet are somewhere in the pedestal's own two rows and not necessarily
+    // planted on it. either way he starts the walk well above the room he is about to drop into
+    const int from_row = sim.row_of(static_cast<int16_t>(sim.y_pos + sim.foot_h()));
+    CAPTURE(from_row, sim.x_pos, sim.y_pos, sim.on_ground);
+    REQUIRE(from_row <= lv.axe_row + 1);
+    REQUIRE(from_row < lv.toad_row - 1);
+    REQUIRE(sim.clear_walk_stop_x() == static_cast<uint16_t>((lv.toad_column - 1) * kBlockPx));
+
+    const int frames = sim.clear_walk_off_axe(600);
+    CAPTURE(frames, sim.x_pos, sim.y_pos, sim.on_ground);
+    REQUIRE(frames > 0);
+    // he ends the column before the retainer, standing on the room's own floor - not out in the
+    // air at the pedestal's height, which is what the walk used to do
+    REQUIRE(sim.x_pos >= sim.clear_walk_stop_x());
+    REQUIRE(sim.x_pos / kBlockPx == lv.toad_column - 1);
+    REQUIRE(sim.on_ground != 0);
+    REQUIRE(sim.y_pos + sim.foot_h() == lv.toad_row * kBlockPx);
+    REQUIRE(!sim.damaged);
+    // and he is beside the retainer, not inside him
+    REQUIRE(static_cast<int>(sim.x_pos) + kPlayerBoxPx <= lv.toad_column * kBlockPx + 1);
+}
+
+// and the whole beat in the rom: the retainer drawn where the bible put him, the two sentences of
+// the sign standing in the bg over him with mario still on screen beside them, the hold, and only
+// then the card and the map
+TEST_CASE("mario_toad_room_ends_1_4") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    REQUIRE(route.end.axed);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    // nothing of the room is up while he is still walking to it
+    REQUIRE(bg_family_cells(gameboy, kTileSignFirst, kTileSignLast) == 0);
+
+    // the walk ends when the retainer appears, which is the frame the phase changes
+    int walked = -1;
+    for (int f = 0; f < 900; ++f) {
+        gameboy.run_frame();
+        if (sprite_rect(gameboy, kTileToadFirst, kTileToadLast).found) {
+            walked = f;
+            break;
+        }
+    }
+    REQUIRE(walked >= 0);
+
+    // he is a 16x24 sprite - the rip's own size - and he stands on the room's floor
+    const SpriteRect toad = sprite_rect(gameboy, kTileToadFirst, kTileToadLast);
+    CAPTURE(walked, toad.left, toad.right, toad.top, toad.bottom);
+    REQUIRE(toad.right - toad.left + 1 == kToadWidthPx);
+    REQUIRE(toad.bottom - toad.top + 1 == kToadHeightPx);
+
+    // the sign went up on the same frame, in the bg, with a cell for every character of ink the
+    // four lines carry - a space takes the hud's own blank and is not one of these ids
+    int ink = 0;
+    for (int i = 0; i < kToadSignLines; ++i) {
+        for (const char* c = kToadSignText[i]; *c != 0; ++c) {
+            ink += *c != ' ' ? 1 : 0;
+        }
+    }
+    const int cells = bg_family_cells(gameboy, kTileSignFirst, kTileSignLast);
+    CAPTURE(ink, cells);
+    REQUIRE(cells == ink);
+
+    // and mario is standing there beside him rather than having vanished into a doorway. either
+    // body: whether the route still has the mushroom by the axe is the route's business
+    SpriteRect mario = sprite_rect(gameboy, kMarioFirstTile, kMarioLastTile);
+    if (!mario.found) {
+        mario = sprite_rect(gameboy, kSuperFirstTile, kSuperLastTile);
+    }
+    REQUIRE(mario.found);
+    REQUIRE(mario.right < toad.left);
+    REQUIRE(mario.bottom >= toad.bottom - 1);
+
+    // the tableau holds. a good way into it all three are still up, the retainer has not moved
+    // along the floor and the sign is entire. he can still slide a few px up the screen: the
+    // camera resamples its vertical band the moment mario is grounded and standing, and the whole
+    // room - the retainer, the sign's bg cells and mario - travels with it
+    run(gameboy, kToadHoldFrames / 2);
+    const SpriteRect held = sprite_rect(gameboy, kTileToadFirst, kTileToadLast);
+    REQUIRE(held.found);
+    REQUIRE(held.left == toad.left);
+    REQUIRE(held.right == toad.right);
+    REQUIRE(held.bottom - held.top == toad.bottom - toad.top);
+    REQUIRE(bg_family_cells(gameboy, kTileSignFirst, kTileSignLast) == ink);
+    REQUIRE((sprite_rect(gameboy, kMarioFirstTile, kMarioLastTile).found ||
+             sprite_rect(gameboy, kSuperFirstTile, kSuperLastTile).found));
+
+    // then the card and the map, which is where the level ended before any of this
+    REQUIRE(wait_for_map(gameboy, 1200) >= 0);
+}
+
+// the sign's glyphs are the resident font re-encoded into vram bank 1, the way the hud row's
+// digits are, so every character the four lines use has to have an id in the run
+TEST_CASE("mario_toad_sign_glyphs_cover_its_text") {
+    const std::string chars = kSignGlyphChars;
+
+    REQUIRE(static_cast<int>(chars.size()) == kTileSignLast - kTileSignFirst + 1);
+    for (int i = 0; i < kToadSignLines; ++i) {
+        const std::string line = kToadSignText[i];
+
+        // and each line fits between where it starts and the right edge of the twenty tile
+        // columns the gb has, which is what the rip's two sentences had to be broken up for: the
+        // block it starts in is kToadSignColumnsLeft left of the retainer, and the camera's last
+        // view of a 152 column level starts ten blocks from its end
+        CAPTURE(i, line);
+        const int start_tile = (kHostLevels[kLevel14].toad_column - kToadSignColumnsLeft -
+                                (kHostLevels[kLevel14].columns - kScreenWidthPx / kBlockPx)) *
+                               2;
+
+        REQUIRE(start_tile >= 0);
+        REQUIRE(start_tile + static_cast<int>(line.size()) <= 20);
+        for (const char c : line) {
+            CAPTURE(c);
+            REQUIRE((c == ' ' || chars.find(c) != std::string::npos));
+        }
+    }
+    // no id in the run is spent on a character no line uses
+    for (const char c : chars) {
+        bool used = false;
+        for (int i = 0; i < kToadSignLines; ++i) {
+            used = used || std::string(kToadSignText[i]).find(c) != std::string::npos;
+        }
+        CAPTURE(c);
+        REQUIRE(used);
+    }
+    // the four rows it prints on are clear of the room's roof and of the floor he stands on
+    for (int i = 0; i < kToadSignLines; ++i) {
+        const int row = (kToadSignTileRow + i * kToadSignTileRowStep) / 2;
+
+        CAPTURE(i, row);
+        REQUIRE(row > 2);
+        REQUIRE(row < kHostLevels[kLevel14].toad_row - 1);
+    }
+}
+
+
+// --- m22: the lift the transcription pass lost ------------------------------------------------
+//
+// the cell-by-cell pass read the 32x8 object the nes rip draws at 138-139/6 as a bowser fireball
+// in flight and wrote the level "lift": false on that reading. it is a lift: the plate's pixels
+// are a white top edge, a red band, four repeats of an 8 px orange plate with a dark stud and a
+// red bottom edge, where the flame the same rip catches at 127/8 is a tapered wavy 24x8 tongue
+// with no straight edge in it anywhere. so 1-4 carries one deck, and the bible says approx on the
+// travel because a still frame cannot show it
+TEST_CASE("mario_1_4_carries_one_lift_over_the_bridge") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const LevelObject* deck = find_object(lv.objects, lv.object_count, kObjLiftH);
+
+    REQUIRE(deck != nullptr);
+    // one and no more: oam is exactly full at two decks and hazards.c caps the count at two when a
+    // bar or bowser is loaded, so a level with firebars and bowser has room for this one
+    int decks = 0;
+    for (int i = 0; i < lv.object_count; ++i) {
+        decks += lv.objects[i].kind == kObjLiftH || lv.objects[i].kind == kObjLiftV ? 1 : 0;
+    }
+    REQUIRE(decks == 1);
+
+    // four rows over the bridge deck, which is where the rip draws it
+    REQUIRE(deck->row == 6);
+    REQUIRE(deck->row < lv.bridge_row);
+    REQUIRE(lv.bridge_row - deck->row == 4);
+    // and its travel runs over the bridge's own span rather than over the ground either side
+    const int span = deck->param & kLiftSpanMask;
+    REQUIRE((deck->param & kLiftReverse) == 0);
+    REQUIRE(deck->column >= lv.bridge_x0);
+    REQUIRE(deck->column + span + kLiftBlocks - 1 <= lv.bridge_x1);
+    // 138-139 is where the rip caught the plate, so the track has to reach it
+    REQUIRE(deck->column + span + kLiftBlocks - 1 >= 139);
+
+    // hazards.c takes it, cap and all, alongside the seven firebars and bowser
+    PlayerSim sim;
+    sim.load_level(kLevel14);
+    REQUIRE(sim.lift_count == 1);
+    REQUIRE(sim.bowser_live == 1);
+    REQUIRE(sim.lifts[0].vertical == 0);
+    REQUIRE(sim.lifts[0].y == static_cast<int16_t>(deck->row * kBlockPx));
+
+    // and it runs: the deck bounces between the two ends of its track and never leaves them
+    const uint16_t low = static_cast<uint16_t>(deck->column * kBlockPx);
+    const uint16_t high = static_cast<uint16_t>((deck->column + span) * kBlockPx);
+    uint16_t seen_low = 0xFFFF;
+    uint16_t seen_high = 0;
+    for (int f = 0; f < 4 * (span * kBlockPx); ++f) {
+        sim.hazards_step();
+        REQUIRE(sim.lifts[0].x >= low);
+        REQUIRE(sim.lifts[0].x <= high);
+        REQUIRE(sim.lifts[0].y == static_cast<int16_t>(deck->row * kBlockPx));
+        seen_low = std::min(seen_low, sim.lifts[0].x);
+        seen_high = std::max(seen_high, sim.lifts[0].x);
+    }
+    CAPTURE(low, high, seen_low, seen_high);
+    REQUIRE(seen_low == low);
+    REQUIRE(seen_high == high);
+}
+
+// and the rom draws it, in the frames the route spends coming up on the bridge
+TEST_CASE("mario_1_4_lift_deck_draws_over_the_bridge") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const HostLevel& lv = kHostLevels[kLevel14];
+    const LevelObject* deck = find_object(lv.objects, lv.object_count, kObjLiftH);
+    REQUIRE(deck != nullptr);
+
+    const Route route = plan_level(kLevel14, 6000);
+    REQUIRE(route.reached);
+    const std::vector<PlayerSim> states = trace_route(route, kLevel14);
+
+    // the first frame the whole of the deck's track is inside the view, so wherever along it the
+    // deck has run to it is on screen
+    size_t at = 0;
+    for (size_t i = 1; i < states.size(); ++i) {
+        const uint16_t cam = states[i].cam_x;
+        const int left = deck->column * kBlockPx;
+        const int right = (deck->column + (deck->param & kLiftSpanMask) + kLiftBlocks) * kBlockPx;
+
+        if (left >= static_cast<int>(cam) && right <= static_cast<int>(cam) + kScreenWidthPx) {
+            at = i;
+            break;
+        }
+    }
+    REQUIRE(at > 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    replay(gameboy, route.script, 0, at);
+
+    int drawn = 0;
+    int widest = 0;
+    int band_top = -1;
+    for (int f = 0; f < 60; ++f) {
+        gameboy.run_frame();
+        const SpriteRect plate = sprite_rect(gameboy, kTileLiftDeck, kTileLiftDeck);
+
+        if (!plate.found) {
+            continue;
+        }
+        ++drawn;
+        widest = std::max(widest, plate.right - plate.left + 1);
+        band_top = plate.top;
+    }
+    CAPTURE(drawn, widest, band_top);
+    REQUIRE(drawn == 60);
+    // two blocks of plate, and it rides the row the bible put it on rather than the bridge's
+    REQUIRE(widest == kLiftBlocks * kBlockPx);
+    REQUIRE(band_top >= 0);
+}
+
 
 // --- sub-milestone 8b: hud, lives, cards and the battery slot ----------------------------------
 

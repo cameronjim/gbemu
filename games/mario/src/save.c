@@ -1,6 +1,8 @@
 // the battery slot crossy and flappy keep, widened to three files. it is touched a handful of
 // times a session and never inside a frame of play, so it rides in bank 5 with the rest of the
-// between-levels code
+// between-levels code. it has to ride there and nowhere else: most of what it publishes is not
+// BANKED, so a caller reaches it with a plain call, and that only lands on the right bytes while
+// bank 5 is the bank switched in - which it is, because every caller is itself bank 5 code
 #pragma bank 5
 
 #include "save.h"

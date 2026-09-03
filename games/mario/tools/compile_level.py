@@ -888,7 +888,8 @@ def compile_grid(bible, level_type):
             # rather than in place of the floor, and they put the axe on the wall past it two rows
             # above the deck. so the span, its row and the axe cell are all read off the bible here
             # instead of being carved out of the last ground run by apply_bridge()
-            measured_bridge = (t["x0"], t["x1"], t["y"], t["axe_x"], t["axe_y"])
+            measured_bridge = (t["x0"], t["x1"], t["y"], t["axe_x"], t["axe_y"],
+                               t.get("toad_x"))
         elif t["kind"] == "ceiling_gap":
             apply_ceiling_gap(grid, t["x0"], t["x1"])
             probes.append((t["x0"], 0, BLOCK_EMPTY))
@@ -1035,8 +1036,11 @@ def compile_grid(bible, level_type):
     bowser_fire_column = 0
     axe_column = None
     axe_row = GROUND_ROW - 1
+    # the retainer the clear walk ends in front of, in the room past the axe. a castle whose bible
+    # names no column gets none, and there the walk keeps its old fixed run along the pedestal
+    toad_column = None
     if measured_bridge is not None:
-        x0, x1, bridge_row, axe_column, axe_row = measured_bridge
+        x0, x1, bridge_row, axe_column, axe_row, toad_column = measured_bridge
         x0, x1 = clamp_span(grid, x0, x1)
         for column in range(x0, x1 + 1):
             grid[column][bridge_row] = BLOCK_BRIDGE
@@ -1159,6 +1163,10 @@ def compile_grid(bible, level_type):
         "bowser_fire_column": bowser_fire_column,
         "axe_column": axe_column,
         "axe_row": axe_row,
+        "toad_column": toad_column,
+        # the floor he stands on, scanned from below the pedestal the axe is on rather than from
+        # row 0: a castle's roof is solid over every column, so a scan from the top finds that
+        "toad_row": None if toad_column is None else surface_row(grid, toad_column, axe_row + 1),
         "jumps": jump_targets,
         "segments": segments,
     }
@@ -1495,6 +1503,13 @@ def write_header(out_dir, slug, level, source_path):
         f.write("#define %s_BRIDGE_X0 %dU\n" % (upper, bridge[0]))
         f.write("#define %s_BRIDGE_X1 %dU\n" % (upper, bridge[1]))
         f.write("#define %s_BRIDGE_ROW %dU\n" % (upper, level["bridge_row"]))
+        f.write("// the retainer in the room past the axe, and the floor row he stands on. the\n")
+        f.write("// clear walk carries mario off the pedestal, drops him into the room and stops\n")
+        f.write("// him a column short of this one. HAS_TOAD is 0 on a level whose bible names\n")
+        f.write("// none, and there the walk ends the old way, a fixed run along the pedestal\n")
+        f.write("#define %s_HAS_TOAD %dU\n" % (upper, 0 if level["toad_column"] is None else 1))
+        f.write("#define %s_TOAD_COLUMN %dU\n" % (upper, level["toad_column"] or 0))
+        f.write("#define %s_TOAD_ROW %dU\n" % (upper, level["toad_row"] or 0))
         f.write("// the column the fake bowser's flame spawner arms at (see SCHEMA.md): smb1 has\n")
         f.write("// his flames come at mario off the right edge of the view for several screens\n")
         f.write("// before the bridge, and this is where that band starts. 0 on every other level\n")
@@ -1830,6 +1845,8 @@ def compile_level(bible, bank, area_bank):
         "bowser_fire_column": built["bowser_fire_column"],
         "axe_column": built["axe_column"],
         "axe_row": built["axe_row"],
+        "toad_column": built["toad_column"],
+        "toad_row": built["toad_row"],
         "start_column": start_column,
         # a measured bible names the surface row it stands him on, which is the only thing that can
         # be right in a castle: 1-4's roof is three rows of masonry over his own column, so a scan

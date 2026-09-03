@@ -168,9 +168,13 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         message(WARNING "python3 not found; skipping mario rom target (needs the level compiler)")
     else()
         set(GB_MARIO_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
-        # sub-milestone 8a bank map. bank 0 is the engine minus enemies.c/hazards.c/powerup.c,
-        # bank 4 is the enemy code and every tile array, bank 5 the powerup chain and the hazards,
-        # bank 7 every sub-area grid, and each level's own grid takes a bank of its own
+        # sub-milestone 8a bank map, as m22 left it. bank 0 is the engine minus enemies.c,
+        # hazards.c and powerup.c; bank 3 is hazards.c, which m22 moved out of bank 5 when the
+        # fire and toad-room work filled it - it is the one module in bank 5 whose whole surface
+        # is BANKED, and everything else there reaches its neighbours with plain calls that only
+        # land while their shared bank is switched in. bank 4 is the enemy code and every tile
+        # array, bank 5 the powerup chain and the between-levels code, bank 6 the draw passes and
+        # the toad room, bank 7 every sub-area grid, and each level's own grid shares a bank
         set(GB_MARIO_LEVELS 1-1 1-2 1-3 1-4)
         set(GB_MARIO_LEVEL_BANKS 1 2 3 6)
         set(GB_MARIO_AREA_BANK 7)
@@ -247,6 +251,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/blocks_draw.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/debris.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/toad.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
@@ -268,6 +273,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/blocks.c games/mario/src/blocks.h
                     games/mario/src/blocks_draw.c
                     games/mario/src/debris.c games/mario/src/debris.h
+                    games/mario/src/toad.c games/mario/src/toad.h
                     games/mario/src/powerup.c games/mario/src/powerup.h
                     games/mario/src/hazards.c games/mario/src/hazards.h
                     games/mario/src/title.c games/mario/src/title.h

@@ -1,6 +1,12 @@
 // the second banked engine module. bank 0 holds the rest of the engine and had a few hundred bytes
-// left after m7, so m8a's lifts, firebars, fake bowser and axe ride in bank 5 beside powerup.c
-#pragma bank 5
+// left after m7, so m8a's lifts, firebars, fake bowser and axe were banked out of it.
+//
+// bank 3 rather than the bank 5 they started in, which m22 filled: every function this module
+// publishes is BANKED and every function it calls is either bank 0's, gbdk's own or BANKED, so it
+// is the one module in the set that can be moved at all. the rest of bank 5 - flow.c, title.c,
+// hud.c, save.c, camera.c, powerup.c - publishes plain calls to plain functions in its neighbours,
+// which land on the right bytes only because they are all in the one bank that is switched in
+#pragma bank 3
 
 #include "hazards.h"
 
@@ -85,6 +91,10 @@ static uint8_t fire_ttl;
 static uint16_t fire_x;
 static int16_t fire_y;
 static uint16_t fire_accum;
+// how many frames of the jaw throw's swoop are left: a dart that left the mouth sinks a px a frame
+// for kBowserFireDropFrames, off the jaw's own height and onto the band a body on the deck fills.
+// a zone dart is aimed at a row of mario's own to begin with and gets none
+static uint8_t fire_drop;
 
 static uint16_t axe_x;
 static int16_t axe_y;
@@ -422,6 +432,11 @@ static void step_bowser_fire(void) {
             return;
         }
         fire_x = (uint16_t)(fire_x - (uint16_t)(sum >> 8));
+        // and the swoop out of the jaw, which is what carries it down into a walker's band
+        if (fire_drop != 0U) {
+            --fire_drop;
+            ++fire_y;
+        }
         --fire_ttl;
         return;
     }
@@ -430,6 +445,7 @@ static void step_bowser_fire(void) {
         return;
     }
     fire_timer = 0;
+    fire_drop = 0;
     edge = (uint16_t)(camera_pos_x + kScreenWidthPx);
     if (bowser_x >= edge) {
         // the zone throw: while his body is still off the right edge the dart comes in at that
@@ -449,12 +465,16 @@ static void step_bowser_fire(void) {
         edge = (uint16_t)(((edge - 1U) & 0xFFF0U) - (uint16_t)(bowser_tick & kBowserFireZoneRowMask));
         fire_y = (int16_t)(edge + kBowserFireZoneInsetPx);
     } else {
-        // out of his jaw and to the left, which is the way the player always comes at him
-        if (bowser_x < (uint16_t)kBowserFireWidthPx) {
+        // out of his jaw and to the left, which is the way the player always comes at him. the
+        // dart's right edge starts at his mouth - kBowserJawPx into the box he faces left out of -
+        // so it is seen to leave the jaw rather than appearing already clear of his body, and it
+        // sinks from the jaw's height onto a walker's band over the swoop above
+        if (bowser_x + (uint16_t)kBowserJawPx < (uint16_t)kBowserFireWidthPx) {
             return;
         }
-        fire_x = (uint16_t)(bowser_x - kBowserFireWidthPx);
+        fire_x = (uint16_t)(bowser_x + (uint16_t)kBowserJawPx - (uint16_t)kBowserFireWidthPx);
         fire_y = (int16_t)(bowser_y + kBowserFireJawPx);
+        fire_drop = (uint8_t)kBowserFireDropFrames;
     }
     fire_accum = 0;
     fire_ttl = (uint8_t)kBowserFireLifeFrames;
@@ -817,6 +837,12 @@ static void draw_flames(uint16_t cam_x, uint8_t cam_y) {
 static void draw_bowser(int16_t sx, int16_t sy) {
     const uint8_t base = (uint8_t)(kTileBowserFirst + (bowser_frame != 0U ? kBowserTilesPerFrame : 0U));
     const uint8_t prop = (uint8_t)((uint8_t)kPalKoopa | (uint8_t)S_BANK);
+    // the tell: over the last stretch of the wait for a throw his head's own sprite swaps for the
+    // open-jaw pair, which is smb's half-second of mouth before the flame. read off fire_timer, so
+    // it costs no state - and it is only up while there is a throw coming, not during a flight
+    const uint8_t jaw = (uint8_t)(fire_ttl == 0U &&
+                                  fire_timer + (uint8_t)kBowserJawOpenFrames >=
+                                      (uint8_t)kBowserFireFrames);
     uint8_t i;
 
     // one run of eight rather than two of four: the low two bits of the index are the column and
@@ -826,7 +852,8 @@ static void draw_bowser(int16_t sx, int16_t sy) {
 
         // his tile changes with the walk frame, so this one always writes rather than asking
         (void)claim_slot(slot, (uint8_t)kOwnerBowser);
-        set_sprite_tile(slot, (uint8_t)(base + (uint8_t)(i << 1)));
+        set_sprite_tile(slot, i == 0U && jaw != 0U ? (uint8_t)kTileBowserJaw
+                                                   : (uint8_t)(base + (uint8_t)(i << 1)));
         set_sprite_prop(slot, prop);
         move_sprite(slot, (uint8_t)(sx + (int16_t)((uint16_t)(i & 3U) << 3) + kOamXOffset),
                     (uint8_t)(sy + (int16_t)((uint16_t)(i >> 2) << 4) + kOamYOffset));

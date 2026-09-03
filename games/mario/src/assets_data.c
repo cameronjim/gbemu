@@ -3282,6 +3282,118 @@ void assets_load_enemy_tiles(void) BANKED {
     VBK_REG = VBK_BANK_0;
 }
 
+// bowser's open jaw: his head's left half (sprite 0 of the eight hazards.c draws him out of) with
+// the lower jaw pulled two px down and the mouth behind it opened to the backdrop. every other
+// tile of him stays the walk frame's own, so the whole tell is these two - see kTileBowserJaw
+// clang-format off
+static const uint8_t kBowserJawTiles[32] = {
+    // his open jaw, upper 8x8
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x01, 0x00, //        1
+    0x07, 0x06, //      331
+    0x0F, 0x46, //  2  1331
+    0x1F, 0xA6, // 2 211331
+    0x1F, 0xFC, // 22233311
+    0x0F, 0xF8, // 22223111
+    // and its lower one: the jaw dropped two px, the mouth open behind it
+    0x8C, 0x83, // 3   1122
+    0x01, 0x0E, //     2221
+    0x01, 0x1E, //    22221
+    0x5F, 0x5A, //  3 33131
+    0x38, 0x38, //   333   
+    0x00, 0x00, //         
+    0x02, 0x03, //       32
+    0x00, 0x01, //        2
+};
+// clang-format on
+
+// the mushroom retainer, transcribed cell for cell off the nes 1-4 rip's own 16x24 sprite - the
+// figure standing beside mario in the room past the axe, at its columns 153 rows 11-12. two
+// columns of two 8x16 sprites, so eight tiles, of which the second tile of each lower sprite is
+// the eight transparent rows under his feet: an 8x16 sprite reads its id and the id after it
+// whether or not the second one has anything in it.
+//
+// he wears the castle's kPalStar - the one sprite slot in a castle with a white in it that nothing
+// else is using once the flames are gone: color 1 is his cap and trousers, 2 his face, 3 the cap's
+// spots and his waistcoat, and color 0 is the transparent the rip outlines him in black with
+// clang-format off
+static const uint8_t kToadTiles[128] = {
+    // toad, left column, sprite 0 upper
+    0x03, 0x00, //       11
+    0x0F, 0x00, //     1111
+    0x3F, 0x1C, //   133311
+    0x7F, 0x1D, //  1133313
+    0x7F, 0x1B, //  1133133
+    0xFF, 0xC3, // 33111133
+    0xFF, 0xE3, // 33311133
+    0xFF, 0xE1, // 33311113
+    // toad, left column, sprite 0 lower
+    0xFF, 0xE0, // 33311111
+    0xF0, 0xCD, // 331122 2
+    0x70, 0x1D, //  11322 2
+    0x00, 0x4F, //  2  2222
+    0x00, 0xEE, // 222 222 
+    0x0C, 0xFF, // 22223322
+    0x1F, 0x3F, //   233333
+    0x3C, 0x3F, //   333322
+    // toad, left column, sprite 1 upper
+    0x38, 0x3F, //   333222
+    0x38, 0x3F, //   333222
+    0x1F, 0x00, //    11111
+    0x3F, 0x00, //   111111
+    0x7F, 0x70, //  3331111
+    0xFF, 0xB8, // 31333111
+    0xFF, 0xFC, // 33333311
+    0xFF, 0xFC, // 33333311
+    // toad, left column, sprite 1 lower
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    // toad, right column, sprite 0 upper
+    0xC0, 0x00, // 11      
+    0xF0, 0x00, // 1111    
+    0xFC, 0x38, // 113331  
+    0xFE, 0xB8, // 3133311 
+    0xFE, 0xD8, // 3313311 
+    0xFF, 0xC3, // 33111133
+    0xFF, 0xC7, // 33111333
+    0xFF, 0x87, // 31111333
+    // toad, right column, sprite 0 lower
+    0xFF, 0x07, // 11111333
+    0x0F, 0xB3, // 2 221133
+    0x0E, 0xB8, // 2 22311 
+    0x00, 0xF2, // 2222  2 
+    0x00, 0x77, //  222 222
+    0x30, 0xFF, // 22332222
+    0xF8, 0xFC, // 333332  
+    0x3C, 0xFC, // 223333  
+    // toad, right column, sprite 1 upper
+    0x1C, 0xFC, // 222333  
+    0x1C, 0xFC, // 222333  
+    0xF8, 0x00, // 11111   
+    0xFC, 0x00, // 111111  
+    0xFE, 0x0E, // 1111333 
+    0xFF, 0x1D, // 11133313
+    0xFF, 0x3F, // 11333333
+    0xFF, 0x3F, // 11333333
+    // toad, right column, sprite 1 lower
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+    0x00, 0x00, //         
+};
+// clang-format on
+
 void assets_load_hazard_tiles(void) BANKED {
     set_sprite_data(kTileHazardFirst, kHazardTileCount, kHazardTiles);
     // bowser's own 512 bytes go to vram BANK 1: bank 0's sprite map has eight ids left in it and
@@ -3289,6 +3401,7 @@ void assets_load_hazard_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_sprite_data(kTileBowserFirst, (uint8_t)(kBowserTilesPerFrame * kBowserArtFrames), kBowserTiles);
     set_sprite_data(kTileBowserFire, kBowserFireTileCount, kBowserFireTiles);
+    set_sprite_data(kTileBowserJaw, 2, kBowserJawTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -3349,6 +3462,21 @@ void assets_load_hud_font(void) BANKED {
     }
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileHudCoin, 1, kHudCoinTile);
+    VBK_REG = VBK_BANK_0;
+}
+
+void assets_load_toad_tiles(void) BANKED {
+    // the same list toad.c maps a character to an id with (kSignGlyphChars), re-encoded out of the
+    // resident font by the hud row's own routine: ink on color 1, cell on color 0. a space is not
+    // in the list - kTileHudBlank is already exactly that cell and the sign borrows it
+    static const char kSignChars[] = kSignGlyphChars;
+    uint8_t i;
+
+    for (i = 0; kSignChars[i] != 0; ++i) {
+        hud_glyph((uint8_t)(kTileSignFirst + i), kSignChars[i]);
+    }
+    VBK_REG = VBK_BANK_1;
+    set_sprite_data(kTileToadFirst, kToadTileCount, kToadTiles);
     VBK_REG = VBK_BANK_0;
 }
 

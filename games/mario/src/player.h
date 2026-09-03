@@ -21,6 +21,11 @@
 #define kClearWalk 3U
 #define kClearDoor 4U
 #define kClearHold 5U
+// and the beat a castle's axe ends in instead of the door: the walk drops him into the room past
+// the pedestal and stops him beside the mushroom retainer, and this phase holds him there while
+// the sign goes up over the two of them (toad.c). it is numbered past the pole's five so the
+// phases the flag walks keep the values they had
+#define kClearToad 6U
 
 // which way a pipe transition is carrying him. the side entry is the only horizontal one: 1-2's
 // L-shaped exit pipe is walked into rather than dropped down

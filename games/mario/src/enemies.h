@@ -11,8 +11,8 @@
 #define kEnemyHitStomp 2U
 #define kEnemyHitShellStomp 3U
 
-// loads the enemy art/palettes, empties the pool and rewinds the spawn cursor to the level's first
-// enemy; the level load and every respawn share it
+// loads the enemy art/palettes, empties the pool and arms every roster cell again; the level load
+// and every respawn share it, which is what puts a killed enemy back for the next life
 void enemies_load_level(void) BANKED;
 
 // debug: the next enemies_load_level seeds the lab roster instead of the compiled one. 1-1 places

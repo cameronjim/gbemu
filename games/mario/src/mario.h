@@ -744,9 +744,22 @@
 // feet above this line inside the enemy's box make the contact a stomp instead of damage
 #define kEnemyStompLinePx (kEnemyHeightPx / 2) // 8
 
-// smb's object loader brings an enemy in as its column reaches the screen's right edge, and forgets
-// it for good once it has scrolled this far past the left one - the cursor only ever advances, so
-// walking back over ground already crossed never brings one of them back
+// the two bands the object loader works in. an enemy comes in as its roster cell reaches the spawn
+// band - out to the screen's right edge plus this margin, and mirrored back to one enemy width plus
+// this margin off the left edge - and frees its pool slot once it is this much further out, either
+// side.
+//
+// the gap between the two is what stops a walker that just stepped off the left edge being dropped
+// straight back onto a cell the camera is still parked on: a cell has to leave the spawn band
+// entirely before whatever is waiting at it re-arms.
+//
+// a deliberate departure from smb1, and the user's choice: the bible's loader walks the roster with
+// a single cursor that only ever advances, so scrolling back over ground already crossed leaves it
+// empty. here an enemy that leaves the view alive is only parked - it comes back at its own roster
+// cell when that cell scrolls into range again from either side, a shell coming back as a fresh
+// walking koopa and a paratroopa back on the wing. only a kill (stomp, fireball, shell, star, or a
+// fall out of the bottom of the level) is permanent, and only until the level reloads.
+// see the kRoster* states in games/mario/src/enemies.c
 #define kEnemySpawnMarginPx 0
 #define kEnemyDespawnMarginPx 32
 

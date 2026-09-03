@@ -65,14 +65,30 @@ static const uint8_t kLabKind[kLabCount] = {kEnemyGoomba, kEnemyGoomba, kEnemyGo
 static uint8_t use_lab;
 #endif
 
-// the list the spawn cursor walks, sorted by column by compile_level.py
+// the list the spawn scan walks, sorted by column by compile_level.py
 static const uint16_t* roster_column;
 static const uint8_t* roster_row;
 static const uint8_t* roster_kind;
 static uint8_t roster_count;
-static uint8_t cursor;
 // a sub-area holds no enemies, so the pool sits idle rather than track a camera it has no list for
 static uint8_t enabled;
+
+// one byte per roster entry, and the deliberate departure from smb1's advancing cursor: an enemy
+// that leaves the view alive is only parked, and comes back at its own roster cell when that cell
+// scrolls into the spawn band again from either side. only a kill is permanent, and only until the
+// level reloads
+#define kRosterPending 0U // never spawned this life, or armed to come back
+#define kRosterLive 1U    // holds a pool slot
+#define kRosterDead 2U    // stomped, burned, shelled, starred or fallen out: gone for this life
+#define kRosterWait 3U    // left the view alive; re-arms once its cell leaves the band
+static uint8_t roster_state[LEVEL_MAX_ENEMIES];
+// which entry each pool slot came from. beside the pool rather than in it, so a slot stays 16 bytes
+static uint8_t slot_roster[kEnemySlots];
+// the entries whose cells lie inside the spawn band, [frontier_lo, frontier_hi). the roster is
+// sorted by column, so each index walks one step at a time with the camera and no frame scans the
+// whole list
+static uint8_t frontier_lo;
+static uint8_t frontier_hi;
 
 // one shared walk phase, so every walker steps together and no slot carries its own counter
 static uint8_t anim;
@@ -80,11 +96,10 @@ static uint8_t stomp_chain;
 static uint8_t shell_chain;
 
 // the idle fast path. every frame of this engine sits near the budget already, so a pool with
-// nothing in it has to cost near nothing or the loop misses a vsync. live counts the busy slots,
-// shown the drawn ones, and next_spawn_px is the cursor's own column so the check is one compare
+// nothing in it has to cost near nothing or the loop misses a vsync. live counts the busy slots
+// and shown the drawn ones; the frontier pair above is what keeps the spawn test off the roster
 static uint8_t live;
 static uint8_t shown;
-static uint16_t next_spawn_px;
 
 static int16_t row_of(int16_t py) {
     return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
@@ -250,7 +265,11 @@ static void step_fly(Enemy* e) {
 // smb's defeat animation for anything a fireball or a moving shell takes: the body flips over,
 // pops upward and falls out of the level instead of blinking away. it stops colliding with mario
 // and with the pool on this very frame, and its slot frees when despawn sees it leave the level
-static void flip_kill(Enemy* e) {
+static void flip_kill(uint8_t i) {
+    Enemy* e = &pool[i];
+
+    // the corpse is only scenery from here: its roster cell is spent for the rest of this life
+    roster_state[slot_roster[i]] = kRosterDead;
     e->state = kEnemyFlipped;
     e->dy = (int8_t)kEnemyFlipPopPx;
     e->y_accum = 0;
@@ -302,10 +321,33 @@ static void step_fall(Enemy* e) {
 static void remove_at(uint8_t i) {
     --live;
     pool[i] = pool[live];
+    slot_roster[i] = slot_roster[live];
     if (drawn_prop[i] != 0xFFU) {
         drawn_prop[i] = 0xFEU; // never a real property, so the next draw rewrites tile and prop
     }
     drawn_x[i] = 0xFF;
+}
+
+// a slot leaving the pool. a cell whose enemy was killed stays dead however the slot goes away, so
+// a corpse that drifts off the camera before it has finished falling is not parked by mistake
+static void release_at(uint8_t i, uint8_t next) {
+    uint8_t* state = &roster_state[slot_roster[i]];
+
+    if (*state != kRosterDead) {
+        *state = next;
+    }
+    remove_at(i);
+}
+
+// a slot leaving the pool alive. while its cell is still inside the spawn band the enemy has to
+// wait for that cell to scroll out before it re-arms, or it would be dropped straight back onto a
+// cell the camera never left. a cell already outside the band re-arms at once instead: outside the
+// band is exactly where nothing spawns, so there is nothing there to guard against - and the cell
+// often leaves the band well before the walker standing on it has finished wandering out of view
+static void park_at(uint8_t i) {
+    const uint8_t idx = slot_roster[i];
+
+    release_at(i, (idx >= frontier_lo && idx < frontier_hi) ? kRosterWait : kRosterPending);
 }
 
 static uint8_t row_load(uint8_t top_row) {
@@ -324,30 +366,71 @@ static uint8_t row_load(uint8_t top_row) {
     return n;
 }
 
-// smb's object loader: an enemy comes in as its column reaches the screen's right edge, and the
-// cursor only ever advances, so scrolling back over ground already crossed never brings one back
-static void note_next_spawn(void) {
-    next_spawn_px =
-        (cursor < roster_count) ? (uint16_t)((uint16_t)roster_column[cursor] << 4) : (uint16_t)0xFFFFU;
+// is this cell far enough off the left of the spawn band to count as behind the camera
+static uint8_t left_of_band(uint8_t i, uint16_t cam_x) {
+    const uint16_t px = (uint16_t)((uint16_t)roster_column[i] << 4);
+
+    return ((uint16_t)(px + kEnemyWidthPx + kEnemySpawnMarginPx) < cam_x) ? 1U : 0U;
 }
 
-static void spawn(uint16_t cam_x) {
-    while (cursor < roster_count) {
-        const uint16_t px = (uint16_t)((uint16_t)roster_column[cursor] << 4);
+// a cell leaving the band is what re-arms whatever is parked at it. without that gap between the
+// spawn band and the wider despawn one, a walker that stepped off the left edge would be dropped
+// straight back onto a cell the camera is still sitting on, over and over
+static void rearm(uint8_t i) {
+    if (roster_state[i] == kRosterWait) {
+        roster_state[i] = kRosterPending;
+    }
+}
+
+// the two frontier indices, walked onto this frame's camera. each of the four loops usually runs
+// zero or one step, so the roster itself is never scanned end to end
+static void frontier_step(uint16_t cam_x) {
+    const uint16_t right = (uint16_t)(cam_x + kScreenWidthPx + kEnemySpawnMarginPx);
+
+    while (frontier_hi < roster_count && (uint16_t)((uint16_t)roster_column[frontier_hi] << 4) <= right) {
+        ++frontier_hi;
+    }
+    while (frontier_hi != 0U && (uint16_t)((uint16_t)roster_column[frontier_hi - 1U] << 4) > right) {
+        --frontier_hi;
+        rearm(frontier_hi);
+    }
+    while (frontier_lo < roster_count && left_of_band(frontier_lo, cam_x) != 0U) {
+        rearm(frontier_lo);
+        ++frontier_lo;
+    }
+    while (frontier_lo != 0U && left_of_band((uint8_t)(frontier_lo - 1U), cam_x) == 0U) {
+        --frontier_lo;
+    }
+}
+
+// the idle test the fast path needs: is anything inside the band still waiting to come in. the band
+// is eleven columns wide and the rosters are sparse, so this is a handful of byte compares
+static uint8_t band_pending(void) {
+    uint8_t i;
+
+    for (i = frontier_lo; i < frontier_hi; ++i) {
+        if (roster_state[i] == kRosterPending) {
+            return 1U;
+        }
+    }
+    return 0U;
+}
+
+// the object loader: an enemy comes in as its cell reaches the screen's right edge the way smb's
+// does, and - the user's own departure from smb1 - also as it reaches the mirrored band off the
+// left edge, so backtracking brings a parked one home to the cell it started on
+static void spawn(void) {
+    uint8_t i;
+
+    for (i = frontier_lo; i < frontier_hi; ++i) {
         uint8_t top_row;
         Enemy* e;
 
-        if (px > (uint16_t)(cam_x + kScreenWidthPx + kEnemySpawnMarginPx)) {
-            return;
-        }
-        // its turn came with the camera already past it, so it is forgotten rather than dropped in
-        if ((uint16_t)(px + kEnemyWidthPx + kEnemyDespawnMarginPx) < cam_x) {
-            ++cursor;
-            note_next_spawn();
+        if (roster_state[i] != kRosterPending) {
             continue;
         }
         // the roster names the surface row it stands on; its box top is the row above that
-        top_row = (uint8_t)(roster_row[cursor] - 1U);
+        top_row = (uint8_t)(roster_row[i] - 1U);
         if (row_load(top_row) >= kEnemyRowCap) {
             return; // the scanline cap: it waits right here until a slot on its row frees
         }
@@ -355,10 +438,12 @@ static void spawn(uint16_t cam_x) {
             return;
         }
         e = &pool[live];
+        slot_roster[live] = i;
         ++live;
+        roster_state[i] = kRosterLive;
         e->state = kEnemyWalk;
-        e->kind = roster_kind[cursor];
-        e->pos_x = px;
+        e->kind = roster_kind[i];
+        e->pos_x = (uint16_t)((uint16_t)roster_column[i] << 4);
         e->pos_y = (int16_t)((int16_t)top_row << 4);
         e->dir = -1; // smb starts every walker off to the left
         e->x_force = 0;
@@ -372,7 +457,7 @@ static void spawn(uint16_t cam_x) {
         if (e->kind == kEnemyPiranha) {
             // the plant starts hidden inside its pipe: foot_col carries the cap row it rises out of
             e->state = kEnemyPlantHidden;
-            e->foot_col = roster_row[cursor];
+            e->foot_col = roster_row[i];
             e->pos_y = (int16_t)((int16_t)e->foot_col << 4);
             // roster.json names the pipe's left of its two 16px columns; the plant's own box is one
             // enemy width (16px), so recentre it across the pipe's full 32px span - see
@@ -385,13 +470,12 @@ static void spawn(uint16_t cam_x) {
             e->y_accum = (uint8_t)kParaBandPx;
             e->dy = -1;
         }
-        ++cursor;
-        note_next_spawn();
     }
 }
 
-// off the left is smb's own forgetting; off the right is ours, so a shell that outruns the camera
-// cannot hold a pool slot for the rest of the level. the two bounds are worked out once, not per slot
+// both sides free the slot, and neither is a kill: the cell the enemy came from parks it instead,
+// so walking back to that cell brings it in again. the bottom of the level is the one exit that
+// counts as a death. the three bounds are worked out once, not per slot
 static void despawn(uint16_t cam_x) {
     const uint16_t gone_left = (cam_x > (kEnemyWidthPx + kEnemyDespawnMarginPx))
                                    ? (uint16_t)(cam_x - (kEnemyWidthPx + kEnemyDespawnMarginPx))
@@ -402,8 +486,12 @@ static void despawn(uint16_t cam_x) {
     while (i < live) {
         const Enemy* e = &pool[i];
 
-        if (e->pos_x < gone_left || e->pos_x > gone_right || e->pos_y > (int16_t)kLevelHeightPx) {
-            remove_at(i);
+        if (e->pos_y > (int16_t)kLevelHeightPx) {
+            release_at(i, kRosterDead);
+            continue;
+        }
+        if (e->pos_x < gone_left || e->pos_x > gone_right) {
+            park_at(i);
             continue;
         }
         ++i;
@@ -443,13 +531,13 @@ static void collide_enemies(void) {
             if (a->state == kEnemyShellMove && b->state != kEnemyShellMove) {
                 // the kill leaves the body in its slot flipping out of the level, so the shell
                 // walks on over it rather than the pool closing up behind it
-                flip_kill(b);
+                flip_kill(j);
                 award(kShellChain, kShellChainCount, &shell_chain);
                 ++j;
                 continue;
             }
             if (b->state == kEnemyShellMove && a->state != kEnemyShellMove) {
-                flip_kill(a);
+                flip_kill(i);
                 award(kShellChain, kShellChainCount, &shell_chain);
                 break;
             }
@@ -555,7 +643,7 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
         // the star takes anything it touches off the pool outright, stomp or not
         if ((flags & kEnemyFlagStar) != 0U && (from_above == 0U || e->kind == kEnemyPiranha)) {
             award_kill(e->kind);
-            remove_at(i);
+            release_at(i, kRosterDead);
             continue;
         }
         // roster.json: a piranha plant cannot be stomped, only burned or run into
@@ -586,6 +674,10 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
         }
         if (from_above != 0U) {
             code = stomp(e);
+            // a shell or a de-winged flyer is still alive; a flattened goomba is not
+            if (e->state == kEnemySquashed) {
+                roster_state[slot_roster[i]] = kRosterDead;
+            }
             if (code > hit) {
                 hit = code;
             }
@@ -619,7 +711,7 @@ uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED {
             continue;
         }
         award_kill(e->kind);
-        flip_kill(e);
+        flip_kill(i);
         return 1;
     }
     return 0;
@@ -663,10 +755,13 @@ void enemies_load_level(void) BANKED {
         drawn_tile[i] = 0;
         drawn_x[i] = 0xFF;
     }
-    cursor = 0;
+    for (i = 0; i < roster_count; ++i) {
+        roster_state[i] = kRosterPending;
+    }
+    frontier_lo = 0;
+    frontier_hi = 0;
     live = 0;
     shown = kEnemySlots;
-    note_next_spawn();
     anim = 0;
     stomp_chain = 0;
     shell_chain = 0;
@@ -674,7 +769,11 @@ void enemies_load_level(void) BANKED {
 }
 
 void enemies_enter_area(uint8_t area) BANKED {
-    live = 0;
+    // a pipe is not a kill: everything on screen parks at its own cell, so coming back up into a
+    // stretch already walked finds it populated the way scrolling back into it does
+    while (live != 0U) {
+        park_at((uint8_t)(live - 1U));
+    }
     enabled = (area == kAreaMain) ? 1U : 0U;
 }
 
@@ -685,8 +784,9 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
     if (enabled == 0U) {
         return kEnemyHitNone;
     }
-    // the fast path: nothing alive and the next one still off screen costs one compare a frame
-    if (live == 0U && (uint16_t)(cam_x + kScreenWidthPx + kEnemySpawnMarginPx) < next_spawn_px) {
+    frontier_step(cam_x);
+    // the fast path: nothing alive and no cell inside the band still waiting to come in
+    if (live == 0U && band_pending() == 0U) {
         return kEnemyHitNone;
     }
     // landing ends a stomp chain: the escalation only runs while he stays off the ground
@@ -694,7 +794,7 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
         stomp_chain = 0;
     }
     ++anim;
-    spawn(cam_x);
+    spawn();
 
     i = 0;
     while (i < live) {
@@ -723,7 +823,7 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
         if (e->state == kEnemySquashed) {
             --e->timer;
             if (e->timer == 0U) {
-                remove_at(i);
+                release_at(i, kRosterDead);
                 continue;
             }
             ++i;

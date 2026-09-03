@@ -1074,7 +1074,20 @@ struct PlayerSim {
     const HostLevel* lv = &kHostLevels[kLevel11];
     const LevelEnemy* roster = kLevel11Enemies;
     uint16_t roster_count = kLevel11EnemyCount;
-    uint16_t cursor = 0;
+    // enemies.c's per-entry life states and its two frontier indices. the advancing cursor is gone:
+    // an enemy that leaves the view alive parks at its own roster cell and comes back when that
+    // cell reaches the spawn band again, from either side. see kEnemySpawnMarginPx in mario.h
+    static constexpr uint8_t kRosterPending = 0;
+    static constexpr uint8_t kRosterLive = 1;
+    static constexpr uint8_t kRosterDead = 2;
+    static constexpr uint8_t kRosterWait = 3;
+    static constexpr int kRosterCap = 64;
+    std::array<uint8_t, kRosterCap> roster_state{};
+    std::array<uint8_t, kEnemySlots> slot_roster{};
+    // test-only bookkeeping, nothing the rom keeps: which entries have ever been let in
+    std::array<uint8_t, kRosterCap> roster_seen{};
+    uint16_t frontier_lo = 0;
+    uint16_t frontier_hi = 0;
     uint16_t cam_x = 0;
     // camera.c's own scy: the band it drifts to while he moves, and where it currently sits. the
     // pan is frozen while he stands perfectly still, so a plan that ends standing has to check it
@@ -1227,6 +1240,22 @@ struct PlayerSim {
         roster_count = kLabEnemyCount;
     }
 
+    // marks the whole roster spent, so nothing spawns and nothing comes back: the tests that hang
+    // an enemy in a pool slot by hand need the level's own list out of the way
+    void silence_roster() {
+        roster_state.fill(kRosterDead);
+        slot_roster.fill(0);
+    }
+
+    // how many roster entries have been let in at least once this life
+    int roster_seen_count() const {
+        int n = 0;
+        for (uint16_t i = 0; i < roster_count; ++i) {
+            n += roster_seen[i] != 0 ? 1 : 0;
+        }
+        return n;
+    }
+
     // the run is over either way: the planner treats a goomba like a pit
     bool dead() const {
         return fell() || damaged;
@@ -1235,6 +1264,22 @@ struct PlayerSim {
     void remove_at(uint8_t i) {
         --live;
         pool[i] = pool[live];
+        slot_roster[i] = slot_roster[live];
+    }
+
+    // a slot leaving the pool: a killed cell stays dead however the slot goes away
+    void release_at(uint8_t i, uint8_t next) {
+        if (roster_state[slot_roster[i]] != kRosterDead) {
+            roster_state[slot_roster[i]] = next;
+        }
+        remove_at(i);
+    }
+
+    // enemies.c's park_at: a cell still inside the band parks, one already outside re-arms at once
+    void park_at(uint8_t i) {
+        const uint8_t idx = slot_roster[i];
+
+        release_at(i, (idx >= frontier_lo && idx < frontier_hi) ? kRosterWait : kRosterPending);
     }
 
     void award(const uint16_t* table, uint8_t count, uint8_t& chain) {
@@ -1349,7 +1394,10 @@ struct PlayerSim {
 
     // enemies.c's flip_kill/step_flip: the body stops colliding, pops up and falls out of the
     // level with no terrain probe at all, and its slot frees when despawn sees it leave
-    static void enemy_flip_kill(EnemySlot& e) {
+    void enemy_flip_kill(uint8_t i) {
+        EnemySlot& e = pool[i];
+
+        roster_state[slot_roster[i]] = kRosterDead;
         e.state = kEnemyFlipped;
         e.dy = static_cast<int8_t>(kEnemyFlipPopPx);
         e.y_accum = 0;
@@ -1400,18 +1448,56 @@ struct PlayerSim {
         return n;
     }
 
+    bool left_of_band(uint16_t i) const {
+        const uint16_t px = static_cast<uint16_t>(roster[i].column << 4);
+
+        return static_cast<uint16_t>(px + kEnemyBoxPx + kEnemySpawnMarginPx) < cam_x;
+    }
+
+    void rearm(uint16_t i) {
+        if (roster_state[i] == kRosterWait) {
+            roster_state[i] = kRosterPending;
+        }
+    }
+
+    // the two frontier indices walked onto this frame's camera, and the cells they step over on the
+    // way out of the band are the ones that re-arm
+    void frontier_step() {
+        const uint16_t right = static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemySpawnMarginPx);
+
+        while (frontier_hi < roster_count &&
+               static_cast<uint16_t>(roster[frontier_hi].column << 4) <= right) {
+            ++frontier_hi;
+        }
+        while (frontier_hi != 0 && static_cast<uint16_t>(roster[frontier_hi - 1].column << 4) > right) {
+            --frontier_hi;
+            rearm(frontier_hi);
+        }
+        while (frontier_lo < roster_count && left_of_band(frontier_lo)) {
+            rearm(frontier_lo);
+            ++frontier_lo;
+        }
+        while (frontier_lo != 0 && !left_of_band(static_cast<uint16_t>(frontier_lo - 1))) {
+            --frontier_lo;
+        }
+    }
+
+    bool band_pending() const {
+        for (uint16_t i = frontier_lo; i < frontier_hi; ++i) {
+            if (roster_state[i] == kRosterPending) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void enemy_spawn() {
         refused = false;
-        while (cursor < roster_count) {
-            const uint16_t px = static_cast<uint16_t>(roster[cursor].column << 4);
-            if (px > static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemySpawnMarginPx)) {
-                return;
-            }
-            if (static_cast<uint16_t>(px + kEnemyBoxPx + kEnemyDespawnMarginPx) < cam_x) {
-                ++cursor;
+        for (uint16_t i = frontier_lo; i < frontier_hi; ++i) {
+            if (roster_state[i] != kRosterPending) {
                 continue;
             }
-            const uint8_t top_row = static_cast<uint8_t>(roster[cursor].row - 1);
+            const uint8_t top_row = static_cast<uint8_t>(roster[i].row - 1);
             if (enemy_row_load(top_row) >= kEnemyRowCap) {
                 refused = true;
                 return;
@@ -1421,24 +1507,26 @@ struct PlayerSim {
                 return;
             }
             EnemySlot* slot = &pool[live];
+            slot_roster[live] = static_cast<uint8_t>(i);
             ++live;
+            roster_state[i] = kRosterLive;
+            roster_seen[i] = 1;
             *slot = EnemySlot{};
             slot->state = kEnemyWalk;
-            slot->kind = roster[cursor].kind;
-            slot->pos_x = px;
+            slot->kind = roster[i].kind;
+            slot->pos_x = static_cast<uint16_t>(roster[i].column << 4);
             slot->pos_y = static_cast<int16_t>(top_row << 4);
             slot->lead_col = slot->lead();
             slot->foot_col = slot->foot();
             if (slot->kind == kEnemyPiranha) {
                 slot->state = kEnemyPlantHidden;
-                slot->foot_col = roster[cursor].row;
+                slot->foot_col = roster[i].row;
                 slot->pos_y = static_cast<int16_t>(slot->foot_col << 4);
             } else if (slot->kind == kEnemyKoopaParaRed) {
                 slot->grounded = 0;
                 slot->y_accum = static_cast<uint8_t>(kParaBandPx);
                 slot->dy = -1;
             }
-            ++cursor;
         }
     }
 
@@ -1446,10 +1534,14 @@ struct PlayerSim {
         uint8_t i = 0;
         while (i < live) {
             const EnemySlot& e = pool[i];
-            if (e.pos_y > static_cast<int16_t>(kLevelHeightPx) ||
-                static_cast<uint16_t>(e.pos_x + kEnemyBoxPx + kEnemyDespawnMarginPx) < cam_x ||
+            // out of the bottom of the level is a death; off either side is only a departure
+            if (e.pos_y > static_cast<int16_t>(kLevelHeightPx)) {
+                release_at(i, kRosterDead);
+                continue;
+            }
+            if (static_cast<uint16_t>(e.pos_x + kEnemyBoxPx + kEnemyDespawnMarginPx) < cam_x ||
                 e.pos_x > static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemyDespawnMarginPx)) {
-                remove_at(i);
+                park_at(i);
                 continue;
             }
             ++i;
@@ -1480,13 +1572,13 @@ struct PlayerSim {
                     continue;
                 }
                 if (a.state == kEnemyShellMove && b.state != kEnemyShellMove) {
-                    enemy_flip_kill(b);
+                    enemy_flip_kill(j);
                     award(kShellChainTable, kShellChainCount, shell_chain);
                     ++j;
                     continue;
                 }
                 if (b.state == kEnemyShellMove && a.state != kEnemyShellMove) {
-                    enemy_flip_kill(a);
+                    enemy_flip_kill(i);
                     award(kShellChainTable, kShellChainCount, shell_chain);
                     break;
                 }
@@ -1586,6 +1678,10 @@ struct PlayerSim {
             }
             if (from_above) {
                 const uint8_t code = enemy_stomp(e);
+                // a shell or a de-winged flyer is still alive; a flattened goomba is not
+                if (e.state == kEnemySquashed) {
+                    roster_state[slot_roster[i]] = kRosterDead;
+                }
                 if (code > hit) {
                     hit = code;
                 }
@@ -1707,11 +1803,6 @@ struct PlayerSim {
         on_ground = 0;
     }
 
-    // main.c's frame tail: the camera resolves first, then the enemy pass, then mario's reaction
-    uint16_t next_spawn_px() const {
-        return cursor < roster_count ? static_cast<uint16_t>(roster[cursor].column << 4) : uint16_t{0xFFFF};
-    }
-
     static uint8_t band_for(int16_t feet_y) {
         const int value = feet_y + kCamGroundOffsetPx - kScreenHeightPx;
         return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
@@ -1721,6 +1812,7 @@ struct PlayerSim {
         return static_cast<uint8_t>(std::max(0, std::min(static_cast<int>(kScyMax), value)));
     }
 
+    // main.c's frame tail: the camera resolves first, then the enemy pass, then mario's reaction
     void step_world() {
         const uint16_t want = x_pos > kCamFollowX ? static_cast<uint16_t>(x_pos - kCamFollowX) : uint16_t{0};
         cam_x = std::min(want, max_x());
@@ -1731,9 +1823,9 @@ struct PlayerSim {
         cam_y = cam_ease(cam_y, band, on_ground);
         step_item();
         contact = kEnemyHitNone;
+        frontier_step();
         // enemies.c's idle fast path, mirrored so the two stay frame-identical
-        if (live == 0 &&
-            static_cast<uint16_t>(cam_x + kScreenWidthPx + kEnemySpawnMarginPx) < next_spawn_px()) {
+        if (live == 0 && !band_pending()) {
             check_hazards();
             if (contact == kEnemyHitDamage) {
                 damaged = true;
@@ -1768,7 +1860,7 @@ struct PlayerSim {
             }
             if (e.state == kEnemySquashed) {
                 if (--e.timer == 0) {
-                    remove_at(i);
+                    release_at(i, kRosterDead);
                     continue;
                 }
                 ++i;
@@ -6161,6 +6253,128 @@ TEST_CASE("mario_stomp_squashes") {
     REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
 }
 
+// the respawn rule the user chose over smb1's advancing cursor, see kEnemySpawnMarginPx in mario.h:
+// the first goomba is walked onto the screen, backed away from until its slot frees, and then walked
+// back to - and it is standing on its own roster cell again, walking, as if nothing had happened
+TEST_CASE("mario_goomba_comes_back_after_a_round_trip") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const LevelEnemy& first = kLevel11Enemies[0];
+    REQUIRE(first.kind == kEnemyGoomba);
+
+    // the x it holds on the frame it first comes in: its cell, less the half pixel its first walk
+    // step of that same frame has already taken it
+    uint16_t first_at = 0;
+    {
+        PlayerSim probe;
+        for (int i = 0; i < 1200 && first_at == 0; ++i) {
+            probe.step(kInRight);
+            first_at = probe.live != 0 ? probe.pool[0].pos_x : uint16_t{0};
+        }
+    }
+    REQUIRE(first_at != 0);
+    REQUIRE(static_cast<uint16_t>(first_at + 1) == static_cast<uint16_t>(first.column * kBlockPx));
+
+    const Route walk = plan_walk_to(spawn_stand_x(first.column));
+    REQUIRE(walk.reached);
+    REQUIRE(walk.end.live == 1);
+
+    // back to the start until the pool is empty, then out again until it is on screen once more
+    PlayerSim sim = walk.end;
+    std::vector<uint8_t> trip;
+    for (int i = 0; i < 1200 && (sim.live != 0 || sim.x_pos > 10 * kBlockPx); ++i) {
+        trip.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    REQUIRE(sim.live == 0);
+    REQUIRE(!sim.dead());
+
+    uint16_t came_back_at = 0;
+    for (int i = 0; i < 1200; ++i) {
+        trip.push_back(kInRight);
+        sim.step(kInRight);
+        if (came_back_at == 0 && sim.live != 0) {
+            came_back_at = sim.pool[0].pos_x;
+        }
+        // stop as soon as it is well inside the screen, so the run in never reaches it
+        if (came_back_at != 0 &&
+            static_cast<int>(sim.pool[0].pos_x) - static_cast<int>(sim.cam_x) <= 140) {
+            break;
+        }
+    }
+    // then brake to a halt. a parked camera is what makes the rom's oam and the twin's world x
+    // directly comparable - while he runs, a sprite is written a frame before the camera it is read
+    // against - and it leaves plenty of ground between him and what is walking at him
+    for (int i = 0; i < 240 && sim.x_speed > 0; ++i) {
+        trip.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 240 && sim.x_speed != 0; ++i) {
+        trip.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(!sim.dead());
+    REQUIRE(sim.live == 1);
+    REQUIRE(sim.pool[0].kind == kEnemyGoomba);
+    REQUIRE(sim.pool[0].state == kEnemyWalk);
+    // the whole point: the same cell, to the pixel, as the first time it was let in
+    REQUIRE(came_back_at == first_at);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    REQUIRE(sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi).found);
+
+    replay(gameboy, trip, 0, trip.size());
+    const SpriteBox back = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(back.found);
+    // and the rom put it where the twin says it is: the goomba's two walk frames differ by a pixel
+    // of lit art, so the box's leftmost column lands on the world x or one past it
+    const int screen_x = static_cast<int>(sim.pool[0].pos_x) - static_cast<int>(sim.cam_x);
+    REQUIRE(back.left >= screen_x);
+    REQUIRE(back.left <= screen_x + 1);
+}
+
+// and the other half of the rule: a kill is permanent for the rest of the life, so the same round
+// trip over a goomba that was stomped brings nothing back
+TEST_CASE("mario_stomped_goomba_stays_gone_after_a_round_trip") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const LevelEnemy& first = kLevel11Enemies[0];
+
+    const Route walk = plan_walk_to(spawn_stand_x(first.column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    PlayerSim sim = stomp.end;
+    std::vector<uint8_t> trip;
+    for (int i = 0; i < 1200 && (sim.live != 0 || sim.x_pos > 10 * kBlockPx); ++i) {
+        trip.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    REQUIRE(sim.live == 0);
+    // out well past the x its cell re-enters the spawn band at, which is where it came in the
+    // first time, and nothing at all is let in
+    const uint16_t past = static_cast<uint16_t>(spawn_stand_x(first.column) + 3 * kBlockPx);
+    for (int i = 0; i < 1200 && sim.x_pos < past; ++i) {
+        trip.push_back(kInRight);
+        sim.step(kInRight);
+    }
+    REQUIRE(!sim.dead());
+    REQUIRE(sim.x_pos >= past);
+    REQUIRE(sim.live == 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    replay(gameboy, stomp.script, 0, stomp.script.size());
+    replay(gameboy, trip, 0, trip.size());
+
+    REQUIRE(!sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi).found);
+    REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
+}
+
 TEST_CASE("mario_side_contact_respawns") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -6419,7 +6633,7 @@ TEST_CASE("mario_scanline_cap_holds_at_four") {
             refused = refused || sim.refused;
         }
         REQUIRE(refused);
-        REQUIRE(sim.cursor >= static_cast<uint16_t>(cluster));
+        REQUIRE(sim.roster_seen_count() >= cluster);
     }
 
     gb::Gameboy gameboy;
@@ -8554,7 +8768,7 @@ TEST_CASE("mario_paratroopa_stomps_into_a_koopa") {
     // clear 1-1's own walkers out and stop the cursor: 1-1 has red koopas of its own, and the
     // watch below has to be following the one this test hung in the air
     sim.live = 0;
-    sim.cursor = sim.roster_count;
+    sim.silence_roster();
     // a column just ahead of him with nothing between the flyer's band and the ground
     uint16_t column = 0;
     for (uint16_t c = static_cast<uint16_t>((sim.x_pos >> 4) + 4);

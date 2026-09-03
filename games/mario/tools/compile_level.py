@@ -1076,8 +1076,8 @@ def compile_block_list(bible):
 
 
 def compile_enemy_list(bible, grid, level_type):
-    # the spawn list the rom walks with a single advancing cursor, so it must be sorted by column:
-    # the engine only ever compares the cursor's own entry against the camera's right edge. the
+    # the spawn list the rom scans, so it must be sorted by column: the engine tracks the band of
+    # cells around the camera with two frontier indices that each step one entry at a time. the
     # bible's count_only entries carry no position and are dropped rather than invented
     out = []
     for e in bible.get("enemies", []):
@@ -1389,7 +1389,8 @@ def write_header(out_dir, slug, level, source_path):
         f.write("extern const uint8_t %s_block_kind[];\n" % slug)
         f.write("extern const uint8_t %s_block_content[];\n\n" % slug)
 
-        f.write("// the position-triggered enemy spawn list, sorted by column so one cursor walks it.\n")
+        f.write("// the position-triggered enemy spawn list, sorted by column so the engine reaches\n")
+        f.write("// the cells near the camera with two frontier indices rather than a scan.\n")
         f.write("// row is the surface row the enemy stands on top of, the start cell's own convention\n")
         f.write("#define %s_ENEMY_COUNT %dU\n" % (upper, len(level["enemies"])))
         f.write("extern const uint16_t %s_enemy_column[];\n" % slug)

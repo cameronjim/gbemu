@@ -222,12 +222,14 @@ static uint8_t map_anim;
 static uint8_t map_anim_timer;
 static uint16_t map_x;
 
-// set while the "world 2 is on its way" banner sits over the strip; see kMapPopupRow in mario.h
+// set while the "world 2 is on its way" card sits over the strip; see the kMapPopup* block in
+// mario.h
 static uint8_t map_popup;
-// the popup's own two lines; see the comment on these in mapscreen.h for why they are plain ram
+// the popup's own three lines; see the comment on these in mapscreen.h for why they are plain ram
 // filled in by states.c rather than string literals here
 char map_popup_line1[kMapPopupLineWidth];
 char map_popup_line2[kMapPopupLineWidth];
+char map_popup_line3[kMapPopupLineWidth];
 
 // the map strip's backdrop, four block rows (local 0-3, absolute kMapBandFirstRow+0..3) of ten
 // columns. every cell is landscape apart from the six kBlockEmpty ones at the right end, which the
@@ -487,26 +489,27 @@ static void map_draw_castle(uint8_t bx, uint8_t by) {
     }
 }
 
-// the panel's top or bottom edge: a corner at each end, y-flipped for the bottom so the same
-// bracket tile serves all four corners, an h-edge tile filling the run between them
-static void map_draw_border(uint8_t row, uint8_t flip_y) {
+// a bordered panel's top or bottom edge: a corner at each end, y-flipped for the bottom so the same
+// bracket tile serves all four corners, an h-edge tile filling the run between them. `left`/`width`
+// let this serve both the CLEAR LIST panel and the wider world-two popup card below
+static void map_draw_border(uint8_t row, uint8_t flip_y, uint8_t left, uint8_t width) {
     uint8_t x;
     const uint8_t attr_l = (uint8_t)(kMapListAttr | (flip_y != 0U ? kCamAttrYFlip : 0U));
     const uint8_t attr_r = (uint8_t)(attr_l | kCamAttrXFlip);
-    const uint8_t last = (uint8_t)(kMapListLeftCol + kMapListWidth - 1U);
+    const uint8_t last = (uint8_t)(left + width - 1U);
 
-    put_tile(kMapListLeftCol, row, kTileMapListCorner, attr_l);
-    for (x = (uint8_t)(kMapListLeftCol + 1U); x < last; ++x) {
+    put_tile(left, row, kTileMapListCorner, attr_l);
+    for (x = (uint8_t)(left + 1U); x < last; ++x) {
         put_tile(x, row, kTileMapListHEdge, attr_l);
     }
     put_tile(last, row, kTileMapListCorner, attr_r);
 }
 
-// one row's worth of the panel's left/right sides, between the top and bottom borders
-static void map_draw_sides(uint8_t row) {
-    const uint8_t last = (uint8_t)(kMapListLeftCol + kMapListWidth - 1U);
+// one row's worth of a bordered panel's left/right sides, between the top and bottom borders
+static void map_draw_sides(uint8_t row, uint8_t left, uint8_t width) {
+    const uint8_t last = (uint8_t)(left + width - 1U);
 
-    put_tile(kMapListLeftCol, row, kTileMapListVEdge, kMapListAttr);
+    put_tile(left, row, kTileMapListVEdge, kMapListAttr);
     put_tile(last, row, kTileMapListVEdge, (uint8_t)(kMapListAttr | kCamAttrXFlip));
 }
 
@@ -516,10 +519,10 @@ static void map_draw_sides(uint8_t row) {
 static void map_draw_list(uint8_t furthest) {
     uint8_t i;
 
-    map_draw_border(kMapListTopRow, 0);
-    map_draw_sides(kMapListHeadRow);
-    map_draw_sides(kMapListCellsRow);
-    map_draw_border(kMapListBottomRow, 1);
+    map_draw_border(kMapListTopRow, 0, kMapListLeftCol, kMapListWidth);
+    map_draw_sides(kMapListHeadRow, kMapListLeftCol, kMapListWidth);
+    map_draw_sides(kMapListCellsRow, kMapListLeftCol, kMapListWidth);
+    map_draw_border(kMapListBottomRow, 1, kMapListLeftCol, kMapListWidth);
     // the label is still plain font text - a genuine SMB Deluxe UI element spelled out, which the
     // font already draws cleanly; only the border and the cells read as ascii art drawn that way
     puts_at((uint8_t)(kMapListLeftCol + 1U), kMapListHeadRow, "CLEAR LIST");
@@ -546,6 +549,66 @@ static void draw_mario(void) {
     set_sprite_prop(kSpriteMarioR, prop);
     move_sprite(kSpriteMarioL, x, y);
     move_sprite(kSpriteMarioR, (uint8_t)(x + 8U), y);
+}
+
+// `width` blank font-space glyphs (kTileSky, the same trick card_clear_map uses) under one
+// palette, so a row reads as a solid band rather than the strip's own tiles tinted through - the
+// bug in the popup this replaces. shared by the card's interior rows and, on dismiss, the one
+// footer row its bottom border sat on
+static void map_blank_row(uint8_t row, uint8_t left, uint8_t width, uint8_t attr) {
+    uint8_t tiles[kMapPopupWidth];
+    uint8_t attrs[kMapPopupWidth];
+    uint8_t x;
+
+    for (x = 0; x < width; ++x) {
+        tiles[x] = kTileSky;
+        attrs[x] = attr;
+    }
+    set_bkg_tiles(left, row, width, 1, tiles);
+    set_bkg_attributes(left, row, width, 1, attrs);
+}
+
+// the world-two card itself: the CLEAR LIST panel's own border tiles/palette around a solid black
+// interior (kCamPalSky, the same white-on-black every other footer line already reads under), with
+// one row banded gold (kCamPalQuestion, the same color the map's own "current node" marker uses) so
+// the call to action stands out from the two lines above it the way the reference's own prompts do
+static void map_draw_popup(void) {
+    uint8_t row;
+
+    map_draw_border(kMapPopupTopRow, 0, kMapPopupLeftCol, kMapPopupWidth);
+    for (row = (uint8_t)(kMapPopupTopRow + 1U); row < kMapPopupBottomRow; ++row) {
+        const uint8_t attr = row == (uint8_t)kMapPopupPressRow ? (uint8_t)kCamPalQuestion : (uint8_t)kCamPalSky;
+        map_blank_row(row, (uint8_t)(kMapPopupLeftCol + 1U), (uint8_t)(kMapPopupWidth - 2U), attr);
+        map_draw_sides(row, kMapPopupLeftCol, kMapPopupWidth);
+    }
+    map_draw_border(kMapPopupBottomRow, 1, kMapPopupLeftCol, kMapPopupWidth);
+    card_print_centered(kMapPopupWorldRow, map_popup_line1);
+    card_print_centered(kMapPopupWayRow, map_popup_line2);
+    card_print_centered(kMapPopupPressRow, map_popup_line3);
+}
+
+// undoes every cell map_draw_popup touched: the card spans most of the strip's four block rows plus
+// one footer padding row below it, so redrawing "the one row it covers" (the old, smaller popup's
+// trick) is no longer enough - the whole strip, the castle and the markers are cheap to rebuild from
+// the same tables map_reset used, and mario is a sprite the popup only hid, not overdrew
+static void map_draw_popup_hide(void) {
+    uint8_t bx;
+    uint8_t by;
+
+    for (by = 0; by < (uint8_t)kMapBandBlockRows; ++by) {
+        for (bx = 0; bx < (uint8_t)kMapBlockCols; ++bx) {
+            put_cell(bx, (uint8_t)(kMapBandFirstRow + by), kMapRows[by][bx]);
+        }
+    }
+    map_draw_castle(kMapCastleCol, kMapBandFirstRow);
+    for (bx = 0; bx < (uint8_t)kLevelCount; ++bx) {
+        put_marker(node_column(bx), kMapMarkerRow, marker_palette(bx));
+    }
+    // the card's bottom border sat exactly on the footer's own first padding row (both are tile row
+    // kMapFooterFirstTileRow), border tiles and all - blank the full popup width back to the black
+    // band's space glyph, not just the interior
+    map_blank_row(kMapFooterFirstTileRow, kMapPopupLeftCol, kMapPopupWidth, (uint8_t)kCamPalSky);
+    draw_mario();
 }
 
 static void map_reset(uint8_t node) {
@@ -605,17 +668,17 @@ static void map_reset(uint8_t node) {
     map_draw_lives();
     map_draw_list(map_unlocked);
     draw_mario();
-    // world one is done: every visit to the map from here on gets the popup, until it is dismissed.
-    // two lines banded the same accent the file select's lit slot uses, over the strip's second
-    // block row, so it reads as a card dropped onto the map rather than part of the terrain
+    // world one is done: every visit to the map from here on gets the card, until it is dismissed.
+    // it covers mario's own walk row, so he is parked off screen the same way the level's leftover
+    // oam was above - map_draw_popup_hide's draw_mario() brings him back on dismiss
     map_popup = (uint8_t)(map_unlocked >= (uint8_t)kLevelCount);
     if (map_popup != 0U) {
         // the literal text lives in bank 6 (states.c's map_popup_load); bank 5 is full - see the
         // comment on map_popup_line1 in mapscreen.h
         map_popup_load();
-        card_paint_band(kMapPopupRow, 2, kPalAccent);
-        card_print_centered(kMapPopupRow, map_popup_line1);
-        card_print_centered((uint8_t)(kMapPopupRow + 1U), map_popup_line2);
+        map_draw_popup();
+        move_sprite(kSpriteMarioL, 0, 0);
+        move_sprite(kSpriteMarioR, 0, 0);
     }
     SHOW_BKG;
     SHOW_SPRITES;
@@ -628,18 +691,13 @@ static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
 
     // the popup eats every button until it is dismissed - lock_gate already stripped the edge that
     // was still held from whatever closed the clear card, so this can only fire on a fresh press.
-    // undoes exactly what map_reset drew: the one block row the popup painted over, restored
-    // straight from the strip's own layout table - no DISPLAY_OFF needed, the same mid-frame vram
-    // write style card_clear_refresh already uses to tick the clear card's timer while the display
-    // stays on
+    // map_draw_popup_hide rebuilds everything the card covered - no DISPLAY_OFF needed, the same
+    // mid-frame vram write style card_clear_refresh already uses to tick the clear card's timer
+    // while the display stays on
     if (map_popup != 0U) {
         if ((pressed & (uint8_t)(J_A | J_START | J_B)) != 0U) {
-            uint8_t bx;
-
             map_popup = 0;
-            for (bx = 0; bx < (uint8_t)kMapBlockCols; ++bx) {
-                put_cell(bx, (uint8_t)(kMapBandFirstRow + kMapPopupBlockRow), kMapRows[kMapPopupBlockRow][bx]);
-            }
+            map_draw_popup_hide();
         }
         return kMapStay;
     }

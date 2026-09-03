@@ -206,7 +206,10 @@ constexpr uint8_t kBlockTrunk = 46;
 // reaches 8 px into the pole's own cell to touch it: that half of the cell is the pennant's white
 // and the other half the shaft's greens, which is why it is a kind of its own
 constexpr uint8_t kBlockFlagPoleCloth = 47;
-constexpr uint8_t kBlockKindCount = 48;
+// 1-4's cut-stone masonry: solid and, unlike a grid brick, not something a grown mario can punch
+// out of a castle wall
+constexpr uint8_t kBlockCastleBrick = 48;
+constexpr uint8_t kBlockKindCount = 49;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -326,6 +329,9 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockStair:
         return tile >= 0xFA && tile <= 0xFD;
     case kBlockBrick:
+    // the castle's masonry wears the cave brick's four quadrants as a placeholder until the art
+    // pass cuts its own, so it answers the same family
+    case kBlockCastleBrick:
         return tile >= 0xA4 && tile <= 0xA7;
     case kBlockQuestion:
         return tile >= 0xA8 && tile <= 0xAB;
@@ -797,7 +803,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
-    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
+    0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0, kFloorSolid,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -919,6 +925,11 @@ constexpr uint8_t kLiftReverse = 0x80;
 constexpr int kFirebarSpinRaw = 0x28;
 constexpr int kFirebarSteps = 32;
 constexpr int kFirebarSegments = 6;
+// a firebar's object_param, the contract with compile_level.py's firebar_param(): segments in the
+// low nibble, then one bit for the fast rate and one for a counter-clockwise sweep
+constexpr uint8_t kFirebarLenMask = 0x0F;
+constexpr uint8_t kFirebarFast = 0x10;
+constexpr uint8_t kFirebarCcw = 0x20;
 constexpr int kFirebarRadiusPx = 8;
 constexpr int kFlamePx = 8;
 constexpr int kBowserWidthPx = 16;
@@ -8368,6 +8379,241 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
     REQUIRE(kLevel13Grid[96][10] == kBlockEmpty);
 }
 
+// 1-4 is transcribed cell by cell from the nes and smbd 1-4 map rips (see level-1-4.json's
+// confidence_notes and smbd_deltas). the two rips are the same level - the smbd one is the nes one
+// with its first sixteen columns cropped off - so unlike 1-3 there is no geometry to choose
+// between. these two pin the whole of it: the masonry and the lava here, the blocks, the bars and
+// the ending below
+TEST_CASE("mario_1_4_walls_pits_and_lava_match_the_measured_map") {
+    // the castle is a roof, a floor and the wall runs between them, and every one of those cells is
+    // the cut-stone kind rather than the cave brick: blocks_head_bump answers a grid brick off the
+    // grid and a grown mario breaks one, and a hole in a castle wall is a hole into the lava
+    const HostLevel& lv = kHostLevels[kLevel14];
+    REQUIRE(lv.columns == 152);
+    REQUIRE(lv.start_column == 1);
+    REQUIRE(lv.start_row == 7); // standing on the opening platform, four rows above the ground rows
+    for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            const uint8_t kind = kLevel14Grid[column][row];
+            CAPTURE(column, row, kind);
+            REQUIRE(kind != kBlockBrick);
+            REQUIRE(kind != kBlockGround);
+            REQUIRE(kind != kBlockGroundFill);
+        }
+        REQUIRE(kLevel14Grid[column][2] == kBlockCastleBrick); // the roof, unbroken end to end
+    }
+    REQUIRE(kBlockFloorTable[kBlockCastleBrick] == kFloorSolid);
+
+    // every column's masonry as its maximal vertical runs of stone, grouped into the ranges that
+    // share a profile. this table is the transcription: the opening platform and its three
+    // descending steps at 0-4, the roof thickening over the corridor at 37-71 and thinning to one
+    // row over each ceiling gap, the two floor levels either side of column 72, the drop to the
+    // ground rows in the hidden-block room at 104-115, the two pillars before the bridge, and the
+    // wall at 141-143 the axe stands on. the island at 29-31 shows its firebar through the table:
+    // column 30's stone starts a row lower because the bar's pivot block is its surface cell
+    struct Wall {
+        int x0;
+        int x1;
+        std::vector<std::pair<int, int>> runs;
+    };
+    const std::vector<Wall> want = {
+        {0, 2, {{2, 4}, {7, 14}}},      {3, 3, {{2, 4}, {8, 14}}},
+        {4, 4, {{2, 4}, {9, 14}}},      {5, 12, {{2, 4}, {10, 14}}},
+        {13, 14, {{2, 4}}},             {15, 22, {{2, 4}, {10, 14}}},
+        {23, 23, {{2, 5}, {10, 14}}},   {24, 25, {{2, 2}, {10, 14}}},
+        {26, 28, {{2, 2}}},             {29, 29, {{2, 2}, {10, 14}}},
+        {30, 30, {{2, 2}, {11, 14}}},   {31, 31, {{2, 2}, {10, 14}}},
+        {32, 34, {{2, 2}}},             {35, 36, {{2, 2}, {9, 14}}},
+        {37, 71, {{2, 5}, {9, 14}}},    {72, 79, {{2, 2}, {10, 14}}},
+        {80, 80, {{2, 3}, {10, 14}}},   {81, 87, {{2, 2}, {10, 14}}},
+        {88, 88, {{2, 3}, {10, 14}}},   {89, 96, {{2, 2}, {10, 14}}},
+        {97, 103, {{2, 4}, {10, 14}}},  {104, 115, {{2, 2}, {13, 14}}},
+        {116, 119, {{2, 2}, {10, 14}}}, {120, 122, {{2, 2}, {13, 14}}},
+        {123, 127, {{2, 4}, {10, 14}}}, {128, 140, {{2, 2}}},
+        {141, 141, {{2, 2}, {9, 14}}},  {142, 143, {{2, 5}, {9, 14}}},
+        {144, 151, {{2, 2}, {13, 14}}},
+    };
+    int covered = 0;
+    for (const Wall& wall : want) {
+        REQUIRE(wall.x0 == covered);
+        covered = wall.x1 + 1;
+        for (int column = wall.x0; column <= wall.x1; ++column) {
+            std::vector<std::pair<int, int>> runs;
+            for (int row = 0; row < kHostLevelRows; ++row) {
+                if (kLevel14Grid[column][row] != kBlockCastleBrick) {
+                    continue;
+                }
+                if (!runs.empty() && runs.back().second == row - 1) {
+                    runs.back().second = row;
+                } else {
+                    runs.push_back({row, row});
+                }
+            }
+            CAPTURE(column);
+            REQUIRE(runs == wall.runs);
+        }
+    }
+    REQUIRE(covered == static_cast<int>(LEVEL_1_4_LENGTH_COLUMNS));
+
+    // the four lava pits, and nothing else in the level is lava. the first one is the odd one: both
+    // rips draw its surface a row higher than the other three, so it is three rows deep
+    struct Pit {
+        int x0;
+        int x1;
+        int y0;
+    };
+    const std::vector<Pit> pits = {{13, 14, 12}, {26, 28, 13}, {32, 34, 13}, {128, 140, 13}};
+    std::vector<std::pair<int, int>> lava;
+    for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel14Grid[column][row] == kBlockLava) {
+                lava.push_back({column, row});
+            }
+        }
+    }
+    std::vector<std::pair<int, int>> want_lava;
+    for (const Pit& pit : pits) {
+        for (int column = pit.x0; column <= pit.x1; ++column) {
+            for (int row = pit.y0; row < kHostLevelRows; ++row) {
+                want_lava.push_back({column, row});
+            }
+        }
+    }
+    std::sort(want_lava.begin(), want_lava.end());
+    REQUIRE(lava == want_lava);
+    // lava is scenery over the death plane, so a pit is a pit: below the roof, whose thickest run
+    // reaches row 5, nothing in one is standable - the bridge deck over the last pit excepted
+    for (const Pit& pit : pits) {
+        for (int column = pit.x0; column <= pit.x1; ++column) {
+            for (int row = 6; row < kHostLevelRows; ++row) {
+                CAPTURE(column, row);
+                REQUIRE((!solid_at(lv, column, row) || row == lv.bridge_row));
+            }
+        }
+    }
+}
+
+TEST_CASE("mario_1_4_blocks_firebars_and_the_bridge_match_the_measured_map") {
+    const HostLevel& lv = kHostLevels[kLevel14];
+
+    // the reaction list: the level's one ? block, then the two ranks of three hidden blocks in the
+    // room before the bridge. the four lone solid blocks the rips draw with no firebar on them are
+    // hard blocks and stay out of it, and so do the seven firebar pivots
+    REQUIRE(lv.block_count == 7);
+    struct Listed {
+        int column;
+        int row;
+        uint8_t kind;
+    };
+    const std::vector<Listed> want_blocks = {
+        {30, 6, 0},                 {106, 9, kBlockListHidden}, {109, 9, kBlockListHidden},
+        {112, 9, kBlockListHidden}, {107, 5, kBlockListHidden}, {110, 5, kBlockListHidden},
+        {113, 5, kBlockListHidden},
+    };
+    for (size_t i = 0; i < want_blocks.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(lv.blocks[i].column == want_blocks[i].column);
+        REQUIRE(lv.blocks[i].row == want_blocks[i].row);
+        REQUIRE(lv.blocks[i].kind == want_blocks[i].kind);
+    }
+    REQUIRE(lv.blocks[0].content == kContentMushroom);
+    REQUIRE(kLevel14Grid[30][6] == kBlockQuestion);
+    // a hidden block renders as sky until it is bumped, so its cell is open air in the grid, and
+    // the room it stands in has nothing over it but the roof - which is what makes the ladder
+    // climbable rank by rank
+    for (size_t i = 1; i < want_blocks.size(); ++i) {
+        REQUIRE(lv.blocks[i].content == kContentCoin);
+        REQUIRE(kLevel14Grid[want_blocks[i].column][want_blocks[i].row] == kBlockEmpty);
+    }
+    for (uint8_t row = 3; row < 13; ++row) {
+        REQUIRE(kLevel14Grid[110][row] == kBlockEmpty);
+    }
+
+    // every hard cell in the grid: the four lone blocks (23/6 and 37/6 flanking the ? block under
+    // the ceiling gap, 80/4 under its roof stub and 92/9 knee-high on the hall floor) plus the
+    // seven firebar pivots, which compile_level stamps as hard blocks under their bars
+    std::vector<std::pair<int, int>> hard;
+    for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            if (kLevel14Grid[column][row] == kBlockHard) {
+                hard.push_back({column, row});
+            }
+        }
+    }
+    REQUIRE(hard == std::vector<std::pair<int, int>>{{23, 6}, {30, 10}, {37, 6}, {49, 6}, {60, 6},
+                                                     {67, 6}, {76, 9}, {80, 4}, {84, 9}, {88, 4},
+                                                     {92, 9}});
+
+    // the seven bars, in column order, with the param compile_level packs them into. all seven are
+    // six segments - the three cells of flame each rip draws out from a pivot, at the 8 px spacing
+    // hazards.c steps - and all seven are the slow rate. the one at 88 is the odd one out: the nes
+    // rip has six bars at one down-right angle and that one at its exact mirror, which is a bar
+    // turning the other way
+    struct Bar {
+        int column;
+        int row;
+        bool ccw;
+    };
+    const std::vector<Bar> want_bars = {
+        {30, 10, false}, {49, 6, false}, {60, 6, false}, {67, 6, false},
+        {76, 9, false},  {84, 9, false}, {88, 4, true},
+    };
+    std::vector<const LevelObject*> bars;
+    for (int i = 0; i < lv.object_count; ++i) {
+        if (lv.objects[i].kind == kObjFirebar) {
+            bars.push_back(&lv.objects[i]);
+        }
+        // neither rip draws a lift anywhere in the level: what the prose pass read as a deck over
+        // the bridge is a bowser fireball in flight, and the bridge's own thirteen-column pit says
+        // "lift": false so the compiler's wide-castle-gap deck stays out of a measured map
+        REQUIRE(lv.objects[i].kind != kObjLiftH);
+        REQUIRE(lv.objects[i].kind != kObjLiftV);
+    }
+    REQUIRE(bars.size() == want_bars.size());
+    for (size_t i = 0; i < want_bars.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(bars[i]->column == want_bars[i].column);
+        REQUIRE(bars[i]->row == want_bars[i].row);
+        REQUIRE((bars[i]->param & kFirebarLenMask) == kFirebarSegments);
+        REQUIRE((bars[i]->param & kFirebarFast) == 0);
+        REQUIRE(((bars[i]->param & kFirebarCcw) != 0) == want_bars[i].ccw);
+        // a pivot is solid, and every bar hangs where the rip hangs it: the three corridor bars off
+        // its roof, the two hall bars a row over its floor, the high one under a roof stub, and the
+        // island bar flush with the island's own surface
+        REQUIRE(solid_at(lv, bars[i]->column, bars[i]->row));
+    }
+
+    // the ending, all of it measured: a thirteen-column deck at row 10 - level with the pillar
+    // before it, four rows over its own lava - the axe on the wall past it two rows above the deck,
+    // and the fake bowser standing on the deck where the rip caught him, pacing out to its far end
+    REQUIRE(lv.has_flag == 0);
+    REQUIRE(lv.has_castle == 0);
+    REQUIRE(lv.has_axe == 1);
+    REQUIRE(lv.bridge_x0 == 128);
+    REQUIRE(lv.bridge_x1 == 140);
+    REQUIRE(lv.bridge_row == 10);
+    REQUIRE(lv.axe_column == 141);
+    REQUIRE(lv.axe_row == 8);
+    for (int column = lv.bridge_x0; column <= lv.bridge_x1; ++column) {
+        REQUIRE(kLevel14Grid[column][lv.bridge_row] == kBlockBridge);
+        REQUIRE(solid_at(lv, column, lv.bridge_row));
+    }
+    REQUIRE(kLevel14Grid[123][10] == kBlockCastleBrick); // the pillar the deck runs out of, flush
+    REQUIRE(kLevel14Grid[lv.axe_column][lv.axe_row] == kBlockAxe);
+    REQUIRE(!solid_at(lv, lv.axe_column, lv.axe_row));
+    REQUIRE(solid_at(lv, lv.axe_column, lv.axe_row + 1)); // the wall it stands on
+
+    const LevelObject* axe = find_object(lv.objects, lv.object_count, kObjAxe);
+    REQUIRE(axe != nullptr);
+    REQUIRE(axe->column == 141);
+    REQUIRE(axe->row == 8);
+    const LevelObject* boss = find_object(lv.objects, lv.object_count, kObjBowser);
+    REQUIRE(boss != nullptr);
+    REQUIRE(boss->column == 135);
+    REQUIRE(boss->row == 9); // feet on the deck at row 10
+    REQUIRE(boss->column + (boss->param & kLiftSpanMask) == lv.bridge_x1);
+}
+
 // every other floating brick ledge along the run, counted off the two map rips: nothing else lost
 // a cell at its ends the way the fourth platform did
 TEST_CASE("mario_1_2_brick_ledges_are_their_measured_widths") {
@@ -8700,7 +8946,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 48);
+    REQUIRE(kBlockKindCount == 49);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);

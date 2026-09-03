@@ -27,6 +27,13 @@ uint8_t kBlockPalette[kBlockKindCount];
 // 1-3's four tree kinds close each table: the three canopy caps wear the thin platform's deck art
 // and the trunk is sky, placeholders until the art pass draws them
 //
+// index 47 is the parallel flagpole pass's kBlockFlagPoleCloth: a reserved sky row here, so the
+// castle's stone keeps index 48 whichever pass merges first
+//
+// kBlockCastleBrick closes them after that. it wears the cave brick's four quadrants as a
+// placeholder - the castle palette already recolours those greys - until the art pass cuts the
+// cut-stone tiles the rips actually draw
+//
 // the four mirrored kinds - the right cloud caps, the right hill slope, the right bush cap - carry
 // the same tiles as their left twin with the two columns swapped, and set kCamAttrXFlip in their
 // palette byte so the hardware does the mirroring, which halves what the scenery costs
@@ -45,7 +52,7 @@ static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
     kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
-    kTileFlagClothPoleT,
+    kTileFlagClothPoleT, kTileBrickTl,
 };
 // clang-format on
 // clang-format off
@@ -63,7 +70,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
     kTileCastleCrenelInner,
     kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
-    kTileFlagPoleR,
+    kTileFlagPoleR, kTileBrickTr,
 };
 // clang-format on
 // clang-format off
@@ -81,7 +88,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
     kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
-    kTileFlagClothPoleB,
+    kTileFlagClothPoleB, kTileBrickBl,
 };
 // clang-format on
 // clang-format off
@@ -99,7 +106,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
     kTileCastleWall,
     kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
-    kTileFlagPoleR,
+    kTileFlagPoleR, kTileBrickBr,
 };
 // clang-format on
 // sky, the flag's four cells, a world coin, the axe, lava and every scenery kind are all
@@ -117,7 +124,7 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
     0,
     kFloorSolid, kFloorSolid, kFloorSolid, 0,
-    0,
+    0, kFloorSolid,
 };
 // clang-format on
 // lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge, the
@@ -153,7 +160,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenBrick,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
-    kScenSky,
+    kScenSky, kCamPalBrick,
 };
 // clang-format on
 

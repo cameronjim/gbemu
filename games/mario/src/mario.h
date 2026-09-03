@@ -200,7 +200,13 @@
 // right tile column the plain pole's palette (terrain.c). the descent swaps it down the shaft cell
 // by cell against kBlockFlagPole, the way the cloth column swaps against sky
 #define kBlockFlagPoleCloth 47U
-#define kBlockKindCount 48U
+// 1-4's masonry: the cut stone the castle's roof, walls and floors are built out of. both 1-4 rips
+// draw it as two big blocks across a cell where 1-2's cave brick is running bond, so it cannot
+// borrow kBlockBrick's art - and it must not borrow its behaviour either, because blocks_head_bump
+// answers a grid brick straight off the grid and a grown mario breaks one, which in a castle would
+// mean punching a hole through the wall into the lava. solid, unbreakable, never in a block list
+#define kBlockCastleBrick 48U
+#define kBlockKindCount 49U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the

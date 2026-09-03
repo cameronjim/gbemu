@@ -2,13 +2,15 @@
 
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
-**1-1, 1-2 and 1-3 are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and
+**all four levels are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and
 bonus room, 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
-castle), and the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
-lift rows, the staircase, the pole and the castle) were extracted pixel by pixel from the official
-nes and smbd map images and carry `"confidence": "measured"`; see "measured levels" below.
-everything written about sequence-derived positions applies to 1-2's finer detail
-(coins/blocks/enemies, `"approx"`), to 1-3's start column and lift travel, and to 1-4 in full.
+castle), the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
+lift rows, the staircase, the pole and the castle) and the whole of 1-4 (every wall run, all four
+lava pits, its eleven blocks, all seven firebars, the bridge, the axe and bowser) were extracted
+pixel by pixel from the official nes and smbd map images and carry `"confidence": "measured"`; see
+"measured levels" below. everything written about sequence-derived positions applies to 1-2's finer
+detail (coins/blocks/enemies, `"approx"`), to 1-3's start column and lift travel, and to 1-4's
+start column and its firebars' rotation speed/direction, which no still frame can show.
 
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
@@ -144,25 +146,37 @@ clouds; 1-3, which is trees over open air, has clouds only.
 ## enums
 
 - `terrain.kind`: `ground`, `gap`, `pipe`, `pipe_side`, `stairs`, `elevation`, `lift_platform`,
-  `lift_vertical`, `bricks`, `castle`, `island`, `tree`,
+  `lift_vertical`, `bricks`, `castle`, `island`, `tree`, `bridge`,
   `ceiling_gap` (underground levels only: `{"x0": .., "x1": ..}` clears the roof's one solid row
   (`CEILING_ROW`) over that span, the only way to carve a hole back out of the roof `apply_ceiling()`
   otherwise stamps across every underground-typed column - 1-2 needs one for the entry shaft, one
   for the lift shaft that carries a rider up to the walkable roof over the warp zone, and one for a
   narrow annotation-only notch just past it), `bricks` (a solid rectangle stamped straight into the
   compiled grid - `{"x0": .., "x1": .., "y0": .., "y1": .., "material": "brick" | "hard" |
-  "question"}`, `material` defaults to `"brick"`. this is terrain, not a `blocks[]` entry: no
+  "question" | "coin" | "castle" | "lava"}`, `material` defaults to `"brick"`. this is terrain, not a `blocks[]` entry: no
   interactive state, so it cannot be bumped or broken and pays out nothing - the right primitive
   for the ~450 cells of pure background structure a measured underground interior has that nothing
   there ever needs to hit, without inflating `LEVEL_MAX_BLOCKS`, and also for a `?` block a level's
   own per-level block list has no more room left for (see the bank note in level-1-2.json's
   confidence_notes). the same primitive an `areas[].terrain` entry's own `"bricks"` kind already
   used, now available to a main level's terrain list too)
+- a castle `gap` takes an optional `"lift": false`. a prose-derived castle got a horizontal deck
+  thrown across any pit wider than `CASTLE_LIFT_GAP` columns, so an unverified extent could not
+  make the level impossible; a measured pit says `false` and gets what the rip draws, which for
+  1-4's thirteen-column bridge pit is a bridge and no deck at all.
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
 - `enemies.kind`: `goomba`, `koopa_green`, `koopa_red`, `koopa_para_green`, `koopa_para_red`,
   `piranha`, `firebar`, `bowser_fake`, `lift_horizontal`, `lift_vertical`
+- a `firebar` entry carries three optional fields of its own: `length` (segments, default 6),
+  `speed` (`"slow"` | `"fast"`, default slow - physics.json's 0x28 and 0x38 raw rates) and
+  `direction` (`"cw"` | `"ccw"`, default cw). compile_level packs them into the object's param as
+  `(length & 0x0F) | (0x10 if fast) | (0x20 if ccw)`; the pivot cell itself still compiles to a
+  hard block under the bar.
+- a `bowser_fake` entry's own `x`/`y` are honoured when the bible measured them: he starts on that
+  cell and paces out to the bridge's last column. without them his patrol is derived from the
+  bridge's own last stretch, which is what a prose-derived castle got.
 - `confidence`: `measured` (the coordinate was extracted from a map image pixel by pixel —
   see "measured levels" below), `sourced` (fact came directly from cited text), `approx`
   (position is sequence-derived, see above; or a count/detail is a reasonable paraphrase of
@@ -185,7 +199,7 @@ compiles to nothing and never gets a pipe.
 
 ## measured levels
 
-1-1, 1-2 and 1-3 are no longer sequence-derived. every terrain run, block, enemy, decor shape, the
+none of the four levels is sequence-derived any more. every terrain run, block, enemy, decor shape, the
 flagpole and the castle were extracted from the official nes map images by classifying each 16x16
 cell against a tile sheet cut from the same image, and carry `"confidence": "measured"` wherever
 the extraction is solid (1-2's skeleton: floor pits, ceiling runs, pipe columns, the warp zone's
@@ -196,8 +210,12 @@ rough on small objects (see `confidence_notes` in `level-1-2.json`). 1-3 was tra
 way from both rips at once - the nes one and the smbd challenge one, classified separately and
 diffed column by column - and the smbd geometry is what got built wherever they differ (see that
 file's `smbd_deltas`); what stays `approx` there is its start column, which no rip draws, and each
-lift's travel, because a rip catches a moving deck at one instant. the fields a measured level uses
-that a prose-derived one does not:
+lift's travel, because a rip catches a moving deck at one instant. 1-4 was transcribed the same way
+again, and there the two rips turn out to be the same level - the smbd one is the nes one with its
+first sixteen columns cropped away - so there was no geometry to choose between; what stays `approx`
+there is its start column and each firebar's rotation speed and direction, which a still frame
+cannot show (see that file's `confidence_notes`). the fields a measured level uses that a
+prose-derived one does not:
 
 - `length_columns` is honoured rather than derived. when it is an integer the compiler builds
   exactly that many columns; when it is null the length is still the last positioned feature
@@ -212,6 +230,11 @@ that a prose-derived one does not:
   the five-by-five one. same six castle kinds either way, and the clear walk stops at the same
   `CASTLE_DOOR_OFFSET` column, which is a real arch in both. a keep whose columns run past
   `length_columns` is clipped there, which is what both 1-3 rips do at the map edge.
+- `start.y`, when given, is the surface row the player's feet rest on top of, and it is honoured
+  instead of scanning the column for its topmost solid cell. a castle needs it: 1-4's roof is
+  three rows of masonry directly over the column he starts on, so a scan from the top of the grid
+  lands on the ceiling rather than the platform under his feet. the three levels that carry
+  `"y": 13` name the row the scan would have found anyway.
 
 ## measured sub-areas
 
@@ -299,5 +322,7 @@ a handful of things the real level does needed bible fields nothing else uses:
   tiers rather than one-column steps: six columns and seven blocks tall at 136-141 against the
   nes's six and eight at 138-143). 1-3 also moves every platform past its lift pit two columns
   left, raises one tree three rows and drops one of the nes map's four lift decks - the full list
-  is in `level-1-3.json`'s `smbd_deltas`. 1-1, 1-2 and 1-3 follow the smbd geometry; 1-4 is still
-  prose-derived.
+  is in `level-1-3.json`'s `smbd_deltas`. 1-1, 1-2 and 1-3 follow the smbd geometry. 1-4 is the one
+  level where the two rips agree cell for cell: the smbd challenge rip is the nes rip with its
+  first sixteen columns cropped off, so nothing there moved between smb1 and smbd, and the opening
+  platform and its steps come off the nes rip, the only one that draws them.

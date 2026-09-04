@@ -14,6 +14,7 @@
 #include "save.h"
 #include "states.h"
 #include "terrain.h"
+#include "title_art.h"
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
@@ -24,11 +25,6 @@
 
 // one bg map row's worth of tile ids or vram bank 1 attribute bytes, reused row by row
 static uint8_t map_row[kRingTileCols];
-
-// the wordmark's two lines; see the comment on these in title.h for why they are plain ram filled
-// in by states.c rather than string literals here
-char title_line1[kTitleLineWidth];
-char title_line2[kTitleLineWidth];
 
 static uint8_t text_len(const char* text) {
     uint8_t n = 0;
@@ -131,24 +127,24 @@ void card_end(void) {
     DISPLAY_ON;
 }
 
-// the whole map is rewritten here, far more vram traffic than a vblank holds, so the lcd is off
+// the sparkle over the wordmark blinks on this pitch; the two sprites are the art module's to move
+#define kSparkleFrames 32U
+static uint8_t sparkle_timer;
+static uint8_t sparkle_on;
+
+// the smbd title frame, art rather than text: the whole 32x32 map plus 143 tiles of bg data is far
+// more vram traffic than a vblank holds, so the lcd is off. no prompt - the reference has none, and
+// start/a still open the file select through title_frame
 static void title_show(void) {
-    // card_begin's own band is only kBannerRows tall - one padding row, one text row, one padding
-    // row - which is one row short of the wordmark's two text rows: the second line would hug the
-    // band's bottom edge with no padding below it. repainting kTitleBannerRows wide (one row taller,
-    // from the same top edge) fixes that up without touching card_begin's other callers
-    // the literal text lives in bank 6 (states.c's title_text_load); bank 5 is full - see the
-    // comment on title_line1 in title.h
-    title_text_load();
-    card_begin(kTitleRow);
-    card_paint_band((uint8_t)(kTitleRow - 1U), kTitleBannerRows, kPalWordmark);
-    card_print_centered(kTitleRow, title_line1);
-    card_print_centered((uint8_t)(kTitleRow + 1U), title_line2);
-    // one line, banded the same way every other banner is: a padding row above and below. m19's
-    // file select is what start opens now, so the card no longer carries a menu of its own
-    card_paint_band((uint8_t)(kPromptRow - 1U), kBannerRows, kPalAccent);
-    card_print_centered(kPromptRow, "SPACE TO START");
-    card_end();
+    DISPLAY_OFF;
+    terrain_park_scroll();
+    title_art_load();
+    title_art_place_sprites();
+    sparkle_timer = 0;
+    sparkle_on = 1;
+    SHOW_BKG;
+    SHOW_SPRITES;
+    DISPLAY_ON;
 }
 
 void title_reset(void) BANKED {
@@ -158,6 +154,8 @@ void title_reset(void) BANKED {
 // every debug way into a level goes through here, so both labs and the level select arm the same
 // run. a player's own way in is the file select and the world map, which do this themselves
 static uint8_t start_run(uint8_t* level, uint8_t lab, uint8_t short_timer) {
+    // the title's script sprites would otherwise ride into the level in oam slots it never rewrites
+    title_art_park_sprites();
     // a debug run belongs to no file, so nothing it clears can be recorded over a real save
     save_select(kSaveNoSlot);
     *level = flow_begin_run(*level);
@@ -168,6 +166,11 @@ static uint8_t start_run(uint8_t* level, uint8_t lab, uint8_t short_timer) {
 }
 
 uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
+    if (++sparkle_timer >= kSparkleFrames) {
+        sparkle_timer = 0;
+        sparkle_on = (uint8_t)(sparkle_on ^ 1U);
+        title_art_sparkle(sparkle_on);
+    }
     // start and a both open the file select: the frontend maps space to a, and space is the
     // advertised start key, so a must never land in a lab
     if ((pressed & (J_START | J_A)) != 0U) {
@@ -205,6 +208,7 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
 #endif
 #if kDebugCamera
     if ((pressed & J_B) != 0U) {
+        title_art_park_sprites();
         debug_camera_enter(*level);
         return kTitleCamera;
     }

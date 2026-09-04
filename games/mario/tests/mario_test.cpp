@@ -116,6 +116,16 @@ void step_screen(gb::Gameboy& gameboy, gb::Button button) {
     press(gameboy, button, 2);
 }
 
+// kTitleLeaveFrames in games/mario/src/title.c: start on the title flashes the wordmark for a
+// second before the file select comes up, and ignores the pad the whole way through. every walk
+// off the title goes through here so that wait is paid once
+constexpr uint32_t kTitleLeaveFrames = 60;
+
+void leave_title(gb::Gameboy& gameboy, gb::Button button) {
+    press(gameboy, button, 2);
+    run(gameboy, kTitleLeaveFrames + kScreenSettleFrames);
+}
+
 // m19's world map, kMapSkyRgb in mario.h: the overworld sky lifted a shade so this one probe tells
 // the map apart from the two overworld levels that share every other color with it. it is declared
 // up here because leaving the map is what every entry into a level now waits on
@@ -137,8 +147,8 @@ void wait_off_map(gb::Gameboy& gameboy) {
 // the title is the exception: there is nothing behind it to go back to
 void enter_play(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
-    press(gameboy, gb::Button::Start, 2);
-    step_screen(gameboy, gb::Button::A);
+    leave_title(gameboy, gb::Button::Start);
+    press(gameboy, gb::Button::A, 2);
     step_screen(gameboy, gb::Button::A);
     wait_off_map(gameboy);
     run(gameboy, 64);
@@ -4787,9 +4797,44 @@ TEST_CASE("mario_title_start_opens_file_select") {
     run(gameboy, kBootFrames);
     REQUIRE(sky_color(gameboy) == kSkyTitle);
 
-    press(gameboy, gb::Button::Start, 2);
-    run(gameboy, kScreenSettleFrames);
+    leave_title(gameboy, gb::Button::Start);
 
+    REQUIRE(sky_color(gameboy) == kSkyFile);
+    REQUIRE(file_cursor(gameboy) == 0);
+}
+
+// smbd answers start with a jingle and a flashing wordmark before the file select comes up. the rom
+// has no audio yet (issue #8), so what start buys here is the flash alone: the title holds, the pad
+// is dead, and the wordmark's palettes alternate until the window runs out
+TEST_CASE("mario_title_flashes_before_the_file_select") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+
+    // the two resting looks, the sparkle lit and dark; anything else on screen is the flash
+    const auto lit = expected_title_frame(true);
+    const auto dark = expected_title_frame(false);
+
+    press(gameboy, gb::Button::Start, 2);
+    run(gameboy, 8);
+    // ten frames in it is still the title: the flash leaves the sky palette alone
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+
+    bool flashed = false;
+    for (uint32_t i = 0; i < kTitleLeaveFrames && !flashed; ++i) {
+        const std::span<const uint16_t> got = gameboy.framebuffer_color();
+        for (size_t j = 0; j < got.size() && !flashed; ++j) {
+            flashed = got[j] != lit[j] && got[j] != dark[j];
+        }
+        gameboy.run_frame();
+    }
+    REQUIRE(flashed);
+
+    // and the file select is up on the other side of the window, exactly as a bare press left it
+    run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_color(gameboy) == kSkyFile);
     REQUIRE(file_cursor(gameboy) == 0);
 }
@@ -12298,15 +12343,15 @@ constexpr size_t kSlotLevel = 1;
 constexpr size_t kSlotScore = 2;
 constexpr int kSaveSlots = 3;
 
-// the file select's label row and each slot's four label cells, from games/mario/src/file_art.c:
+// the file select's label row and each slot's three label cells, from games/mario/src/file_art.c:
 // one glyph per cell, left-aligned on the slot's own pipe
 constexpr uint32_t kFileLabelRow = 5;
-constexpr uint32_t kFileLabelCells = 4;
+constexpr uint32_t kFileLabelCells = 3;
 constexpr uint32_t kFileLabelCol[kSaveSlots] = {2, 8, 14};
 // the glyph strip's cut order, and the tile ids the loader lands it on, past the screen's own
 constexpr int kGlyphW = 0;
 constexpr int kGlyphOne = 1;
-constexpr int kGlyphStar = 2;
+constexpr int kGlyphDash = 2;
 constexpr int kGlyphN = 3;
 constexpr int kGlyphE = 4;
 constexpr int kGlyphDigitFirst = 5;
@@ -12356,7 +12401,7 @@ int bg_tile_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
     return (id & 0x100u) != 0 ? -1 : static_cast<int>(id & 0xFFu);
 }
 
-// the four label cells of one slot, as glyph indexes into the strip (-1 for the art's own black)
+// the three label cells of one slot, as glyph indexes into the strip (-1 for the art's own black)
 std::array<int, kFileLabelCells> file_label(const gb::Gameboy& gameboy, int slot) {
     std::array<int, kFileLabelCells> out{};
 
@@ -12370,19 +12415,18 @@ std::array<int, kFileLabelCells> file_label(const gb::Gameboy& gameboy, int slot
 
 // "NEW", the label an untouched slot wears
 std::array<int, kFileLabelCells> label_new() {
-    return {kGlyphN, kGlyphE, kGlyphW, -1};
+    return {kGlyphN, kGlyphE, kGlyphW};
 }
 
-// "W1*N": world one, the star, and the level the file stands on
+// "1-N": world one, the dash, and the level the file stands on
 std::array<int, kFileLabelCells> label_world(int level) {
-    return {kGlyphW, kGlyphOne, kGlyphStar, level == 1 ? kGlyphOne : kGlyphDigitFirst + level - 2};
+    return {kGlyphOne, kGlyphDash, level == 1 ? kGlyphOne : kGlyphDigitFirst + level - 2};
 }
 
 // boots and opens the file select; the settle is the same lcd-off drain every card pays
 void enter_file_select(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
-    press(gameboy, gb::Button::Start, 2);
-    run(gameboy, kScreenSettleFrames);
+    leave_title(gameboy, gb::Button::Start);
 }
 
 // ...and opens file `slot` off it, leaving the world map up
@@ -12435,7 +12479,7 @@ TEST_CASE("mario_file_select_shows_progress") {
     seed_slot(gameboy.external_ram(), 0, 1, 123);
     enter_file_select(gameboy);
 
-    // the reference's own label: world one, the star, and the level the file stands on
+    // the reference's own label: world one, the dash, and the level the file stands on
     REQUIRE(file_label(gameboy, 0) == label_world(2));
     for (int slot = 1; slot < kSaveSlots; ++slot) {
         REQUIRE(file_label(gameboy, slot) == label_new());
@@ -12470,8 +12514,8 @@ TEST_CASE("mario_file_select_cursor_and_confirm") {
     REQUIRE(sky_color(gameboy) == kSkyTitle);
 
     // and start off the title opens the card again, cursor back on the first slot
-    step_screen(gameboy, gb::Button::Start);
     run(gameboy, kScreenSettleFrames);
+    leave_title(gameboy, gb::Button::Start);
     REQUIRE(file_cursor(gameboy) == 0);
 
     // a confirms: the map comes up, and the file is stamped in use even before a level is won
@@ -12514,14 +12558,7 @@ expected_file_frame(const std::array<int, kSaveSlots>& labels) {
                                                           ? label_new()
                                                           : label_world(labels[static_cast<size_t>(slot)]);
         for (uint32_t i = 0; i < kFileLabelCells; ++i) {
-            const uint32_t cx = kFileLabelCol[slot] + i;
-            if (want[i] < 0) {
-                const int pal = file_art::kFileSelectAttrs[0] & 0x07;
-                blit(cx, kFileLabelRow, file_art::kFileSelectTiles, file_art::kFileSelectMap[0],
-                     &file_art::kFileSelectPalettes[pal * 4]);
-            } else {
-                blit(cx, kFileLabelRow, file_art::kFileGlyphsTiles, want[i], kGlyphPalette);
-            }
+            blit(kFileLabelCol[slot] + i, kFileLabelRow, file_art::kFileGlyphsTiles, want[i], kGlyphPalette);
         }
     }
     return out;
@@ -13104,7 +13141,9 @@ TEST_CASE("mario_rapid_taps_cannot_skip_the_map") {
     // though on real hardware a single quick tap is all the bug report needed). before the lockout
     // this walks straight through the title, the file select and the map's own confirm well inside
     // twelve taps - the bug report's "it just disappears after about a second"
-    for (int tap = 0; tap < 12; ++tap) {
+    // twenty-four rather than twelve since m21: the first press starts the title's own leaving
+    // flash, which swallows every tap for kTitleLeaveFrames before the file select is even up
+    for (int tap = 0; tap < 24; ++tap) {
         gameboy.set_button(gb::Button::A, true);
         run(gameboy, 2);
         gameboy.set_button(gb::Button::A, false);
@@ -13155,9 +13194,9 @@ TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
     run(gameboy, kBootFrames);
     REQUIRE(sky_color(gameboy) == kSkyTitle);
 
-    // one settled press on the title opens the file select
-    step_screen(gameboy, gb::Button::Start);
+    // one settled press on the title opens the file select, once its flash has run out
     run(gameboy, kScreenSettleFrames);
+    leave_title(gameboy, gb::Button::Start);
     REQUIRE(sky_color(gameboy) == kSkyFile); // the file art's own backdrop, not the title's
     REQUIRE(file_cursor(gameboy) == 0);      // and mario is standing on its first pipe
 

@@ -4,9 +4,9 @@ purpose: a checked-in ledger of every tile id this game's art claims, per vram b
 space (bg vs sprite) and per screen — so two people working art in parallel do not pick the same
 id for two different things. seeded only from the `#define`s and comments in
 `games/mario/src/mario.h` and `assets.h`, and from the loader calls that actually run in
-`assets_data.c`, `hud.c`, `toad.c`, `mapscreen.c`, `hazards.c`, `enemies.c`, `player.c`, `title.c`
-and `states.c`. nothing here is invented; every range below is a real `#define` or a real
-`set_bkg_data`/`set_sprite_data` call, and every gap called FREE was checked against both.
+`assets_data.c`, `hud.c`, `toad.c`, `mapscreen.c`, `hazards.c`, `enemies.c`, `player.c`, `title.c`,
+`title_art.c` and `states.c`. nothing here is invented; every range below is a real `#define` or a
+real `set_bkg_data`/`set_sprite_data` call, and every gap called FREE was checked against both.
 
 ## the addressing rule every table below assumes
 
@@ -116,11 +116,14 @@ what is actually resident in vram when each screen is up — i.e. which loader f
 and not since been overwritten. a screen not listed as calling a loader draws with whatever the
 previous screen left behind; only the bg map cells and window-layer content change.
 
-- **title card, file select card, pause card, game over card, clear card** — none of these calls
-  any `assets_load_*` function (`title.c`/`states.c` only call `card_begin`/`card_print_*`, which
-  write bg map cell ids out of the resident font). they draw text with the gbdk ibm font loaded
-  once at boot (bank 0 bg 0x00-0x5f) and nothing else. whatever tile data the world map or a level
-  loaded earlier is still sitting in vram, just not referenced by any cell these cards paint.
+- **file select card, pause card, game over card, clear card** — none of these calls any
+  `assets_load_*` function (`title.c`/`states.c` only call `card_begin`/`card_print_*`, which write
+  bg map cell ids out of the resident font). they draw text with the gbdk ibm font loaded once at
+  boot (bank 0 bg 0x00-0x5f) and nothing else. whatever tile data the world map or a level loaded
+  earlier is still sitting in vram, just not referenced by any cell these cards paint.
+- **title card** (`title.c` `title_show`) — the one card that loads art of its own: `title_art_load`
+  writes bank 1 bg 0x00-0x8e, bank 0 sprite 0x80-0xa7, seven bg palettes and one obj palette. see
+  the title screen section above.
 - **world map** (`mapscreen.c` `map_reset`) — calls, in order: `assets_load_block_tables`,
   `assets_load_bg_tiles` (bank 0 terrain 0xa0-bf/f8-ff), `assets_load_scenery_tiles` (bank 1
   0x0a-0x18, 0x20-0x5d, 0x72-0x7a — loaded but not drawn on this screen), `assets_load_map_tiles`
@@ -152,8 +155,24 @@ previous screen left behind; only the bg map cells and window-layer content chan
 
 ---
 
-## reserved for in-flight work
+## the title screen (issue #10)
 
-- **title screen (issue #10)** — vram bank 1 bg ids 0x00-0x9f for the logo/cloud/text art, and
-  vram bank 0 sprite ids 0x80-0xa7 for the "Deluxe" script sprites; both only while the title card
-  is up (every other screen reloads over them).
+the smbd title frame is generated art, not text: `games/mario/tools/png2tiles.py` turns
+`art/title/title_screen.png` and `art/title/title_deluxe_sheet.png` into `src/gen/title_screen.c`
+and `src/gen/title_deluxe.c`, and `title_art.c` (bank 7, with the data) loads them.
+
+| id range | owner | loader | screen(s) | notes |
+|---|---|---|---|---|
+| bank 1 bg 0x00-0x8e | the whole 20x18 title frame, 143 deduplicated tiles (`kTitleScreenFirstTile`, `kTitleScreenTileCount`) | `title_art_load` | title card only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
+| bank 0 sprite 0x80-0xa7 | the gold "Deluxe" script and its sparkle, 20 8x16 sprites (`kTitleDeluxeTileCount`, 40 tiles) | `title_art_load` | title card only | oam slots 0-19, `SPRITES_8x16` |
+
+both runs are transient: they sit on top of art every other screen reloads. bank 1 bg 0x00-0x8e
+covers the map castle icon, the tree, the castle masonry, the scenery run, the map art, the side
+pipe and the hud font, all of which `map_reset` or a level load put back. bank 0 sprite 0x80-0xa7
+covers the flower, the hazards, the debris/puff run and the low end of the pinned bg terrain block
+(bg ids 0xa0-0xa7 are the same bytes as sprite ids 0xa0-0xa7), all of which `assets_load_*` put
+back on the way into a level. nothing else may claim these ids while the title is up, and the title
+must never be repainted over a live level.
+
+the seven cgb bg palettes the frame plans out come from the png too, and they overwrite bg palette
+slots 0-6 - `card_begin`'s own `load_palettes` puts slots 0-2 back for every other card.

@@ -274,7 +274,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         set(GB_MARIO_ASSET_C "")
         set(GB_MARIO_ASSET_DEPS "")
         function(mario_png_asset png name mode bank)
-            string(TOLOWER ${name} slug)
+            # the same camel-to-snake png2tiles.py names its output files with
+            string(REGEX REPLACE "(.)([A-Z][a-z]+)" "\\1_\\2" slug "${name}")
+            string(REGEX REPLACE "([a-z0-9])([A-Z])" "\\1_\\2" slug "${slug}")
+            string(TOLOWER "${slug}" slug)
             set(src ${CMAKE_SOURCE_DIR}/${png})
             set(outs ${GB_MARIO_GEN_SRC}/${slug}.c ${GB_MARIO_GEN_SRC}/${slug}.h)
             if(EXISTS ${src})
@@ -292,6 +295,9 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         endfunction()
 
         mario_png_asset(games/mario/art/bowser.png Bowser sprites16 4)
+        mario_png_asset(games/mario/art/title/title_screen.png TitleScreen screen 7 --vram-bank 1)
+        mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
+                        --palette 000000,F8E800,A89000,584010)
 
         # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
         # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a

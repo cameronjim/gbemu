@@ -24,16 +24,9 @@
 #define kPauseItemWidth 7U
 #define kPauseHintRow 17U
 
-// the SELECT FILE card (games/mario/src/mapscreen.c). its heading sits high because the three
-// slots each take two rows - the slot line and its score - and three hint lines close the screen
-#define kFileHeadRow 2U
-#define kFileFirstRow 5U
-#define kFileRowStep 3U
-#define kFileHintRow 14U
-// every slot line is padded to this many glyphs so the cursor column does not shift between a
-// "NEW" slot and a "WORLD 1-2" one
-#define kFileLineWidth 12U
-// the erase confirm is its own card over the same machinery
+// the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in
+// games/mario/src/file_art.h and its labels are drawn glyph cells, not printed lines
+// the erase confirm is still its own text card over the shared machinery
 #define kEraseRow 5U
 
 // the front end lockout (games/mario/src/mapscreen.c). a fresh screen ignores start/a/b for this

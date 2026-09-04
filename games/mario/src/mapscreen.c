@@ -9,6 +9,7 @@
 #include "assets.h"
 #include "blocks.h"
 #include "enemies.h"
+#include "file_art.h"
 #include "flow.h"
 #include "hud.h"
 #include "level.h"
@@ -36,10 +37,6 @@
 #define kScreenTitle 0U
 #define kScreenFile 1U
 #define kScreenMap 2U
-
-// one slot line, built here rather than printed piecemeal so card_print_centered can center the
-// whole thing; every line is padded to kFileLineWidth so the cursor column never shifts
-static char line[kFileLineWidth + 1U];
 
 // the file's furthest node, 0..kLevelCount, and which screen is up. both outlive a single screen,
 // so they sit above all three
@@ -88,63 +85,107 @@ static uint8_t cursor;
 // than a state main.c has to know about, because nothing outside this module can reach it
 static uint8_t confirming;
 
-static void put(uint8_t* n, const char* text) {
-    uint8_t i;
+// 0 while he is standing on a pipe, else how far into the hop to the cursor's one he is
+static uint8_t hop_frame;
+static uint8_t hop_from;
 
-    for (i = 0; text[i] != '\0'; ++i) {
-        line[*n] = text[i];
-        ++(*n);
-    }
-}
-
-// ">1 WORLD 1-2" or ">1 NEW         ", padded to the same width either way
-static void slot_line(uint8_t slot) {
-    uint8_t n = 0;
+// the slot's label: 0 for NEW, else the level number the file stands on. a file that finished
+// world one records kLevelCount, one past the last node, so it clamps the same way the map does
+static uint8_t slot_label(uint8_t slot) {
     uint8_t level;
 
-    line[n++] = (char)(slot == cursor ? '>' : ' ');
-    line[n++] = (char)('1' + slot);
-    line[n++] = ' ';
     if (save_slot_used(slot) == 0U) {
-        put(&n, "NEW");
-    } else {
-        // a file that finished world one records kLevelCount, which is one past the last node; the
-        // line names the level it stands on, so it clamps the same way the map does
-        level = save_slot_level(slot);
-        if (level >= (uint8_t)kLevelCount) {
-            level = (uint8_t)(kLevelCount - 1U);
-        }
-        put(&n, "WORLD 1-");
-        line[n++] = (char)('1' + level);
+        return 0;
     }
-    while (n < (uint8_t)kFileLineWidth) {
-        line[n++] = ' ';
+    level = save_slot_level(slot);
+    if (level >= (uint8_t)kLevelCount) {
+        level = (uint8_t)(kLevelCount - 1U);
     }
-    line[n] = '\0';
+    return (uint8_t)(level + 1U);
+}
+
+static uint8_t mario_pipe_x(uint8_t slot) {
+    return (uint8_t)(kFileMarioX + slot * kFileMarioStep);
+}
+
+// super mario as two rows of two 8x16 sprites, the same pose pair player.c draws him standing in.
+// the jump slab is the one pose that lives in vram bank 1, so its rows carry S_BANK
+static void file_draw_mario(uint8_t x, uint8_t y, uint8_t jumping) {
+    const uint8_t upper = jumping != 0U ? (uint8_t)kTileSuperJumpUpper : (uint8_t)kTileSuperUpper;
+    const uint8_t frame = jumping != 0U ? (uint8_t)kFrameJump : (uint8_t)kFrameIdle;
+    const uint8_t lower = (uint8_t)(kTileSuperLowerFirst + frame * kSuperTilesPerFrame);
+    const uint8_t prop = (uint8_t)(kPalMario | (jumping != 0U ? (uint8_t)S_BANK : 0U));
+    const uint8_t sx = (uint8_t)(x + kOamXOffset);
+    const uint8_t sy = (uint8_t)(y + kOamYOffset);
+
+    set_sprite_tile(kSpriteMarioL, upper);
+    set_sprite_tile(kSpriteMarioR, (uint8_t)(upper + 2U));
+    set_sprite_tile(kSpriteMarioLowL, lower);
+    set_sprite_tile(kSpriteMarioLowR, (uint8_t)(lower + 2U));
+    set_sprite_prop(kSpriteMarioL, prop);
+    set_sprite_prop(kSpriteMarioR, prop);
+    set_sprite_prop(kSpriteMarioLowL, (uint8_t)kPalMario);
+    set_sprite_prop(kSpriteMarioLowR, (uint8_t)kPalMario);
+    move_sprite(kSpriteMarioL, sx, sy);
+    move_sprite(kSpriteMarioR, (uint8_t)(sx + 8U), sy);
+    move_sprite(kSpriteMarioLowL, sx, (uint8_t)(sy + kPlayerHeightPx));
+    move_sprite(kSpriteMarioLowR, (uint8_t)(sx + 8U), (uint8_t)(sy + kPlayerHeightPx));
 }
 
 static void file_show(void) {
     uint8_t slot;
-    uint8_t row;
 
-    card_begin(kFileHeadRow);
-    card_print_centered(kFileHeadRow, "SELECT FILE");
+    hop_frame = 0;
+    // the whole bg map, both tile banks and the sprite set are rewritten here, far more vram
+    // traffic than a vblank holds
+    DISPLAY_OFF;
+    HIDE_SPRITES;
+    terrain_park_scroll();
+    file_art_load();
     for (slot = 0; slot < (uint8_t)kSaveSlots; ++slot) {
-        row = (uint8_t)(kFileFirstRow + slot * kFileRowStep);
-        if (slot == cursor) {
-            // the lit slot gets the accent band every other card uses to say "this one"
-            card_paint_band(row, 1, kPalAccent);
-        }
-        slot_line(slot);
-        card_print_centered(row, line);
-        if (save_slot_used(slot) != 0U) {
-            card_print_value((uint8_t)(row + 1U), "SCORE ", save_slot_score(slot), 5, 1);
-        }
+        file_art_label(slot, slot_label(slot));
     }
-    card_print_centered(kFileHintRow, "UP DOWN PICKS");
-    card_print_centered((uint8_t)(kFileHintRow + 1U), "A OPENS  B BACK");
-    card_print_centered((uint8_t)(kFileHintRow + 2U), "SELECT ERASES");
-    card_end();
+    assets_load_sprite_tiles();
+    assets_load_sprite_palettes();
+    SPRITES_8x16;
+    // a level or the title left its own oam behind, and SHOW_SPRITES would put every one of it
+    // back on screen; this screen draws four and owns all forty
+    for (slot = 0; slot < (uint8_t)kOamSlots; ++slot) {
+        move_sprite(slot, 0, 0);
+    }
+    file_draw_mario(mario_pipe_x(cursor), (uint8_t)kFileStandY, 0);
+    SHOW_BKG;
+    SHOW_SPRITES;
+    DISPLAY_ON;
+}
+
+// one frame of the arc: linear in x, and a parabola in y that is zero at both ends
+static void file_hop_step(void) {
+    const int16_t from = (int16_t)mario_pipe_x(hop_from);
+    const int16_t to = (int16_t)mario_pipe_x(cursor);
+    const uint16_t t = hop_frame;
+    uint16_t arc;
+    int16_t x;
+
+    if (t >= (uint16_t)kFileHopFrames) {
+        hop_frame = 0;
+        file_draw_mario((uint8_t)to, (uint8_t)kFileStandY, 0);
+        return;
+    }
+    x = (int16_t)(from + (int16_t)((int16_t)(to - from) * (int16_t)t / (int16_t)kFileHopFrames));
+    arc = (uint16_t)((4U * kFileHopPeak * t * ((uint16_t)kFileHopFrames - t)) /
+                     ((uint16_t)kFileHopFrames * (uint16_t)kFileHopFrames));
+    ++hop_frame;
+    file_draw_mario((uint8_t)x, (uint8_t)(kFileStandY - (uint8_t)arc), 1);
+}
+
+// the cursor becomes the destination the instant the hop starts, so a/b/select answer for the pipe
+// he is on his way to rather than the one he left
+static void file_hop_begin(uint8_t dest) {
+    hop_from = cursor;
+    cursor = dest;
+    hop_frame = 1;
+    file_draw_mario(mario_pipe_x(hop_from), (uint8_t)kFileStandY, 1);
 }
 
 static void erase_show(void) {
@@ -179,6 +220,12 @@ static uint8_t file_frame(uint8_t pressed, uint8_t* level) {
         }
         return kFileStay;
     }
+    // a hop owns the screen while it runs: every button is ignored until he lands, so a confirm
+    // can never fire for a pipe he is still in the air over
+    if (hop_frame != 0U) {
+        file_hop_step();
+        return kFileStay;
+    }
     if ((pressed & J_A) != 0U) {
         save_select(cursor);
         // an untouched NEW slot becomes a real file the moment it is opened, so the player can see
@@ -201,12 +248,12 @@ static uint8_t file_frame(uint8_t pressed, uint8_t* level) {
         erase_show();
         return kFileStay;
     }
-    if ((pressed & J_DOWN) != 0U) {
-        cursor = (uint8_t)((cursor + 1U) % (uint8_t)kSaveSlots);
-        file_show();
-    } else if ((pressed & J_UP) != 0U) {
-        cursor = (uint8_t)((cursor + (uint8_t)kSaveSlots - 1U) % (uint8_t)kSaveSlots);
-        file_show();
+    // up and down are kept as aliases of left and right so every path in that predates the pipes
+    // still walks the three the same way
+    if ((pressed & (uint8_t)(J_RIGHT | J_DOWN)) != 0U) {
+        file_hop_begin((uint8_t)((cursor + 1U) % (uint8_t)kSaveSlots));
+    } else if ((pressed & (uint8_t)(J_LEFT | J_UP)) != 0U) {
+        file_hop_begin((uint8_t)((cursor + (uint8_t)kSaveSlots - 1U) % (uint8_t)kSaveSlots));
     }
     return kFileStay;
 }

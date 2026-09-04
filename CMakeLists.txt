@@ -267,6 +267,32 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
             VERBATIM)
         add_custom_target(mario_physics DEPENDS ${GB_MARIO_PHYSICS_H})
 
+        # the art pipeline. the ripped pngs are gitignored and the generated c under
+        # games/mario/src/gen is committed, so this only wires a regeneration rule up on a machine
+        # that actually has the png; ci builds the committed file untouched
+        set(GB_MARIO_GEN_SRC ${CMAKE_SOURCE_DIR}/games/mario/src/gen)
+        set(GB_MARIO_ASSET_C "")
+        set(GB_MARIO_ASSET_DEPS "")
+        function(mario_png_asset png name mode bank)
+            string(TOLOWER ${name} slug)
+            set(src ${CMAKE_SOURCE_DIR}/${png})
+            set(outs ${GB_MARIO_GEN_SRC}/${slug}.c ${GB_MARIO_GEN_SRC}/${slug}.h)
+            if(EXISTS ${src})
+                add_custom_command(
+                    OUTPUT ${outs}
+                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/png2tiles.py
+                            ${src} ${GB_MARIO_GEN_SRC} --name ${name} --mode ${mode} --bank ${bank}
+                            ${ARGN}
+                    DEPENDS ${src} games/mario/tools/png2tiles.py games/mario/tools/gbpng.py
+                    COMMENT "regenerating mario ${slug} tiles from ${png}"
+                    VERBATIM)
+                set(GB_MARIO_ASSET_DEPS ${GB_MARIO_ASSET_DEPS} ${outs} PARENT_SCOPE)
+            endif()
+            set(GB_MARIO_ASSET_C ${GB_MARIO_ASSET_C} ${GB_MARIO_GEN_SRC}/${slug}.c PARENT_SCOPE)
+        endfunction()
+
+        mario_png_asset(games/mario/art/bowser.png Bowser sprites16 4)
+
         # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
         # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a
         # few hundred cycles a frame for free
@@ -296,6 +322,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
+                    ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
@@ -318,6 +345,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     games/mario/src/assets_data.c
+                    ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -333,6 +361,11 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
         add_dependencies(mario_tests mario mario_level mario_physics)
         catch_discover_tests(mario_tests)
+
+        add_test(NAME mario_pipeline_roundtrip
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/games/mario/tools/test_pipeline.py
+                         ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/mario_pipeline_tmp)
     endif()
 else()
     message(WARNING "gbdk not found (set GBDK_HOME); skipping flappy/crossy rom targets")

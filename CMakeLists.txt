@@ -365,7 +365,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         add_executable(mario_tests games/mario/tests/mario_test.cpp)
         target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
         target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
-        target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR})
+        # games/mario/src and the gbdk stand-in let the test compile the committed title art itself;
+        # see games/mario/tests/title_art_host.hpp
+        target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR} games/mario/src
+                                                       games/mario/tests/hostgb)
         target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
         add_dependencies(mario_tests mario mario_level mario_physics)
         catch_discover_tests(mario_tests)

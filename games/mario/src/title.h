@@ -14,7 +14,8 @@ void title_reset(void) BANKED;
 #define kTitleCamera 2U
 #define kTitleFile 3U
 
-// one frame of the title, the level select and the labs. start/a asks for the file select; the
+// one frame of the title, the level select and the labs. start/a flashes the wordmark for
+// kTitleLeaveFrames and only then asks for the file select, ignoring the pad while it runs; the
 // debug entries arm a run outright and write the level to load through `level`
 uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED;
 

@@ -154,6 +154,8 @@ void title_reset(void) BANKED {
 // every debug way into a level goes through here, so both labs and the level select arm the same
 // run. a player's own way in is the file select and the world map, which do this themselves
 static uint8_t start_run(uint8_t* level, uint8_t lab, uint8_t short_timer) {
+    // the title's script sprites would otherwise ride into the level in oam slots it never rewrites
+    title_art_park_sprites();
     // a debug run belongs to no file, so nothing it clears can be recorded over a real save
     save_select(kSaveNoSlot);
     *level = flow_begin_run(*level);
@@ -206,6 +208,7 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
 #endif
 #if kDebugCamera
     if ((pressed & J_B) != 0U) {
+        title_art_park_sprites();
         debug_camera_enter(*level);
         return kTitleCamera;
     }

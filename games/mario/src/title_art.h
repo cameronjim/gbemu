@@ -14,4 +14,7 @@ void title_art_place_sprites(void) BANKED;
 // the two-sprite sparkle over the wordmark, blinked by title_frame
 void title_art_sparkle(uint8_t on) BANKED;
 
+// parks all forty oam slots off screen for the debug exits that skip the map screen
+void title_art_park_sprites(void) BANKED;
+
 #endif

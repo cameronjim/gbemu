@@ -108,3 +108,11 @@ void title_art_sparkle(uint8_t on) BANKED {
         }
     }
 }
+
+void title_art_park_sprites(void) BANKED {
+    uint8_t i;
+
+    for (i = 0; i < (uint8_t)kOamSlots; ++i) {
+        move_sprite(i, 0, 0);
+    }
+}

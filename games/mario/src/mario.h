@@ -35,38 +35,24 @@
 // then file select, then the map) drop the player straight into a level before the map is even seen
 #define kFrontLockFrames 20U
 
-// the world one map (games/mario/src/mapscreen.c), a single static 20x18-cell screen, three bands
-// stacked top to bottom: a solid-black WORLD/1-N header, a 10-block-wide map strip, then a solid-
-// black lives/CLEAR LIST footer. nothing scrolls, so every position is either a tile row (the bands)
-// or a block cell (the map strip)
-#define kMapBlockCols 10U
-// the header is rows 0-3; the map strip starts at tile row 4, i.e. block row 2 (put_block's `by`
-// is a tile-row-pair index, same units the level's own put_block uses)
-#define kMapBandFirstRow 2U
-#define kMapBandBlockRows 4U
-// the footer starts right after the strip: (2 + 4) * 2 = tile row 12, leaving rows 12-17 for it
-#define kMapFooterFirstTileRow ((kMapBandFirstRow + kMapBandBlockRows) * kTilesPerBlock)
-// the four level nodes: columns 1, 3, 5 and 7, with the castle filling 8-9
-#define kMapNodeFirstCol 1U
-#define kMapNodeStepCol 2U
-// markers and mario share the strip's third block row (tile rows 8-9): the path runs under both,
-// the way the reference's round stops sit right on the road rather than floating above it
-#define kMapMarkerRow (kMapBandFirstRow + 2U)
-#define kMapWalkRow kMapMarkerRow
-// a node step is kMapNodeStepCol blocks = 32 px, walked a pixel a frame: 32 frames, about half a
-// second, which is a walk rather than a teleport
+// the world one map (games/mario/src/mapscreen.c), a single static 20x18-cell screen of generated
+// art (games/mario/art/map/map_screen.png, loaded by map_art.c): a black WORLD/1-N header, the smbd
+// world one strip, then a black lives/CLEAR LIST footer. nothing scrolls - world one fits the 160 px
+// strip whole - so every position here is a plain tile row, and the node cells the walk runs between
+// live in map_art.h beside the art they were measured off
+// the footer starts right after the strip, at tile row 12, leaving rows 12-17 for it
+#define kMapFooterFirstTileRow 12U
+// the walk between two nodes, a pixel a frame along the straight line joining them: 40 to 48 px, so
+// well under a second, which is a walk rather than a teleport
 #define kMapWalkPx 1
 #define kMapWalkAnimFrames 8U
-// the header text: "WORLD" then "1-N", one padding row above and below across the 4-row band
-#define kMapWorldRow 1U
-#define kMapLevelRow 2U
 
 // the "world 2 is on its way" popup, shown once a file's furthest node reaches kLevelCount (world
 // one cleared) every time the map opens: a bordered modal card centered over the map's middle,
 // wide and tall enough to read as a dropped-in dialog rather than a tint over the terrain. its
 // border rows are kMapPopupTopRow/kMapPopupBottomRow, kMapPopupWidth columns wide and centered on
 // the 20-col screen (kMapPopupLeftCol); it covers most of the strip plus one footer padding row, so
-// dismissing it repaints the whole strip (blocks, castle, markers) and mario rather than one row
+// dismissing it puts every row it covered back from the generated map rather than repainting one row
 #define kMapPopupLeftCol 2U
 #define kMapPopupWidth 16U
 // its bottom border lands exactly on kMapFooterFirstTileRow, the one tile row the footer's own
@@ -80,27 +66,15 @@
 #define kMapPopupWayRow 8U
 #define kMapPopupPressRow 10U
 
-// the footer, rows 12-17: row 12 is padding, 13-16 hold the lives readout and the bordered CLEAR
-// LIST panel side by side (cols 0-6 and 7-19), 17 carries the button hint. the lives readout is
-// plain text, not a mario-shaped icon: a host probe finds mario anywhere on screen by his sprite tile family
-// alone, so a second mario-family sprite here would feed into every test that reads his position off the map
-// (see map_draw_lives in mapscreen.c)
-#define kMapLivesTextRow 14U
-#define kMapLivesTextCol 1U
-// the footer's button hint, on the last row of the black band under the CLEAR LIST panel
+// the footer button hint, on the last row of the black band under the CLEAR LIST panel. it is the
+// one row of this screen that is font text rather than art, so map_reset gives its cells the font's
+// palette and vram bank before printing into them
 #define kMapHintRow 17U
 #define kMapHintCol 1U
-#define kMapListLeftCol 7U
-#define kMapListWidth 13U
-#define kMapListTopRow 13U
-#define kMapListHeadRow 14U
-#define kMapListCellsRow 15U
-#define kMapListBottomRow 16U
 
-// color 0 of the map's own "black band" slot (kCamPalSky, repurposed - see
-// assets_load_map_bg_palettes). near-black rather than literal (0,0,0) only so a host probe can
-// tell "the map is up, showing its band" apart from "the lcd is off" without relying on an exact
-// zero; the eye cannot tell the difference from true black
+// the color the map screen art paints its header and footer bands with. near-black rather than
+// literal (0,0,0) only so a host probe can tell "the map is up, showing its band" apart from the
+// file select, whose own frame sits on true black; the eye cannot tell the two apart
 #define kMapSkyRgb RGB(1, 1, 1)
 
 // gbdk's ibm font lands ascii 0x20-0x7f on tiles 0x00-0x5f
@@ -587,6 +561,10 @@
 #define kSpriteMarioLowR 3U
 #define kSpriteFreeFirst 4U
 #define kSpriteFreeCount 5U
+// the world map's own claim on the same run: two sprites per node, four nodes, slots 4-11. it is a
+// card screen - no debris, no items, no enemies - so it owns all forty and hands these back the
+// moment a level loads
+#define kSpriteMapMarkerFirst 4U
 #define kSpriteItemL 9U
 #define kSpriteItemR 10U
 #define kSpriteCoin 11U

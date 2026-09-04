@@ -274,7 +274,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         set(GB_MARIO_ASSET_C "")
         set(GB_MARIO_ASSET_DEPS "")
         function(mario_png_asset png name mode bank)
-            string(TOLOWER ${name} slug)
+            # the same camel-to-snake png2tiles.py names its output files with
+            string(REGEX REPLACE "(.)([A-Z][a-z]+)" "\\1_\\2" slug "${name}")
+            string(REGEX REPLACE "([a-z0-9])([A-Z])" "\\1_\\2" slug "${slug}")
+            string(TOLOWER "${slug}" slug)
             set(src ${CMAKE_SOURCE_DIR}/${png})
             set(outs ${GB_MARIO_GEN_SRC}/${slug}.c ${GB_MARIO_GEN_SRC}/${slug}.h)
             if(EXISTS ${src})
@@ -292,6 +295,9 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         endfunction()
 
         mario_png_asset(games/mario/art/bowser.png Bowser sprites16 4)
+        mario_png_asset(games/mario/art/title/title_screen.png TitleScreen screen 7 --vram-bank 1)
+        mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
+                        --palette 000000,F8E800,A89000,584010)
 
         # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
         # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a
@@ -314,6 +320,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/powerup.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/hazards.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/title_art.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/mapscreen.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/flow.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/states.c
@@ -337,6 +344,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/powerup.c games/mario/src/powerup.h
                     games/mario/src/hazards.c games/mario/src/hazards.h
                     games/mario/src/title.c games/mario/src/title.h
+                    games/mario/src/title_art.c games/mario/src/title_art.h
                     games/mario/src/mapscreen.c games/mario/src/mapscreen.h
                     games/mario/src/flow.c games/mario/src/flow.h
                     games/mario/src/states.c games/mario/src/states.h
@@ -357,7 +365,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         add_executable(mario_tests games/mario/tests/mario_test.cpp)
         target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
         target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
-        target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR})
+        # games/mario/src and the gbdk stand-in let the test compile the committed title art itself;
+        # see games/mario/tests/title_art_host.hpp
+        target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR} games/mario/src
+                                                       games/mario/tests/hostgb)
         target_link_libraries(mario_tests PRIVATE gbcore Catch2::Catch2WithMain)
         add_dependencies(mario_tests mario mario_level mario_physics)
         catch_discover_tests(mario_tests)

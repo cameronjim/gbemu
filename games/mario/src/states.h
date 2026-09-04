@@ -43,7 +43,4 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED;
 // comment on map_popup_line1 in mapscreen.h
 void map_popup_load(void) BANKED;
 
-// same idea for title.c's title_line1/2 - see the comment on title_line1 in title.h
-void title_text_load(void) BANKED;
-
 #endif

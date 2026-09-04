@@ -6,16 +6,11 @@
 // the visible screen is 20x18 cells; text lines are centered across the 20
 #define kScreenCols 20U
 #define kTitleRow 6U
-#define kPromptRow 12U
 // every card banner is a padding row, the text row, then another padding row, so the tinted band
-// reads as a band rather than exactly the glyph height. kPromptRow sits 6 rows below kTitleRow so
-// the two banners (each reaching one row above/below their text) still leave a 2-row sky gap
+// reads as a band rather than exactly the glyph height. the title card carries no text at all now -
+// it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over and
+// course clear cards
 #define kBannerRows 3U
-// the title card's own banner is one row taller than every other: it carries two wordmark lines
-// (kTitleRow and kTitleRow+1) rather than one, so it needs a padding row above the first line and
-// another below the second to read as a centered band instead of hugging the band's bottom edge.
-// painted from kTitleRow-1 the same way card_begin's own kBannerRows band is
-#define kTitleBannerRows 4U
 // the pause card's own heading row, 2 rows above kTitleRow: it carries more lines (world, score,
 // lives, footer) than the title/game-over/clear cards do, so it sits higher to leave the footer
 // some breathing room above the bottom of the 18-row screen

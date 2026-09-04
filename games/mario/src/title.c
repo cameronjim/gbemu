@@ -132,6 +132,13 @@ void card_end(void) {
 static uint8_t sparkle_timer;
 static uint8_t sparkle_on;
 
+// smbd answers a start press with a jingle and a flashing wordmark before the file select comes
+// up. the rom has no audio yet - the sound belongs to issue #8 - so this is the visual half: the
+// title holds for this many frames, flashing on this pitch, and ignores the pad the whole time
+#define kTitleLeaveFrames 60U
+#define kTitleFlashPitch 6U
+static uint8_t leave_timer;
+
 // the smbd title frame, art rather than text: the whole 32x32 map plus 143 tiles of bg data is far
 // more vram traffic than a vblank holds, so the lcd is off. no prompt - the reference has none, and
 // start/a still open the file select through title_frame
@@ -142,6 +149,7 @@ static void title_show(void) {
     title_art_place_sprites();
     sparkle_timer = 0;
     sparkle_on = 1;
+    leave_timer = 0;
     SHOW_BKG;
     SHOW_SPRITES;
     DISPLAY_ON;
@@ -171,10 +179,25 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
         sparkle_on = (uint8_t)(sparkle_on ^ 1U);
         title_art_sparkle(sparkle_on);
     }
+    // the leaving flash owns the screen while it runs: the pad is not read at all until it is
+    // done, and then the file select opens exactly as a bare press used to open it
+    if (leave_timer != 0U) {
+        --leave_timer;
+        if (leave_timer == 0U) {
+            title_art_flash(0);
+            return kTitleFile;
+        }
+        if ((uint8_t)(leave_timer % kTitleFlashPitch) == 0U) {
+            title_art_flash((uint8_t)(((leave_timer / kTitleFlashPitch) & 1U) ^ 1U));
+        }
+        return kTitleStay;
+    }
     // start and a both open the file select: the frontend maps space to a, and space is the
     // advertised start key, so a must never land in a lab
     if ((pressed & (J_START | J_A)) != 0U) {
-        return kTitleFile;
+        leave_timer = kTitleLeaveFrames;
+        title_art_flash(1);
+        return kTitleStay;
     }
     if ((pressed & J_SELECT) != 0U) {
 #if kTimerLab

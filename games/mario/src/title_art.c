@@ -20,6 +20,17 @@
 
 // the sheet's own four colors: transparent, bright gold, gold, brown outline
 static const palette_color_t kTitleDeluxePalette[4] = {0x0000, 0x03BF, 0x0255, 0x090B};
+// ...and the same script blown out to white for the flash, with transparent kept transparent
+static const palette_color_t kTitleFlashSprite[4] = {0x0000, 0x7FFF, 0x7FFF, 0x7FFF};
+
+// the frame plans palette 0 for the sky and 6 for the ground; 1-5 are the wordmark's own, so the
+// flash is those five plus the script's gold and the backdrop never moves under it
+#define kTitleFlashFirst 1U
+#define kTitleFlashCount 5U
+// the one color the wordmark palettes share with the plaque behind the letters; everything else in
+// them is ink, and the bright look is all of that ink turned white
+#define kTitleFlashPlaque 0x20C6U
+#define kTitleFlashWhite 0x7FFFU
 
 // hand-copied from games/mario/art/title/title_deluxe_oam.json in its own order - the sparkle pair
 // first, then the script. x/y are oam values, so the json's screen coordinates carry the 8/16 the
@@ -107,6 +118,21 @@ void title_art_sparkle(uint8_t on) BANKED {
             move_sprite(i, 0, 0);
         }
     }
+}
+
+// the leaving flash smbd plays under a start press; the sound that goes with it is issue #8's
+void title_art_flash(uint8_t bright) BANKED {
+    palette_color_t pal[kTitleFlashCount * 4U];
+    uint8_t i;
+
+    for (i = 0; i < (uint8_t)(kTitleFlashCount * 4U); ++i) {
+        const palette_color_t color = kTitleScreenPalettes[kTitleFlashFirst * 4U + i];
+        pal[i] = (bright != 0U && color != (palette_color_t)kTitleFlashPlaque)
+                     ? (palette_color_t)kTitleFlashWhite
+                     : color;
+    }
+    set_bkg_palette(kTitleFlashFirst, kTitleFlashCount, pal);
+    set_sprite_palette(0, 1, bright != 0U ? kTitleFlashSprite : kTitleDeluxePalette);
 }
 
 void title_art_park_sprites(void) BANKED {

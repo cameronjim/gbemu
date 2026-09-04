@@ -61,7 +61,7 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `a
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
-| 0x00-0x09 | world-map castle icon: tower/wall/merlon/arch/door quadrants (`kTileMapCastleTowerTop`..`kTileMapCastleDoor`, 10 tiles) | `assets_load_map_tiles` | world map only | |
+| 0x00-0x09 | world-map castle icon: tower/wall/merlon/arch/door quadrants (`kTileMapCastleTowerTop`..`kTileMapCastleDoor`, 10 tiles) | `assets_load_map_tiles` | world map only | the file select's own frame reuses 0x00-0x32 while it is up (see its section below); each screen reloads what it draws |
 | 0x0a-0x11 | 1-3's tree canopy + trunk (`kTileTreeFirst`, 8 tiles) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
 | 0x12-0x18 | castle masonry courses, axe, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `assets_load_scenery_tiles` | level play (castle type for the masonry/axe/bridge; any level type with a >1-deep lava pit for the lava fill) | |
 | 0x19-0x1f | **FREE** (7 ids) | — | — | called out unclaimed in mario.h |
@@ -116,11 +116,15 @@ what is actually resident in vram when each screen is up — i.e. which loader f
 and not since been overwritten. a screen not listed as calling a loader draws with whatever the
 previous screen left behind; only the bg map cells and window-layer content change.
 
-- **file select card, pause card, game over card, clear card** — none of these calls any
+- **erase confirm card, pause card, game over card, clear card** — none of these calls any
   `assets_load_*` function (`title.c`/`states.c` only call `card_begin`/`card_print_*`, which write
   bg map cell ids out of the resident font). they draw text with the gbdk ibm font loaded once at
   boot (bank 0 bg 0x00-0x5f) and nothing else. whatever tile data the world map or a level loaded
   earlier is still sitting in vram, just not referenced by any cell these cards paint.
+- **file select** (`mapscreen.c` `file_show`) — the second card that loads art of its own:
+  `file_art_load` writes bank 1 bg 0x00-0x32 and three bg palettes, and the screen then calls
+  `assets_load_sprite_tiles` and `assets_load_sprite_palettes` for the standing super mario it puts
+  on a pipe. see the file select section below.
 - **title card** (`title.c` `title_show`) — the one card that loads art of its own: `title_art_load`
   writes bank 1 bg 0x00-0x8e, bank 0 sprite 0x80-0xa7, seven bg palettes and one obj palette. see
   the title screen section above.
@@ -176,3 +180,25 @@ must never be repainted over a live level.
 
 the seven cgb bg palettes the frame plans out come from the png too, and they overwrite bg palette
 slots 0-6 - `card_begin`'s own `load_palettes` puts slots 0-2 back for every other card.
+
+---
+
+## the file select (issue #11)
+
+the smbd SELECT FILE screen is generated art too: `art/file_select/file_select.png` (the whole
+frame, with mario's 16x32 box and the label row left black for the rom to fill) and
+`art/file_select/file_labels.png` (the five 32x8 label strips NEW, 1-1, 1-2, 1-3, 1-4) become
+`src/gen/file_select.c` and `src/gen/file_labels.c`, and `file_art.c` (bank 7, with the data) loads
+them.
+
+| id range | owner | loader | screen(s) | notes |
+|---|---|---|---|---|
+| bank 1 bg 0x00-0x1e | the whole 20x18 file select frame, 31 deduplicated tiles (`kFileSelectFirstTile`, `kFileSelectTileCount`) | `file_art_load` | file select only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
+| bank 1 bg 0x1f-0x32 | the five label strips, four tiles each, loaded straight after the frame's own tiles (`kFileLabelsTileCount`, 20 tiles) | `file_art_load` | file select only | `file_art_label` writes four cells per slot: strip 0 is NEW, strip N is 1-N. cut per label rather than per letter because a 24 px word centred over a 32 px pipe needs a 4 px offset no bg cell can carry |
+| bank 0 sprite 0x60-0x7f, bank 1 sprite 0x7c-0x7f | the level's own super mario, standing on the chosen pipe and arcing between them | `assets_load_sprite_tiles` | file select, world map, level play | not new art: the file select reuses the play set so its mario is the same figure, in oam slots 0-3 |
+
+this run overlaps the title's own bank-1 bg 0x00-0x8e reservation, which is fine because the two
+screens never coexist and each reloads everything it draws from - the same way a level load puts
+the castle icon, the tree and the scenery run back over both. bg palette slots 0-1 are the two the
+png plans; slot 2 is the black-and-white pair `file_art.c` appends for the labels, because
+neither planned palette puts white on color 1.

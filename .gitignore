@@ -11,3 +11,4 @@ OVERVIEW.md
 
 # ripped art pngs, local only - the generated c under games/mario/src/gen is what ships
 games/mario/art/
+__pycache__/

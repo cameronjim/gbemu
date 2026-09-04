@@ -1,6 +1,6 @@
 # Setup
 
-Quick guide to get gbemu running on Windows (see below for MacOS/Linux).
+Quick guide to get gbemu running on Windows (see below for macOS/Linux).
 
 ## 1. Install four things
 
@@ -23,9 +23,9 @@ anywhere. The examples below use `C:\tools`.
   unzip it to `C:\tools\SDL2-2.32.10`. No PATH needed, just remember the
   folder.
 - **[gbdk-2020](https://github.com/gbdk-2020/gbdk-2020/releases).**
-  Optional, only needed if you want to change the Tetris, Flappy Bird or
-  Crossy Road game code. Skip it if you just want to play: ready-made game
-  files are already in the repo (`assets/roms/`).
+  Optional, only needed if you want to change the Tetris, Flappy Bird,
+  Crossy Road, or Mario game code. Skip it if you just want to play:
+  ready-made game files are already in the repo (`assets/roms/`).
 
 **Adding a folder to PATH:** press the Windows key, type `env`, open "Edit
 environment variables for your account", pick `Path` under your user
@@ -58,13 +58,13 @@ This one command:
 
 - Builds the emulator. If you installed gbdk-2020 it also rebuilds the
   games from source. Otherwise it uses the game files already in the repo.
-- Fills a `dist` folder with the emulator, all three games (`tetris.gb`,
-  `flappy.gb`, `crossy.gb`), and a launcher for each one.
-- Creates Start Menu shortcuts for all three games.
+- Fills a `dist` folder with the emulator, all four games (`tetris.gb`,
+  `flappy.gb`, `crossy.gb`, `mario.gbc`), and a launcher for each one.
+- Creates Start Menu shortcuts for all four games.
 
-Afterward, type **tetris**, **flappy**, or **crossy** in the Windows search
-bar to start that game. Drag any other `.gb` file onto
-`dist\gbemu-sdl.exe` to play it.
+Afterward, type **tetris**, **flappy**, **crossy**, or **mario** in the
+Windows search bar to start that game. Drag any other `.gb` or `.gbc` file
+onto `dist\gbemu-sdl.exe` to play it.
 
 ## 4. Mac and Linux
 
@@ -91,10 +91,10 @@ cd gameboy-emulator
 ./tools/make-dist.sh
 ```
 
-That builds the emulator, fills a `dist` folder with all three games, and
-links `tetris`, `flappy`, and `crossy` into `~/.local/bin`. Type **tetris**,
-**flappy**, or **crossy** in a terminal to play. You can also run
-`./dist/tetris` from the project folder.
+That builds the emulator, fills a `dist` folder with all four games, and
+links `tetris`, `flappy`, `crossy`, and `mario` into `~/.local/bin`. Type
+**tetris**, **flappy**, **crossy**, or **mario** in a terminal to play. You
+can also run `./dist/tetris` from the project folder.
 
 If the command is not found, `~/.local/bin` is not on your PATH. Add this
 line to `~/.zshrc` (or `~/.bashrc` on Linux), then open a new terminal:
@@ -105,7 +105,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 gbdk-2020 is optional here too. Without it the script uses the game files
 already in the repo. With it, pass `--gbdk-home /path/to/gbdk` to rebuild
-all three games from source.
+all four games from source.
 
 ## 5. Building by hand
 
@@ -132,5 +132,6 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j && ctest --t
 No SDL2 found skips the `gbemu-sdl` window (the core library and tests
 still build). No `GBDK_HOME` skips rebuilding the games. To rebuild just one,
 add `-DGBDK_HOME="C:\tools\gbdk"` at configure time, then run
-`cmake --build build --target tetris` (swap in `flappy` or `crossy` for the
-other games). The finished rom lands at `build/tetris.gb`.
+`cmake --build build --target tetris` (swap in `flappy`, `crossy`, or `mario`
+for the other games). The finished rom lands at `build/tetris.gb` (or
+`build/mario.gbc` for Mario, which is a Game Boy Color build).

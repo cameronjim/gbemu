@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    builds gbemu-sdl (+ the tetris/flappy/crossy roms) and assembles a portable dist folder.
+    builds gbemu-sdl (+ the tetris/flappy/crossy/mario roms) and assembles a portable dist folder.
 .DESCRIPTION
     windows powershell 5.1 compatible packaging script. configures/builds with
     ninja + mingw, then copies the exe, sdl2.dll, roms, and launcher .cmd files
@@ -59,8 +59,8 @@ try {
 
     # --- build ---
     if ($HaveGbdk) {
-        Write-Step "building gbemu-sdl, tetris, flappy, crossy"
-        cmake --build $BuildDir --target gbemu-sdl tetris flappy crossy -j
+        Write-Step "building gbemu-sdl, tetris, flappy, crossy, mario"
+        cmake --build $BuildDir --target gbemu-sdl tetris flappy crossy mario -j
         if ($LASTEXITCODE -ne 0) { Fail "build failed" }
     } else {
         Write-Step "building gbemu-sdl"
@@ -74,17 +74,21 @@ try {
         $tetrisSrc = Join-Path $BuildDir "tetris.gb"
         $flappySrc = Join-Path $BuildDir "flappy.gb"
         $crossySrc = Join-Path $BuildDir "crossy.gb"
+        $marioSrc = Join-Path $BuildDir "mario.gbc"
         if (-not (Test-Path $tetrisSrc)) { Fail "expected build output missing: $tetrisSrc" }
         if (-not (Test-Path $flappySrc)) { Fail "expected build output missing: $flappySrc" }
         if (-not (Test-Path $crossySrc)) { Fail "expected build output missing: $crossySrc" }
+        if (-not (Test-Path $marioSrc)) { Fail "expected build output missing: $marioSrc" }
     } else {
         # no gbdk build; play from the committed roms instead
         $tetrisSrc = Join-Path $RepoRoot "assets\roms\tetris.gb"
         $flappySrc = Join-Path $RepoRoot "assets\roms\flappy.gb"
         $crossySrc = Join-Path $RepoRoot "assets\roms\crossy.gb"
+        $marioSrc = Join-Path $RepoRoot "assets\roms\mario.gbc"
         if (-not (Test-Path $tetrisSrc)) { Fail "expected vendored rom missing: $tetrisSrc" }
         if (-not (Test-Path $flappySrc)) { Fail "expected vendored rom missing: $flappySrc" }
         if (-not (Test-Path $crossySrc)) { Fail "expected vendored rom missing: $crossySrc" }
+        if (-not (Test-Path $marioSrc)) { Fail "expected vendored rom missing: $marioSrc" }
     }
 
     # --- dist dir ---
@@ -120,6 +124,7 @@ try {
 
     Copy-Item -Path $flappySrc -Destination (Join-Path $DistDir "flappy.gb") -Force
     Copy-Item -Path $crossySrc -Destination (Join-Path $DistDir "crossy.gb") -Force
+    Copy-Item -Path $marioSrc -Destination (Join-Path $DistDir "mario.gbc") -Force
 
     # gbdk built fresh roms; keep the committed copies in sync with the sources
     if ($HaveGbdk) {
@@ -127,6 +132,7 @@ try {
         Copy-Item -Path $tetrisSrc -Destination (Join-Path $RepoRoot "assets\roms\tetris.gb") -Force
         Copy-Item -Path $flappySrc -Destination (Join-Path $RepoRoot "assets\roms\flappy.gb") -Force
         Copy-Item -Path $crossySrc -Destination (Join-Path $RepoRoot "assets\roms\crossy.gb") -Force
+        Copy-Item -Path $marioSrc -Destination (Join-Path $RepoRoot "assets\roms\mario.gbc") -Force
     }
 
     $iconSrc = Join-Path $RepoRoot "assets\icons\gbemu.bmp"
@@ -142,6 +148,7 @@ try {
         "tetris.cmd" = "tetris.gb"
         "flappy.cmd" = "flappy.gb"
         "crossy.cmd" = "crossy.gb"
+        "mario.cmd" = "mario.gbc"
     }
     foreach ($name in $launchers.Keys) {
         $rom = $launchers[$name]
@@ -167,6 +174,7 @@ try {
             "tetris" = "tetris.cmd"
             "flappy" = "flappy.cmd"
             "crossy" = "crossy.cmd"
+            "mario" = "mario.cmd"
         }
         foreach ($name in $shortcuts.Keys) {
             $cmdFile = $shortcuts[$name]
@@ -177,7 +185,7 @@ try {
             $shortcut.IconLocation = Join-Path $distFull "gbemu-sdl.exe"
             $shortcut.Save()
         }
-        Write-Host "shortcuts created: tetris, flappy, crossy (type the name in windows search)" -ForegroundColor Green
+        Write-Host "shortcuts created: tetris, flappy, crossy, mario (type the name in windows search)" -ForegroundColor Green
     } else {
         Write-Step "skipping start menu shortcuts (-NoShortcuts)"
     }

@@ -10,3 +10,6 @@
   the source.
 - `crossy.gb` — built from this repo's own `games/crossy` with gbdk-2020.
   Committed for the same reason as `flappy.gb`, and refreshed the same way.
+- `mario.gbc` — built from this repo's own `games/mario` with gbdk-2020. A
+  Game Boy Color rom (mbc5+ram+battery), committed and refreshed the same way
+  as the others.

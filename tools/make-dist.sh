@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# builds gbemu-sdl (+ the tetris/flappy/crossy roms) and assembles a dist folder on linux/macos.
+# builds gbemu-sdl (+ the tetris/flappy/crossy/mario roms) and assembles a dist folder on linux/macos.
 # the counterpart of make-dist.ps1. sdl2 is linked against the system copy, so
 # nothing is bundled here.
 set -euo pipefail
@@ -112,8 +112,8 @@ fi
 
 # --- build ---
 if [ "$have_gbdk" -eq 1 ]; then
-    step "building gbemu-sdl, tetris, flappy, crossy"
-    cmake --build "$build_dir" --target gbemu-sdl tetris flappy crossy -j || fail "build failed"
+    step "building gbemu-sdl, tetris, flappy, crossy, mario"
+    cmake --build "$build_dir" --target gbemu-sdl tetris flappy crossy mario -j || fail "build failed"
 else
     step "building gbemu-sdl"
     cmake --build "$build_dir" --target gbemu-sdl -j || fail "build failed"
@@ -122,21 +122,29 @@ fi
 emu_src="$build_dir/gbemu-sdl"
 [ -x "$emu_src" ] || fail "expected build output missing: $emu_src (is sdl2 installed?)"
 
+# game name -> rom extension (mario is game boy color, mbc5)
+game_names=(tetris flappy crossy mario)
+game_exts=(gb gb gb gbc)
+
 if [ "$have_gbdk" -eq 1 ]; then
     tetris_src="$build_dir/tetris.gb"
     flappy_src="$build_dir/flappy.gb"
     crossy_src="$build_dir/crossy.gb"
+    mario_src="$build_dir/mario.gbc"
     [ -f "$tetris_src" ] || fail "expected build output missing: $tetris_src"
     [ -f "$flappy_src" ] || fail "expected build output missing: $flappy_src"
     [ -f "$crossy_src" ] || fail "expected build output missing: $crossy_src"
+    [ -f "$mario_src" ] || fail "expected build output missing: $mario_src"
 else
     # no gbdk build; play from the committed roms instead
     tetris_src="assets/roms/tetris.gb"
     flappy_src="assets/roms/flappy.gb"
     crossy_src="assets/roms/crossy.gb"
+    mario_src="assets/roms/mario.gbc"
     [ -f "$tetris_src" ] || fail "expected vendored rom missing: $tetris_src"
     [ -f "$flappy_src" ] || fail "expected vendored rom missing: $flappy_src"
     [ -f "$crossy_src" ] || fail "expected vendored rom missing: $crossy_src"
+    [ -f "$mario_src" ] || fail "expected vendored rom missing: $mario_src"
 fi
 
 # --- dist dir ---
@@ -158,6 +166,7 @@ chmod +x "$dist_dir/gbemu-sdl"
 install_file "$tetris_src" "$dist_dir/tetris.gb"
 install_file "$flappy_src" "$dist_dir/flappy.gb"
 install_file "$crossy_src" "$dist_dir/crossy.gb"
+install_file "$mario_src" "$dist_dir/mario.gbc"
 
 # gbdk built fresh roms; keep the committed copies in sync with the sources
 if [ "$have_gbdk" -eq 1 ]; then
@@ -165,6 +174,7 @@ if [ "$have_gbdk" -eq 1 ]; then
     install_file "$tetris_src" assets/roms/tetris.gb
     install_file "$flappy_src" assets/roms/flappy.gb
     install_file "$crossy_src" assets/roms/crossy.gb
+    install_file "$mario_src" assets/roms/mario.gbc
 fi
 
 if [ -f assets/icons/gbemu.bmp ]; then
@@ -175,10 +185,12 @@ fi
 
 # --- launcher scripts ---
 step "writing launcher scripts"
-for game in tetris flappy crossy; do
+for i in "${!game_names[@]}"; do
+    game=${game_names[$i]}
+    ext=${game_exts[$i]}
     cat > "$dist_dir/$game" <<EOF
 #!/usr/bin/env bash
-# runs $game.gb with the emulator sitting next to this script
+# runs $game.$ext with the emulator sitting next to this script
 set -euo pipefail
 # follow symlinks so the launcher works from ~/.local/bin too
 src=\${BASH_SOURCE[0]}
@@ -191,7 +203,7 @@ while [ -L "\$src" ]; do
     esac
 done
 here=\$(cd -P "\$(dirname "\$src")" && pwd)
-exec "\$here/gbemu-sdl" "\$here/$game.gb" "\$@"
+exec "\$here/gbemu-sdl" "\$here/$game.$ext" "\$@"
 EOF
     chmod +x "$dist_dir/$game"
 done
@@ -205,12 +217,12 @@ else
     bin_dir="$HOME/.local/bin"
     step "linking launchers into $bin_dir"
     mkdir -p "$bin_dir"
-    for game in tetris flappy crossy; do
+    for game in "${game_names[@]}"; do
         ln -sf "$dist_abs/$game" "$bin_dir/$game"
     done
     case ":${PATH:-}:" in
         *":$bin_dir:"*)
-            printf 'type tetris, flappy, or crossy in a terminal to play.\n'
+            printf 'type tetris, flappy, crossy, or mario in a terminal to play.\n'
             ;;
         *)
             printf '%s is not on your PATH yet.\n' "$bin_dir"

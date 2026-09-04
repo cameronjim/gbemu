@@ -227,25 +227,6 @@ void map_popup_load(void) BANKED {
     map_popup_line3[i] = '\0';
 }
 
-// see the comment on title_line1 in title.h: bank 5 has no room left for the wordmark's own two
-// literal strings either, so the same trick as map_popup_load copies them out of this bank
-// no trailing period: "SUPER MARIO BROS" is sixteen glyphs, "REMASTERED" ten - both even, so both
-// center exactly on the 20-column grid instead of the period's odd seventeen landing one column off
-void title_text_load(void) BANKED {
-    const char* a = "SUPER MARIO BROS";
-    const char* b = "REMASTERED";
-    uint8_t i;
-
-    for (i = 0; a[i] != '\0'; ++i) {
-        title_line1[i] = a[i];
-    }
-    title_line1[i] = '\0';
-    for (i = 0; b[i] != '\0'; ++i) {
-        title_line2[i] = b[i];
-    }
-    title_line2[i] = '\0';
-}
-
 #if kDebugCamera
 // moved here from title.c: bank 5 (title.c/mapscreen.c) is nearly full and the title wordmark's
 // second line plus the map's world-two popup left no room for these. neither touches title.c's

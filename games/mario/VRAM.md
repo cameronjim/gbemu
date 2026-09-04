@@ -187,14 +187,14 @@ slots 0-6 - `card_begin`'s own `load_palettes` puts slots 0-2 back for every oth
 
 the smbd SELECT FILE screen is generated art too: `art/file_select/file_select.png` (the whole
 frame, with mario's 16x32 box and the label row left black for the rom to fill) and
-`art/file_select/file_glyphs.png` (the eight label glyphs W, 1, star, N, E, 2, 3, 4) become
+`art/file_select/file_glyphs.png` (the eight label glyphs W, 1, dash, N, E, 2, 3, 4) become
 `src/gen/file_select.c` and `src/gen/file_glyphs.c`, and `file_art.c` (bank 7, with the data) loads
 them.
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
 | bank 1 bg 0x00-0x1e | the whole 20x18 file select frame, 31 deduplicated tiles (`kFileSelectFirstTile`, `kFileSelectTileCount`) | `file_art_load` | file select only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
-| bank 1 bg 0x1f-0x26 | the eight label glyphs, loaded straight after the frame's own tiles (`kFileGlyphsTileCount`) | `file_art_load` | file select only | `file_art_label` writes four cells per slot: NEW, or W1*N for the level the file stands on |
+| bank 1 bg 0x1f-0x26 | the eight label glyphs, loaded straight after the frame's own tiles (`kFileGlyphsTileCount`) | `file_art_load` | file select only | `file_art_label` writes three cells per slot: NEW, or 1-N for the level the file stands on |
 | bank 0 sprite 0x60-0x7f, bank 1 sprite 0x7c-0x7f | the level's own super mario, standing on the chosen pipe and arcing between them | `assets_load_sprite_tiles` | file select, world map, level play | not new art: the file select reuses the play set so its mario is the same figure, in oam slots 0-3 |
 
 this run overlaps the title's own bank-1 bg 0x00-0x8e reservation, which is fine because the two

@@ -17,16 +17,15 @@
 // get a slot of their own past them
 #define kFilePalGlyph kFileSelectPaletteCount
 #define kFileLabelRow 5U
-#define kFileLabelCells 4U
-// the glyph strip's own cut order: W, 1, star, N, E, 2, 3, 4
+#define kFileLabelCells 3U
+// the glyph strip's own cut order: W, 1, dash, N, E, 2, 3, 4. both labels are three cells wide -
+// "NEW", or the world-dash-level the file stands on - so the strip carries no blank
 #define kGlyphW 0U
 #define kGlyphOne 1U
-#define kGlyphStar 2U
+#define kGlyphDash 2U
 #define kGlyphN 3U
 #define kGlyphE 4U
 #define kGlyphDigitFirst 5U
-// no glyph at all: the cell goes back to the art's own black
-#define kGlyphBlank 0xFFU
 
 static const palette_color_t kFileGlyphPalette[4] = {0x0000, 0x7FFF, 0x0000, 0x0000};
 // each slot's label sits at its own pipe's left column
@@ -76,23 +75,17 @@ void file_art_label(uint8_t slot, uint8_t level_or_new) BANKED {
         tiles[0] = kGlyphN;
         tiles[1] = kGlyphE;
         tiles[2] = kGlyphW;
-        tiles[3] = kGlyphBlank;
     } else {
-        tiles[0] = kGlyphW;
-        tiles[1] = kGlyphOne;
-        tiles[2] = kGlyphStar;
-        // the strip carries one "1" and shares it with the world number
-        tiles[3] =
+        // world one is all there is, so the label is the world, the dash and the level number -
+        // and the strip carries one "1" that the world and level 1 share
+        tiles[0] = kGlyphOne;
+        tiles[1] = kGlyphDash;
+        tiles[2] =
             (level_or_new == 1U) ? (uint8_t)kGlyphOne : (uint8_t)(kGlyphDigitFirst + level_or_new - 2U);
     }
     for (i = 0; i < kFileLabelCells; ++i) {
-        if (tiles[i] == (uint8_t)kGlyphBlank) {
-            tiles[i] = kFileSelectMap[0];
-            attrs[i] = kFileSelectAttrs[0];
-        } else {
-            tiles[i] = (uint8_t)(kFileSelectTileCount + tiles[i]);
-            attrs[i] = (uint8_t)(kFilePalGlyph | kCamAttrVram1);
-        }
+        tiles[i] = (uint8_t)(kFileSelectTileCount + tiles[i]);
+        attrs[i] = (uint8_t)(kFilePalGlyph | kCamAttrVram1);
     }
     set_bkg_tiles(kFileLabelCol[slot], kFileLabelRow, kFileLabelCells, 1, tiles);
     set_bkg_attributes(kFileLabelCol[slot], kFileLabelRow, kFileLabelCells, 1, attrs);

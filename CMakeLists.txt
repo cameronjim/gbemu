@@ -299,7 +299,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
                         --palette 000000,F8E800,A89000,584010)
         mario_png_asset(games/mario/art/file_select/file_select.png FileSelect screen 7 --vram-bank 1)
-        mario_png_asset(games/mario/art/file_select/file_glyphs.png FileGlyphs tiles 7
+        mario_png_asset(games/mario/art/file_select/file_labels.png FileLabels tiles 7
                         --palette 000000,F8F8F8,000000,000000)
 
         # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the

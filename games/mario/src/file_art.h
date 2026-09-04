@@ -4,12 +4,12 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
-// the smbd file select frame: 31 bank-1 bg tiles plus the eight label glyphs, their palettes, and
+// the smbd file select frame: 31 bank-1 bg tiles plus the five label strips, their palettes, and
 // the 20x18 map. runs with the lcd off - it is far more vram traffic than a vblank holds
 void file_art_load(void) BANKED;
 
-// one slot's three label cells: "NEW" when level_or_new is 0, else "1-N" with N that level number.
-// six cells inside a vblank, so this one is safe with the lcd on
+// one slot's four label cells: "NEW" when level_or_new is 0, else "1-N" with N that level number.
+// eight cells inside a vblank, so this one is safe with the lcd on
 void file_art_label(uint8_t slot, uint8_t level_or_new) BANKED;
 
 // mario's 16 px column is centred on the pipe he stands over; his feet meet the lip at kFileStandY

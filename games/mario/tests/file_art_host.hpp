@@ -12,7 +12,7 @@
 namespace file_art {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunknown-pragmas"
-#include "gen/file_glyphs.c"
+#include "gen/file_labels.c"
 #include "gen/file_select.c"
 #pragma GCC diagnostic pop
 } // namespace file_art

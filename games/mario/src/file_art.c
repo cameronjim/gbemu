@@ -5,7 +5,7 @@
 
 #include "file_art.h"
 
-#include "gen/file_glyphs.h"
+#include "gen/file_labels.h"
 #include "gen/file_select.h"
 #include "mario.h"
 
@@ -13,22 +13,16 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
-// the generated screen plans two palettes and neither puts white on color 1, so the label glyphs
+// the generated screen plans two palettes and neither puts white on color 1, so the labels
 // get a slot of their own past them
-#define kFilePalGlyph kFileSelectPaletteCount
+#define kFilePalLabel kFileSelectPaletteCount
 #define kFileLabelRow 5U
-#define kFileLabelCells 3U
-// the glyph strip's own cut order: W, 1, dash, N, E, 2, 3, 4. both labels are three cells wide -
-// "NEW", or the world-dash-level the file stands on - so the strip carries no blank
-#define kGlyphW 0U
-#define kGlyphOne 1U
-#define kGlyphDash 2U
-#define kGlyphN 3U
-#define kGlyphE 4U
-#define kGlyphDigitFirst 5U
+// a 24 px word centred over a 32 px pipe needs a 4 px offset a bg cell cannot carry, so the strip
+// is cut per label rather than per letter: four tiles each, NEW then 1-1 through 1-4
+#define kFileLabelCells 4U
 
-static const palette_color_t kFileGlyphPalette[4] = {0x0000, 0x7FFF, 0x0000, 0x0000};
-// each slot's label sits at its own pipe's left column
+static const palette_color_t kFileLabelPalette[4] = {0x0000, 0x7FFF, 0x0000, 0x0000};
+// each slot's label spans its own pipe, starting at that pipe's left column
 static const uint8_t kFileLabelCol[kSaveSlots] = {2U, 8U, 14U};
 
 static uint8_t map_row[kRingTileCols];
@@ -58,10 +52,10 @@ void file_art_load(void) BANKED {
     // the attribute bytes already carry bit 3, so every cell of the frame reads bank 1
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kFileSelectFirstTile, kFileSelectTileCount, kFileSelectTiles);
-    set_bkg_data(kFileSelectTileCount, kFileGlyphsTileCount, kFileGlyphsTiles);
+    set_bkg_data(kFileSelectTileCount, kFileLabelsTileCount, kFileLabelsTiles);
     VBK_REG = VBK_BANK_0;
     set_bkg_palette(0, kFileSelectPaletteCount, kFileSelectPalettes);
-    set_bkg_palette(kFilePalGlyph, 1, kFileGlyphPalette);
+    set_bkg_palette(kFilePalLabel, 1, kFileLabelPalette);
     set_bkg_tiles(0, 0, kFileSelectCols, kFileSelectRows, kFileSelectMap);
     set_bkg_attributes(0, 0, kFileSelectCols, kFileSelectRows, kFileSelectAttrs);
 }
@@ -69,23 +63,15 @@ void file_art_load(void) BANKED {
 void file_art_label(uint8_t slot, uint8_t level_or_new) BANKED {
     uint8_t tiles[kFileLabelCells];
     uint8_t attrs[kFileLabelCells];
+    uint8_t first;
     uint8_t i;
 
-    if (level_or_new == 0U) {
-        tiles[0] = kGlyphN;
-        tiles[1] = kGlyphE;
-        tiles[2] = kGlyphW;
-    } else {
-        // world one is all there is, so the label is the world, the dash and the level number -
-        // and the strip carries one "1" that the world and level 1 share
-        tiles[0] = kGlyphOne;
-        tiles[1] = kGlyphDash;
-        tiles[2] =
-            (level_or_new == 1U) ? (uint8_t)kGlyphOne : (uint8_t)(kGlyphDigitFirst + level_or_new - 2U);
-    }
+    // world one is all there is, so a used file's label is the level it stands on and index 0 is
+    // the one label that is not a level, "NEW"
+    first = (uint8_t)(kFileSelectTileCount + level_or_new * kFileLabelCells);
     for (i = 0; i < kFileLabelCells; ++i) {
-        tiles[i] = (uint8_t)(kFileSelectTileCount + tiles[i]);
-        attrs[i] = (uint8_t)(kFilePalGlyph | kCamAttrVram1);
+        tiles[i] = (uint8_t)(first + i);
+        attrs[i] = (uint8_t)(kFilePalLabel | kCamAttrVram1);
     }
     set_bkg_tiles(kFileLabelCol[slot], kFileLabelRow, kFileLabelCells, 1, tiles);
     set_bkg_attributes(kFileLabelCol[slot], kFileLabelRow, kFileLabelCells, 1, attrs);

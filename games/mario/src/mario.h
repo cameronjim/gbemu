@@ -25,7 +25,7 @@
 #define kPauseHintRow 17U
 
 // the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in
-// games/mario/src/file_art.h and its labels are drawn glyph cells, not printed lines
+// games/mario/src/file_art.h and its labels are drawn art cells, not printed lines
 // the erase confirm is still its own text card over the shared machinery
 #define kEraseRow 5U
 

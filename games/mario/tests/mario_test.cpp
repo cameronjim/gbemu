@@ -12343,19 +12343,14 @@ constexpr size_t kSlotLevel = 1;
 constexpr size_t kSlotScore = 2;
 constexpr int kSaveSlots = 3;
 
-// the file select's label row and each slot's three label cells, from games/mario/src/file_art.c:
-// one glyph per cell, left-aligned on the slot's own pipe
+// the file select's label row and each slot's four label cells, from games/mario/src/file_art.c:
+// one four-tile label strip centred over the slot's own 32 px pipe
 constexpr uint32_t kFileLabelRow = 5;
-constexpr uint32_t kFileLabelCells = 3;
+constexpr uint32_t kFileLabelCells = 4;
 constexpr uint32_t kFileLabelCol[kSaveSlots] = {2, 8, 14};
-// the glyph strip's cut order, and the tile ids the loader lands it on, past the screen's own
-constexpr int kGlyphW = 0;
-constexpr int kGlyphOne = 1;
-constexpr int kGlyphDash = 2;
-constexpr int kGlyphN = 3;
-constexpr int kGlyphE = 4;
-constexpr int kGlyphDigitFirst = 5;
-constexpr int kFileGlyphFirstTile = kFileSelectTileCount;
+// the strip's cut order - NEW, then 1-1 through 1-4 - and the tile ids the loader lands it on
+constexpr int kLabelNew = 0;
+constexpr int kFileLabelFirstTile = kFileSelectTileCount;
 // the erase confirm is still a text card over the shared machinery
 constexpr uint32_t kEraseRow = 5;
 // and the map's geometry, from the kMap* block
@@ -12401,26 +12396,26 @@ int bg_tile_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
     return (id & 0x100u) != 0 ? -1 : static_cast<int>(id & 0xFFu);
 }
 
-// the three label cells of one slot, as glyph indexes into the strip (-1 for the art's own black)
-std::array<int, kFileLabelCells> file_label(const gb::Gameboy& gameboy, int slot) {
-    std::array<int, kFileLabelCells> out{};
+// which label a slot wears: its strip index, or -1 if its four cells are not one whole strip
+int file_label(const gb::Gameboy& gameboy, int slot) {
+    const int first = bg_tile_at(gameboy, kFileLabelRow, kFileLabelCol[slot]) - kFileLabelFirstTile;
 
-    for (uint32_t i = 0; i < kFileLabelCells; ++i) {
-        const int tile = bg_tile_at(gameboy, kFileLabelRow, kFileLabelCol[slot] + i);
-        const int glyph = tile - kFileGlyphFirstTile;
-        out[i] = (glyph >= 0 && glyph < static_cast<int>(kFileGlyphsTileCount)) ? glyph : -1;
+    if (first < 0 || first + static_cast<int>(kFileLabelCells) > static_cast<int>(kFileLabelsTileCount) ||
+        first % static_cast<int>(kFileLabelCells) != 0) {
+        return -1;
     }
-    return out;
+    for (uint32_t i = 1; i < kFileLabelCells; ++i) {
+        const int tile = bg_tile_at(gameboy, kFileLabelRow, kFileLabelCol[slot] + i);
+        if (tile - kFileLabelFirstTile != first + static_cast<int>(i)) {
+            return -1;
+        }
+    }
+    return first / static_cast<int>(kFileLabelCells);
 }
 
-// "NEW", the label an untouched slot wears
-std::array<int, kFileLabelCells> label_new() {
-    return {kGlyphN, kGlyphE, kGlyphW};
-}
-
-// "1-N": world one, the dash, and the level the file stands on
-std::array<int, kFileLabelCells> label_world(int level) {
-    return {kGlyphOne, kGlyphDash, level == 1 ? kGlyphOne : kGlyphDigitFirst + level - 2};
+// "1-N", the label a used file wears: world one and the level it stands on
+int label_world(int level) {
+    return level;
 }
 
 // boots and opens the file select; the settle is the same lcd-off drain every card pays
@@ -12465,7 +12460,7 @@ TEST_CASE("mario_file_select_lists_three_slots") {
     enter_file_select(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyFile);
     for (int slot = 0; slot < kSaveSlots; ++slot) {
-        REQUIRE(file_label(gameboy, slot) == label_new());
+        REQUIRE(file_label(gameboy, slot) == kLabelNew);
     }
     REQUIRE(file_cursor(gameboy) == 0);
 }
@@ -12482,7 +12477,7 @@ TEST_CASE("mario_file_select_shows_progress") {
     // the reference's own label: world one, the dash, and the level the file stands on
     REQUIRE(file_label(gameboy, 0) == label_world(2));
     for (int slot = 1; slot < kSaveSlots; ++slot) {
-        REQUIRE(file_label(gameboy, slot) == label_new());
+        REQUIRE(file_label(gameboy, slot) == kLabelNew);
     }
 }
 
@@ -12528,11 +12523,11 @@ TEST_CASE("mario_file_select_cursor_and_confirm") {
 namespace {
 
 // the file select composited the way the hardware does it: the generated screen through its own
-// cgb palettes, then each slot's four label cells swapped for the glyph strip's tiles under the
+// cgb palettes, then each slot's four label cells swapped for its label strip's tiles under the
 // black-and-white palette file_art.c appends past the two the screen plans
 std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight>
 expected_file_frame(const std::array<int, kSaveSlots>& labels) {
-    static constexpr uint16_t kGlyphPalette[4] = {0x0000, 0x7FFF, 0x0000, 0x0000};
+    static constexpr uint16_t kLabelPalette[4] = {0x0000, 0x7FFF, 0x0000, 0x0000};
     std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> out{};
 
     auto blit = [&out](uint32_t cx, uint32_t cy, const uint8_t* tiles, int tile, const uint16_t* pal) {
@@ -12554,11 +12549,10 @@ expected_file_frame(const std::array<int, kSaveSlots>& labels) {
         }
     }
     for (int slot = 0; slot < kSaveSlots; ++slot) {
-        const std::array<int, kFileLabelCells> want = labels[static_cast<size_t>(slot)] == 0
-                                                          ? label_new()
-                                                          : label_world(labels[static_cast<size_t>(slot)]);
+        const int want = labels[static_cast<size_t>(slot)];
         for (uint32_t i = 0; i < kFileLabelCells; ++i) {
-            blit(kFileLabelCol[slot] + i, kFileLabelRow, file_art::kFileGlyphsTiles, want[i], kGlyphPalette);
+            blit(kFileLabelCol[slot] + i, kFileLabelRow, file_art::kFileLabelsTiles,
+                 want * static_cast<int>(kFileLabelCells) + static_cast<int>(i), kLabelPalette);
         }
     }
     return out;
@@ -12719,8 +12713,8 @@ TEST_CASE("mario_legacy_one_slot_save_migrates") {
     enter_file_select(gameboy);
     // it lands in file 1 with both of its fields intact, and files 2 and 3 stay empty
     REQUIRE(file_label(gameboy, 0) == label_world(3));
-    REQUIRE(file_label(gameboy, 1) == label_new());
-    REQUIRE(file_label(gameboy, 2) == label_new());
+    REQUIRE(file_label(gameboy, 1) == kLabelNew);
+    REQUIRE(file_label(gameboy, 2) == kLabelNew);
     // and the header is rewritten, so the old layout is only ever read once
     REQUIRE(gameboy.external_ram()[3] == '2');
     REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotLevel] == 2);
@@ -12759,7 +12753,7 @@ TEST_CASE("mario_erase_clears_only_the_chosen_slot") {
     run(gameboy, kScreenSettleFrames);
     step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
-    REQUIRE(file_label(gameboy, 1) == label_new());
+    REQUIRE(file_label(gameboy, 1) == kLabelNew);
     const std::span<const uint8_t> ram = gameboy.external_ram();
     REQUIRE(ram[slot_at(1) + kSlotUsed] == 0);
     REQUIRE(ram[slot_at(1) + kSlotLevel] == 0);

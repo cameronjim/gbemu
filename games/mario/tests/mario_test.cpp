@@ -8,6 +8,7 @@
 #include "physics_constants.h"
 // the generated smbd title art, compiled here so the expected title frame is the rom's own bytes
 #include "file_art_host.hpp"
+#include "map_art_host.hpp"
 #include "title_art_host.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -12353,9 +12354,11 @@ constexpr int kLabelNew = 0;
 constexpr int kFileLabelFirstTile = kFileSelectTileCount;
 // the erase confirm is still a text card over the shared machinery
 constexpr uint32_t kEraseRow = 5;
-// and the map's geometry, from the kMap* block
-constexpr int kMapNodeFirstCol = 1;
-constexpr int kMapNodeStepCol = 2;
+// and the map's geometry: the four node cells the generated frame was measured against, from the
+// kMapNodeXs/kMapNodeYs block in map_art.h. each is exactly one 8x8 cell; the first three carry a
+// marker and 1-4 is the castle itself
+constexpr int kMapNodeX[4] = {8, 48, 88, 136};
+constexpr int kMapNodeY[4] = {64, 56, 72, 64};
 // the "world 2 is on its way" popup's own geometry, mirrored from the kMapPopup* block in mario.h:
 // a bordered card, kMapPopupWidth columns wide and centered on the 20-col screen, whose bottom
 // border sits on the footer's own first row (kMapFooterFirstTileRow, elsewhere in this file - 12)
@@ -12444,9 +12447,10 @@ void map_play(gb::Gameboy& gameboy) {
     run(gameboy, kLevelSettleFrames);
 }
 
-// where mario's art starts on the map when he stands on node `node`
+// where mario's art starts on the map when he stands on node `node`: his 16 px box is centred on
+// the 8 px node cell, and its own leftmost column is transparent
 int map_node_left(int node) {
-    return (kMapNodeFirstCol + node * kMapNodeStepCol) * kBlockPx + kMarioArtInset;
+    return kMapNodeX[node] - 4 + kMarioArtInset;
 }
 
 } // namespace
@@ -12863,31 +12867,230 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     REQUIRE(sky_color(gameboy) == kSkyOverworld);
 }
 
-// --- m20: the rebuilt map screen's three bands ----------------------------------------------
+// --- m22: the map screen, rebuilt out of the smbd world one frame -----------------------------
 
 namespace {
-// the map's own kMap* layout, mirrored from mario.h
-[[maybe_unused]] constexpr uint32_t kMapWorldRow = 1;
-constexpr uint32_t kMapLevelRow = 2;
-constexpr uint32_t kMapLivesTextRow = 14;
-[[maybe_unused]] constexpr uint32_t kMapLivesTextCol = 1;
-constexpr uint32_t kMapListLeftCol = 7;
-constexpr uint32_t kMapListCellsRow = 15;
-constexpr uint32_t kMapBandFirstTileRow = 4; // (kMapBandFirstRow=2) * kTilesPerBlock
+// the map's own kMap* layout, mirrored from map_art.h and mario.h
+constexpr uint32_t kMapDigitRow = 2;
+constexpr uint32_t kMapWorldDigitCol = 3;
+constexpr uint32_t kMapLevelDigitCol = 5;
+constexpr uint32_t kMapFooterRow = 15;
+constexpr uint32_t kMapLivesDigitCol = 10;
+constexpr uint32_t kMapListRow = 14;
+constexpr uint32_t kMapListFirstCol = 15;
+constexpr uint32_t kMapStripFirstTileRow = 4;
 constexpr uint32_t kMapFooterFirstTileRow = 12;
+// map_art.h's own water cycle: eight frames of one pixel, one every four
+constexpr int kMapWaterFrameCount = 8;
+constexpr int kMapWaterTicks = 4;
+constexpr int kMapWaterTileCount = 6;
 
-// the panel's own border/checkbox tile ids, from assets.h - the border and cells are drawn tiles
-// now, not font punctuation, so these are raw bg tile ids rather than glyphs. the world-two popup
-// (below) reuses the same corner tile for its own bordered card
-constexpr int kTileMapListCorner = 0x65;
-constexpr int kTileMapListCellFilled = 0x69;
+// map_art's runtime tile run sits straight past the generated frame's own: ten glyph digits and
+// the world-two card's corner/h-edge/v-edge, then the six ids the lives readout rewrites, then the
+// four clear-list fill variants, one per dash cell of world one's row
+constexpr int kMapGlyphFirst = static_cast<int>(kMapScreenTileCount);
+constexpr int kMapGlyphCorner = kMapGlyphFirst + 10;
+constexpr int kMapLivesFirst = kMapGlyphFirst + static_cast<int>(kMapGlyphsTileCount);
+constexpr int kMapLivesCols = 3;
+constexpr int kMapListFillFirst = kMapLivesFirst + kMapLivesCols * 2;
+// and the six the water cycle drifts, which the loader points every water cell of the lake at
+constexpr int kMapWaterFirst = kMapListFillFirst + static_cast<int>(kMapListFillTileCount);
 
-// the four CLEAR LIST cells, at kMapListLeftCol+2 stepping by 3
+// the digit a runtime glyph cell reads, or -1 for any cell that is not one
+int map_digit_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
+    const int tile = bg_tile_at(gameboy, row, col) - kMapGlyphFirst;
+
+    return (tile >= 0 && tile <= 9) ? tile : -1;
+}
+
+// the sixteen bytes one bank-1 bg tile holds. lcdc bit 4 is clear, so an id under 0x80 reads out of
+// 0x9000 - vram offset 0x1000 - and bank 1 is another 0x2000 up
+std::vector<uint8_t> bg_tile_bytes(const gb::Gameboy& gameboy, int tile) {
+    const std::span<const uint8_t> vram = gameboy.debug_vram();
+    const long base = 0x3000 + static_cast<long>(tile) * 16;
+
+    return std::vector<uint8_t>(vram.begin() + base, vram.begin() + base + 16);
+}
+
+// the lives readout is tile data rather than a tile id: map_art_lives rewrites its own six ids
+// every time it runs, so which digit is up is read out of vram. `index` is the cell across, `half`
+// the row down, and the answer is the digit whose pre-shifted quadrant those bytes are
+int map_lives_quad(const gb::Gameboy& gameboy, int index, int half) {
+    const uint32_t col = kMapLivesDigitCol + static_cast<uint32_t>(index);
+    const int quad = half * 2 + (index & 1);
+
+    if (bg_tile_at(gameboy, kMapFooterRow + static_cast<uint32_t>(half), col) !=
+        kMapLivesFirst + half * kMapLivesCols + index) {
+        return -1;
+    }
+    const std::vector<uint8_t> bytes = bg_tile_bytes(gameboy, kMapLivesFirst + half * kMapLivesCols + index);
+    for (int digit = 0; digit < 10; ++digit) {
+        if (std::equal(bytes.begin(), bytes.end(), map_art::kMapLivesTiles + (digit * 4 + quad) * 16)) {
+            return digit;
+        }
+    }
+    return -1;
+}
+
 bool clear_list_cell_filled(const gb::Gameboy& gameboy, int cell) {
-    const int col = static_cast<int>(kMapListLeftCol) + 2 + cell * 3;
-    return bg_tile_at(gameboy, kMapListCellsRow, static_cast<uint32_t>(col)) == kTileMapListCellFilled;
+    const uint32_t col = kMapListFirstCol + static_cast<uint32_t>(cell);
+    return bg_tile_at(gameboy, kMapListRow, col) == kMapListFillFirst + cell;
+}
+
+// the generated frame composited the way the hardware does it, with the runtime glyph cells the
+// rom writes over it swapped in: the whole expected screen, bar the sprites
+std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> expected_map_frame(int level, int lives, int cleared) {
+    // map_art.c's own kMapTextPalette: the band's near-black under white ink on both odd indices
+    static constexpr uint16_t kTextPalette[4] = {static_cast<uint16_t>(kSkyMap), 0x7FFF,
+                                                 static_cast<uint16_t>(kSkyMap), 0x7FFF};
+    std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> out{};
+
+    for (uint32_t cy = 0; cy < kMapScreenRows; ++cy) {
+        for (uint32_t cx = 0; cx < kMapScreenCols; ++cx) {
+            const size_t cell = cy * kMapScreenCols + cx;
+            const int tile = map_art::kMapScreenMap[cell] - static_cast<int>(kMapScreenFirstTile);
+            const int pal = map_art::kMapScreenAttrs[cell] & 0x07;
+            for (uint32_t y = 0; y < 8; ++y) {
+                for (uint32_t x = 0; x < 8; ++x) {
+                    const uint8_t v =
+                        tile_pixel(map_art::kMapScreenTiles, tile, static_cast<int>(x), static_cast<int>(y));
+                    out[(cy * 8 + y) * gb::kLcdWidth + cx * 8 + x] = map_art::kMapScreenPalettes[pal * 4 + v];
+                }
+            }
+        }
+    }
+
+    // then every cell the rom writes over that frame at runtime, each under its own palette
+    auto paint = [&out](uint32_t cx, uint32_t cy, const uint8_t* tiles, int tile, const uint16_t* pal) {
+        for (uint32_t y = 0; y < 8; ++y) {
+            for (uint32_t x = 0; x < 8; ++x) {
+                const uint8_t v = tile_pixel(tiles, tile, static_cast<int>(x), static_cast<int>(y));
+                out[(cy * 8 + y) * gb::kLcdWidth + cx * 8 + x] = pal[v];
+            }
+        }
+    };
+    paint(kMapWorldDigitCol, kMapDigitRow, map_art::kMapGlyphsTiles, 1, kTextPalette);
+    paint(kMapLevelDigitCol, kMapDigitRow, map_art::kMapGlyphsTiles, level + 1, kTextPalette);
+    // the lives readout, pre-shifted into a 2x2 block. only the single-digit case is modelled here:
+    // a two-digit readout composes its middle cell out of both digits, which no test seeds
+    REQUIRE(lives < 10);
+    for (int half = 0; half < 2; ++half) {
+        for (int index = 0; index < 2; ++index) {
+            paint(kMapLivesDigitCol + static_cast<uint32_t>(index),
+                  kMapFooterRow + static_cast<uint32_t>(half), map_art::kMapLivesTiles,
+                  lives * 4 + half * 2 + index, kTextPalette);
+        }
+    }
+    // a cleared level's dash goes solid: the frame's own cell, under the frame's own palette
+    for (int i = 0; i < cleared && i < 4; ++i) {
+        const size_t cell = kMapListRow * kMapScreenCols + kMapListFirstCol + static_cast<size_t>(i);
+        const int pal = map_art::kMapScreenAttrs[cell] & 0x07;
+        paint(kMapListFirstCol + static_cast<uint32_t>(i), kMapListRow, map_art::kMapListFillTiles, i,
+              map_art::kMapScreenPalettes + pal * 4);
+    }
+    return out;
 }
 } // namespace
+
+// the whole frame, pixel for pixel, against the art the pipeline generated. the three node markers
+// and mario are sprites, and the lake's cells are mid-drift on any given frame, so those boxes are
+// the only ones excluded
+TEST_CASE("mario_map_matches_the_generated_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // a fresh file: standing on 1-1, nothing cleared, the run's own three lives
+    open_file(gameboy, 0);
+
+    const auto want = expected_map_frame(0, kStartLives, 0);
+    const std::span<const uint16_t> got = gameboy.framebuffer_color();
+    REQUIRE(got.size() == want.size());
+
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    size_t bad = 0;
+    for (uint32_t y = 0; y < gb::kLcdHeight; ++y) {
+        for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
+            const size_t i = y * gb::kLcdWidth + x;
+            bool skip = (ids[i] & 0x100u) != 0; // any sprite: mario, or a node's marker pair
+            for (int node = 0; node < 3 && !skip; ++node) {
+                // the marker pair's own 8x16 footprint, transparent corners included
+                skip = static_cast<int>(x) >= kMapNodeX[node] && static_cast<int>(x) < kMapNodeX[node] + 8 &&
+                       static_cast<int>(y) >= kMapNodeY[node] && static_cast<int>(y) < kMapNodeY[node] + 16;
+            }
+            const int tile = static_cast<uint8_t>(ids[i]);
+            // and every cell of the lake, which reads one of the six ids map_art_animate drifts
+            // rather than the frame's own tile and is mid-cycle on any given frame
+            skip = skip || (tile >= kMapWaterFirst && tile < kMapWaterFirst + kMapWaterTileCount);
+            if (!skip && got[i] != want[i]) {
+                ++bad;
+            }
+        }
+    }
+    REQUIRE(bad == 0u);
+}
+
+// the water is the one moving thing on an otherwise still screen: every one of the six tiles the
+// lake's cells share walks the eight frames map_water_frames.png carries, a pixel at a time, and
+// comes back round to the first
+TEST_CASE("mario_map_water_animates") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    open_file(gameboy, 0);
+
+    // the band across the lake and the fall's own channel: two of the six, at either end of the run
+    const int band = kMapWaterFirst;
+    const int fall = kMapWaterFirst + 2;
+    const int period = kMapWaterTicks * kMapWaterFrameCount;
+    // which frame of the strip a tile is showing, or -1 for bytes the pipeline never generated
+    auto strip_frame = [&gameboy](int tile) {
+        const std::vector<uint8_t> bytes = bg_tile_bytes(gameboy, tile);
+        const int strip = (tile - kMapWaterFirst) * kMapWaterFrameCount;
+        for (int f = 0; f < kMapWaterFrameCount; ++f) {
+            if (std::equal(bytes.begin(), bytes.end(), map_art::kMapWaterFramesTiles + (strip + f) * 16)) {
+                return f;
+            }
+        }
+        return -1;
+    };
+
+    // a whole cycle of both, sampled every frame, plus the frame the next cycle starts on
+    std::vector<int> band_seen;
+    std::vector<int> fall_seen;
+    for (int i = 0; i <= period; ++i) {
+        band_seen.push_back(strip_frame(band));
+        fall_seen.push_back(strip_frame(fall));
+        gameboy.run_frame();
+    }
+
+    for (const std::vector<int>& seen : {band_seen, fall_seen}) {
+        // every frame of it is one the pipeline generated, not a smear of two
+        std::array<int, kMapWaterFrameCount> hits{};
+        for (const int frame : seen) {
+            REQUIRE(frame >= 0);
+            ++hits[static_cast<size_t>(frame)];
+        }
+        // and the cycle walks all eight of them, holding each for kMapWaterTicks frames
+        for (const int count : hits) {
+            REQUIRE(count > 0);
+        }
+        int last = -1;
+        for (size_t i = 1; i < seen.size(); ++i) {
+            if (seen[i] == seen[i - 1]) {
+                continue;
+            }
+            if (last >= 0) {
+                REQUIRE(static_cast<int>(i) - last == kMapWaterTicks);
+            }
+            last = static_cast<int>(i);
+        }
+        REQUIRE(last > 0);
+        // one whole cycle on and the tile is the frame it started as
+        REQUIRE(seen.front() == seen.back());
+    }
+}
 
 TEST_CASE("mario_map_world_label_tracks_the_cursor") {
     const std::vector<uint8_t> rom = read_mario_rom();
@@ -12897,15 +13100,16 @@ TEST_CASE("mario_map_world_label_tracks_the_cursor") {
     // seeded to 1-3 unlocked
     seed_slot(gameboy.external_ram(), 0, 2, 0);
     open_file(gameboy, 0);
-    // standing on node 2 (0-indexed), the header reads 1-3
-    REQUIRE(card_number(gameboy, kMapLevelRow) == 13);
+    // standing on node 2 (0-indexed), the header reads 1-3 either side of the art's own dash
+    REQUIRE(map_digit_at(gameboy, kMapDigitRow, kMapWorldDigitCol) == 1);
+    REQUIRE(map_digit_at(gameboy, kMapDigitRow, kMapLevelDigitCol) == 3);
 
     // walking left updates the label the instant the walk starts, before he arrives
     press(gameboy, gb::Button::Left, 2);
     run(gameboy, 4);
-    REQUIRE(card_number(gameboy, kMapLevelRow) == 12);
+    REQUIRE(map_digit_at(gameboy, kMapDigitRow, kMapLevelDigitCol) == 2);
     run(gameboy, 60);
-    REQUIRE(card_number(gameboy, kMapLevelRow) == 12);
+    REQUIRE(map_digit_at(gameboy, kMapDigitRow, kMapLevelDigitCol) == 2);
 }
 
 TEST_CASE("mario_map_lives_matches_the_hud") {
@@ -12914,8 +13118,17 @@ TEST_CASE("mario_map_lives_matches_the_hud") {
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
-    // a freshly opened file starts a run, which resets the hud to the usual three lives
-    REQUIRE(card_number(gameboy, kMapLivesTextRow + 1) == kStartLives);
+    // a freshly opened file starts a run, which resets the hud to the usual three lives. the
+    // readout is one digit with no leading zero, spread over the 2x2 block its half-tile offset
+    // needs, so all four of its quadrants have to name the same digit
+    for (int half = 0; half < 2; ++half) {
+        for (int index = 0; index < 2; ++index) {
+            REQUIRE(map_lives_quad(gameboy, index, half) == kStartLives);
+        }
+    }
+    // and the third column is left to the frame: nothing is drawn there until lives reaches ten
+    REQUIRE(bg_tile_at(gameboy, kMapFooterRow, kMapLivesDigitCol + 2) ==
+            map_art::kMapScreenMap[kMapFooterRow * kMapScreenCols + kMapLivesDigitCol + 2]);
 }
 
 TEST_CASE("mario_map_clear_list_fills_with_progress") {
@@ -12966,17 +13179,11 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     open_file(gameboy, 0);
     REQUIRE(sky_color(gameboy) == kSkyMap);
 
-    // all three of the card's lines are on screen. "WORLD 2" and "IS ON ITS WAY!" sit on tile rows
-    // the castle icon's own footprint also occupies (kMapBandFirstRow..+kMapCastleTileRows), and a
-    // handful of the castle's own tile ids (0x00-0x09, see kTileMapCastle* in assets.h) collide with
-    // the font's own glyph range - so those two rows are checked column by column, right up to the
-    // card's own interior edge (kMapPopupLeftCol+1 .. +width-2), rather than with glyph_span's full
-    // 20-column sweep, which would pick up a sliver of castle wall past the card's right edge as a
-    // false glyph. "PRESS A" is on a lower row the castle never reaches, so it can use glyph_span
-    // directly. "IS ON ITS WAY!" is fourteen glyphs, even, and lands symmetric (left + right == 19,
-    // same as mario_title_text_is_centered); "WORLD 2" and "PRESS A" are both seven, odd, so their
-    // gotoxy floor-divide leaves each one column short of that symmetry (left + right == 18),
-    // exactly like the title wordmark's own first line used to
+    // all three of the card's lines are on screen, each centered across the card's own interior.
+    // "IS ON ITS WAY!" is fourteen glyphs, even, and lands symmetric (left + right == 19, same as
+    // mario_title_text_is_centered); "WORLD 2" and "PRESS A" are both seven, odd, so their gotoxy
+    // floor-divide leaves each one column short of that symmetry (left + right == 18), exactly like
+    // the title wordmark's own first line used to
     auto card_glyph_span = [&](uint32_t row) {
         int left = -1;
         int right = -1;
@@ -13003,31 +13210,34 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
         REQUIRE(left + right == 19);
     }
     {
-        const auto [left, right] = glyph_span(gameboy, kMapPopupPressRow, kFontFirstTile + 1, kFontLastTile);
+        const auto [left, right] = card_glyph_span(kMapPopupPressRow);
         REQUIRE(left >= 0);
         REQUIRE(left + right == 18);
     }
-    // a bordered card, not a tint over the strip: its corner tiles sit at the card's four corners
-    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) == kTileMapListCorner);
-    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol + kMapPopupWidth - 1) ==
-            kTileMapListCorner);
-    REQUIRE(bg_tile_at(gameboy, kMapPopupBottomRow, kMapPopupLeftCol) == kTileMapListCorner);
-    // the card is big enough to cover mario's own walk row, so he is parked off screen while it is
-    // up rather than left floating on top of it - map_draw_popup_hide brings him back on dismiss
+    // a bordered card, not a tint over the strip: its corner glyph sits at the card's four corners
+    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) == kMapGlyphCorner);
+    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol + kMapPopupWidth - 1) == kMapGlyphCorner);
+    REQUIRE(bg_tile_at(gameboy, kMapPopupBottomRow, kMapPopupLeftCol) == kMapGlyphCorner);
+    // the card covers mario's own walk row and all three node markers, so every one of them
+    // is parked off screen while it is up rather than left floating on top of it
     REQUIRE_FALSE(mario_at(gameboy).found);
 
     // a dismisses it: the lockout that guarded the clear card's own confirm re-arms the instant the
     // map opens, so this is a fresh press, not the one that opened the file
     step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
-    // "WORLD 2" and "IS ON ITS WAY!" sit on rows the redrawn strip's own bush/pipe art also uses
-    // low tile ids on (the same font-glyph-range collision the shown-card check above works around),
-    // so checking each line's own first letter is gone is the reliable way to confirm the text - a
-    // blanket glyph_span sweep would still see the bush/pipe tiles themselves as "glyphs"
-    REQUIRE(bg_tile_at(gameboy, kMapPopupWorldRow, kMapPopupLeftCol + 4U) != font_tile('W'));
-    REQUIRE(bg_tile_at(gameboy, kMapPopupWayRow, kMapPopupLeftCol + 1U) != font_tile('I'));
-    REQUIRE(glyph_span(gameboy, kMapPopupPressRow, kFontFirstTile + 1, kFontLastTile).first < 0);
-    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) != kTileMapListCorner);
+    // every row the card covered goes back to the generated frame, text and border with it
+    REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) != kMapGlyphCorner);
+    for (uint32_t row = kMapPopupTopRow; row <= kMapPopupBottomRow; ++row) {
+        for (uint32_t col = 0; col < kMapScreenCols; ++col) {
+            const int tile = bg_tile_at(gameboy, row, col);
+            // -1 is a cell mario or a marker is standing over, which is a sprite, not the frame,
+            // and a lake cell is pointed back at the water cycle's own ids rather than the frame's
+            if (tile >= 0 && (tile < kMapWaterFirst || tile >= kMapWaterFirst + kMapWaterTileCount)) {
+                REQUIRE(tile == map_art::kMapScreenMap[row * kMapScreenCols + col]);
+            }
+        }
+    }
     // the map still works: mario is back, and can walk off the last node now that the card is gone
     REQUIRE(mario_at(gameboy).found);
     press(gameboy, gb::Button::Left, 2);
@@ -13042,69 +13252,44 @@ TEST_CASE("mario_map_bands_are_black_top_and_bottom") {
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
 
-    // row 0 (top band) and row 17 (bottom band) read the map's own near-black; a row inside the
-    // map strip does not - it is the band's sky-blue backdrop or the art drawn over it
+    // row 0 (top band) and row 12 (the footer's first) read the map's own near-black; a row inside
+    // the strip does not - it is the smbd frame's own landscape
     REQUIRE(family_color(gameboy, kTileSky, kTileSky) == kSkyMap);
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     const std::span<const uint16_t> colors = gameboy.framebuffer_color();
-    const uint32_t strip_row = kMapBandFirstTileRow + 2;
-    bool saw_black_in_strip = false;
+    const uint32_t strip_row = kMapStripFirstTileRow + 2;
+    bool saw_band_in_strip = false;
     for (uint32_t cx = 0; cx < 20; ++cx) {
         const size_t i = (strip_row * 8 + 3) * gb::kLcdWidth + cx * 8 + 3;
         if ((ids[i] & 0x100u) != 0) {
-            continue; // mario himself, not the backdrop
+            continue; // mario or a marker, not the backdrop
         }
         if (colors[i] == kSkyMap) {
-            saw_black_in_strip = true;
+            saw_band_in_strip = true;
         }
     }
-    REQUIRE_FALSE(saw_black_in_strip);
-    // the footer's own first row is black too, same as the header's
+    REQUIRE_FALSE(saw_band_in_strip);
     const size_t footer_i = (kMapFooterFirstTileRow * 8 + 3) * gb::kLcdWidth + 3;
     REQUIRE(colors[footer_i] == kSkyMap);
 }
 
-// the castle at the right end of the strip is one drawn icon now (kTileMapCastle* in assets.h,
-// map_draw_castle in mapscreen.c) rather than four block rows of the level's own reused castle
-// kinds, which read as a flat brick slab with a door in one corner. its right two tile columns are
-// its left two mirrored, its door stands on the path row mario walks up to, and the sand under it
-// runs on where the old version put another row of wall
-TEST_CASE("mario_map_castle_is_a_drawn_icon") {
+// the castle at the right end of the strip is part of the generated frame now, not a hand-typed
+// icon mapscreen.c stamps: its cells have to be the pipeline's own tiles under the pipeline's own
+// palettes. 1-4's node is the castle itself, and the reference rings no marker over it
+TEST_CASE("mario_map_castle_is_part_of_the_generated_frame") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
 
-    // (kMapBlockCols - 2) * kTilesPerBlock: the icon's own leftmost tile column
-    constexpr uint32_t castle_col = 16;
-    constexpr uint32_t path_row = kMapBandFirstTileRow + 4; // the row the markers and mario stand on
-    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
-
-    // the tower is only the icon's middle two tile columns wide, so the band's own sky-blue is left
-    // showing at its shoulders and the silhouette steps in there. a tile id cannot say so - the
-    // tower's top tile is vram bank 1's 0x00 and the untouched cell beside it bank 0's, and both
-    // read back as 0x00 - but the color can
-    constexpr int kMapBandSky = 16 | (22 << 5) | (31 << 10); // assets_load_map_bg_palettes' sky slot
-    const size_t shoulder = (kMapBandFirstTileRow * 8 + 3) * gb::kLcdWidth + castle_col * 8 + 3;
-    REQUIRE(colors[shoulder] == kMapBandSky);
-    // the keep's merlons at that same shoulder two tile rows down, beside the tower's own wall
-    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 2, castle_col) == 0x02);
-    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 2, castle_col + 1) == 0x03);
-    // the door's two tile columns, the mirror pair, at the path row
-    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 1) == 0x09);
-    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 2) == 0x09);
-    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col) == 0x08);
-    REQUIRE(bg_tile_at(gameboy, path_row + 1, castle_col + 3) == 0x08);
-
-    // and the door itself is dark: black is the map brick palette's color 3, the one this art wants
-    const size_t door = ((path_row + 1) * 8 + 4) * gb::kLcdWidth + (castle_col + 2) * 8 + 1;
-    REQUIRE(colors[door] == 0);
-
-    // below the path the strip is sand again, not a fifth row of castle - the tile the map's own
-    // path body is drawn from (kTileMapPathBody in assets.h)
-    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 7, castle_col) == 0x63);
-    REQUIRE(bg_tile_at(gameboy, kMapBandFirstTileRow + 7, castle_col + 3) == 0x63);
+    // the castle's own block: tile columns 16-19, the strip's rows 3-5. no sprite stands anywhere
+    // in it, so every cell reads the frame's tile
+    for (uint32_t row = kMapStripFirstTileRow + 3; row <= kMapStripFirstTileRow + 5; ++row) {
+        for (uint32_t col = 16; col < kMapScreenCols; ++col) {
+            REQUIRE(bg_tile_at(gameboy, row, col) == map_art::kMapScreenMap[row * kMapScreenCols + col]);
+        }
+    }
 }
 
 // --- the front-end lockout, kFrontLockFrames in mario.h -----------------------------------------

@@ -301,6 +301,17 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/file_select/file_select.png FileSelect screen 7 --vram-bank 1)
         mario_png_asset(games/mario/art/file_select/file_labels.png FileLabels tiles 7
                         --palette 000000,F8F8F8,000000,000000)
+        mario_png_asset(games/mario/art/map/map_screen.png MapScreen screen 7 --vram-bank 1)
+        mario_png_asset(games/mario/art/map/map_glyphs.png MapGlyphs tiles 7
+                        --palette 000000,F8F8F8,000000,000000)
+        mario_png_asset(games/mario/art/map/map_lives.png MapLives tiles 7
+                        --palette 000000,F8F8F8,000000,000000)
+        # the marker sprites, the water frames and the clear-list variants are indexed pngs: their
+        # 2bpp value is the palette index the rom hands the hardware, which is what lets a frame
+        # drop straight into a tile id the screen already planned a palette for
+        mario_png_asset(games/mario/art/map/map_sprites.png MapSprites sprites16 7)
+        mario_png_asset(games/mario/art/map/map_water_frames.png MapWaterFrames tiles 7)
+        mario_png_asset(games/mario/art/map/map_list_fill.png MapListFill tiles 7)
 
         # sub-milestone 6: --max-allocs-per-node lets sdcc work harder on register allocation. the
         # engine runs against the per-frame budget and this is a few hundred bytes of bank 0 and a
@@ -325,6 +336,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/title_art.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/file_art.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/map_art.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/mapscreen.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/flow.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/states.c
@@ -350,6 +362,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/title.c games/mario/src/title.h
                     games/mario/src/title_art.c games/mario/src/title_art.h
                     games/mario/src/file_art.c games/mario/src/file_art.h
+                    games/mario/src/map_art.c games/mario/src/map_art.h
                     games/mario/src/mapscreen.c games/mario/src/mapscreen.h
                     games/mario/src/flow.c games/mario/src/flow.h
                     games/mario/src/states.c games/mario/src/states.h

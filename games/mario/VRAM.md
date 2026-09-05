@@ -48,7 +48,7 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | 0x84-0x89 | hazards: piranha, flame, lift deck (`kTileHazardFirst`/`kTilePiranha`/`kTileFlame`/`kTileLiftDeck`, 6 tiles) | `assets_load_hazard_tiles` | level play | |
 | 0x8a-0x8b | **FREE** | — | — | held the fake bowser back when he was one 16x16 pair; freed when m20 moved him to bank 1 (32x32) |
 | 0x8c-0x91 | throwaway anims: brick debris + fireball puffs (`kTileDebris`, `kTilePuffA`, `kTilePuffB`, 6 tiles) | `assets_load_item_tiles` | level play | |
-| 0x92-0x97 | world-map node markers: three 8x16 sprites, the red body, the blue one and the rim they share (`kTileMapMarkerRed`.., 6 tiles) | `map_art_load` | world map only | a marker is a solid 8x8 in four colors, one more than an obj palette's three opaque slots, so a body rides over a rim carrying only its orange edge |
+| 0x92-0x97 | world-map node markers: three 8x16 sprites, the red body, the blue one and the rim they share (`kTileMapMarkerRed`.., 6 tiles) | `map_art_load` | world map only | rings the three path nodes only - the reference leaves its castle bare. a marker is a solid 8x8 in four colors, one more than an obj palette's three opaque slots, so a body rides over a rim carrying only its orange edge |
 | 0x98-0x9f | **FREE** (8 ids) | — | — | what is left of the run mario.h calls unclaimed |
 | 0xa0-0xbf | — | — | — | belongs to bg's pinned terrain block; nothing sprite-side claims it |
 | 0xc0-0xcf | enemy family: goomba walk/squash, shell, koopa walk (`kTileEnemyFirst`, 16 tiles) | `assets_load_enemy_tiles` | level play | exactly full |
@@ -62,7 +62,7 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
-| 0x00-0x4d | the whole 20x18 world map frame plus its runtime glyph run (see the world map section below) | `map_art_load` | world map only | the title's and the file select's own frames reuse the same low ids while they are up; each screen reloads what it draws |
+| 0x00-0x5d | the whole 20x18 world map frame plus its runtime tile run (see the world map section below) | `map_art_load` | world map only | the title's and the file select's own frames reuse the same low ids while they are up; each screen reloads what it draws |
 | 0x0a-0x11 | 1-3's tree canopy + trunk (`kTileTreeFirst`, 8 tiles) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
 | 0x12-0x18 | castle masonry courses, axe, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `assets_load_scenery_tiles` | level play (castle type for the masonry/axe/bridge; any level type with a >1-deep lava pit for the lava fill) | |
 | 0x19-0x1f | **FREE** (7 ids) | — | — | called out unclaimed in mario.h |
@@ -130,7 +130,7 @@ previous screen left behind; only the bg map cells and window-layer content chan
   the title screen section above.
 - **world map** (`mapscreen.c` `map_reset`) — calls, in order: `assets_load_sprite_tiles` (bank 0
   mario/super, bank 1 climb/jump poses), `assets_load_sprite_palettes`, then `map_art_load` (bank 1
-  bg 0x00-0x4d, bank 0 sprite 0x92-0x97, all eight bg palettes and three obj ones). the sprite
+  bg 0x00-0x5d, bank 0 sprite 0x92-0x97, all eight bg palettes and three obj ones). the sprite
   loaders run first on purpose: `assets_load_sprite_palettes` writes all eight obj slots, and
   `map_art_load` wants the last three of them for the markers. it loads no terrain, scenery or
   block tables at all any more — nothing on this screen is drawn out of them — so those ranges hold
@@ -208,26 +208,32 @@ neither planned palette puts white on color 1.
 
 world one's map is generated art too, ripped from a real smb deluxe frame:
 `art/map/map_screen.png` (the whole 160x144 screen, with the node markers taken off, the header's
-level digits and the footer's lives digits left black for the rom to fill, and the clear list's
-four cells set hollow), `art/map/map_glyphs.png` (the ten white digits, the filled clear-list cell
-and the world-two card's three border pieces), `art/map/map_sprites.png` (the node markers) and
-`art/map/map_water_frames.png` (four sparkle frames each for the strip's two animated water
-tiles). they become `src/gen/map_screen.c`, `map_glyphs.c`, `map_sprites.c` and
-`map_water_frames.c`, and `map_art.c` (bank 7, with the data) loads them.
+level digits and the footer's lives digits left black for the rom to fill, and the rip's own
+eight-world by four-level clear list baked in with every dash hollow),
+`art/map/map_glyphs.png` (the ten white digits and the world-two card's three border pieces),
+`art/map/map_lives.png` (the same ten digits again, each pre-shifted into a 2x2 block - the rip's
+lives readout sits half a tile off the grid in both axes), `art/map/map_sprites.png` (the node
+markers), `art/map/map_water_frames.png` (four sparkle frames each for the strip's two animated
+water tiles) and `art/map/map_list_fill.png` (world one's four dash cells with the dash solid).
+they become `src/gen/map_screen.c`, `map_glyphs.c`, `map_lives.c`, `map_sprites.c`,
+`map_water_frames.c` and `map_list_fill.c`, and `map_art.c` (bank 7, with the data) loads them.
 
 world one fits the 160 px strip whole, so nothing on this screen scrolls.
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
-| bank 1 bg 0x00-0x43 | the whole 20x18 map frame, 68 deduplicated tiles (`kMapScreenFirstTile`, `kMapScreenTileCount`) | `map_art_load` | world map only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
-| bank 1 bg 0x44-0x51 | the runtime glyph run, 14 tiles (`kMapGlyphsTileCount`), straight past the frame's own | `map_art_load` | world map only | ten digits, then the filled clear-list cell, then the world-two card's corner/h-edge/v-edge, each reused by flip for the other sides |
-| bank 0 sprite 0x92-0x97 | the node markers, three 8x16 sprites (`kMapSpritesTileCount`, 6 tiles) | `map_art_load` | world map only | oam slots 4-11, two per node: the body over the rim |
+| bank 1 bg 0x00-0x46 | the whole 20x18 map frame, 71 deduplicated tiles (`kMapScreenFirstTile`, `kMapScreenTileCount`) | `map_art_load` | world map only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
+| bank 1 bg 0x47-0x53 | the runtime glyph run, 13 tiles (`kMapGlyphsTileCount`), straight past the frame's own | `map_art_load` | world map only | ten digits, then the world-two card's corner/h-edge/v-edge, each reused by flip for the other sides |
+| bank 1 bg 0x54-0x59 | the lives readout, three cells by two (`kMapLivesFirst`) | `map_art_lives` | world map only | ids with no art of their own: the readout writes a digit's pre-shifted quadrants into them, and the middle cell of a two-digit readout is the or of both digits' halves |
+| bank 1 bg 0x5a-0x5d | the clear list's four fill variants (`kMapListFillTileCount`) | `map_art_load` | world map only | world one's own dash cells with the dash solid, one per column, so a cleared level's cell swaps id and keeps the frame's attribute byte |
+| bank 0 sprite 0x92-0x97 | the node markers, three 8x16 sprites (`kMapSpritesTileCount`, 6 tiles) | `map_art_load` | world map only | oam slots 4-9, two per path node: the body over the rim |
 | bank 0 sprite 0x60-0x7f, bank 1 sprite 0x7c-0x7f, bank 0 sprite 0xe0-0xf7 | the level's own mario, walking the map | `assets_load_sprite_tiles` | file select, world map, level play | oam slots 0-1, the small set - not new art |
 
 the four sparkle frames are never resident under an id of their own: `map_art_animate` swaps one
 straight into the tile id the frame already planned a palette for, which is why
 `map_water_frames.png` is an indexed png (its 2bpp value is the palette index, so the frame drops
-in without a color match).
+in without a color match). `map_list_fill.png` is indexed for the same reason: a fill variant sits
+in a cell under the frame's own attribute byte.
 
 six of the eight cgb bg palettes are the ones the png plans; `map_art.c` appends two - slot 6, the
 band's near-black under white ink on both odd indices, which serves both the glyph run and the

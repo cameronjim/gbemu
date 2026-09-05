@@ -7,11 +7,11 @@
 
 #define kMapScreenCols 20U
 #define kMapScreenRows 18U
-#define kMapScreenTileCount 68U
+#define kMapScreenTileCount 71U
 #define kMapScreenPaletteCount 6U
 #define kMapScreenFirstTile 0U
 
-extern const uint8_t kMapScreenTiles[1088];
+extern const uint8_t kMapScreenTiles[1136];
 extern const palette_color_t kMapScreenPalettes[24];
 extern const uint8_t kMapScreenMap[360];
 extern const uint8_t kMapScreenAttrs[360];

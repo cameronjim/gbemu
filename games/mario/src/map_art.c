@@ -6,6 +6,8 @@
 #include "map_art.h"
 
 #include "gen/map_glyphs.h"
+#include "gen/map_list_fill.h"
+#include "gen/map_lives.h"
 #include "gen/map_screen.h"
 #include "gen/map_sprites.h"
 #include "gen/map_water_frames.h"
@@ -18,6 +20,11 @@
 // the glyph run sits straight past the screen's own tiles, all of it in vram bank 1
 #define kMapGlyphFirst (uint8_t)(kMapScreenFirstTile + kMapScreenTileCount)
 #define kMapGlyphAttr (uint8_t)(kMapPalText | kCamAttrVram1)
+// the lives readout's own six ids - three columns by two rows - whose bytes map_art_lives rewrites,
+// then the four clear-list variants, one per dash cell of world one's row
+#define kMapLivesFirst (uint8_t)(kMapGlyphFirst + kMapGlyphsTileCount)
+#define kMapLivesCols 3U
+#define kMapListFillFirst (uint8_t)(kMapLivesFirst + kMapLivesCols * 2U)
 // bank 0 sprite 0x92-0x97, the run VRAM.md calls free: three 8x16 markers, two tiles each
 #define kTileMapMarkerRed 0x92U
 #define kTileMapMarkerBlue 0x94U
@@ -64,12 +71,17 @@ static void fill_band(void) {
     }
 }
 
-static void put_glyph(uint8_t col, uint8_t row, uint8_t glyph) {
-    const uint8_t tile = (uint8_t)(kMapGlyphFirst + glyph);
+// one cell handed a bank-1 tile of the map's own, under the white-on-band palette every runtime
+// glyph reads
+static void put_tile(uint8_t col, uint8_t row, uint8_t tile) {
     const uint8_t attr = kMapGlyphAttr;
 
     set_bkg_tiles(col, row, 1, 1, &tile);
     set_bkg_attributes(col, row, 1, 1, &attr);
+}
+
+static void put_glyph(uint8_t col, uint8_t row, uint8_t glyph) {
+    put_tile(col, row, (uint8_t)(kMapGlyphFirst + glyph));
 }
 
 void map_art_rows(uint8_t row, uint8_t rows) BANKED {
@@ -85,6 +97,7 @@ void map_art_load(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kMapScreenFirstTile, kMapScreenTileCount, kMapScreenTiles);
     set_bkg_data(kMapGlyphFirst, kMapGlyphsTileCount, kMapGlyphsTiles);
+    set_bkg_data(kMapListFillFirst, kMapListFillTileCount, kMapListFillTiles);
     VBK_REG = VBK_BANK_0;
     set_bkg_palette(0, kMapScreenPaletteCount, kMapScreenPalettes);
     set_bkg_palette(kMapPalText, 1, kMapTextPalette);
@@ -101,9 +114,46 @@ void map_art_world(uint8_t level) BANKED {
     put_glyph(kMapLevelDigitCol, kMapDigitRow, (uint8_t)(level + 1U));
 }
 
+// one digit's pre-shifted quadrants, laid top-left, top-right, bottom-left, bottom-right
+static const uint8_t* lives_quad(uint8_t digit, uint8_t quad) {
+    return kMapLivesTiles + ((uint16_t)digit * 4U + quad) * 16U;
+}
+
+// one cell of the readout. `left` and `right` are the quadrants landing in it: the two never share
+// a pixel column, so the middle cell of a two-digit readout is simply the or of both
+static void put_lives_cell(uint8_t index, uint8_t half, const uint8_t* left, const uint8_t* right) {
+    const uint8_t tile = (uint8_t)(kMapLivesFirst + half * kMapLivesCols + index);
+    uint8_t bytes[16];
+    uint8_t i;
+
+    for (i = 0; i < 16U; ++i) {
+        bytes[i] = (uint8_t)(left[i] | (right != 0 ? right[i] : 0U));
+    }
+    VBK_REG = VBK_BANK_1;
+    set_bkg_data(tile, 1, bytes);
+    VBK_REG = VBK_BANK_0;
+    put_tile((uint8_t)(kMapLivesDigitCol + index), (uint8_t)(kMapFooterRow + half), tile);
+}
+
 void map_art_lives(uint8_t lives) BANKED {
-    put_glyph(kMapLivesDigitCol, kMapFooterRow, (uint8_t)(lives / 10U));
-    put_glyph((uint8_t)(kMapLivesDigitCol + 1U), kMapFooterRow, (uint8_t)(lives % 10U));
+    const uint8_t tens = (uint8_t)(lives / 10U);
+    const uint8_t units = (uint8_t)(lives % 10U);
+    uint8_t half;
+
+    // top half of the block, then the bottom: a digit spans two cells either way, and a tens digit
+    // pushes the units one cell right rather than growing a leading zero
+    for (half = 0; half < 2U; ++half) {
+        const uint8_t quad = (uint8_t)(half * 2U);
+
+        if (tens == 0U) {
+            put_lives_cell(0, half, lives_quad(units, quad), 0);
+            put_lives_cell(1, half, lives_quad(units, (uint8_t)(quad + 1U)), 0);
+            continue;
+        }
+        put_lives_cell(0, half, lives_quad(tens, quad), 0);
+        put_lives_cell(1, half, lives_quad(tens, (uint8_t)(quad + 1U)), lives_quad(units, quad));
+        put_lives_cell(2, half, lives_quad(units, (uint8_t)(quad + 1U)), 0);
+    }
 }
 
 void map_art_clear_list(uint8_t cleared) BANKED {
@@ -111,15 +161,13 @@ void map_art_clear_list(uint8_t cleared) BANKED {
 
     for (i = 0; i < kMapNodeCount; ++i) {
         const uint8_t col = (uint8_t)(kMapListFirstCol + i);
+        const uint16_t cell = (uint16_t)(kMapListRow * kMapScreenCols + col);
+        // a filled dash is the frame's own cell with its dash solid, so it rides the same
+        // attribute byte; a cell still to do is the frame's cell itself
+        const uint8_t tile = i < cleared ? (uint8_t)(kMapListFillFirst + i) : kMapScreenMap[cell];
 
-        if (i < cleared) {
-            put_glyph(col, kMapFooterRow, 10U);
-        } else {
-            // the hollow cell is the frame's own art, so it goes back from the generated map
-            const uint16_t cell = (uint16_t)(kMapFooterRow * kMapScreenCols + col);
-            set_bkg_tiles(col, kMapFooterRow, 1, 1, kMapScreenMap + cell);
-            set_bkg_attributes(col, kMapFooterRow, 1, 1, kMapScreenAttrs + cell);
-        }
+        set_bkg_tiles(col, kMapListRow, 1, 1, &tile);
+        set_bkg_attributes(col, kMapListRow, 1, 1, kMapScreenAttrs + cell);
     }
 }
 

@@ -66,12 +66,6 @@
 #define kMapPopupWayRow 8U
 #define kMapPopupPressRow 10U
 
-// the footer button hint, on the last row of the black band under the CLEAR LIST panel. it is the
-// one row of this screen that is font text rather than art, so map_reset gives its cells the font's
-// palette and vram bank before printing into them
-#define kMapHintRow 17U
-#define kMapHintCol 1U
-
 // the color the map screen art paints its header and footer bands with. near-black rather than
 // literal (0,0,0) only so a host probe can tell "the map is up, showing its band" apart from the
 // file select, whose own frame sits on true black; the eye cannot tell the two apart

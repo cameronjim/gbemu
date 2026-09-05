@@ -4,8 +4,8 @@
 
 #include <stdint.h>
 
-#define kMapGlyphsTileCount 14U
+#define kMapGlyphsTileCount 13U
 
-extern const uint8_t kMapGlyphsTiles[224];
+extern const uint8_t kMapGlyphsTiles[208];
 
 #endif

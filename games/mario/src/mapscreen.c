@@ -22,7 +22,6 @@
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
-#include <gbdk/console.h>
 #include <gbdk/font.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -332,28 +331,18 @@ static void draw_mario(void) {
 }
 
 // red once a level is behind the file's furthest, blue while it is still ahead - smbd rings every
-// node it has not cleared, locked or not, and the lock is the path refusing to walk there
+// path node it has not cleared, locked or not, and the lock is the path refusing to walk there.
+// the castle carries none: 1-4 is the castle itself
 static void map_draw_markers(uint8_t shown) {
     uint8_t i;
 
-    for (i = 0; i < (uint8_t)kMapNodeCount; ++i) {
+    for (i = 0; i < (uint8_t)kMapMarkerCount; ++i) {
         uint8_t state = (uint8_t)kMapMarkerHidden;
 
         if (shown != 0U) {
             state = i < map_unlocked ? (uint8_t)kMapMarkerCleared : (uint8_t)kMapMarkerOpen;
         }
         map_art_marker(i, state);
-    }
-}
-
-// left-aligned text, the console cursor moved first; title.c's own helpers are all centered or
-// value-suffixed, and the hint row wants neither
-static void puts_at(uint8_t x, uint8_t y, const char* text) {
-    uint8_t i;
-
-    gotoxy(x, y);
-    for (i = 0; text[i] != '\0'; ++i) {
-        putchar(text[i]);
     }
 }
 
@@ -441,10 +430,6 @@ static void map_reset(uint8_t node) {
     map_art_world(map_node);
     map_art_lives(hud_lives);
     map_art_clear_list(map_unlocked);
-    // the hint is the one row of this screen that is text rather than art, so its cells need the
-    // font's own palette and vram bank before a glyph goes into them
-    map_art_blank(0, kMapHintRow, kScreenCols, kMapPalText);
-    puts_at(kMapHintCol, kMapHintRow, "A ENTERS  B BACK");
     map_draw_markers(1);
     draw_mario();
     // world one is done: every visit to the map from here on gets the card, until it is dismissed.

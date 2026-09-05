@@ -14,6 +14,8 @@ namespace map_art {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunknown-pragmas"
 #include "gen/map_glyphs.c"
+#include "gen/map_list_fill.c"
+#include "gen/map_lives.c"
 #include "gen/map_screen.c"
 #include "gen/map_water_frames.c"
 #pragma GCC diagnostic pop

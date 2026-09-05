@@ -12355,8 +12355,8 @@ constexpr int kFileLabelFirstTile = kFileSelectTileCount;
 // the erase confirm is still a text card over the shared machinery
 constexpr uint32_t kEraseRow = 5;
 // and the map's geometry: the four node cells the generated frame was measured against, from the
-// kMapNodeXs/kMapNodeYs block in map_art.h. each marker is exactly one 8x8 cell, and 1-4's is the
-// castle door itself
+// kMapNodeXs/kMapNodeYs block in map_art.h. each is exactly one 8x8 cell; the first three carry a
+// marker and 1-4 is the castle itself
 constexpr int kMapNodeX[4] = {8, 48, 88, 136};
 constexpr int kMapNodeY[4] = {64, 56, 72, 64};
 // the "world 2 is on its way" popup's own geometry, mirrored from the kMapPopup* block in mario.h:
@@ -12876,19 +12876,22 @@ constexpr uint32_t kMapWorldDigitCol = 3;
 constexpr uint32_t kMapLevelDigitCol = 5;
 constexpr uint32_t kMapFooterRow = 15;
 constexpr uint32_t kMapLivesDigitCol = 10;
+constexpr uint32_t kMapListRow = 14;
 constexpr uint32_t kMapListFirstCol = 15;
 constexpr uint32_t kMapStripFirstTileRow = 4;
-constexpr uint32_t kMapHintRow = 17;
 constexpr uint32_t kMapFooterFirstTileRow = 12;
 // map_art.h's own water cycle: four sparkle frames, one every eight frames
 constexpr int kMapWaterFrameCount = 4;
 constexpr int kMapWaterTicks = 8;
 
-// map_art's runtime glyph run sits straight past the generated frame's own tiles: ten digits, the
-// filled clear-list cell, then the world-two card's corner/h-edge/v-edge
+// map_art's runtime tile run sits straight past the generated frame's own: ten glyph digits and
+// the world-two card's corner/h-edge/v-edge, then the six ids the lives readout rewrites, then the
+// four clear-list fill variants, one per dash cell of world one's row
 constexpr int kMapGlyphFirst = static_cast<int>(kMapScreenTileCount);
-constexpr int kMapGlyphListFilled = kMapGlyphFirst + 10;
-constexpr int kMapGlyphCorner = kMapGlyphFirst + 11;
+constexpr int kMapGlyphCorner = kMapGlyphFirst + 10;
+constexpr int kMapLivesFirst = kMapGlyphFirst + static_cast<int>(kMapGlyphsTileCount);
+constexpr int kMapLivesCols = 3;
+constexpr int kMapListFillFirst = kMapLivesFirst + kMapLivesCols * 2;
 
 // the digit a runtime glyph cell reads, or -1 for any cell that is not one
 int map_digit_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
@@ -12897,9 +12900,38 @@ int map_digit_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
     return (tile >= 0 && tile <= 9) ? tile : -1;
 }
 
+// the sixteen bytes one bank-1 bg tile holds. lcdc bit 4 is clear, so an id under 0x80 reads out of
+// 0x9000 - vram offset 0x1000 - and bank 1 is another 0x2000 up
+std::vector<uint8_t> bg_tile_bytes(const gb::Gameboy& gameboy, int tile) {
+    const std::span<const uint8_t> vram = gameboy.debug_vram();
+    const long base = 0x3000 + static_cast<long>(tile) * 16;
+
+    return std::vector<uint8_t>(vram.begin() + base, vram.begin() + base + 16);
+}
+
+// the lives readout is tile data rather than a tile id: map_art_lives rewrites its own six ids
+// every time it runs, so which digit is up is read out of vram. `index` is the cell across, `half`
+// the row down, and the answer is the digit whose pre-shifted quadrant those bytes are
+int map_lives_quad(const gb::Gameboy& gameboy, int index, int half) {
+    const uint32_t col = kMapLivesDigitCol + static_cast<uint32_t>(index);
+    const int quad = half * 2 + (index & 1);
+
+    if (bg_tile_at(gameboy, kMapFooterRow + static_cast<uint32_t>(half), col) !=
+        kMapLivesFirst + half * kMapLivesCols + index) {
+        return -1;
+    }
+    const std::vector<uint8_t> bytes = bg_tile_bytes(gameboy, kMapLivesFirst + half * kMapLivesCols + index);
+    for (int digit = 0; digit < 10; ++digit) {
+        if (std::equal(bytes.begin(), bytes.end(), map_art::kMapLivesTiles + (digit * 4 + quad) * 16)) {
+            return digit;
+        }
+    }
+    return -1;
+}
+
 bool clear_list_cell_filled(const gb::Gameboy& gameboy, int cell) {
     const uint32_t col = kMapListFirstCol + static_cast<uint32_t>(cell);
-    return bg_tile_at(gameboy, kMapFooterRow, col) == kMapGlyphListFilled;
+    return bg_tile_at(gameboy, kMapListRow, col) == kMapListFillFirst + cell;
 }
 
 // the generated frame composited the way the hardware does it, with the runtime glyph cells the
@@ -12909,23 +12941,6 @@ std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> expected_map_frame(int leve
     static constexpr uint16_t kTextPalette[4] = {static_cast<uint16_t>(kSkyMap), 0x7FFF,
                                                  static_cast<uint16_t>(kSkyMap), 0x7FFF};
     std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> out{};
-    std::array<int, gb::kLcdWidth * gb::kLcdHeight> glyph{};
-
-    glyph.fill(-1);
-    auto put = [&glyph](uint32_t cx, uint32_t cy, int tile) {
-        for (uint32_t y = 0; y < 8; ++y) {
-            for (uint32_t x = 0; x < 8; ++x) {
-                glyph[(cy * 8 + y) * gb::kLcdWidth + cx * 8 + x] = tile;
-            }
-        }
-    };
-    put(kMapWorldDigitCol, kMapDigitRow, 1);
-    put(kMapLevelDigitCol, kMapDigitRow, level + 1);
-    put(kMapLivesDigitCol, kMapFooterRow, lives / 10);
-    put(kMapLivesDigitCol + 1, kMapFooterRow, lives % 10);
-    for (int i = 0; i < cleared && i < 4; ++i) {
-        put(kMapListFirstCol + static_cast<uint32_t>(i), kMapFooterRow, 10);
-    }
 
     for (uint32_t cy = 0; cy < kMapScreenRows; ++cy) {
         for (uint32_t cx = 0; cx < kMapScreenCols; ++cx) {
@@ -12934,24 +12949,47 @@ std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> expected_map_frame(int leve
             const int pal = map_art::kMapScreenAttrs[cell] & 0x07;
             for (uint32_t y = 0; y < 8; ++y) {
                 for (uint32_t x = 0; x < 8; ++x) {
-                    const size_t i = (cy * 8 + y) * gb::kLcdWidth + cx * 8 + x;
-                    if (glyph[i] >= 0) {
-                        out[i] = kTextPalette[tile_pixel(map_art::kMapGlyphsTiles, glyph[i],
-                                                         static_cast<int>(x), static_cast<int>(y))];
-                        continue;
-                    }
                     const uint8_t v =
                         tile_pixel(map_art::kMapScreenTiles, tile, static_cast<int>(x), static_cast<int>(y));
-                    out[i] = map_art::kMapScreenPalettes[pal * 4 + v];
+                    out[(cy * 8 + y) * gb::kLcdWidth + cx * 8 + x] = map_art::kMapScreenPalettes[pal * 4 + v];
                 }
             }
         }
+    }
+
+    // then every cell the rom writes over that frame at runtime, each under its own palette
+    auto paint = [&out](uint32_t cx, uint32_t cy, const uint8_t* tiles, int tile, const uint16_t* pal) {
+        for (uint32_t y = 0; y < 8; ++y) {
+            for (uint32_t x = 0; x < 8; ++x) {
+                const uint8_t v = tile_pixel(tiles, tile, static_cast<int>(x), static_cast<int>(y));
+                out[(cy * 8 + y) * gb::kLcdWidth + cx * 8 + x] = pal[v];
+            }
+        }
+    };
+    paint(kMapWorldDigitCol, kMapDigitRow, map_art::kMapGlyphsTiles, 1, kTextPalette);
+    paint(kMapLevelDigitCol, kMapDigitRow, map_art::kMapGlyphsTiles, level + 1, kTextPalette);
+    // the lives readout, pre-shifted into a 2x2 block. only the single-digit case is modelled here:
+    // a two-digit readout composes its middle cell out of both digits, which no test seeds
+    REQUIRE(lives < 10);
+    for (int half = 0; half < 2; ++half) {
+        for (int index = 0; index < 2; ++index) {
+            paint(kMapLivesDigitCol + static_cast<uint32_t>(index),
+                  kMapFooterRow + static_cast<uint32_t>(half), map_art::kMapLivesTiles,
+                  lives * 4 + half * 2 + index, kTextPalette);
+        }
+    }
+    // a cleared level's dash goes solid: the frame's own cell, under the frame's own palette
+    for (int i = 0; i < cleared && i < 4; ++i) {
+        const size_t cell = kMapListRow * kMapScreenCols + kMapListFirstCol + static_cast<size_t>(i);
+        const int pal = map_art::kMapScreenAttrs[cell] & 0x07;
+        paint(kMapListFirstCol + static_cast<uint32_t>(i), kMapListRow, map_art::kMapListFillTiles, i,
+              map_art::kMapScreenPalettes + pal * 4);
     }
     return out;
 }
 } // namespace
 
-// the whole frame, pixel for pixel, against the art the pipeline generated. the four node markers
+// the whole frame, pixel for pixel, against the art the pipeline generated. the three node markers
 // and mario are sprites, and the two water tiles are mid-animation on any given frame, so those
 // boxes are the only ones excluded
 TEST_CASE("mario_map_matches_the_generated_art") {
@@ -12972,15 +13010,14 @@ TEST_CASE("mario_map_matches_the_generated_art") {
         for (uint32_t x = 0; x < gb::kLcdWidth; ++x) {
             const size_t i = y * gb::kLcdWidth + x;
             bool skip = (ids[i] & 0x100u) != 0; // any sprite: mario, or a node's marker pair
-            for (int node = 0; node < 4 && !skip; ++node) {
+            for (int node = 0; node < 3 && !skip; ++node) {
                 // the marker pair's own 8x16 footprint, transparent corners included
                 skip = static_cast<int>(x) >= kMapNodeX[node] && static_cast<int>(x) < kMapNodeX[node] + 8 &&
                        static_cast<int>(y) >= kMapNodeY[node] && static_cast<int>(y) < kMapNodeY[node] + 16;
             }
             const uint8_t tile = static_cast<uint8_t>(ids[i]);
-            // the two tiles map_art_animate rewrites every eighth frame, and the hint row, which is
-            // the one row of this screen the rom prints with the font rather than drawing from art
-            skip = skip || y >= kMapHintRow * 8 || tile == map_art::kMapScreenMap[6 * kMapScreenCols + 8] ||
+            // and the two tiles map_art_animate rewrites every eighth frame
+            skip = skip || tile == map_art::kMapScreenMap[6 * kMapScreenCols + 8] ||
                    tile == map_art::kMapScreenMap[11 * kMapScreenCols + 11];
             if (!skip && got[i] != want[i]) {
                 ++bad;
@@ -13051,9 +13088,17 @@ TEST_CASE("mario_map_lives_matches_the_hud") {
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
-    // a freshly opened file starts a run, which resets the hud to the usual three lives
-    REQUIRE(map_digit_at(gameboy, kMapFooterRow, kMapLivesDigitCol) == kStartLives / 10);
-    REQUIRE(map_digit_at(gameboy, kMapFooterRow, kMapLivesDigitCol + 1) == kStartLives % 10);
+    // a freshly opened file starts a run, which resets the hud to the usual three lives. the
+    // readout is one digit with no leading zero, spread over the 2x2 block its half-tile offset
+    // needs, so all four of its quadrants have to name the same digit
+    for (int half = 0; half < 2; ++half) {
+        for (int index = 0; index < 2; ++index) {
+            REQUIRE(map_lives_quad(gameboy, index, half) == kStartLives);
+        }
+    }
+    // and the third column is left to the frame: nothing is drawn there until lives reaches ten
+    REQUIRE(bg_tile_at(gameboy, kMapFooterRow, kMapLivesDigitCol + 2) ==
+            map_art::kMapScreenMap[kMapFooterRow * kMapScreenCols + kMapLivesDigitCol + 2]);
 }
 
 TEST_CASE("mario_map_clear_list_fills_with_progress") {
@@ -13143,7 +13188,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol) == kMapGlyphCorner);
     REQUIRE(bg_tile_at(gameboy, kMapPopupTopRow, kMapPopupLeftCol + kMapPopupWidth - 1) == kMapGlyphCorner);
     REQUIRE(bg_tile_at(gameboy, kMapPopupBottomRow, kMapPopupLeftCol) == kMapGlyphCorner);
-    // the card covers mario's own walk row and three of the four node markers, so every one of them
+    // the card covers mario's own walk row and all three node markers, so every one of them
     // is parked off screen while it is up rather than left floating on top of it
     REQUIRE_FALSE(mario_at(gameboy).found);
 
@@ -13199,7 +13244,7 @@ TEST_CASE("mario_map_bands_are_black_top_and_bottom") {
 
 // the castle at the right end of the strip is part of the generated frame now, not a hand-typed
 // icon mapscreen.c stamps: its cells have to be the pipeline's own tiles under the pipeline's own
-// palettes, and 1-4's node is its door
+// palettes. 1-4's node is the castle itself, and the reference rings no marker over it
 TEST_CASE("mario_map_castle_is_part_of_the_generated_frame") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -13207,14 +13252,11 @@ TEST_CASE("mario_map_castle_is_part_of_the_generated_frame") {
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
 
-    // the castle's own block: tile columns 16-19, the strip's rows 3-5
+    // the castle's own block: tile columns 16-19, the strip's rows 3-5. no sprite stands anywhere
+    // in it, so every cell reads the frame's tile
     for (uint32_t row = kMapStripFirstTileRow + 3; row <= kMapStripFirstTileRow + 5; ++row) {
         for (uint32_t col = 16; col < kMapScreenCols; ++col) {
-            const int tile = bg_tile_at(gameboy, row, col);
-            // -1 is 1-4's own marker, the sprite standing on the castle's door cell
-            if (tile >= 0) {
-                REQUIRE(tile == map_art::kMapScreenMap[row * kMapScreenCols + col]);
-            }
+            REQUIRE(bg_tile_at(gameboy, row, col) == map_art::kMapScreenMap[row * kMapScreenCols + col]);
         }
     }
 }

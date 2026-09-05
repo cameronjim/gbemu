@@ -4,8 +4,8 @@
 
 #include <stdint.h>
 
-#define kMapWaterFramesTileCount 8U
+#define kMapWaterFramesTileCount 48U
 
-extern const uint8_t kMapWaterFramesTiles[128];
+extern const uint8_t kMapWaterFramesTiles[768];
 
 #endif

@@ -6,8 +6,8 @@
 
 // the smbd world one map frame: 71 bank-1 bg tiles for the whole 20x18 screen, thirteen glyph
 // tiles behind it for the runtime digits and the world-two card's border, six the lives readout
-// rewrites, four clear-list variants, and six sprite tiles for the node markers. runs with the lcd
-// off - far more vram traffic than a vblank holds
+// rewrites, four clear-list variants, six the water's own cycle drifts, and six sprite tiles for
+// the node markers. runs with the lcd off - far more vram traffic than a vblank holds
 void map_art_load(void) BANKED;
 
 // the header's "1-N", either side of the dash the art carries
@@ -22,7 +22,7 @@ void map_art_lives(uint8_t lives) BANKED;
 // frame's own hollow dash for the rest
 void map_art_clear_list(uint8_t cleared) BANKED;
 
-// one of four sparkle frames into the two water tiles the strip shares
+// one frame of the drift into each of the six water tiles the lake's cells share
 void map_art_animate(uint8_t frame) BANKED;
 
 // one node's marker, in oam slots the map owns. two sprites per node: a marker is a solid 8x8 in
@@ -41,10 +41,14 @@ void map_art_blank(uint8_t col, uint8_t row, uint8_t width, uint8_t palette) BAN
 // puts `rows` whole rows of the frame back, the way the card found them
 void map_art_rows(uint8_t row, uint8_t rows) BANKED;
 
-// the water's own cycle: four sparkle frames, one every kMapWaterTicks frames. the frames are
-// designed rather than ripped - neither reference holds a second frame of this map's water
-#define kMapWaterFrameCount 4U
-#define kMapWaterTicks 8U
+// the water's own cycle: six tiles cover the whole lake - its surface band, the pool under it, the
+// two channels down the island's sides and the three foam tiles at their foot - and each walks
+// eight frames of one pixel, one every kMapWaterTicks frames, so a full cycle is 32 frames of
+// steady drift rather than a hop. the frames are designed rather than ripped - neither reference
+// holds a second frame of this map's water
+#define kMapWaterFrameCount 8U
+#define kMapWaterTicks 4U
+#define kMapWaterTileCount 6U
 
 #define kMapMarkerCleared 0U
 #define kMapMarkerOpen 1U

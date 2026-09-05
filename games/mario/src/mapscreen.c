@@ -268,7 +268,7 @@ static uint8_t map_step;
 static uint8_t map_facing_left;
 static uint8_t map_anim;
 static uint8_t map_anim_timer;
-// the water's own four-frame cycle, ticked whether or not anything else is happening
+// the water's own eight-frame cycle, ticked whether or not anything else is happening
 static uint8_t map_water_timer;
 static uint8_t map_water_frame;
 
@@ -452,8 +452,8 @@ static void map_reset(uint8_t node) {
 }
 
 static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
-    // main.c calls this on the first line of vblank, so two tiles of sparkle land with room to
-    // spare - the water shimmers whatever else the screen is doing, card included
+    // main.c calls this on the first line of vblank, so the cycle's six tiles land with room to
+    // spare - the water drifts whatever else the screen is doing, card included
     if (++map_water_timer >= (uint8_t)kMapWaterTicks) {
         map_water_timer = 0;
         map_water_frame = (uint8_t)((map_water_frame + 1U) % kMapWaterFrameCount);

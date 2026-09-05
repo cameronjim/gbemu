@@ -25,6 +25,8 @@
 #define kMapLivesFirst (uint8_t)(kMapGlyphFirst + kMapGlyphsTileCount)
 #define kMapLivesCols 3U
 #define kMapListFillFirst (uint8_t)(kMapLivesFirst + kMapLivesCols * 2U)
+// and past those, the water's own six ids, one per animated tile of the cycle
+#define kMapWaterFirst (uint8_t)(kMapListFillFirst + kMapListFillTileCount)
 // bank 0 sprite 0x92-0x97, the run VRAM.md calls free: three 8x16 markers, two tiles each
 #define kTileMapMarkerRed 0x92U
 #define kTileMapMarkerBlue 0x94U
@@ -35,10 +37,16 @@
 #define kPalMarkerBlue 6U
 #define kPalMarkerRim 7U
 
-// the water cells the strip animates, as offsets into the generated tile map: the shimmer band
-// that runs across the lake, and the foam at the foot of the island's fall
-#define kMapWaterCell (uint16_t)(6U * kMapScreenCols + 8U)
-#define kMapFallCell (uint16_t)(11U * kMapScreenCols + 11U)
+// every water cell of the strip, as runs of col, row, width, height and which of the cycle's six
+// tiles the run reads. the lake's surface band and the three foam tiles at the foot of the fall
+// are cells of the generated frame; the pool under the band and the two channels down the
+// island's sides are flat water sharing the sky's own solid tile id, so they are pointed at ids of
+// their own rather than animated where they stand
+#define kMapWaterRunCount 8U
+static const uint8_t kMapWaterRuns[kMapWaterRunCount][5] = {
+    {8U, 6U, 8U, 1U, 0U},  {9U, 7U, 6U, 1U, 1U},   {9U, 8U, 1U, 4U, 2U},   {13U, 8U, 1U, 4U, 2U},
+    {8U, 11U, 1U, 1U, 3U}, {12U, 11U, 1U, 1U, 3U}, {10U, 11U, 1U, 1U, 4U}, {11U, 11U, 1U, 1U, 5U},
+};
 
 static const palette_color_t kMapTextPalette[4] = {kMapSkyRgb, 0x7FFF, kMapSkyRgb, 0x7FFF};
 // gold behind, black on top: the card's call to action, the way the reference bands its own
@@ -84,11 +92,36 @@ static void put_glyph(uint8_t col, uint8_t row, uint8_t glyph) {
     put_tile(col, row, (uint8_t)(kMapGlyphFirst + glyph));
 }
 
+// points whichever water cells fall inside the block back at the cycle's own tile ids. only the
+// ids change: the frame's attribute bytes already read vram bank 1 under the water's own palette
+static void water_cells(uint8_t row, uint8_t rows) {
+    uint8_t run;
+    uint8_t y;
+    uint8_t x;
+
+    for (run = 0; run < kMapWaterRunCount; ++run) {
+        const uint8_t tile = (uint8_t)(kMapWaterFirst + kMapWaterRuns[run][4]);
+        const uint8_t width = kMapWaterRuns[run][2];
+
+        for (x = 0; x < width; ++x) {
+            map_row[x] = tile;
+        }
+        for (y = 0; y < kMapWaterRuns[run][3]; ++y) {
+            const uint8_t cell_row = (uint8_t)(kMapWaterRuns[run][1] + y);
+
+            if (cell_row >= row && cell_row < (uint8_t)(row + rows)) {
+                set_bkg_tiles(kMapWaterRuns[run][0], cell_row, width, 1, map_row);
+            }
+        }
+    }
+}
+
 void map_art_rows(uint8_t row, uint8_t rows) BANKED {
     const uint16_t first = (uint16_t)row * kMapScreenCols;
 
     set_bkg_tiles(0, row, kMapScreenCols, rows, kMapScreenMap + first);
     set_bkg_attributes(0, row, kMapScreenCols, rows, kMapScreenAttrs + first);
+    water_cells(row, rows);
 }
 
 void map_art_load(void) BANKED {
@@ -107,6 +140,7 @@ void map_art_load(void) BANKED {
     set_sprite_palette(kPalMarkerBlue, 1, kMapBluePalette);
     set_sprite_palette(kPalMarkerRim, 1, kMapRimPalette);
     map_art_rows(0, kMapScreenRows);
+    map_art_animate(0);
 }
 
 void map_art_world(uint8_t level) BANKED {
@@ -171,13 +205,17 @@ void map_art_clear_list(uint8_t cleared) BANKED {
     }
 }
 
+// map_water_frames.png is tile-major: all eight frames of the cycle's first tile, then all eight of
+// its second, and so on in the order kMapWaterRuns names them
 void map_art_animate(uint8_t frame) BANKED {
     const uint8_t f = (uint8_t)(frame % kMapWaterFrameCount);
+    uint8_t tile;
 
     VBK_REG = VBK_BANK_1;
-    set_bkg_data(kMapScreenMap[kMapWaterCell], 1, kMapWaterFramesTiles + (uint16_t)f * 16U);
-    set_bkg_data(kMapScreenMap[kMapFallCell], 1,
-                 kMapWaterFramesTiles + (uint16_t)(kMapWaterFrameCount + f) * 16U);
+    for (tile = 0; tile < (uint8_t)kMapWaterTileCount; ++tile) {
+        set_bkg_data((uint8_t)(kMapWaterFirst + tile), 1,
+                     kMapWaterFramesTiles + ((uint16_t)tile * kMapWaterFrameCount + f) * 16U);
+    }
     VBK_REG = VBK_BANK_0;
 }
 

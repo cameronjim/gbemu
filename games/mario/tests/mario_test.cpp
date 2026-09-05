@@ -12880,9 +12880,10 @@ constexpr uint32_t kMapListRow = 14;
 constexpr uint32_t kMapListFirstCol = 15;
 constexpr uint32_t kMapStripFirstTileRow = 4;
 constexpr uint32_t kMapFooterFirstTileRow = 12;
-// map_art.h's own water cycle: four sparkle frames, one every eight frames
-constexpr int kMapWaterFrameCount = 4;
-constexpr int kMapWaterTicks = 8;
+// map_art.h's own water cycle: eight frames of one pixel, one every four
+constexpr int kMapWaterFrameCount = 8;
+constexpr int kMapWaterTicks = 4;
+constexpr int kMapWaterTileCount = 6;
 
 // map_art's runtime tile run sits straight past the generated frame's own: ten glyph digits and
 // the world-two card's corner/h-edge/v-edge, then the six ids the lives readout rewrites, then the
@@ -12892,6 +12893,8 @@ constexpr int kMapGlyphCorner = kMapGlyphFirst + 10;
 constexpr int kMapLivesFirst = kMapGlyphFirst + static_cast<int>(kMapGlyphsTileCount);
 constexpr int kMapLivesCols = 3;
 constexpr int kMapListFillFirst = kMapLivesFirst + kMapLivesCols * 2;
+// and the six the water cycle drifts, which the loader points every water cell of the lake at
+constexpr int kMapWaterFirst = kMapListFillFirst + static_cast<int>(kMapListFillTileCount);
 
 // the digit a runtime glyph cell reads, or -1 for any cell that is not one
 int map_digit_at(const gb::Gameboy& gameboy, uint32_t row, uint32_t col) {
@@ -12990,8 +12993,8 @@ std::array<uint16_t, gb::kLcdWidth * gb::kLcdHeight> expected_map_frame(int leve
 } // namespace
 
 // the whole frame, pixel for pixel, against the art the pipeline generated. the three node markers
-// and mario are sprites, and the two water tiles are mid-animation on any given frame, so those
-// boxes are the only ones excluded
+// and mario are sprites, and the lake's cells are mid-drift on any given frame, so those boxes are
+// the only ones excluded
 TEST_CASE("mario_map_matches_the_generated_art") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -13015,10 +13018,10 @@ TEST_CASE("mario_map_matches_the_generated_art") {
                 skip = static_cast<int>(x) >= kMapNodeX[node] && static_cast<int>(x) < kMapNodeX[node] + 8 &&
                        static_cast<int>(y) >= kMapNodeY[node] && static_cast<int>(y) < kMapNodeY[node] + 16;
             }
-            const uint8_t tile = static_cast<uint8_t>(ids[i]);
-            // and the two tiles map_art_animate rewrites every eighth frame
-            skip = skip || tile == map_art::kMapScreenMap[6 * kMapScreenCols + 8] ||
-                   tile == map_art::kMapScreenMap[11 * kMapScreenCols + 11];
+            const int tile = static_cast<uint8_t>(ids[i]);
+            // and every cell of the lake, which reads one of the six ids map_art_animate drifts
+            // rather than the frame's own tile and is mid-cycle on any given frame
+            skip = skip || (tile >= kMapWaterFirst && tile < kMapWaterFirst + kMapWaterTileCount);
             if (!skip && got[i] != want[i]) {
                 ++bad;
             }
@@ -13027,8 +13030,9 @@ TEST_CASE("mario_map_matches_the_generated_art") {
     REQUIRE(bad == 0u);
 }
 
-// the water is the one moving thing on an otherwise still screen: its tile bytes in vram walk the
-// four sparkle frames map_water_frames.png carries and come back round to the first
+// the water is the one moving thing on an otherwise still screen: every one of the six tiles the
+// lake's cells share walks the eight frames map_water_frames.png carries, a pixel at a time, and
+// comes back round to the first
 TEST_CASE("mario_map_water_animates") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -13036,29 +13040,55 @@ TEST_CASE("mario_map_water_animates") {
     REQUIRE(gameboy.load_rom(rom));
     open_file(gameboy, 0);
 
-    const int id = map_art::kMapScreenMap[6 * kMapScreenCols + 8];
-    const std::span<const uint8_t> vram = gameboy.debug_vram();
-    // lcdc bit 4 is clear, so a bg id under 0x80 reads out of 0x9000 - vram offset 0x1000 - and the
-    // strip's cells all carry the attribute bit that puts them in bank 1, another 0x2000 up
-    const size_t base = 0x3000 + static_cast<size_t>(id) * 16;
-    auto tile_now = [&vram, base]() {
-        return std::vector<uint8_t>(vram.begin() + static_cast<long>(base),
-                                    vram.begin() + static_cast<long>(base + 16));
+    // the band across the lake and the fall's own channel: two of the six, at either end of the run
+    const int band = kMapWaterFirst;
+    const int fall = kMapWaterFirst + 2;
+    const int period = kMapWaterTicks * kMapWaterFrameCount;
+    // which frame of the strip a tile is showing, or -1 for bytes the pipeline never generated
+    auto strip_frame = [&gameboy](int tile) {
+        const std::vector<uint8_t> bytes = bg_tile_bytes(gameboy, tile);
+        const int strip = (tile - kMapWaterFirst) * kMapWaterFrameCount;
+        for (int f = 0; f < kMapWaterFrameCount; ++f) {
+            if (std::equal(bytes.begin(), bytes.end(), map_art::kMapWaterFramesTiles + (strip + f) * 16)) {
+                return f;
+            }
+        }
+        return -1;
     };
 
-    std::set<std::vector<uint8_t>> seen;
-    for (int i = 0; i < kMapWaterTicks * kMapWaterFrameCount + 8; ++i) {
+    // a whole cycle of both, sampled every frame, plus the frame the next cycle starts on
+    std::vector<int> band_seen;
+    std::vector<int> fall_seen;
+    for (int i = 0; i <= period; ++i) {
+        band_seen.push_back(strip_frame(band));
+        fall_seen.push_back(strip_frame(fall));
         gameboy.run_frame();
-        seen.insert(tile_now());
     }
-    REQUIRE(seen.size() == kMapWaterFrameCount);
-    // and every one of them is a frame the pipeline generated, not a smear of two
-    for (const auto& frame : seen) {
-        bool found = false;
-        for (uint32_t f = 0; f < kMapWaterFrameCount && !found; ++f) {
-            found = std::equal(frame.begin(), frame.end(), map_art::kMapWaterFramesTiles + f * 16);
+
+    for (const std::vector<int>& seen : {band_seen, fall_seen}) {
+        // every frame of it is one the pipeline generated, not a smear of two
+        std::array<int, kMapWaterFrameCount> hits{};
+        for (const int frame : seen) {
+            REQUIRE(frame >= 0);
+            ++hits[static_cast<size_t>(frame)];
         }
-        REQUIRE(found);
+        // and the cycle walks all eight of them, holding each for kMapWaterTicks frames
+        for (const int count : hits) {
+            REQUIRE(count > 0);
+        }
+        int last = -1;
+        for (size_t i = 1; i < seen.size(); ++i) {
+            if (seen[i] == seen[i - 1]) {
+                continue;
+            }
+            if (last >= 0) {
+                REQUIRE(static_cast<int>(i) - last == kMapWaterTicks);
+            }
+            last = static_cast<int>(i);
+        }
+        REQUIRE(last > 0);
+        // one whole cycle on and the tile is the frame it started as
+        REQUIRE(seen.front() == seen.back());
     }
 }
 
@@ -13201,8 +13231,9 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     for (uint32_t row = kMapPopupTopRow; row <= kMapPopupBottomRow; ++row) {
         for (uint32_t col = 0; col < kMapScreenCols; ++col) {
             const int tile = bg_tile_at(gameboy, row, col);
-            // -1 is a cell mario or a marker is standing over, which is a sprite, not the frame
-            if (tile >= 0) {
+            // -1 is a cell mario or a marker is standing over, which is a sprite, not the frame,
+            // and a lake cell is pointed back at the water cycle's own ids rather than the frame's
+            if (tile >= 0 && (tile < kMapWaterFirst || tile >= kMapWaterFirst + kMapWaterTileCount)) {
                 REQUIRE(tile == map_art::kMapScreenMap[row * kMapScreenCols + col]);
             }
         }

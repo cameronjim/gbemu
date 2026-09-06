@@ -295,6 +295,22 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         endfunction()
 
         mario_png_asset(games/mario/art/bowser.png Bowser sprites16 4)
+        # milestone 21: the character sprites, ripped off the smbd sheets by
+        # games/mario/tools/rip_sprites.py. every one is an indexed png whose palette index IS the
+        # 2bpp value the obj palette in mario.h wants, so none of them needs a --palette
+        mario_png_asset(games/mario/art/sprites/mario_small.png MarioSmall sprites16 4)
+        mario_png_asset(games/mario/art/sprites/mario_small_climb.png MarioSmallClimb sprites16 4)
+        mario_png_asset(games/mario/art/sprites/mario_big.png MarioBig sprites16 4)
+        mario_png_asset(games/mario/art/sprites/koopa_green.png KoopaGreen sprites16 4)
+        mario_png_asset(games/mario/art/sprites/paratroopa_red.png ParatroopaRed sprites16 4)
+        mario_png_asset(games/mario/art/sprites/goomba.png Goomba sprites16 4)
+        mario_png_asset(games/mario/art/sprites/goomba_squash.png GoombaSquash sprites16 4)
+        mario_png_asset(games/mario/art/sprites/shell_green.png ShellGreen sprites16 4)
+        mario_png_asset(games/mario/art/sprites/shell_red.png ShellRed sprites16 4)
+        mario_png_asset(games/mario/art/sprites/piranha.png Piranha sprites16 4)
+        mario_png_asset(games/mario/art/sprites/items.png Items sprites16 4)
+        mario_png_asset(games/mario/art/sprites/flower.png Flower sprites16 4)
+        mario_png_asset(games/mario/art/sprites/fireball.png Fireball sprites16 4)
         mario_png_asset(games/mario/art/title/title_screen.png TitleScreen screen 7 --vram-bank 1)
         mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
                         --palette 000000,F8E800,A89000,584010)

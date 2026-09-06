@@ -445,6 +445,10 @@
 
 // sprite family 0xe0.. per the milestone's tile-id contract. small mario is 16x16 = two 8x16
 // sprites, so one animation frame costs four 8x8 tiles: left top/bottom then right top/bottom.
+// m22 redrew the whole set off the smbd sprite rip (games/mario/tools/rip_sprites.py, art in
+// games/mario/src/gen/mario_small.c): the six poses below keep their pinned ids and order, and the
+// seventh - the death pose, which the hand art never had - takes four of the ids super mario's old
+// bank-0 block gave back
 #define kTileMarioFirst 0xE0U
 #define kMarioTilesPerFrame 4U
 #define kMarioFrameCount 6U
@@ -457,47 +461,50 @@
 #define kFrameSkid 4U
 #define kFrameJump 5U
 #define kWalkFrameCount 3U
+// the seventh small pose, facing the viewer with both hands up. only player_draw's dying branch
+// reaches it, and only small mario ever dies (a big one shrinks first), so it needs no big twin.
+// its frame index is 6 the way the generated table orders it - the same slot the big set spends on
+// the crouch, which is why one anim_frame byte still names a pose in either body
+#define kFrameDeath 6U
+#define kTileMarioDeath 0x70U // 0x70-0x73
 
-// super/fire mario, 16x32 = four 8x16 sprites. the pinned 0xe0-0xf7 family holds 24 tiles and one
-// 16x32 pose costs eight, so the set cannot share it: m7 takes the block between the font's last
-// glyph (0x5f) and the terrain families (0xa0..), which no other family has ever used. both sets
-// stay resident, which is what lets the grow animation alternate them without a single vram write
-#define kTileSuperFirst 0x60U
-#define kSuperTilesPerFrame 4U
-// every pose reuses one upper 16x16 slab, so only the legs cost tiles: 1 + 7 poses = 32 tiles
-#define kTileSuperUpper kTileSuperFirst
-#define kTileSuperLowerFirst (kTileSuperFirst + kSuperTilesPerFrame) // 0x64
-#define kSuperFrameCount 7U
-#define kSuperTileCount ((kSuperFrameCount + 1U) * kSuperTilesPerFrame) // 32, ids 0x60-0x7f
-// the crouch pose sits past the six small-mario poses share their order with
+// super/fire mario, 16x32 = eight 8x8 tiles a pose: [UL top, UL bot, UR top, UR bot, LL top,
+// LL bot, LR top, LR bot], which is what png2tiles' sprites16 order emits and what player_draw's
+// two draw_row calls read. m22's exact art gives every pose its own upper half - the old set
+// shared one slab across six of them, which is why its jump could not raise an arm - so the eight
+// poses are 64 tiles and bank 0 has nowhere near that many. the whole set lives in CGB VRAM BANK 1
+// at ids 0x00-0x3f, drawn with S_BANK in the sprite's own prop, and bank 0's old 0x60-0x7f block
+// is handed back to the koopa and the death pose. bank-1 sprite ids below 0x80 collide with no bg
+// family: a bg id under 0x80 reads out of 0x9000.., which no sprite can reach
+#define kTileSuperFirst 0x00U
+#define kSuperTilesPerFrame 8U
+#define kSuperFrameCount 8U
+#define kSuperTileCount (kSuperFrameCount * kSuperTilesPerFrame) // 64, bank 1 ids 0x00-0x3f
+// the two poses past the six small mario shares its order with: the fold, whose 22-tall art is
+// bottom-aligned in the same 16x32 box (rows 10..31), and the flagpole grip
 #define kFrameCrouch 6U
+#define kFrameClimbBig 7U
 
-// the three poses vram bank 0 has no ids left for. they live in CGB VRAM BANK 1 and are drawn with
-// S_BANK set in the sprite's own prop, the way the fireball's second spin frame already is; each
-// keeps an id inside the family it belongs to so a host test reading tile numbers still names the
-// sprite. kTileSuperJumpUpper is the one upper slab super mario's shared one cannot be (an arm goes
-// up in it); the two climb poses are the flagpole grip, one per body size
-#define kTileSuperJumpUpper 0x7CU
-#define kTileClimbSmall 0xE0U
-#define kTileClimbBigUpper 0xE4U
-#define kTileClimbBigLower 0xE8U
+// small mario's own flagpole grip, one 16x16 pose in VRAM BANK 1. it used to ride at the id his
+// standing set holds in bank 0, which meant a host test reading framebuffer tile numbers - they
+// carry the tile and a sprite bit but not the bank - could not tell the grip from his idle pose and
+// so could not know which pose's art bounds it was measuring. it takes four of the ids super
+// mario's old bank-0 block gave back instead, where nothing in either bank collides with it. the
+// big grip is pose 7 of the set above and needs no id of its own at all
+#define kTileClimbSmall 0x74U
 
-// the fire flower, in the same m7 block right after super mario
-#define kTileFlowerFirst 0x80U
-#define kFlowerTileCount 4U
+// the fire flower, the one item outside the 0xd0 family
+#define kTileFlowerFirst 0x80U // 0x80-0x83; gen/flower.h's kFlowerTileCount is the count
 
-// m8a's four new actors. the pinned 0xc0 enemy family is exactly full and the 0xd0 item family is
-// too, but the run between the flower and the terrain families still had 28 tiles nothing claimed.
-// every one of these is left-right symmetric, so each costs a single 8x16 pair and its right half
-// is the same tile drawn flipped
-#define kTileHazardFirst 0x84U
-#define kTilePiranha 0x84U
-#define kTileFlame 0x86U
-#define kTileLiftDeck 0x88U
-#define kHazardTileCount 6U // 0x84-0x89
-// 0x8a-0x8b held the fake bowser while he was one 16x16 pair; m20's 32x32 body is 32 tiles and
-// bank 0 has nowhere near that many left, so it lives in vram BANK 1 (kTileBowserFirst) and these
-// two bank-0 sprite ids are free
+// m8a's actors. the piranha is a 16x24 plant bottom-aligned in a 16x32 box and left-right
+// symmetric, so it costs two 8x16 pairs - the box's left half, top and bottom - and its right half
+// is the same pair drawn S_FLIPX. the flame and the lift deck are hand art that only moved ids
+#define kTilePiranha 0x84U   // 0x84-0x87, the left column's top pair then its bottom pair
+#define kTileFlame 0x88U     // and 0x89, its blank lower half
+#define kTileLiftDeck 0x8AU  // and 0x8b, ditto
+#define kPiranhaTileCount 4U // 0x84-0x87
+#define kHazardTileCount 4U  // 0x88-0x8b, the flame and the deck together
+// 0x78-0x7f and 0xc8-0xcf are free in both banks, and so is bank-0 0x74-0x77
 
 // m19's throwaway animations take six of the twenty ids m8b's hud digit sprites left free at 0x8c
 // (the bar draws its own digits out of the bg font now, see kTileHudDigitFirst). each is an 8x16
@@ -527,7 +534,9 @@
 
 // item sprite family 0xd0.. per the milestone's tile-id contract: three 16x16 items stored the same
 // way mario's frames are (left top/bottom then right top/bottom), then the 8x16 coin pop, then the
-// fireball as one 8x16 pair whose top tile is empty - the family is exactly full at 0xd0-0xdf
+// fireball as one 8x16 pair whose top tile is empty - the family is exactly full at 0xd0-0xdf.
+// m22 replaced the mushroom, the star and the 1-up with the smbd rip's own (gen/items.c) and the
+// spin frame with gen/fireball.c; the coin pop is still hand art
 #define kTileItemFirst 0xD0U
 #define kItemTilesPerKind 4U
 #define kTileCoinPop 0xDCU
@@ -542,13 +551,31 @@
 #define kItemFlower 4U
 #define kItemKindCount 5U
 
-// oam slots and the cgb sprite palettes. mario 4 (super's 16x32 is two rows of two 8x16 sprites;
-// small parks the lower row) + one item 2 + one coin pop 1 + two fireballs + five enemies x 2 is
-// 19 of the 40 slots; the per-scanline math is the enemy pool's problem, see kEnemyRowCap below.
-// slots 4-8 are m19's: m8b's five hud digit sprites held them until the bar moved to the window
-// layer, and the throwaway animations took them over - the four brick fragments and the fireball's
-// puff, in that order (see debris.c). hud_enter_level still parks all five at a level load, which
-// is what clears whatever the last life left in them
+// --- oam: the forty slots, and the cgb sprite palettes ------------------------------------------
+//
+// m22's exact art made two enemies tall: a koopa and a paratroopa are 16x24 bottom-aligned in a
+// 16x32 box, which is two rows of two 8x16 sprites - four oam slots where the old 16x16 art took
+// two - and the piranha is the same shape. that doubled the enemy pool's worst case and oam has no
+// spare forty-first slot, so the pool and the hazards pool now MEET IN THE MIDDLE rather than each
+// owning a fixed run:
+//
+//   0-3    mario. small parks the lower row; big is two rows of two, every pose (see player_draw)
+//   4-8    the throwaway animations: four brick fragments then the fireball's puff (debris.c).
+//          the world map borrows 4-11 for its four node markers and the toad room 4-7 for the
+//          retainer, both on screens that have no debris, no items and no enemies
+//   9-10   the loose item a block paid out       11  the coin pop      12-13  the two fireballs
+//   14-33  THE ENEMY POOL, allocated fresh every frame: the live slots are walked in pool order
+//          and each takes two oam slots if its art is 16x16 (goomba, squashed goomba, either
+//          shell) or four if it is a 16x32 box (koopa, paratroopa, piranha, and any of the three
+//          upside down as a corpse). five slots of four is the ceiling, hence 20; nothing else may
+//          hand out a slot in that run, so no two enemies can ever share one
+//   24-39  THE HAZARDS POOL, whose floor is whatever the enemy pool left: hazards.c starts at
+//          max(24, enemies_oam_top()) each frame and hands what is above it to the deck planks,
+//          bowser's body, his breath and a firebar's flames. the two ends only actually collide on
+//          a frame with five live enemies of which three are tall AND a lift or a bowser in view -
+//          1-4 carries no walking enemy at all and 1-2's lift shafts are one deck at a time - and
+//          a claimant that cannot get its slots is dropped for that frame, the same graceful
+//          degradation the pool already gave a third firebar
 #define kSpriteMarioL 0U
 #define kSpriteMarioR 1U
 #define kSpriteMarioLowL 2U
@@ -563,39 +590,56 @@
 #define kSpriteItemR 10U
 #define kSpriteCoin 11U
 #define kSpriteFireFirst 12U
+// the enemy pool's run. kEnemyOamMax is kEnemySlots * 4, the ceiling every entry being tall costs
 #define kSpriteEnemyFirst 14U
-// m8a's three, which m21 turned into one pool: the whole run 24-39 belongs to hazards.c, and
-// every frame it hands the slots out to the deck planks, bowser's body, his breath and then a
-// firebar's flames, in that order, from whatever the earlier claimants left. 24 + 16 = 40 of the
-// 40 slots, exactly full. the per-scanline worst case is documented at kFlameDrawCap
+#define kEnemyOamShort 2U
+#define kEnemyOamTall 4U
+#define kEnemyOamMax 20U
+// the hazards pool: sixteen slots at the top of oam, one owner byte each (hazards.c slot_owner),
+// so a slot that changes hands has its tile and palette written again and one that nobody claims
+// is parked. kHazardPoolFirst is only its FLOOR - enemies_oam_top() raises it on a frame the enemy
+// pool has reached that far, and hazards.c refuses to hand out anything below the raised floor
 #define kSpriteFlameFirst 24U
-#define kSpriteLiftFirst 32U
-#define kSpriteLiftCount (kLiftSlotsShared * 4U) // 8
-// the pool itself: sixteen slots, one owner byte each (hazards.c slot_owner), so a slot that
-// changes hands has its tile and palette written again and one that nobody claims is parked
 #define kHazardPoolFirst kSpriteFlameFirst
 #define kHazardPoolSlots 16U
-// m20's 32x32 bowser needs eight slots and oam has none: he takes the front of the pool, 24-31.
-// smb never puts a firebar in the bridge room - 1-4's last bar is fifty columns short of it - so
-// only one of the two is ever on screen; he claims before the flames do, so on a frame that had
-// both he keeps his whole body and the bar draws in what is left. the body is two rows of four
-// 8x16 sprites, so a scanline crossing him draws four
-#define kSpriteBowserFirst kSpriteFlameFirst
+#define kHazardPoolLast (kHazardPoolFirst + kHazardPoolSlots - 1U) // 39
+// the deck sprites one visible lift costs, and where they come from: the TOP of the pool, counting
+// down, so a deck keeps its slots however far the enemy pool has climbed. the first two decks fit
+// in 32-39 and a third borrows 28-31, which is bowser's and the firebar's ground - hazards.c
+// refuses the third lift when either is loaded, and compile_level.py refuses to build such a level
+#define kSpriteLiftPerDeck 4U
+#define kSpriteLiftCount (kLiftSlotsShared * 4U) // 8
+#define kSpriteLiftTop kHazardPoolLast
+// m20's 32x32 bowser needs eight slots: he takes the FLOOR of the pool, 24-31 on a frame with no
+// enemies in it. smb never puts a firebar in the bridge room - 1-4's last bar is fifty columns
+// short of it - so only one of the two is ever on screen; he claims before the flames do, so on a
+// frame that had both he keeps his whole body and the bar draws in what is left. the body is two
+// rows of four 8x16 sprites, so a scanline crossing him draws four
 #define kSpriteBowserCount 8U
-// his fire breath is three more 8x16 sprites, 24 px of dart, off the top of the pool. only a frame
+// his fire breath is three more 8x16 sprites, 24 px of dart, just above his body. only a frame
 // drawing two decks at once reaches those - the decks claim by how many are ON SCREEN, not by how
 // many the level loaded, and 1-4's two lifts stand a hundred and thirty columns apart - and such a
 // frame drops the breath's sprites, not the hazard itself
-#define kSpriteBowserFireFirst 36U
 #define kSpriteBowserFireCount 3U
-// the deck sprites one visible lift costs
-#define kSpriteLiftPerDeck 4U
-// 1-3 draws a third deck, and oam has nothing left. the front of the pool is the only part idle on
-// a level with no firebar and no bowser, so a third deck borrows it: hazards.c refuses the third
-// lift when either is loaded, and compile_level.py refuses to build such a level at all
-#define kSpriteLiftOverflowFirst kSpriteFlameFirst
 // the hardware's whole oam, which the map screen parks every slot of before drawing its two
 #define kOamSlots 40U
+// the eight obj palette slots. index 0 is always a sprite's transparency, so each is three colours,
+// and m22's exact art pinned what those three are (the sheet's own hex, see assets_load_*_palettes):
+//   0 kPalMario     skin / mario red / mario dark      small and big mario
+//   1 kPalMushroom  white / item yellow / item red     the mushroom AND the star, whose tiles are
+//                                                      drawn in the mushroom's index order
+//   2 kPalStar      white / koopa orange / shell red   the red paratroopa, the red shell, the
+//                                                      fireball, its puff and mario's star flash;
+//                                                      a castle re-tints it to the fire ramp
+//   3 kPalOneup     white / item yellow / item green   the 1-up AND the fire flower
+//   4 kPalCoin      the coin pop's gold, and nothing else since the fireball moved to kPalStar
+//   5 kPalGoomba    goomba tan / goomba brown / black  the goomba, its pancake, the brick debris
+//                                                      and the lift deck
+//   6 kPalKoopa     koopa green / koopa orange / white the koopa, the green shell and the piranha.
+//                                                      that is exactly bowser's own three colours,
+//                                                      so a castle's re-tint of this slot is now a
+//                                                      no-op that is kept for the contract
+//   7 kPalFire      skin / fire cream / mario red      fire mario, on the same tiles kPalMario wears
 #define kPalMario 0U
 #define kPalMushroom 1U
 #define kPalStar 2U
@@ -603,9 +647,6 @@
 #define kPalCoin 4U
 #define kPalGoomba 5U
 #define kPalKoopa 6U
-// the last free slot, spent on fire mario's white-and-red outfit. the flower item has none left, so
-// it borrows the star's white/yellow set; the fireball projectile borrows kPalCoin's gold/orange
-// instead, which is what it wants and the star's near-white set is not (see powerup_draw)
 #define kPalFire 7U
 
 // gbdk's move_sprite takes oam coordinates; the visible screen starts at (8, 16)
@@ -737,30 +778,38 @@
 #define kPipeStepPx 1
 #define kPipeTravelPx 16
 
-// enemies (games/mario/src/enemies.c). sprite family 0xc0.. per the milestone's tile-id contract,
-// and the whole 16-tile family is spent: a goomba and a shell are left-right symmetric, so their
-// frames cost one 8x16 pair each and the right half is the same tile drawn flipped; the koopa
-// faces, so its two walk frames carry both halves the way mario's frames do
+// enemies (games/mario/src/enemies.c). the 0xc0 family holds everything 16x16: the goomba's one
+// walk frame (its second is the same four tiles with the halves swapped and S_FLIPX - the smbd rip
+// draws walk1 as the exact mirror of walk0), the squashed pancake and the green shell, both
+// left-right symmetric and so one 8x16 pair each whose right half is the same tile flipped.
+//
+// the koopa is 16x24 and no longer fits there. it is bottom-aligned in a 16x32 box - eight tiles a
+// walk frame, drawn as two rows of two 8x16 sprites - and takes the run super mario's old bank-0
+// block gave back. 0xc8-0xcf, which held the koopa while it was 16x16, is free
 #define kTileEnemyFirst 0xC0U
-#define kTileGoombaWalk0 0xC0U
-#define kTileGoombaWalk1 0xC2U
+#define kTileGoombaWalk0 0xC0U // 0xc0-0xc3, the full 16x16 box
 #define kTileGoombaSquash 0xC4U
 #define kTileShell 0xC6U
-#define kTileKoopaWalk0 0xC8U
-#define kTileKoopaWalk1 0xCCU
-#define kEnemyTileCount 16U // 0xc0-0xcf
+#define kEnemyTileCount 8U    // 0xc0-0xc7
+#define kTileKoopaWalk0 0x60U // 0x60-0x67
+#define kTileKoopaWalk1 0x68U // 0x68-0x6f
+#define kKoopaTilesPerFrame 8U
+#define kKoopaTileCount 16U // 0x60-0x6f
+// how far above its own 16x16 hitbox a 16x24 enemy's 16x32 art box starts: its feet are at the
+// hitbox's bottom edge and the art is bottom-aligned in the box, so the box's top row is here
+#define kEnemyTallRisePx 16
 
 // --- m20's bowser run, 0x96-0xbb, in VRAM BANK 1 -----------------------------------------------
 // roster.json gives bowser 4x4 tiles, so his body is 32x32: two frames of sixteen tiles, drawn as
-// eight 8x16 sprites in two rows of four (see kSpriteBowserFirst). that is 512 bytes of art and
-// vram bank 0 has eight sprite ids left in the whole map, so it goes in bank 1 and the draw sets
-// S_BANK, exactly the way the paratroopa's wing and super mario's jump slab already do.
+// eight 8x16 sprites in two rows of four, out of the floor of the hazards pool. that is 512 bytes
+// of art and vram bank 0 has nothing like that left, so it goes in bank 1 and the draw sets
+// S_BANK, exactly the way the paratroopa and the whole of big mario already do.
 //
 // the run starts at 0x96 rather than 0x95 because an 8x16 sprite ignores the low bit of its tile
-// index; every id below has to be even. bank-1 sprite 0x80-0x8c is the hud font (a bg id past
-// 0x7f reads out of the same 0x8800.. bytes, see kTileHudDigitFirst), 0xc0-0xc7 the paratroopa
-// and 0xe0-0xeb the climb poses, so 0x96-0xbb collides with none of them. bank-1 sprite 0x95 is
-// still free
+// index; every id below has to be even. bank-1 sprite 0x00-0x51 is big mario, the paratroopa and
+// the red shell, 0x80-0x8c the hud font (a bg id past 0x7f reads out of the same 0x8800.. bytes,
+// see kTileHudDigitFirst), 0xc8-0xcf the toad, 0xde-0xdf the fireball's second spin frame and
+// 0xe0-0xe3 small mario's climb pose, so 0x96-0xbb collides with none of them
 #define kTileBowserFirst 0x96U
 #define kBowserTilesPerFrame 16U
 #define kBowserArtFrames 2U
@@ -773,14 +822,18 @@
 // (sixteen more tiles) was never worth the bank-1 ids
 #define kTileBowserJaw 0xBCU
 
-// the paratroopa's two frames. smb draws it as the koopa with a white wing, so each frame is the
-// koopa's own facing pair with the wing baked into the shell half - four tiles a frame, eight in
-// all, and the 0xc0 family in vram bank 0 has none left. they ride at the same ids in VRAM BANK 1
-// and are drawn with S_BANK in the sprite's own prop, the way super mario's jump slab already is.
-// the body is walk0's for both frames: a flyer's feet never shuffle, only the wing beats
-#define kTileParaFly0 0xC0U
-#define kTileParaFly1 0xC4U
-#define kParaTileCount 8U // bank 1, 0xc0-0xc7
+// the paratroopa's two frames, the smbd rip's red ones: the koopa's body under a wing that beats
+// across both columns of the box. each is the same 16x24-in-a-16x32 box the koopa walks in - eight
+// tiles - so the pair is sixteen, and vram bank 0 has nothing like that left. they ride in VRAM
+// BANK 1 at 0x40-0x4f, drawn with S_BANK in the sprite's own prop. bank-1 0xc0-0xc7, which held
+// the old four-tile pair, is free
+#define kTileParaFly0 0x40U
+#define kTileParaFly1 0x48U
+#define kParaTileCount 16U // bank 1, 0x40-0x4f
+// and the shell a stomped red paratroopa leaves, which is red where the koopa's is green: one
+// symmetric 8x16 pair of its own in bank 1, worn with kPalStar
+#define kTileShellRed 0x50U // bank 1, 0x50-0x51
+#define kShellRedTileCount 2U
 
 // --- the toad room, the beat past 1-4's axe (games/mario/src/toad.c) ---------------------------
 // smb1 does not end a castle on the axe: the bridge goes, bowser goes with it, and mario walks
@@ -792,8 +845,9 @@
 // and eight tiles, the lower pair of each column carrying his legs over eight transparent rows.
 // he wears the castle's kPalStar - the fire ramp, white/orange/dark red - which is the only sprite
 // slot with a white in it that a castle has anything else in, and nothing else is wearing it once
-// the flames are gone. bank-1 sprite 0xc8-0xcf: the paratroopa is at 0xc0-0xc7, the fireball's
-// spin frame at 0xde and the climb poses at 0xe0, so the run collides with none of them
+// the flames are gone. bank-1 sprite 0xc8-0xcf: big mario ends at 0x3f, the paratroopa at 0x4f,
+// the fireball's spin frame is at 0xde and small mario's climb pose at 0xe0, so the run collides
+// with none of them
 #define kTileToadFirst 0xC8U
 #define kToadTileCount 8U // bank 1, 0xc8-0xcf
 // tiles are column-major, so a column's four are its own top-to-bottom 8x16 pair and then the pair
@@ -886,10 +940,11 @@
 // of the hit on, and its pool slot frees the moment it leaves the level or the camera
 #define kEnemyFlipped 7U
 
-// the milestone doc's oam trap: five slots x 2 sprites plus mario's 2 is 12 on screen, but a
-// scanline crossing a row of 16x16 enemies pays 2 sprites for each of them, so four on one row is
-// 8 plus mario's 2 = 10 exactly, the hardware's per-line ceiling. the spawner refuses a fifth
-// same-row activation and leaves that enemy pending until a slot on the row frees
+// the milestone doc's oam trap: a scanline crossing a row of enemies pays 2 sprites for each of
+// them, so four on one row is 8 plus mario's 2 = 10 exactly, the hardware's per-line ceiling. the
+// spawner refuses a fifth same-row activation and leaves that enemy pending until a slot on the
+// row frees. m22's 16x32 enemies did not change that: a tall enemy's two sprite rows never share a
+// scanline, so it still costs 2 per line - only its OAM SLOT count doubled, see the oam map above
 #define kEnemySlots 5U
 #define kEnemyRowCap 4U
 
@@ -946,6 +1001,11 @@
 // change, though, so it retuned two frame-exact host tests that depended on the old off-centre
 // position: mario_star_invincibility and mario_autopilot_completes_1_2
 #define kPlantCenterOffsetPx (kEnemyWidthPx / 2)
+// and where its art sits: the plant is 16x23 bottom-aligned in a 16x32 box (rows 9..31), and the
+// box is placed so those lit rows start exactly on its hitbox - the 9 blank ones above them are the
+// stem the pipe is meant to hide. enemies_draw rises the box by the first and culls on the second
+#define kPlantArtRisePx 9
+#define kPlantArtRowsPx 23
 // the paratroopa's own band, all ours: the bible times no paratroopa at all. smb1's red one slides
 // up and down over about three blocks with no horizontal motion, so it is a constant one pixel a
 // frame between spawn_y - kParaBandPx and spawn_y + kParaBandPx - a 96-frame round trip. the slot
@@ -1022,7 +1082,7 @@
 // disassembly has a routine per lift type but the bible extracted no constant from any of them,
 // so 1 px a frame either way is ours, picked to read like smb's own unhurried decks
 #define kLiftSpeedPx 1
-// two decks fit in oam on their own (kSpriteLiftFirst); the third only exists on a level with no
+// two decks fit in the top of the hazards pool on their own; the third only exists on a level with
 // firebar and no bowser, whose slots it takes over
 #define kLiftSlotsShared 2U
 #define kLiftSlots 3U
@@ -1185,8 +1245,9 @@
 //
 // the ids are 0x80-0x94 in vram BANK 1. a bg id past 0x7f reads out of 0x8800.. (lcdc bit 4 is
 // clear), the same bytes bank 1's sprite ids 0x80.. name, so the run has to dodge the bank-1
-// sprite art too: the climb poses at kTileClimbSmall (0xe0..) and the fireball's spin frame at
-// kTileFireball. 0x80-0x94 collides with none of them and with no terrain family - a bg id is
+// sprite art too: bowser (0x96..), the toad (0xc8..), the fireball's second spin frame (0xde) and
+// small mario's climb grip. 0x80-0x94 collides with none of them and with no terrain family - a bg
+// id is
 // all a host probe sees, so a hud glyph sharing an id with a block face would count as that block
 #define kTileHudDigitFirst 0x80U // 0x80-0x89, '0' up
 #define kTileHudBlank 0x8AU      // the space glyph, which re-encodes to an all-sky cell

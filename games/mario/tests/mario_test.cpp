@@ -11,6 +11,28 @@
 #include "map_art_host.hpp"
 #include "title_art_host.hpp"
 
+// m22's generated character art, compiled straight in the same way: the vram pin tests below then
+// compare what the rom actually loaded against the very bytes it was built from, not a second
+// transcription of them. the bank pragma the generator emits means nothing to a host compiler
+namespace sprite_art {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunknown-pragmas"
+#include "gen/fireball.c"
+#include "gen/flower.c"
+#include "gen/goomba.c"
+#include "gen/goomba_squash.c"
+#include "gen/items.c"
+#include "gen/koopa_green.c"
+#include "gen/mario_big.c"
+#include "gen/mario_small.c"
+#include "gen/mario_small_climb.c"
+#include "gen/paratroopa_red.c"
+#include "gen/piranha.c"
+#include "gen/shell_green.c"
+#include "gen/shell_red.c"
+#pragma GCC diagnostic pop
+} // namespace sprite_art
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -451,13 +473,95 @@ constexpr uint8_t kMarioFrameCount = 6;
 constexpr uint8_t kMarioLastTile = kMarioFirstTile + kMarioFrameCount * kMarioTilesPerFrame - 1;
 constexpr int kFrameIdle = 0;
 constexpr int kFrameWalk0 = 1;
+constexpr int kFrameWalk1 = 2;
 constexpr int kFrameWalk2 = 3;
 constexpr int kFrameSkid = 4;
 constexpr int kFrameJump = 5;
+// m22's seventh small pose, at four ids of its own outside the pinned family (kTileMarioDeath)
+constexpr int kFrameDeath = 6;
+constexpr uint8_t kMarioDeathTile = 0x70;
+// and his flagpole grip, four more of them in vram bank 1 (mario.h's kTileClimbSmall): its own ids
+// rather than the idle pose's, so a tile number alone tells the two poses apart
+constexpr uint8_t kMarioClimbTile = 0x74;
+// the big set's own seventh and eighth: the fold, and the flagpole grip
+constexpr int kFrameCrouch = 6;
+constexpr int kFrameClimbBig = 7;
 constexpr int kPlayerBoxPx = 16;
-// the art keeps column 0 and column 15 of the 16px box transparent, so lit pixels sit one in
-constexpr int kMarioArtInset = 1;
 constexpr int kPlayScy = kScyMax;
+
+// m22 redrew every pose off the smbd sprite sheet, so no single "art inset" is true any more: the
+// stand is 12 px wide and sits 2 in, walk0 is the full 16 and sits flush, the skid is 13 and sits
+// one in with two spare on the right. so every pose carries its own lit bounding box inside its
+// box, and mario_box_left/top below turn a measured sprite back into the 16 px (or 16x32) box the
+// engine actually positions. the numbers are not transcribed: they are DECODED at start-up out of
+// the very generated arrays the rom is built from (games/mario/src/gen/mario_*.c, compiled in as
+// sprite_art above), so re-ripping the art cannot leave a hand-copied table behind
+struct ArtBounds {
+    int left;
+    int right;
+    int top;
+    int bottom;
+};
+// idle, walk0, walk1, walk2, skid, jump, death, then the climb grip as a seventh index
+constexpr int kSmallPoseCount = 8;
+constexpr int kPoseClimb = 7;
+
+// the lit bounds of one pose, out of a run of 2bpp tiles in png2tiles' sprites16 order: per 16 px
+// band of the pose, [left column top 8x8, left column bottom, right column top, right column
+// bottom]. so a 16x16 pose is one band of four tiles and a 16x32 pose two bands of eight. inside a
+// tile each row is two bytes - the two bitplanes - and a pixel is lit when either plane has its bit,
+// bit 7 being the leftmost
+ArtBounds art_bounds(const uint8_t* tiles, int bands) {
+    ArtBounds a{16, -1, 16 * bands, -1};
+    for (int band = 0; band < bands; ++band) {
+        for (int column = 0; column < 2; ++column) {
+            for (int half = 0; half < 2; ++half) {
+                const uint8_t* tile = tiles + (band * 4 + column * 2 + half) * 16;
+                for (int row = 0; row < 8; ++row) {
+                    const int lit = tile[row * 2] | tile[row * 2 + 1];
+                    if (lit == 0) {
+                        continue;
+                    }
+                    const int y = band * 16 + half * 8 + row;
+                    a.top = std::min(a.top, y);
+                    a.bottom = std::max(a.bottom, y);
+                    for (int bit = 0; bit < 8; ++bit) {
+                        if ((lit & (0x80 >> bit)) == 0) {
+                            continue;
+                        }
+                        a.left = std::min(a.left, column * 8 + bit);
+                        a.right = std::max(a.right, column * 8 + bit);
+                    }
+                }
+            }
+        }
+    }
+    return a;
+}
+
+// idle, walk0, walk1, walk2, skid, jump, death out of mario_small.png's seven stacked 16x16 poses,
+// and the climb grip - its own png, and the seventh index of this table - after them
+std::array<ArtBounds, kSmallPoseCount> decode_small_art() {
+    std::array<ArtBounds, kSmallPoseCount> out{};
+    for (int pose = 0; pose < kPoseClimb; ++pose) {
+        out[static_cast<size_t>(pose)] = art_bounds(sprite_art::kMarioSmallTiles + pose * 4 * 16, 1);
+    }
+    out[kPoseClimb] = art_bounds(sprite_art::kMarioSmallClimbTiles, 1);
+    return out;
+}
+
+// idle, walk0, walk1, walk2, skid, jump, crouch, climb - the big set's own eight 16x32 poses, in the
+// order games/mario/src/gen/mario_big.c stores them
+std::array<ArtBounds, kSmallPoseCount> decode_big_art() {
+    std::array<ArtBounds, kSmallPoseCount> out{};
+    for (int pose = 0; pose < kSmallPoseCount; ++pose) {
+        out[static_cast<size_t>(pose)] = art_bounds(sprite_art::kMarioBigTiles + pose * 8 * 16, 2);
+    }
+    return out;
+}
+
+const std::array<ArtBounds, kSmallPoseCount> kSmallArt = decode_small_art();
+const std::array<ArtBounds, kSmallPoseCount> kBigArt = decode_big_art();
 
 // the file select's own geometry, mirrored from games/mario/src/file_art.h: the three pipes mario
 // stands over, his standing top edge, and how long the arc between two of them runs
@@ -469,10 +573,13 @@ constexpr int kFileSlots = 3;
 
 // --- sub-milestone 7: the powerup chain, mirrored from games/mario/src/mario.h ------------------
 
-// super mario's own tile family, outside the pinned 0xe0 block: 24 slots cannot hold a 16x32 set,
-// so it takes the free run between the font's last glyph and the terrain families
-constexpr uint8_t kSuperFirstTile = 0x60;
-constexpr uint8_t kSuperLastTile = 0x7F;
+// super mario's own tile family. m22's exact art gives every pose its own upper half, so the eight
+// 16x32 poses are 64 tiles and they live in CGB VRAM BANK 1 at 0x00-0x3f. a framebuffer tile id
+// carries the tile number and a sprite bit but not the bank, and no bank-0 sprite in the game uses
+// an id below 0x60, so the range still names him unambiguously
+constexpr uint8_t kSuperFirstTile = 0x00;
+constexpr uint8_t kSuperLastTile = 0x3F;
+constexpr int kSuperTilesPerPose = 8;
 constexpr uint8_t kTileFlowerLo = 0x80;
 constexpr uint8_t kTileFlowerHi = 0x83;
 [[maybe_unused]] constexpr uint8_t kTileStarLo = 0xD4;
@@ -491,10 +598,13 @@ constexpr uint8_t kContentNothing = 0;
 constexpr uint8_t kBlockListBrick = 1;
 // the rgb555 the cgb palettes above put on mario's body: his own red, fire's white, the star's
 // yellow. no other sprite family shares them, so a pixel of one on his tiles names his state
-// m19's art pass retuned mario's own red; nothing else on screen is painted this exact value
-constexpr int kColorMarioRed = 26 | (2 << 5) | (0 << 10);
-constexpr int kColorFireWhite = 31 | (31 << 5) | (31 << 10);
-constexpr int kColorStarYellow = 31 | (26 << 5) | (4 << 10);
+// m22 read all three sets off the smbd sheets (assets_load_sprite_palettes/item_palettes), so what
+// names his state is whichever colour ONE of the three puts on him and the others do not: kPalMario
+// alone has the #736900 dark his hair and shoes are drawn in, kPalFire alone the #ffe3b5 cream that
+// replaces the red, and a star's kPalStar alone turns his skin index white
+constexpr int kColorMarioDark = 14 | (13 << 5) | (0 << 10);
+constexpr int kColorFireCream = 31 | (28 << 5) | (22 << 10);
+constexpr int kColorStarWhite = 31 | (31 << 5) | (31 << 10);
 
 // mario's world y while standing on the bible's start cell, in screen px (scy is pinned in play)
 constexpr int kStandTop = static_cast<int>(LEVEL_1_1_START_ROW) * kBlockPx - kPlayerBoxPx - kPlayScy;
@@ -504,25 +614,61 @@ struct Mario {
     int right = 0;
     int top = 0;
     int bottom = 0;
+    // the small pose index (kFrame*), or kPoseClimb for the grip. -1 when only big tiles were seen
     int frame = -1;
+    // the big pose index, or -1 when he is small
+    int pose = -1;
     bool big = false;
+    // whichever half of the pose drew at m.left told us which way he is facing: an 8x16 pair's own
+    // two tiles are base+0/+1 and the other column's are base+2/+3, so bit 1 of the offset is the
+    // whole answer and player_draw's own facing swap is what sets it
+    bool facing_left = false;
     bool found = false;
 
     int height() const {
         return bottom - top + 1;
     }
+    // the pose's lit bounds inside its own box, which is what left/right/top/bottom measure
+    ArtBounds art() const {
+        const int i = big ? (pose < 0 ? 0 : pose) : (frame < 0 ? 0 : frame);
+        return big ? kBigArt[i] : kSmallArt[i];
+    }
+    // the 16 px box the engine positions, recovered from the lit pixels. flipping mirrors the pose
+    // inside its own box, so the left inset becomes the right one
+    int box_left() const {
+        const ArtBounds a = art();
+        return left - (facing_left ? (kPlayerBoxPx - 1 - a.right) : a.left);
+    }
+    int box_right() const {
+        return box_left() + kPlayerBoxPx - 1;
+    }
+    int box_top() const {
+        return top - art().top;
+    }
+    int box_bottom() const {
+        return box_top() + (big ? 2 * kPlayerBoxPx : kPlayerBoxPx) - 1;
+    }
+    // the fold: pose 6 of the big set, whose 22-tall art is bottom-aligned in the same 16x32 box
+    bool crouched() const {
+        return big && pose == kFrameCrouch;
+    }
 };
+// what height() reads while he is folded: kBigArt[kFrameCrouch] runs rows 10..31 of the box
+constexpr int kCrouchArtPx = 22;
 
 Mario mario_at(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     Mario m;
+    uint8_t left_tile = 0;
     for (size_t i = 0; i < ids.size(); ++i) {
         if ((ids[i] & 0x100u) == 0) {
             continue;
         }
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        const bool small_tile = tile >= kMarioFirstTile && tile <= kMarioLastTile;
-        const bool big_tile = tile >= kSuperFirstTile && tile <= kSuperLastTile;
+        const bool small_tile = (tile >= kMarioFirstTile && tile <= kMarioLastTile) ||
+                                (tile >= kMarioDeathTile && tile < kMarioDeathTile + 4) ||
+                                (tile >= kMarioClimbTile && tile < kMarioClimbTile + 4);
+        const bool big_tile = tile <= kSuperLastTile;
         if (!small_tile && !big_tile) {
             continue;
         }
@@ -530,6 +676,7 @@ Mario mario_at(const gb::Gameboy& gameboy) {
         const int y = static_cast<int>(i / gb::kLcdWidth);
         if (!m.found || x < m.left) {
             m.left = x;
+            left_tile = tile;
         }
         if (!m.found || x > m.right) {
             m.right = x;
@@ -540,14 +687,37 @@ Mario mario_at(const gb::Gameboy& gameboy) {
         if (!m.found || y > m.bottom) {
             m.bottom = y;
         }
-        // the frame index only means anything for the small set; super shares one upper slab
         if (small_tile) {
-            m.frame = (tile - kMarioFirstTile) / kMarioTilesPerFrame;
+            // the climb grip shares small mario's idle id in vram bank 1, so a pose read off a tile
+            // number alone cannot tell the two apart. it is reported as the idle pose, and the one
+            // test that watches the climb asks for kPoseClimb explicitly (see mario_climbs_as)
+            m.frame = tile >= kMarioClimbTile && tile < kMarioClimbTile + 4
+                          ? kPoseClimb
+                          : (tile >= kMarioDeathTile && tile < kMarioDeathTile + 4
+                                 ? kFrameDeath
+                                 : (tile - kMarioFirstTile) / kMarioTilesPerFrame);
+        }
+        if (big_tile) {
+            m.pose = tile / kSuperTilesPerPose;
         }
         m.big = m.big || big_tile;
         m.found = true;
     }
+    if (m.found) {
+        const int base =
+            m.big ? m.pose * kSuperTilesPerPose
+                  : (m.frame == kFrameDeath
+                         ? kMarioDeathTile
+                         : (m.frame == kPoseClimb ? kMarioClimbTile
+                                                  : kMarioFirstTile + m.frame * kMarioTilesPerFrame));
+        m.facing_left = ((static_cast<int>(left_tile) - base) & 0x2) != 0;
+    }
     return m;
+}
+
+// the 16 px box's left edge, which every "where is he" assertion in this file works in
+int mario_box_left(const gb::Gameboy& gameboy) {
+    return mario_at(gameboy).box_left();
 }
 
 // which of the file select's three pipes mario is standing over, or -1 while he is mid-hop between
@@ -578,7 +748,8 @@ bool mario_wears(const gb::Gameboy& gameboy, int rgb555) {
         }
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
         const bool mine = (tile >= kMarioFirstTile && tile <= kMarioLastTile) ||
-                          (tile >= kSuperFirstTile && tile <= kSuperLastTile);
+                          (tile >= kMarioDeathTile && tile < kMarioDeathTile + 4) ||
+                          (tile >= kMarioClimbTile && tile < kMarioClimbTile + 4) || (tile <= kSuperLastTile);
         if (mine && static_cast<int>(colors[i]) == rgb555) {
             return true;
         }
@@ -617,15 +788,15 @@ struct WorldTracker {
 
     void sync(const gb::Gameboy& gameboy, const Mario& m) {
         phase = ground_phase(gameboy);
-        screen = m.left;
+        screen = m.box_left();
     }
 
     int step(const gb::Gameboy& gameboy, const Mario& m) {
         const int next = ground_phase(gameboy);
         const int cam = ((phase - next) % kGroundPhasePeriod + kGroundPhasePeriod) % kGroundPhasePeriod;
-        const int moved = cam + (m.left - screen);
+        const int moved = cam + (m.box_left() - screen);
         phase = next;
-        screen = m.left;
+        screen = m.box_left();
         return moved;
     }
 };
@@ -687,7 +858,7 @@ std::vector<int> jump_tops(gb::Gameboy& gameboy, int hold_frames, int frames) {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
         REQUIRE(m.found);
-        tops.push_back(m.top);
+        tops.push_back(m.box_top());
     }
     gameboy.set_button(gb::Button::A, false);
     return tops;
@@ -720,9 +891,9 @@ int travel(gb::Gameboy& gameboy, gb::Button dir, bool run_button, int frames) {
 // the leftmost screen x carrying a bg pixel of the given tile family on mario's own rows, or -1
 int face_of(const gb::Gameboy& gameboy, const Mario& m, uint8_t lo, uint8_t hi) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    const int bottom = std::min(m.top + kPlayerBoxPx, static_cast<int>(gb::kLcdHeight));
+    const int bottom = std::min(m.box_top() + kPlayerBoxPx, static_cast<int>(gb::kLcdHeight));
     for (int x = 0; x < static_cast<int>(gb::kLcdWidth); ++x) {
-        for (int y = std::max(m.top, 0); y < bottom; ++y) {
+        for (int y = std::max(m.box_top(), 0); y < bottom; ++y) {
             const size_t i = static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x);
             if ((ids[i] & 0x100u) != 0) {
                 continue;
@@ -1054,13 +1225,14 @@ constexpr int8_t kSpinX[kFirebarSteps] = {8,  8,  7,  6,  6,  4,  3,  2,  0, -2,
                                           -8, -8, -7, -6, -6, -4, -3, -2, 0, 2,  3,  4,  6,  6,  7,  8};
 constexpr int8_t kSpinY[kFirebarSteps] = {0, 2,  3,  4,  6,  6,  7,  8,  8,  8,  7,  6,  6,  4,  3,  2,
                                           0, -2, -3, -4, -6, -6, -7, -8, -8, -8, -7, -6, -6, -4, -3, -2};
-// the m8a sprite pairs at 0x84 and the two bg tiles the flag family had left
-[[maybe_unused]] constexpr uint8_t kTilePiranhaLo = 0x84;
-[[maybe_unused]] constexpr uint8_t kTilePiranhaHi = 0x85;
-constexpr uint8_t kTileFlameLo = 0x86;
-constexpr uint8_t kTileFlameHi = 0x87;
-[[maybe_unused]] constexpr uint8_t kTileLiftLo = 0x88;
-[[maybe_unused]] constexpr uint8_t kTileLiftHi = 0x89;
+// the m8a sprite runs and the two bg tiles the flag family had left. m22 made the piranha a 16x32
+// box - four tiles, still only its left column stored - and pushed the flame and the deck up by two
+constexpr uint8_t kTilePiranhaLo = 0x84;
+constexpr uint8_t kTilePiranhaHi = 0x87;
+constexpr uint8_t kTileFlameLo = 0x88;
+constexpr uint8_t kTileFlameHi = 0x89;
+[[maybe_unused]] constexpr uint8_t kTileLiftLo = 0x8A;
+[[maybe_unused]] constexpr uint8_t kTileLiftHi = 0x8B;
 // bowser's 32x32 body and his breath, in vram BANK 1 at mario.h's kTileBowserFirst. a
 // framebuffer tile id carries no bank, so a sprite_box over the run names him either way
 constexpr uint8_t kTileBowserLo = 0x96;
@@ -1074,7 +1246,7 @@ constexpr uint8_t kTileBridgeHi = 0x16;
 [[maybe_unused]] constexpr uint8_t kTileCastleBrickLower = 0x12;
 [[maybe_unused]] constexpr uint8_t kTileCastleBrickUpper = 0x17;
 // hazards.c's lift deck plank, mirrored from mario.h's kTileLiftDeck
-constexpr uint8_t kTileLiftDeck = 0x88;
+constexpr uint8_t kTileLiftDeck = 0x8A;
 
 constexpr uint8_t kHazardNone = 0;
 constexpr uint8_t kHazardDamage = 1;
@@ -1114,17 +1286,25 @@ constexpr uint8_t kEnemyHitDamage = 1;
 constexpr uint8_t kEnemyHitStomp = 2;
 constexpr uint8_t kEnemyHitShellStomp = 3;
 
-// the pinned 0xc0 sprite family, split the way games/mario/src/assets.c lays it out
+// the pinned 0xc0 sprite family, split the way games/mario/src/assets_data.c lays it out. m22 made
+// the koopa 16x24 in a 16x32 box, which is eight tiles a walk frame and no longer fits there: it
+// took the 0x60 run big mario gave back when he moved to vram bank 1. the goomba's walk1 is walk0
+// drawn mirrored, so the family is exactly full at 0xc0-0xc7 with room to spare at 0xc8
 constexpr uint8_t kTileGoombaWalkLo = 0xC0;
 constexpr uint8_t kTileGoombaWalkHi = 0xC3;
 constexpr uint8_t kTileGoombaSquashLo = 0xC4;
 constexpr uint8_t kTileGoombaSquashHi = 0xC5;
 constexpr uint8_t kTileShellLo = 0xC6;
 constexpr uint8_t kTileShellHi = 0xC7;
-constexpr uint8_t kTileKoopaLo = 0xC8;
-constexpr uint8_t kTileKoopaHi = 0xCF;
+constexpr uint8_t kTileKoopaLo = 0x60;
+constexpr uint8_t kTileKoopaHi = 0x6F;
+// the red paratroopa and the red shell a stomped one leaves, both in vram bank 1
+constexpr uint8_t kTileParaLo = 0x40;
+constexpr uint8_t kTileParaHi = 0x4F;
+[[maybe_unused]] constexpr uint8_t kTileShellRedLo = 0x50;
+[[maybe_unused]] constexpr uint8_t kTileShellRedHi = 0x51;
 constexpr uint8_t kTileEnemyLo = kTileGoombaWalkLo;
-constexpr uint8_t kTileEnemyHi = kTileKoopaHi;
+constexpr uint8_t kTileEnemyHi = kTileShellHi;
 // m19's brick fragment, in what used to be the free run past the hazard pairs. the fireball's puff
 // shares the run at 0x8e-0x91; nothing below scans for it (see kTileDebris in mario.h)
 constexpr uint8_t kTileDebrisLo = 0x8C;
@@ -3860,17 +4040,66 @@ SpriteBox sprite_box(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
     return box;
 }
 
-// how far below its own topmost lit row the WIDEST lit row of the sprites in [lo, hi] sits, or -1
-// when none is drawn. a goomba tapers to a two-pixel scalp and runs full width across its body and
-// feet, so this offset lands in the bottom half of a live one and in the top half of an S_FLIPY
-// corpse - and it is the only witness available, since framebuffer_tiles carries tile ids and not
-// the oam attribute bits (the same limit kTileMapWaterTop's comment in assets.h notes for the bg)
-int widest_row_offset(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+// is what the sprites in [lo, hi] paint left-right symmetric about their own lit box? this is the
+// only witness there is for the S_FLIPX the right half of a symmetric frame has to carry:
+// framebuffer_tiles reports the same tile id whether or not the hardware mirrored the sprite, so a
+// right half drawn unflipped paints the LEFT half's pixels a second time - a copy of them, not a
+// mirror of them - and only the colours laid out across the box show it. false when nothing of the
+// family is drawn, or when its box is too narrow to hold both halves
+bool mirrors_left_to_right(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    // the colour the family painted at every pixel, or -1 where it painted nothing (a transparent
+    // pixel of its own, or one another sprite is in front of)
+    std::vector<int> paint(ids.size(), -1);
+    int left = static_cast<int>(gb::kLcdWidth);
+    int right = -1;
+    int top = static_cast<int>(gb::kLcdHeight);
+    int bottom = -1;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile < lo || tile > hi) {
+            continue;
+        }
+        const int x = static_cast<int>(i % gb::kLcdWidth);
+        const int y = static_cast<int>(i / gb::kLcdWidth);
+        paint[i] = static_cast<int>(colors[i]);
+        left = std::min(left, x);
+        right = std::max(right, x);
+        top = std::min(top, y);
+        bottom = std::max(bottom, y);
+    }
+    if (right - left < 2 || bottom < top) {
+        return false;
+    }
+    for (int y = top; y <= bottom; ++y) {
+        for (int x = left; x <= right; ++x) {
+            const size_t here = static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x);
+            const size_t there =
+                static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(left + right - x);
+            if (paint[here] != paint[there]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// the lit width of the topmost row of the sprites in [lo, hi] minus that of their bottommost, or 0
+// when none is drawn. m22's goomba is the smbd rip's own: it tapers to a four-pixel scalp and
+// stands on a pair of eight-pixel feet, so this is negative on its feet and positive upside down.
+// (the widest scanline no longer tells them apart - the rip's widest rows sit dead centre, 7, 8 and
+// 9 of the sixteen, so flipping barely moves them.) it is the only witness available, since
+// framebuffer_tiles carries tile ids and not the oam attribute bits - the same limit
+// kTileMapWaterTop's comment in assets.h notes for the bg
+int taper(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     std::array<int, gb::kLcdHeight> width{};
     int first = -1;
-    int best = 0;
-    int best_row = -1;
+    int last = -1;
     for (size_t i = 0; i < ids.size(); ++i) {
         if ((ids[i] & 0x100u) == 0) {
             continue;
@@ -3884,17 +4113,12 @@ int widest_row_offset(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
         if (first < 0) {
             first = y;
         }
+        last = y;
     }
     if (first < 0) {
-        return -1;
+        return 0;
     }
-    for (int y = first; y < static_cast<int>(gb::kLcdHeight); ++y) {
-        if (width[static_cast<size_t>(y)] > best) {
-            best = width[static_cast<size_t>(y)];
-            best_row = y;
-        }
-    }
-    return best_row - first;
+    return width[static_cast<size_t>(first)] - width[static_cast<size_t>(last)];
 }
 
 // the rgb555 of the first visible pixel belonging to a bg tile in [lo, hi], or -1
@@ -4486,8 +4710,8 @@ bool grow_on_the_pyramid(gb::Gameboy& gameboy, PlayerSim& sim) {
 bool at_start_cell(const gb::Gameboy& gameboy) {
     const Mario m = mario_at(gameboy);
 
-    return m.found && !m.big && m.top == kStandTop &&
-           m.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset;
+    return m.found && !m.big && m.box_top() == kStandTop &&
+           m.box_left() == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx;
 }
 
 // how many fireballs are on screen: their lit pixels anywhere, grouped into clusters, one per ball
@@ -4543,7 +4767,7 @@ bool become_fire(gb::Gameboy& gameboy, PlayerSim& sim) {
     for (int i = 0; i < 4; ++i) {
         sim.step(0);
     }
-    return mario_wears(gameboy, kColorFireWhite);
+    return mario_wears(gameboy, kColorFireCream);
 }
 
 // the route planner runs, and a running mario jumps clean over the first goomba he meets. so it
@@ -4972,8 +5196,8 @@ TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
     const Mario after = mario_at(play);
     REQUIRE(after.found);
     // he moved, and he is still resting on the same ground row rather than on a hill
-    REQUIRE(after.left > before.left);
-    REQUIRE(after.top == before.top);
+    REQUIRE(after.box_left() > before.box_left());
+    REQUIRE(after.box_top() == before.box_top());
 }
 
 TEST_CASE("mario_terrain_streams_without_garbage") {
@@ -5072,9 +5296,9 @@ TEST_CASE("mario_spawns_standing_on_the_bible_start_cell") {
 
     const Mario m = mario_at(gameboy);
     REQUIRE(m.found);
-    REQUIRE(m.top == kStandTop);
-    REQUIRE(m.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset);
-    REQUIRE(m.right - m.left == kPlayerBoxPx - 1 - 2 * kMarioArtInset);
+    REQUIRE(m.box_top() == kStandTop);
+    REQUIRE(m.box_left() == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx);
+    REQUIRE(m.box_right() - m.box_left() == kPlayerBoxPx - 1);
     REQUIRE(m.frame == kFrameIdle);
 }
 
@@ -5208,20 +5432,23 @@ TEST_CASE("mario_wall_stops_motion") {
     travel(gameboy, gb::Button::Right, true, 200);
     const Mario m = mario_at(gameboy);
     REQUIRE(m.found);
-    REQUIRE(m.top == kStandTop);
+    REQUIRE(m.box_top() == kStandTop);
 
-    // the hitbox stops 2 px inside the sprite, and the art starts 1 px inside that, so the shoulder
-    // overhangs the pipe by exactly one pixel column: mario's last lit column is the pipe's first
+    // the hitbox stops 2 px inside the sprite box on each side, so the box overhangs the pipe by
+    // exactly those two columns: the pipe's first column is the second-to-last of his box. the art
+    // itself is what m.right measures and every pose fills a different part of the box, which is
+    // why this is asserted against box_right and not against a lit column (see kSmallArt)
     const int face = pipe_face(gameboy, m);
     REQUIRE(face >= 0);
-    REQUIRE(m.right == face);
+    REQUIRE(m.box_right() == face + 1);
 
     // nothing moves while the wall is held against
     const int moved = travel(gameboy, gb::Button::Right, true, 60);
     REQUIRE(moved == 0);
     const Mario after = mario_at(gameboy);
-    REQUIRE(after.top == kStandTop);
+    REQUIRE(after.box_top() == kStandTop);
     REQUIRE(pipe_face(gameboy, after) == face);
+    REQUIRE(after.box_right() == face + 1);
 }
 
 TEST_CASE("mario_landing_snaps_without_sinking") {
@@ -5238,7 +5465,7 @@ TEST_CASE("mario_landing_snaps_without_sinking") {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
         REQUIRE(m.found);
-        REQUIRE(m.top <= kStandTop);
+        REQUIRE(m.box_top() <= kStandTop);
         if (m.frame == kFrameJump) {
             ++hops;
         }
@@ -5355,7 +5582,7 @@ int play_scx(const gb::Gameboy& gameboy) {
 // this is the only reading that measures a crouched mario, whose pose the twin does not model
 int world_travel(gb::Gameboy& gameboy, int frames) {
     int prev = play_scx(gameboy);
-    const int from = mario_at(gameboy).left;
+    const int from = mario_at(gameboy).box_left();
     int moved = 0;
 
     for (int i = 0; i < frames; ++i) {
@@ -5364,7 +5591,7 @@ int world_travel(gb::Gameboy& gameboy, int frames) {
         moved += ((scx - prev + 128) & 0xFF) - 128;
         prev = scx;
     }
-    return moved + mario_at(gameboy).left - from;
+    return moved + mario_at(gameboy).box_left() - from;
 }
 
 // runs frames until the view stops moving, and reports how many px it moved in the largest single
@@ -5401,7 +5628,7 @@ TEST_CASE("mario_camera_follows_and_scrolls_back") {
     enter_play(gameboy);
 
     // at the level start the camera is pinned against the left end, so mario sits at his world x
-    REQUIRE(mario_at(gameboy).left == kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == 0);
 
     // running right hands him to the camera, which then holds him at the follow anchor. the route
     // also flattens the goombas it passes, so the walk back has empty ground behind it
@@ -5409,7 +5636,7 @@ TEST_CASE("mario_camera_follows_and_scrolls_back") {
     REQUIRE(out.reached);
     replay(gameboy, out.script, 0, out.script.size());
     run(gameboy, 30);
-    REQUIRE(mario_at(gameboy).left == kCamFollowX + kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == kCamFollowX);
 
     // walking back is the smbd difference: the camera retreats with him instead of locking, which
     // shows up as the ground sliding under a mario whose screen x never moves
@@ -5421,7 +5648,7 @@ TEST_CASE("mario_camera_follows_and_scrolls_back") {
         const Mario m = mario_at(gameboy);
         REQUIRE(m.found);
         const int next = ground_phase(gameboy);
-        if (m.left == kCamFollowX + kMarioArtInset && next != phase) {
+        if (m.box_left() == kCamFollowX && next != phase) {
             ++anchored_scrolls;
         }
         phase = next;
@@ -5433,10 +5660,10 @@ TEST_CASE("mario_camera_follows_and_scrolls_back") {
     // and the retreat stops dead at the level start: mario ends against the opening wall with the
     // camera clamped back at 0, and leaning on left longer changes neither
     run(gameboy, 60);
-    REQUIRE(mario_at(gameboy).left == kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == 0);
     press(gameboy, gb::Button::Left, 120);
     run(gameboy, 10);
-    REQUIRE(mario_at(gameboy).left == kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == 0);
 }
 
 TEST_CASE("mario_camera_manual_pan") {
@@ -5613,8 +5840,8 @@ TEST_CASE("mario_camera_ignores_a_low_platform") {
     // he is a whole pipe higher up the screen and the view has not moved a pixel
     const Mario capped = mario_at(gameboy);
     REQUIRE(capped.found);
-    REQUIRE(capped.top == static_cast<int>(pipe_top_row) * kBlockPx - kPlayerBoxPx - kPlayScy);
-    REQUIRE(capped.top < kStandTop);
+    REQUIRE(capped.box_top() == static_cast<int>(pipe_top_row) * kBlockPx - kPlayerBoxPx - kPlayScy);
+    REQUIRE(capped.box_top() < kStandTop);
     REQUIRE(play_scy(gameboy) == kPlayScy);
 }
 
@@ -5690,29 +5917,29 @@ TEST_CASE("mario_camera_select_look_ahead") {
     REQUIRE(out.reached);
     replay(gameboy, out.script, 0, out.script.size());
     run(gameboy, 30);
-    REQUIRE(mario_at(gameboy).left == kCamFollowX + kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == kCamFollowX);
 
     // holding select slides the anchor forward 2 px a frame without moving mario himself
     gameboy.set_button(gb::Button::Select, true);
     run(gameboy, 5);
-    const int part_way = mario_at(gameboy).left;
-    REQUIRE(part_way < kCamFollowX + kMarioArtInset);
-    REQUIRE(part_way > kCamLookAheadX + kMarioArtInset);
+    const int part_way = mario_at(gameboy).box_left();
+    REQUIRE(part_way < kCamFollowX);
+    REQUIRE(part_way > kCamLookAheadX);
     run(gameboy, 40);
-    REQUIRE(mario_at(gameboy).left == kCamLookAheadX + kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == kCamLookAheadX);
 
     // and holding it longer cannot push the anchor past the look-ahead spot
     run(gameboy, 60);
-    REQUIRE(mario_at(gameboy).left == kCamLookAheadX + kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == kCamLookAheadX);
 
     // releasing slides it back the same way
     gameboy.set_button(gb::Button::Select, false);
     run(gameboy, 5);
-    const int coming_back = mario_at(gameboy).left;
-    REQUIRE(coming_back > kCamLookAheadX + kMarioArtInset);
-    REQUIRE(coming_back < kCamFollowX + kMarioArtInset);
+    const int coming_back = mario_at(gameboy).box_left();
+    REQUIRE(coming_back > kCamLookAheadX);
+    REQUIRE(coming_back < kCamFollowX);
     run(gameboy, 40);
-    REQUIRE(mario_at(gameboy).left == kCamFollowX + kMarioArtInset);
+    REQUIRE(mario_box_left(gameboy) == kCamFollowX);
 }
 
 TEST_CASE("mario_terrain_streams_backward_without_garbage") {
@@ -5776,8 +6003,8 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
         }
         REQUIRE(play_scy(gameboy) == kPlayScy);
         // he must never come to rest on the pit's far lip on the way down
-        REQUIRE(!(m.top == kStandTop && last_top > kStandTop));
-        last_top = m.top;
+        REQUIRE(!(m.box_top() == kStandTop && last_top > kStandTop));
+        last_top = m.box_top();
     }
     gameboy.set_button(gb::Button::Right, false);
     REQUIRE(fell);
@@ -5786,8 +6013,8 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
     run(gameboy, 90);
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
-    REQUIRE(back.top == kStandTop);
-    REQUIRE(back.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset);
+    REQUIRE(back.box_top() == kStandTop);
+    REQUIRE(back.box_left() == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx);
 }
 
 // the traversal milestone's heart: a route the host planner searched out of the compiled level and
@@ -5829,7 +6056,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     for (size_t i = 0; i < route.script.size(); ++i) {
         replay(gameboy, route.script, i, i + 1);
         const Mario m = mario_at(gameboy);
-        saw.emplace_back(m.found ? m.left - kMarioArtInset : -1000, m.found ? m.top : -1000);
+        saw.emplace_back(m.found ? m.box_left() : -1000, m.found ? m.box_top() : -1000);
     }
 
     // the rom scans a frame out one or two frames after it computes it (see jump_tops); whichever
@@ -5859,7 +6086,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     // opening frames are the rom's own scanout lag showing the last pre-contact frame
     const Mario grabbed = mario_at(gameboy);
     REQUIRE(grabbed.found);
-    int prev_top = grabbed.top;
+    int prev_top = grabbed.box_top();
     int descents = 0;
     int held_pole = 0;
     bool feet_on_base = false;
@@ -5876,7 +6103,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
             // one column of transparent art - and the shaft's lit column, which is what pole_face
             // finds, is kFlagShaftPx into that block. he only leaves that alignment on the frame
             // the slide ends and he flips across to the pole's far side
-            if (pole < 0 || pole - m.left != kFlagShaftPx + kClearPoleOffsetPx - kMarioArtInset) {
+            if (pole < 0 || pole - m.box_left() != kFlagShaftPx + kClearPoleOffsetPx) {
                 break;
             }
             ++held_pole;
@@ -5884,14 +6111,14 @@ TEST_CASE("mario_autopilot_completes_1_1") {
             // on the grass a row below it: the block's own cell is the one his feet come alongside,
             // read off the shaft he is holding rather than off the camera, which by then has the
             // ground row off the bottom of the screen
-            if (tile_in_kind_family(bg_tile_at(gameboy, pole, m.top + kPlayerBoxPx + 4), kBlockHard)) {
+            if (tile_in_kind_family(bg_tile_at(gameboy, pole, m.box_top() + kPlayerBoxPx + 4), kBlockHard)) {
                 feet_on_base = true;
             }
         }
-        if (m.top > prev_top) {
+        if (m.box_top() > prev_top) {
             ++descents;
         }
-        prev_top = m.top;
+        prev_top = m.box_top();
     }
     // the slide runs at a constant kClearSlidePx a frame from wherever contact happened down to the
     // pole's base row, so its length is arithmetic rather than a guess; the hop breaks the pole
@@ -5938,7 +6165,7 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
     const Mario grabbed = mario_at(gameboy);
     REQUIRE(grabbed.found);
     REQUIRE(cloth0.first >= 0);
-    REQUIRE(cloth0.second < grabbed.top);
+    REQUIRE(cloth0.second < grabbed.box_top());
 
     // then it comes down with him. the sequence is watched to the frame he steps out of sight, and
     // what is kept is the closest the pennant's bottom ever came to his feet and the bg cell he was
@@ -5954,7 +6181,7 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
             gone_at = i;
             break;
         }
-        last_left = m.left;
+        last_left = m.box_left();
         last_bottom = m.bottom;
         const std::pair<int, int> cloth = cloth_rows(gameboy);
         if (cloth.first >= 0) {
@@ -6155,8 +6382,8 @@ TEST_CASE("mario_hidden_block_materializes") {
         spent = spent || look(gameboy).spent_face;
         oneup = oneup || sprite_box(gameboy, kTileOneupLo, kTileOneupHi).found;
         const Mario m = mario_at(gameboy);
-        if (m.found && (i == 0 || m.top < peak)) {
-            peak = m.top;
+        if (m.found && (i == 0 || m.box_top() < peak)) {
+            peak = m.box_top();
         }
     }
     REQUIRE(spent);
@@ -6171,8 +6398,8 @@ TEST_CASE("mario_hidden_block_materializes") {
         gameboy.set_button(gb::Button::A, i < kBumpHoldFrames);
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
-        if (m.found && (i == 0 || m.top < again)) {
-            again = m.top;
+        if (m.found && (i == 0 || m.box_top() < again)) {
+            again = m.box_top();
         }
     }
     gameboy.set_button(gb::Button::A, false);
@@ -6276,8 +6503,8 @@ bool on_pipe_cap(const gb::Gameboy& gameboy) {
     }
     // the cell directly under his feet, not the topmost cap on screen: the bonus room stands a tall
     // pipe shaft beside its short exit pipe, and that shaft's own cap is always higher up the picture
-    const int x = m.left + kPlayerBoxPx / 2;
-    const int y = m.top + kPlayerBoxPx;
+    const int x = m.box_left() + kPlayerBoxPx / 2;
+    const int y = m.box_top() + kPlayerBoxPx;
     if (x < 0 || x >= static_cast<int>(gb::kLcdWidth) || y < 0 || y >= static_cast<int>(gb::kLcdHeight)) {
         return false;
     }
@@ -6317,7 +6544,7 @@ bool cross_room_to_exit(gb::Gameboy& gameboy, int budget) {
         // the view scrolls while he covers ground, and his own box starts moving once the camera
         // hits the room's right edge: either one changing means the walk is still getting somewhere
         const Mario m = mario_at(gameboy);
-        const int here = play_scx(gameboy) * 256 + (m.found ? m.left : 0);
+        const int here = play_scx(gameboy) * 256 + (m.found ? m.box_left() : 0);
         stall = (here == last) ? stall + 1 : 0;
         last = here;
         if (jump == 0 && stall > 10) {
@@ -6565,10 +6792,10 @@ TEST_CASE("mario_pipe_round_trip") {
                                           rest_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx));
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
-    REQUIRE(back.left == kCamFollowX + kMarioArtInset);
-    REQUIRE(back.top == rest_top - band);
+    REQUIRE(back.box_left() == kCamFollowX);
+    REQUIRE(back.box_top() == rest_top - band);
     // and he really is standing on the pipe he went down: its cap is the row under his feet
-    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.top + kPlayerBoxPx);
+    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.box_top() + kPlayerBoxPx);
 
     // the level is still completable from the return point: the planner searches a route out of the
     // pipe's cap and the rom runs it all the way to the level-clear title card
@@ -6628,10 +6855,10 @@ TEST_CASE("mario_pipe_round_trip_down") {
                                           rest_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx));
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
-    REQUIRE(back.left == kCamFollowX + kMarioArtInset);
-    REQUIRE(back.top == rest_top - band);
+    REQUIRE(back.box_left() == kCamFollowX);
+    REQUIRE(back.box_top() == rest_top - band);
     // and he really is standing on the pipe he went down: its cap is the row under his feet
-    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.top + kPlayerBoxPx);
+    REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.box_top() + kPlayerBoxPx);
 }
 
 // down is held rather than edge triggered now, so landing on a cap with down already pressed still
@@ -6780,7 +7007,7 @@ TEST_CASE("mario_goomba_spawns_and_walks") {
     run(gameboy, kMeasure);
     const SpriteBox moved = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
     REQUIRE(moved.found);
-    REQUIRE(mario_at(gameboy).left == before.left);
+    REQUIRE(mario_at(gameboy).box_left() == before.box_left());
 
     // physics.json enemy_movement.goomba_koopa_walk_speed: half a pixel a frame, to the left
     const int expected = kMeasure * kEnemyWalkSubpx / 16;
@@ -6819,7 +7046,7 @@ TEST_CASE("mario_stomp_squashes") {
     for (size_t i = 0; i < stomp.script.size(); ++i) {
         replay(gameboy, stomp.script, i, i + 1);
         const Mario m = mario_at(gameboy);
-        saw.emplace_back(m.found ? m.left - kMarioArtInset : -1000, m.found ? m.top : -1000);
+        saw.emplace_back(m.found ? m.box_left() : -1000, m.found ? m.box_top() : -1000);
         squashed = squashed || sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found;
     }
     // the goomba went flat under him, and the rom drew the arc off it the bible's constants predict
@@ -6841,6 +7068,87 @@ TEST_CASE("mario_stomp_squashes") {
     // and the flat goomba is gone a squash timer later, with nothing walking in its place
     run(gameboy, kSquashFrames + 8);
     REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
+}
+
+// m22 stores only the LEFT half of every left-right symmetric frame - the pancake, either shell,
+// the plant - and the right sprite is the same tile with S_FLIPX. a right half that lost its flip
+// still reports the same tile id, so no id-based check can see it: it just paints the left half's
+// pixels twice, which is what these two tests look at. see enemies.c's pair_art
+TEST_CASE("mario_squashed_goomba_right_half_mirrors_its_left") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the same route and stomp mario_stomp_squashes drives, and the same pancake at the end of it
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    replay(gameboy, stomp.script, 0, stomp.script.size());
+
+    // a frame inside the squash timer with the whole pancake on screen and mario's bounce clear of
+    // it: his own sprites are in front of the pool's, and a pixel of his over the pancake would
+    // take that pixel out of the family the check reads
+    bool checked = false;
+    for (int i = 0; i < kSquashFrames && !checked; ++i) {
+        const SpriteBox flat = sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi);
+        const Mario m = mario_at(gameboy);
+
+        if (flat.found && flat.left > 0 && flat.right < static_cast<int>(gb::kLcdWidth) - 1 && m.found &&
+            m.box_bottom() < flat.top) {
+            REQUIRE(mirrors_left_to_right(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi));
+            checked = true;
+        }
+        gameboy.run_frame();
+    }
+    REQUIRE(checked);
+}
+
+TEST_CASE("mario_green_shell_right_half_mirrors_its_left") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const LevelEnemy* koopa = nullptr;
+    for (const LevelEnemy& e : kLabEnemies) {
+        if (e.kind == kEnemyKoopa) {
+            koopa = &e;
+            break;
+        }
+    }
+    REQUIRE(koopa != nullptr);
+    const Route walk = plan_lab_koopa(*koopa);
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    // mario_shell_wakes' own opening: stomp the lab's koopa and back away from the shell it left,
+    // so it is sitting still with none of him drawn over it
+    std::vector<uint8_t> back;
+    PlayerSim sim = stomp.end;
+    for (int i = 0; i < 30; ++i) {
+        back.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 20; ++i) {
+        back.push_back(0);
+        sim.step(0);
+    }
+    REQUIRE(shell_slot(sim) >= 0);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_lab(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    replay(gameboy, stomp.script, 0, stomp.script.size());
+    replay(gameboy, back, 0, back.size());
+
+    const SpriteBox shell = sprite_box(gameboy, kTileShellLo, kTileShellHi);
+    REQUIRE(shell.found);
+    REQUIRE(shell.left > 0);
+    REQUIRE(shell.right < static_cast<int>(gb::kLcdWidth) - 1);
+    REQUIRE(mirrors_left_to_right(gameboy, kTileShellLo, kTileShellHi));
 }
 
 // the respawn rule the user chose over smb1's advancing cursor, see kEnemySpawnMarginPx in mario.h:
@@ -6991,8 +7299,8 @@ TEST_CASE("mario_side_contact_respawns") {
     run(gameboy, 200);
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
-    REQUIRE(back.top == kStandTop);
-    REQUIRE(back.left == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx + kMarioArtInset);
+    REQUIRE(back.box_top() == kStandTop);
+    REQUIRE(back.box_left() == static_cast<int>(LEVEL_1_1_START_COLUMN) * kBlockPx);
     REQUIRE(!sprite_box(gameboy, kTileEnemyLo, kTileEnemyHi).found);
 }
 
@@ -7082,7 +7390,7 @@ TEST_CASE("mario_koopa_shell_chain") {
             // the rom scans a frame out one frame after it computes it, so the screen shows the
             // twin's previous step
             if (bad < 0 && i > 2 && m.found && wx >= 0 && wx <= 144 && wy >= 0 && wy <= 128 &&
-                (m.left - kMarioArtInset != wx || m.top != wy)) {
+                (m.box_left() != wx || m.box_top() != wy)) {
                 bad = static_cast<int>(i);
             }
             probe.step(walk.script[i]);
@@ -7115,15 +7423,13 @@ TEST_CASE("mario_koopa_shell_chain") {
     // and nothing squashed it: a shell kill never flattens what it runs into
     REQUIRE(sprite_box(gameboy, kTileShellLo, kTileShellHi).found);
 
-    // m19: the body is still drawn on the frame the shell reached it - upside down now, so the
-    // widest scanline of its silhouette has moved into the top half - and it only leaves once it
-    // has fallen out of the level. before this it blinked off the pool on the hit frame
+    // m19: the body is still drawn on the frame the shell reached it - upside down now, so its
+    // silhouette's narrow scalp has moved to the bottom - and it only leaves once it has fallen out
+    // of the level. before this it blinked off the pool on the hit frame
     REQUIRE(busiest_line(gameboy, kTileGoombaWalkLo, kTileGoombaSquashHi) == most_goombas);
     int flipped = -1;
     for (int i = 0; i < 4 && flipped < 0; ++i) {
-        const int shape = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
-
-        if (shape >= 0 && shape < 8) {
+        if (taper(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi) > 0) {
             flipped = i;
         }
         gameboy.run_frame();
@@ -7262,7 +7568,7 @@ TEST_CASE("mario_mushroom_grows_mario") {
     REQUIRE(before.found);
     REQUIRE(!before.big);
     REQUIRE(before.height() == kPlayerBoxPx);
-    REQUIRE(before.top == kStandTop);
+    REQUIRE(before.box_top() == kStandTop);
 
     REQUIRE(wait_for_grow(gameboy, 900) >= 0);
 
@@ -7279,7 +7585,7 @@ TEST_CASE("mario_mushroom_grows_mario") {
         gameboy.run_frame();
         const Mario now = mario_at(gameboy);
         REQUIRE(now.found);
-        REQUIRE(now.left == frozen.left);
+        REQUIRE(now.box_left() == frozen.box_left());
         REQUIRE(ground_phase(gameboy) == phase);
         flips += now.big != was_big ? 1 : 0;
         was_big = now.big;
@@ -7293,22 +7599,22 @@ TEST_CASE("mario_mushroom_grows_mario") {
     REQUIRE(big.big);
     REQUIRE(big.height() == kPlayerBigBoxPx);
     // his feet stayed planted and the box grew upward
-    REQUIRE(big.top == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
+    REQUIRE(big.box_top() == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
 
     // and the hitbox came with it: a jump from the same spot stops on the same block underside, so
     // the rise is 16 px shorter. that missing block is the gap a super mario can no longer enter
-    int peak = big.top;
+    int peak = big.box_top();
     for (int i = 0; i < 90; ++i) {
         gameboy.set_button(gb::Button::A, i < kBumpHoldFrames);
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
-        if (m.found && m.top < peak) {
-            peak = m.top;
+        if (m.found && m.box_top() < peak) {
+            peak = m.box_top();
         }
     }
     gameboy.set_button(gb::Button::A, false);
     REQUIRE(peak == kStandTop - kBlockPx * 2);
-    REQUIRE(big.top - peak == kBlockPx);
+    REQUIRE(big.box_top() - peak == kBlockPx);
 }
 
 TEST_CASE("mario_flower_when_super") {
@@ -7323,7 +7629,7 @@ TEST_CASE("mario_flower_when_super") {
 
     PlayerSim sim = lab_sim();
     REQUIRE(grow_on_the_pyramid(gameboy, sim));
-    REQUIRE(!mario_wears(gameboy, kColorFireWhite));
+    REQUIRE(!mario_wears(gameboy, kColorFireCream));
 
     // out to the lab's second dispenser. he is already grown when it opens, so smb's rule pays a
     // flower rather than a second mushroom
@@ -7350,8 +7656,8 @@ TEST_CASE("mario_flower_when_super") {
     // the flower is gone and the palette says fire: same art, white where the red used to be
     REQUIRE(!sprite_box(gameboy, kTileFlowerLo, kTileFlowerHi).found);
     REQUIRE(mario_at(gameboy).big);
-    REQUIRE(mario_wears(gameboy, kColorFireWhite));
-    REQUIRE(!mario_wears(gameboy, kColorMarioRed));
+    REQUIRE(mario_wears(gameboy, kColorFireCream));
+    REQUIRE(!mario_wears(gameboy, kColorMarioDark));
 }
 
 TEST_CASE("mario_super_breaks_bricks") {
@@ -7522,10 +7828,9 @@ TEST_CASE("mario_fireball_kill_flips_the_body_and_drops_it") {
     replay(gameboy, approach, 0, approach.size());
     REQUIRE(goombas_on_screen(gameboy) > 0);
 
-    // a goomba on its feet wears its bulk low: the widest scanline of its silhouette is in the
-    // bottom half of the sprite
-    const int upright = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
-    REQUIRE(upright >= 8);
+    // a goomba on its feet is narrow at the scalp and wide at the feet
+    const int upright = taper(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
+    REQUIRE(upright < 0);
     const SpriteBox before = sprite_box(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
     REQUIRE(before.found);
 
@@ -7542,8 +7847,7 @@ TEST_CASE("mario_fireball_kill_flips_the_body_and_drops_it") {
             gone = i;
             break;
         }
-        const int shape = widest_row_offset(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi);
-        if (flipped < 0 && shape >= 0 && shape < 8) {
+        if (flipped < 0 && taper(gameboy, kTileGoombaWalkLo, kTileGoombaWalkHi) > 0) {
             flipped = i;
         }
         if (flipped >= 0 && now.top > deepest) {
@@ -7599,7 +7903,7 @@ TEST_CASE("mario_fireball_spins_and_burns_orange") {
     // never the star's near-white cream any more - it is drawn from the coin's saturated gold/
     // orange instead (kPalCoin in mario.h). fire mario's own outfit is deliberately this same
     // pure white (roster.json's authentic cream/red), so the check is scoped to the fireball's own
-    // tile family, not mario_wears - his sprite legitimately wears kColorFireWhite right now
+    // tile family, not mario_wears - his sprite legitimately wears kColorFireCream right now
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     const std::span<const uint16_t> colors = gameboy.framebuffer_color();
     bool saw_white = false;
@@ -7608,7 +7912,7 @@ TEST_CASE("mario_fireball_spins_and_burns_orange") {
             continue;
         }
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        if (tile >= kTileFireballLo && tile <= kTileFireballHi && colors[i] == kColorFireWhite) {
+        if (tile >= kTileFireballLo && tile <= kTileFireballHi && colors[i] == kColorFireCream) {
             saw_white = true;
         }
     }
@@ -7641,7 +7945,7 @@ TEST_CASE("mario_damage_chain") {
 
     REQUIRE(approach_lab_row(gameboy, sim) > 0);
     run(gameboy, 4);
-    REQUIRE(mario_wears(gameboy, kColorFireWhite));
+    REQUIRE(mario_wears(gameboy, kColorFireCream));
 
     // he walks into the lab's row of goombas and lets the chain run. roster.json's Mario (Fire)
     // reverts straight to small, so there are two steps here and not three
@@ -7663,7 +7967,7 @@ TEST_CASE("mario_damage_chain") {
             if (first_small < 0) {
                 first_small = i;
             }
-        } else if (!mario_wears(gameboy, kColorFireWhite) && plain_super < 0 && first_small < 0) {
+        } else if (!mario_wears(gameboy, kColorFireCream) && plain_super < 0 && first_small < 0) {
             plain_super = i;
         }
     }
@@ -7738,7 +8042,7 @@ TEST_CASE("mario_star_invincibility") {
         gameboy.set_button(gb::Button::B, (in & kInB) != 0);
         gameboy.set_button(gb::Button::A, (in & kInA) != 0);
         gameboy.run_frame();
-        if (mario_wears(gameboy, kColorStarYellow)) {
+        if (mario_wears(gameboy, kColorStarWhite)) {
             elapsed = 0;
         }
     }
@@ -7901,7 +8205,7 @@ Match replay_matched(gb::Gameboy& gameboy, const Route& route, int level) {
         replay(gameboy, route.script, i, i + 1);
         out.saw_map = out.saw_map || sky_color(gameboy) == kSkyMap;
         const Mario m = mario_at(gameboy);
-        saw.emplace_back(m.found ? m.left - kMarioArtInset : -1000, m.found ? m.top : -1000);
+        saw.emplace_back(m.found ? m.box_left() : -1000, m.found ? m.box_top() : -1000);
     }
     for (size_t i = 0; i < saw.size(); ++i) {
         if (static_cast<int>(i) < lag) {
@@ -8102,9 +8406,8 @@ bool brick_shown(const gb::Gameboy& gameboy, const PlayerSim& sim, uint16_t colu
     // scy comes off the register rather than from the sprite: the scroll and oam both land at
     // vblank now, one frame behind the twin, and the vertical camera eases, so a landing frame's
     // sprite top would name a scy the picture was not drawn with
-    const uint8_t tile =
-        block_tile(gameboy, column, row, static_cast<uint16_t>(sim.x_pos - (m.left - kMarioArtInset)),
-                   static_cast<uint8_t>(play_scy(gameboy)));
+    const uint8_t tile = block_tile(gameboy, column, row, static_cast<uint16_t>(sim.x_pos - m.box_left()),
+                                    static_cast<uint8_t>(play_scy(gameboy)));
     return tile >= kTileBrickLo && tile <= kTileBrickHi;
 }
 
@@ -8154,7 +8457,7 @@ TEST_CASE("mario_level_progression") {
         const Mario m = mario_at(gameboy);
         REQUIRE(m.found);
         const int world_x = static_cast<int>(kHostLevels[level].start_column) * kBlockPx;
-        REQUIRE(m.left - kMarioArtInset == std::min(world_x, kCamFollowX));
+        REQUIRE(m.box_left() == std::min(world_x, kCamFollowX));
     }
 
     // clearing 1-1 hands straight over to 1-2. the other three links are asserted at the end of
@@ -9456,7 +9759,7 @@ TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
     REQUIRE(!mario_at(gameboy).big);
 
     // one block of mario, so his box never leaves row 12 - the crawl's own row
-    const int start_top = mario_at(gameboy).top;
+    const int start_top = mario_at(gameboy).box_top();
     int covered = 0;
     int folded = 0;
     gameboy.set_button(gb::Button::Right, true);
@@ -9465,8 +9768,8 @@ TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
          ++i) {
         covered += world_travel(gameboy, 1);
         const Mario m = mario_at(gameboy);
-        REQUIRE(m.height() == kPlayerBoxPx);
-        folded += m.top == start_top ? 1 : 0;
+        REQUIRE(!m.big);
+        folded += m.box_top() == start_top ? 1 : 0;
     }
     gameboy.set_button(gb::Button::Right, false);
     // he is past both of the pillar's columns, and never left the floor to get there
@@ -9601,7 +9904,8 @@ TEST_CASE("mario_crouch_folds_to_one_block") {
     run(gameboy, 6);
     Mario m = mario_at(gameboy);
     REQUIRE(m.big);
-    REQUIRE(m.height() == kPlayerBoxPx);
+    REQUIRE(m.crouched());
+    REQUIRE(m.height() == kCrouchArtPx);
 
     // holding down leaves him a crawl and no more. smb gives a ducking mario no walk at all, but
     // that left a big mario stopped flush against the pillar at 78/79 no way into the gap under it:
@@ -9611,14 +9915,15 @@ TEST_CASE("mario_crouch_folds_to_one_block") {
     const int crawled = world_travel(gameboy, 60);
     m = mario_at(gameboy);
     REQUIRE(m.big);
-    REQUIRE(m.height() == kPlayerBoxPx);
+    REQUIRE(m.crouched());
+    REQUIRE(m.height() == kCrouchArtPx);
     REQUIRE(crawled > kBlockPx);
     REQUIRE(crawled <= 60 * kCrouchWalkSubpx / 16);
 
     // and with open sky over his head he stands straight back up, and walks - faster than the crawl
     gameboy.set_button(gb::Button::Down, false);
     run(gameboy, 8);
-    REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
+    REQUIRE(!mario_at(gameboy).crouched());
     const int walked = world_travel(gameboy, 60);
     gameboy.set_button(gb::Button::Right, false);
     REQUIRE(walked > crawled);
@@ -9658,7 +9963,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
     gameboy.set_button(gb::Button::Down, true);
     gameboy.set_button(gb::Button::Right, true);
     const int crawled = world_travel(gameboy, 120);
-    REQUIRE(mario_at(gameboy).height() == kPlayerBoxPx);
+    REQUIRE(mario_at(gameboy).crouched());
     REQUIRE(crawled > needed);
 
     // two: a duck-slide out of a full run covers it inside the two frames of shoulder room the
@@ -9667,13 +9972,13 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
     run(gameboy, 8);
     gameboy.set_button(gb::Button::B, true);
     run(gameboy, 90);
-    REQUIRE(mario_at(gameboy).height() == kPlayerBigBoxPx);
+    REQUIRE(!mario_at(gameboy).crouched());
     gameboy.set_button(gb::Button::Down, true);
     const int slid = world_travel(gameboy, 40);
     gameboy.set_button(gb::Button::Right, false);
     gameboy.set_button(gb::Button::B, false);
     gameboy.set_button(gb::Button::Down, false);
-    REQUIRE(mario_at(gameboy).height() == kPlayerBoxPx);
+    REQUIRE(mario_at(gameboy).crouched());
     REQUIRE(slid > needed);
     REQUIRE(slid > crawled * 40 / 120);
 }
@@ -10184,8 +10489,8 @@ TEST_CASE("mario_lift_deck_does_not_linger_after_a_respawn") {
     for (int i = 0; i < 300 && !respawned; ++i) {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
-        respawned = m.found && !m.big && m.top == kStandTop &&
-                    m.left == static_cast<int>(LEVEL_1_3_START_COLUMN) * kBlockPx + kMarioArtInset;
+        respawned = m.found && !m.big && m.box_top() == kStandTop &&
+                    m.box_left() == static_cast<int>(LEVEL_1_3_START_COLUMN) * kBlockPx;
     }
     REQUIRE(respawned);
 
@@ -10326,7 +10631,7 @@ TEST_CASE("mario_firebar_damages_and_rotates") {
         walker.run_frame();
         const Mario m = mario_at(walker);
 
-        restarted = m.found && m.left - kMarioArtInset == static_cast<int>(lv.start_column) * kBlockPx;
+        restarted = m.found && m.box_left() == static_cast<int>(lv.start_column) * kBlockPx;
     }
     REQUIRE(restarted);
 }
@@ -12091,8 +12396,8 @@ TEST_CASE("mario_pause_freezes") {
     run(gameboy, 4);
     const Mario after = mario_at(gameboy);
     REQUIRE(after.found);
-    REQUIRE(after.left == before.left);
-    REQUIRE(after.top == before.top);
+    REQUIRE(after.box_left() == before.box_left());
+    REQUIRE(after.box_top() == before.box_top());
     // and the countdown stood still while it was up
     REQUIRE(hud_time(gameboy) == time_before);
 }
@@ -12183,8 +12488,8 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     // and the grid and his place in it came back untouched, the way an overworld resume already did
     const Mario after = mario_at(gameboy);
     REQUIRE(after.found);
-    REQUIRE(after.left == before.left);
-    REQUIRE(after.top == before.top);
+    REQUIRE(after.box_left() == before.box_left());
+    REQUIRE(after.box_top() == before.box_top());
 }
 
 // the pause card is a two entry menu now: down puts the cursor on QUIT and a hands the run back to
@@ -12268,9 +12573,9 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
     REQUIRE(m.found);
     REQUIRE(m.big);
     REQUIRE(m.height() == kPlayerBigBoxPx);
-    REQUIRE(m.top == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
+    REQUIRE(m.box_top() == kStandTop - (kPlayerBigBoxPx - kPlayerBoxPx));
     run(gameboy, 30);
-    REQUIRE(mario_at(gameboy).top == m.top);
+    REQUIRE(mario_at(gameboy).top == m.box_top());
 }
 
 // ...and the death path is what does take it away: the reset moved onto flow_after_death, so the
@@ -12450,7 +12755,7 @@ void map_play(gb::Gameboy& gameboy) {
 // where mario's art starts on the map when he stands on node `node`: his 16 px box is centred on
 // the 8 px node cell, and its own leftmost column is transparent
 int map_node_left(int node) {
-    return kMapNodeX[node] - 4 + kMarioArtInset;
+    return kMapNodeX[node] - 4;
 }
 
 } // namespace
@@ -12617,8 +12922,8 @@ TEST_CASE("mario_file_select_hop_lands_on_the_chosen_pipe") {
     for (int i = 0; i < kFileHopFrames + 8; ++i) {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
-        if (m.found && m.top < highest) {
-            highest = m.top;
+        if (m.found && m.box_top() < highest) {
+            highest = m.box_top();
         }
     }
     REQUIRE(highest <= lip - 16);
@@ -12690,7 +12995,7 @@ TEST_CASE("mario_save_survives_a_power_cycle") {
     step_screen(second, gb::Button::A);
     run(second, kScreenSettleFrames);
     REQUIRE(sky_color(second) == kSkyMap);
-    REQUIRE(mario_at(second).left == map_node_left(1));
+    REQUIRE(mario_at(second).box_left() == map_node_left(1));
 
     // and start off that node opens 1-2, not 1-1 - above ground, not underground
     map_play(second);
@@ -12775,18 +13080,18 @@ TEST_CASE("mario_map_refuses_a_locked_node") {
     // a fresh file, so only 1-1's node is open
     open_file(gameboy, 0);
     REQUIRE(sky_color(gameboy) == kSkyMap);
-    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(0));
 
     // right is simply refused: a whole walk's worth of frames goes by and he has not moved
     press(gameboy, gb::Button::Right, 2);
     run(gameboy, 120);
     REQUIRE(sky_color(gameboy) == kSkyMap);
-    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(0));
 
     // and left off the first node is refused the same way
     press(gameboy, gb::Button::Left, 2);
     run(gameboy, 120);
-    REQUIRE(mario_at(gameboy).left == map_node_left(0));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(0));
 
     // start still opens the node he is standing on
     map_play(gameboy);
@@ -12801,7 +13106,7 @@ TEST_CASE("mario_map_walks_between_unlocked_nodes") {
     // seeded to 1-3 unlocked, so two steps are open and the third is not
     seed_slot(gameboy.external_ram(), 0, 2, 0);
     open_file(gameboy, 0);
-    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(2));
 
     // left walks him a node back, and it is a walk: he is caught part way between the two, and the
     // art changes frame on the way rather than holding the idle pose
@@ -12814,7 +13119,7 @@ TEST_CASE("mario_map_walks_between_unlocked_nodes") {
         if (!m.found) {
             continue;
         }
-        if (m.left > map_node_left(1) && m.left < map_node_left(2)) {
+        if (m.box_left() > map_node_left(1) && m.box_left() < map_node_left(2)) {
             between = true;
         }
         frames.insert(m.frame);
@@ -12822,16 +13127,16 @@ TEST_CASE("mario_map_walks_between_unlocked_nodes") {
     REQUIRE(between);
     REQUIRE(frames.size() > 1);
     run(gameboy, 60);
-    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(1));
 
     // right walks him forward again, twice, up to the furthest node the file has opened
     press(gameboy, gb::Button::Right, 2);
     run(gameboy, 120);
-    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(2));
     press(gameboy, gb::Button::Right, 2);
     run(gameboy, 120);
     // 1-4's node is still locked, so the walk never starts
-    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(2));
 
     // b hands back to the file select
     step_screen(gameboy, gb::Button::B);
@@ -12854,13 +13159,13 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     // the clear card hands back to the map, not to 1-2, and mario is standing on the node it opened
     REQUIRE(wait_for_map(gameboy, 900) >= 0);
     run(gameboy, kScreenSettleFrames);
-    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(1));
     REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotLevel] == 1);
 
     // exactly one node further: 1-3's is still locked, so a second right does nothing
     press(gameboy, gb::Button::Right, 2);
     run(gameboy, 120);
-    REQUIRE(mario_at(gameboy).left == map_node_left(1));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(1));
 
     // and the node he is on is 1-2, which opens above ground now, not underground
     map_play(gameboy);
@@ -13242,7 +13547,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     REQUIRE(mario_at(gameboy).found);
     press(gameboy, gb::Button::Left, 2);
     run(gameboy, 120);
-    REQUIRE(mario_at(gameboy).left == map_node_left(2));
+    REQUIRE(mario_at(gameboy).box_left() == map_node_left(2));
 }
 
 TEST_CASE("mario_map_bands_are_black_top_and_bottom") {
@@ -13388,4 +13693,250 @@ TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
     step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_is_gameplay(sky_color(gameboy)));
+}
+
+// --- m22: the smbd character art the rom actually loaded ---------------------------------------
+
+namespace {
+
+// one run of sprite tiles out of either cgb vram bank, against the generated array the rom was
+// built from. the id plan is games/mario/VRAM.md's sprite tables and mario.h's kTile* defines
+bool vram_art_matches(const gb::Gameboy& gameboy, int bank, uint8_t first_tile, const uint8_t* art,
+                      size_t tiles) {
+    const std::span<const uint8_t> vram = gameboy.debug_vram(bank);
+    const size_t off = static_cast<size_t>(first_tile) * 16U;
+    if (off + tiles * 16U > vram.size()) {
+        return false;
+    }
+    return std::equal(art, art + tiles * 16U, vram.begin() + static_cast<std::ptrdiff_t>(off));
+}
+
+// every rgb555 painted on a sprite pixel whose tile is in [lo, hi]
+std::set<int> sprite_colors(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    std::set<int> seen;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= lo && tile <= hi) {
+            seen.insert(static_cast<int>(colors[i]));
+        }
+    }
+    return seen;
+}
+
+// how many pixels of a run of 2bpp tiles are not color 0, and how many the sprites in [lo, hi]
+// actually painted. only a non-transparent sprite pixel is ever recorded in framebuffer_tiles, so
+// the two are the same number for a family drawn whole and unobscured - which is what says a sprite
+// read the art the plan gave it and not whatever sits at the same id in the other vram bank
+int art_lit_pixels(const uint8_t* tiles, size_t count) {
+    int n = 0;
+    for (size_t i = 0; i < count * 16U; i += 2U) {
+        const int lit = tiles[i] | tiles[i + 1U];
+        for (int bit = 0; bit < 8; ++bit) {
+            n += (lit & (0x80 >> bit)) != 0 ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+int drawn_pixels(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int n = 0;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) == 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        n += (tile >= lo && tile <= hi) ? 1 : 0;
+    }
+    return n;
+}
+
+} // namespace
+
+// the loaders' own pin: every family the extraction tool generates has to land at the tile id the
+// plan gives it, in the bank the plan gives it, byte for byte. this is what stops a loader and an
+// id plan drifting apart - the failure mode that draws a koopa's head on mario's shoulders
+TEST_CASE("mario_vram_holds_the_generated_sprite_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // the id plan's own runs, so a family that moved shows up here rather than as a silent overlap
+    static_assert(kTileKoopaHi - kTileKoopaLo + 1 == 16, "a koopa walk frame is eight tiles");
+    static_assert(kTilePiranhaHi - kTilePiranhaLo + 1 == 4, "the plant stores its left column only");
+    static_assert(kTileParaHi - kTileParaLo + 1 == 16, "a paratroopa fly frame is eight tiles");
+    static_assert(kTileShellRedHi - kTileShellRedLo + 1 == 2, "a shell is one symmetric pair");
+    // the flagpole grip is the eighth pose of the big set, and the seventh index the small art
+    // table keeps for the bank-1 pose that shares small mario's idle tile id
+    static_assert(kFrameClimbBig == kPoseClimb, "both climb poses index their table the same way");
+
+    // vram bank 0. small mario's six pinned poses, then the death pose at four ids of its own
+    CHECK(vram_art_matches(gameboy, 0, kMarioFirstTile, sprite_art::kMarioSmallTiles, 24));
+    CHECK(vram_art_matches(gameboy, 0, kMarioDeathTile, sprite_art::kMarioSmallTiles + 24 * 16, 4));
+    CHECK(vram_art_matches(gameboy, 0, kTileKoopaLo, sprite_art::kKoopaGreenTiles, 16));
+    CHECK(vram_art_matches(gameboy, 0, kTileGoombaWalkLo, sprite_art::kGoombaTiles, 4));
+    CHECK(vram_art_matches(gameboy, 0, kTileGoombaSquashLo, sprite_art::kGoombaSquashTiles, 2));
+    CHECK(vram_art_matches(gameboy, 0, kTileShellLo, sprite_art::kShellGreenTiles, 2));
+    CHECK(vram_art_matches(gameboy, 0, kTilePiranhaLo, sprite_art::kPiranhaTiles, 4));
+    CHECK(vram_art_matches(gameboy, 0, kTileItemLo, sprite_art::kItemsTiles, 12));
+    CHECK(vram_art_matches(gameboy, 0, kTileFlowerLo, sprite_art::kFlowerTiles, 4));
+    // the fireball's first spin frame is bank 0's and its second bank 1's, at the same two ids
+    CHECK(vram_art_matches(gameboy, 0, kTileFireballLo, sprite_art::kFireballTiles, 2));
+
+    // vram bank 1: all eight of big mario's 16x32 poses, small mario's climb grip, the red
+    // paratroopa's two frames and the red shell a stomped one leaves
+    CHECK(vram_art_matches(gameboy, 1, kSuperFirstTile, sprite_art::kMarioBigTiles, 64));
+    CHECK(vram_art_matches(gameboy, 1, kMarioClimbTile, sprite_art::kMarioSmallClimbTiles, 4));
+    CHECK(vram_art_matches(gameboy, 1, kTileParaLo, sprite_art::kParatroopaRedTiles, 16));
+    CHECK(vram_art_matches(gameboy, 1, kTileShellRedLo, sprite_art::kShellRedTiles, 2));
+    CHECK(vram_art_matches(gameboy, 1, kTileFireballLo, sprite_art::kFireballTiles + 2 * 16, 2));
+
+    // and the decoder kSmallArt/kBigArt are built by: the stand is the smbd sheet's 12 px wide one,
+    // centred with its spare pixel on the right, so it lights columns 2..13 of its box and nothing
+    // else. a decoder that read the tiles in the wrong order would sail past every bounds-based
+    // assertion in this file without this
+    REQUIRE(kSmallArt[kFrameIdle].left == 2);
+    REQUIRE(kSmallArt[kFrameIdle].right == 13);
+    REQUIRE(kSmallArt[kFrameIdle].top == 0);
+    REQUIRE(kSmallArt[kFrameIdle].bottom == 15);
+}
+
+// m22 draws the red paratroopa out of VRAM BANK 1 (kTileParaFly0/1), which means the S_BANK bit in
+// its oam prop - and that bit belongs to the TILE, not to the enemy's kind: the same flyer killed in
+// the air falls as the bank-0 koopa corpse. this is the cheap witness for the bank being right, in
+// the one place a red flyer is actually reachable in the rom: framebuffer_tiles cannot report which
+// bank a sprite read, but a sprite reading the wrong bank paints a different NUMBER of pixels, and
+// the number the plan's own bank holds is the generated array's own count
+TEST_CASE("mario_red_paratroopa_draws_out_of_bank_one") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // 1-3's first flyer hangs over the gap between the trees at 70-72 and 76-81; the route stops on
+    // the far side of it, which parks the camera with the whole flyer on screen
+    const Route route = plan_level(kLevel13, 6000, static_cast<uint16_t>(72 * kBlockPx));
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel13);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    // kPalStar, the slot m22 gives everything red: white, the koopa sheet's orange, the shell's red
+    const std::set<int> star = {kColorStarWhite, 31 | (22 << 5) | (2 << 10), 27};
+    const int fly_a = art_lit_pixels(sprite_art::kParatroopaRedTiles, 8);
+    const int fly_b = art_lit_pixels(sprite_art::kParatroopaRedTiles + 8 * 16, 8);
+    int matched = -1;
+    for (int i = 0; i < 240 && matched < 0; ++i) {
+        const int painted = drawn_pixels(gameboy, kTileParaLo, kTileParaHi);
+        const std::set<int> worn = sprite_colors(gameboy, kTileParaLo, kTileParaHi);
+
+        // a frame with the whole of one wing-beat frame on screen: every pixel of the art, and
+        // nothing on it that kPalStar does not paint
+        if ((painted == fly_a || painted == fly_b) && !worn.empty() &&
+            std::includes(star.begin(), star.end(), worn.begin(), worn.end())) {
+            matched = i;
+        }
+        gameboy.run_frame();
+    }
+    CAPTURE(fly_a, fly_b);
+    REQUIRE(matched >= 0);
+}
+
+// m22 read the koopa's three colours off the enemy sheet and they are exactly the three the deluxe
+// bowser is drawn in, so a castle's re-tint of kPalKoopa now writes what the overworld already
+// wrote. the retint is kept for the contract, and this is the test that says it is a no-op: the
+// colours bowser burns on the bridge are the same set an overworld koopa wears
+TEST_CASE("mario_castle_retint_leaves_the_koopa_slot_at_bowser_s_colours") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    // the lab's own green koopa, walked up to the way mario_koopa_shell_chain walks up to it: it
+    // is the only sprite on an overworld screen wearing kPalKoopa
+    const LevelEnemy* entry = nullptr;
+    for (const LevelEnemy& e : kLabEnemies) {
+        if (e.kind == kEnemyKoopa) {
+            entry = &e;
+            break;
+        }
+    }
+    REQUIRE(entry != nullptr);
+    const Route walk = plan_lab_koopa(*entry);
+    REQUIRE(walk.reached);
+
+    std::set<int> koopa;
+    {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_lab(gameboy);
+        for (size_t i = 0; i < walk.script.size() && koopa.size() < 3; ++i) {
+            replay(gameboy, walk.script, i, i + 1);
+            const std::set<int> seen = sprite_colors(gameboy, kTileKoopaLo, kTileKoopaHi);
+            koopa.insert(seen.begin(), seen.end());
+        }
+    }
+    REQUIRE(koopa.size() == 3);
+
+    std::set<int> bowser;
+    {
+        const Route route = plan_level(kLevel14, 6000);
+        REQUIRE(route.reached);
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_level(gameboy, kLevel14);
+        watch_the_bridge(gameboy, route);
+        for (int f = 0; f < 260 && bowser.size() < 3; ++f) {
+            gameboy.run_frame();
+            const std::set<int> seen = sprite_colors(gameboy, kTileBowserLo, kTileBowserHi);
+            bowser.insert(seen.begin(), seen.end());
+        }
+    }
+    CAPTURE(koopa.size(), bowser.size());
+    REQUIRE(bowser == koopa);
+}
+
+// the poses are exact art now, so no single inset is true of all of them: the stand is 12 px wide
+// inside its 16 px box and walk0 fills the box. this is the pin on that - each pose mario is
+// actually drawn in has to light exactly the columns and rows rip_sprites.py measured, which is
+// also what makes every box_left() in this file trustworthy
+TEST_CASE("mario_poses_light_the_ripped_bounds") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // standing: the 12-wide stand, two columns in on each side of the box
+    {
+        const Mario m = mario_at(gameboy);
+        REQUIRE(m.found);
+        REQUIRE(!m.big);
+        REQUIRE(m.frame == kFrameIdle);
+        REQUIRE(m.right - m.left + 1 == kSmallArt[kFrameIdle].right - kSmallArt[kFrameIdle].left + 1);
+        REQUIRE(m.height() == kSmallArt[kFrameIdle].bottom - kSmallArt[kFrameIdle].top + 1);
+    }
+
+    // walking: the cycle has to show all three walk frames, and each has to measure its own art
+    std::set<int> walked;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int f = 0; f < 120; ++f) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        if (!m.found || m.frame < 0) {
+            continue;
+        }
+        const ArtBounds a = kSmallArt[m.frame];
+        CAPTURE(f, m.frame, m.left, m.right, m.top, m.bottom);
+        REQUIRE(m.right - m.left + 1 == a.right - a.left + 1);
+        REQUIRE(m.height() == a.bottom - a.top + 1);
+        walked.insert(m.frame);
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(walked.count(kFrameWalk0) == 1);
+    REQUIRE(walked.count(kFrameWalk1) == 1);
+    REQUIRE(walked.count(kFrameWalk2) == 1);
 }

@@ -46,6 +46,17 @@ static uint8_t drawn_tile[kEnemySlots];
 static uint8_t drawn_prop[kEnemySlots];
 static uint8_t drawn_x[kEnemySlots];
 static uint8_t drawn_y[kEnemySlots];
+// m22 made a koopa, a paratroopa and a piranha 16x24 in a 16x32 box, which is four oam slots where
+// the old 16x16 art took two. the pool cannot afford a fixed four per entry - that is twenty of the
+// forty slots even for five goombas - so the slots are handed out FRESH EVERY FRAME, in pool order,
+// two to a 16x16 kind and four to a tall one, skipping whatever is off screen. drawn_slot is the
+// slot each entry got last frame (0xff when it drew nothing): a slot that moved has to have its
+// tiles and properties written again, which is what makes the change-only cache above safe under a
+// layout that shifts. see mario.h's oam map
+static uint8_t drawn_slot[kEnemySlots];
+// the first oam slot past everything the pool wrote last frame. it is what a shrinking pass parks
+// down to, and hazards.c reads it through enemies_oam_top() to find the floor of its own pool
+static uint8_t oam_used;
 
 // the roster's own point tables, generated from games/mario/research/roster.json
 // in tens, the unit hud_score keeps: a runtime divide here would cost bank 0 sdcc's whole
@@ -97,9 +108,9 @@ static uint8_t shell_chain;
 
 // the idle fast path. every frame of this engine sits near the budget already, so a pool with
 // nothing in it has to cost near nothing or the loop misses a vsync. live counts the busy slots
-// and shown the drawn ones; the frontier pair above is what keeps the spawn test off the roster
+// and oam_used how far up oam the last draw reached; the frontier pair above is what keeps the
+// spawn test off the roster
 static uint8_t live;
-static uint8_t shown;
 
 static int16_t row_of(int16_t py) {
     return py < 0 ? (int16_t)-1 : (int16_t)(py >> 4);
@@ -322,10 +333,7 @@ static void remove_at(uint8_t i) {
     --live;
     pool[i] = pool[live];
     slot_roster[i] = slot_roster[live];
-    if (drawn_prop[i] != 0xFFU) {
-        drawn_prop[i] = 0xFEU; // never a real property, so the next draw rewrites tile and prop
-    }
-    drawn_x[i] = 0xFF;
+    drawn_slot[i] = 0xFF; // never a real slot, so the next draw rewrites tile, prop and position
 }
 
 // a slot leaving the pool. a cell whose enemy was killed stays dead however the slot goes away, so
@@ -758,6 +766,7 @@ void enemies_load_level(void) BANKED {
     for (i = 0; i < kEnemySlots; ++i) {
         // not the parked marker: a respawn leaves the last life's enemies sitting in oam, so the
         // first draw of the new one has to write every slot off screen
+        drawn_slot[i] = 0xFF;
         drawn_prop[i] = 0xFE;
         drawn_tile[i] = 0;
         drawn_x[i] = 0xFF;
@@ -768,7 +777,7 @@ void enemies_load_level(void) BANKED {
     frontier_lo = 0;
     frontier_hi = 0;
     live = 0;
-    shown = kEnemySlots;
+    oam_used = (uint8_t)(kSpriteEnemyFirst + kEnemyOamMax);
     anim = 0;
     stomp_chain = 0;
     shell_chain = 0;
@@ -872,130 +881,230 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
     return i;
 }
 
+// the art box a pool entry needs. a koopa, a paratroopa and a piranha are 16x24 bottom-aligned in
+// a 16x32 box, so they cost two rows of two 8x16 sprites - four oam slots; a goomba, a squashed
+// goomba and either shell are 16x16 and cost two. a corpse keeps its own kind's box, upside down
+static uint8_t entry_tall(const Enemy* e) {
+    if (e->kind == kEnemyPiranha) {
+        return 1;
+    }
+    if (e->kind == kEnemyGoomba || e->state == kEnemySquashed || e->state == kEnemyShellIdle ||
+        e->state == kEnemyShellMove) {
+        return 0;
+    }
+    return 1;
+}
+
+// the first oam slot past everything the pool drew last frame, which is the floor hazards.c starts
+// its own pool at (see mario.h's oam map)
+uint8_t enemies_oam_top(void) BANKED {
+    return oam_used;
+}
+
+// the tiles and palette of one 16 px row of an enemy: two 8x16 sprites side by side. mirror != 0
+// swaps which tile draws on which side and sets S_FLIPX on both, which is how a facing frame is
+// turned round. symmetric != 0 means only the LEFT half of the row is in vram - a left-right
+// symmetric frame stores half the tiles it draws - so the right sprite is that same tile with
+// S_FLIPX of its own while the left keeps the prop it was given
+static void pair_art(uint8_t slot, uint8_t left, uint8_t right, uint8_t prop, uint8_t mirror,
+                     uint8_t symmetric) {
+    uint8_t left_prop = prop;
+    uint8_t right_prop = prop;
+
+    if (mirror != 0U) {
+        const uint8_t swap = left;
+
+        left = right;
+        right = swap;
+        left_prop = (uint8_t)(prop | (uint8_t)S_FLIPX);
+        right_prop = left_prop;
+    }
+    if (symmetric != 0U) {
+        right = left;
+        right_prop = (uint8_t)(left_prop ^ (uint8_t)S_FLIPX);
+    }
+    set_sprite_tile(slot, left);
+    set_sprite_tile((uint8_t)(slot + 1U), right);
+    set_sprite_prop(slot, left_prop);
+    set_sprite_prop((uint8_t)(slot + 1U), right_prop);
+}
+
+// and where that row sits. positions move every frame an enemy walks; tiles and props only change
+// when its pose does, which is why the two are written apart
+static void pair_move(uint8_t slot, uint8_t px, uint8_t py) {
+    move_sprite(slot, px, py);
+    move_sprite((uint8_t)(slot + 1U), (uint8_t)(px + 8U), py);
+}
+
 void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
     // the walk phase is one shared counter, so both walk frames are picked once a frame, not once
     // a slot, and the loop below is left with a three-way pick
     const uint8_t swap = (uint8_t)((anim & kEnemyAnimFrames) != 0U ? 1U : 0U);
-    const uint8_t goomba_tile = swap != 0U ? (uint8_t)kTileGoombaWalk1 : (uint8_t)kTileGoombaWalk0;
     const uint8_t koopa_tile = swap != 0U ? (uint8_t)kTileKoopaWalk1 : (uint8_t)kTileKoopaWalk0;
     const uint8_t para_tile = swap != 0U ? (uint8_t)kTileParaFly1 : (uint8_t)kTileParaFly0;
+    uint8_t next = (uint8_t)kSpriteEnemyFirst;
     uint8_t i;
 
-    // the same fast path: an empty pool with nothing left on screen writes no oam at all
-    if (live == 0U && shown == 0U) {
+    // the same fast path: an empty pool with nothing left in oam writes nothing at all
+    if (live == 0U && oam_used == (uint8_t)kSpriteEnemyFirst) {
         return;
     }
 
     for (i = 0; i < live; ++i) {
         const Enemy* e = &pool[i];
-        const uint8_t oam = (uint8_t)(kSpriteEnemyFirst + (uint8_t)(i << 1));
         const int16_t sx = (int16_t)((int16_t)e->pos_x - (int16_t)cam_x);
         const int16_t sy = (int16_t)(e->pos_y - (int16_t)cam_y);
-        uint8_t tile;
+        // the pose: a tile base, whether the box is tall, whether its right half is its left half
+        // mirrored, and the prop every one of its sprites shares
+        uint8_t base;
         uint8_t prop;
-        uint8_t left_tile;
-        uint8_t right_tile;
-        uint8_t right_prop;
-        // a defeated body is its own walk frame turned upside down. the hardware swaps the pair's
-        // two tiles as well as the rows inside them, so one flip bit is the whole animation
+        uint8_t tall;
+        uint8_t symmetric = 0;
+        uint8_t mirror = 0;
         uint8_t flip_y = 0;
-        // the paratroopa's frames sit at the enemy family's own ids in vram bank 1, so the tile
-        // number alone cannot pick its palette or its halves the way every other kind's does
-        uint8_t para = 0;
+        uint8_t slot;
+        uint8_t fresh;
+        int16_t art_y;
+        int16_t art_top;
+        int16_t art_bot;
 
-        if (sy <= -(int16_t)kEnemyHeightPx || sy >= (int16_t)kScreenHeightPx ||
-            sx <= -(int16_t)kEnemyWidthPx || sx >= (int16_t)kScreenWidthPx) {
-            if (drawn_prop[i] != 0xFFU) {
-                drawn_prop[i] = 0xFF;
-                --shown;
-                move_sprite(oam, 0, 0);
-                move_sprite((uint8_t)(oam + 1U), 0, 0);
-            }
+        tall = entry_tall(e);
+        // where the box's top row lands. a walker's feet are at sy + 16 and its 24 px of art is
+        // bottom-aligned in a 32 px box, so the box starts 16 px above its own hitbox. the plant is
+        // the exception: its art runs rows 9..31 of the box and has to sit exactly on its hitbox,
+        // or the 8 px of stem the pipe is meant to hide would poke out over the cap
+        art_y = tall != 0U ? (int16_t)(sy - (e->kind == kEnemyPiranha ? (int16_t)kPlantArtRisePx
+                                                                      : (int16_t)kEnemyTallRisePx))
+                           : sy;
+        // and the rows it can actually paint, which is what the cull has to be measured against:
+        // a tall entry's art starts a whole 16 px above its own hitbox, so culling on the hitbox
+        // alone chopped a koopa off the top of the screen while half of it was still visible. the
+        // plant is measured off its lit rows instead of its box - the 8 blank ones at the top of
+        // its box are the stem the pipe hides
+        art_top = (int16_t)(e->kind == kEnemyPiranha ? sy : art_y);
+        art_bot = (int16_t)(art_top + (e->kind == kEnemyPiranha ? (int16_t)kPlantArtRowsPx
+                                                                : (tall != 0U ? (int16_t)(2 * kEnemyHeightPx)
+                                                                              : (int16_t)kEnemyHeightPx)));
+        if (art_bot <= 0 || art_top >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kEnemyWidthPx ||
+            sx >= (int16_t)kScreenWidthPx) {
+            drawn_slot[i] = 0xFF;
             continue;
         }
         // the corpse is picked before the kind is, so a burned piranha falls out of its pipe
         // upside down rather than staying tucked behind it
         if (e->state == kEnemyFlipped) {
-            tile = e->kind == kEnemyGoomba
-                       ? (uint8_t)kTileGoombaWalk0
-                       : (e->kind == kEnemyPiranha ? (uint8_t)kTilePiranha : (uint8_t)kTileKoopaWalk0);
             flip_y = (uint8_t)S_FLIPY;
+            if (e->kind == kEnemyGoomba) {
+                base = (uint8_t)kTileGoombaWalk0;
+            } else if (e->kind == kEnemyPiranha) {
+                base = (uint8_t)kTilePiranha;
+                symmetric = 1;
+            } else {
+                base = (uint8_t)kTileKoopaWalk0;
+            }
         } else if (e->kind == kEnemyPiranha) {
-            // the plant is left-right symmetric, so it is one 8x16 pair like the goomba's
-            tile = kTilePiranha;
+            base = (uint8_t)kTilePiranha;
+            symmetric = 1;
         } else if (e->state == kEnemySquashed) {
-            tile = kTileGoombaSquash;
+            base = (uint8_t)kTileGoombaSquash;
+            symmetric = 1;
         } else if (e->state != kEnemyWalk) {
-            tile = kTileShell;
+            // smb paints a red koopa's shell red and a green one's green, and a stomped red
+            // paratroopa has already become a red koopa (see collide_player)
+            base = (e->kind == kEnemyKoopa) ? (uint8_t)kTileShell : (uint8_t)kTileShellRed;
+            symmetric = 1;
         } else if (e->kind == kEnemyKoopaParaRed) {
-            tile = para_tile;
-            para = 1;
+            base = para_tile;
+        } else if (e->kind == kEnemyGoomba) {
+            // the rip's walk1 is walk0's exact mirror, so the second frame is the first drawn with
+            // its halves swapped - and the facing flip rides on top of that
+            base = (uint8_t)kTileGoombaWalk0;
+            mirror = swap;
         } else {
-            tile = e->kind == kEnemyGoomba ? goomba_tile : koopa_tile;
+            base = koopa_tile;
         }
-        prop = (uint8_t)(((para != 0U || tile == kTilePiranha || tile >= kTileShell) ? (uint8_t)kPalKoopa
-                                                                                     : (uint8_t)kPalGoomba) |
-                         flip_y);
-        if (para != 0U) {
-            prop = (uint8_t)(prop | (uint8_t)S_BANK);
+        if (base == (uint8_t)kTileGoombaWalk0 || base == (uint8_t)kTileGoombaSquash) {
+            prop = (uint8_t)kPalGoomba;
+        } else if (e->kind == kEnemyKoopaParaRed || base == (uint8_t)kTileShellRed) {
+            // a red enemy wears kPalStar, but S_BANK belongs to the TILE and not to the kind: a
+            // red paratroopa killed while still flying keeps its kind and falls as the bank-0
+            // koopa corpse, so reading the bank off the kind sent that corpse to unclaimed
+            // bank-1 ids instead of to the art it is actually drawing
+            prop = (uint8_t)kPalStar;
+            if (base == (uint8_t)kTileParaFly0 || base == (uint8_t)kTileParaFly1 ||
+                base == (uint8_t)kTileShellRed) {
+                prop = (uint8_t)(prop | (uint8_t)S_BANK);
+            }
+        } else {
+            prop = (uint8_t)kPalKoopa;
         }
-        if (tile == kTilePiranha && flip_y == 0U) {
+        prop = (uint8_t)(prop | flip_y);
+        if (base == (uint8_t)kTilePiranha && flip_y == 0U) {
             // OAM background-priority: the hardware draws this sprite behind bg colors 1-3 and only
             // over color 0. every bg palette keeps color 0 as the level's plain backdrop hue (see
             // assets_load_bg_palettes) and the pipe's own colors 1-3 are its opaque body, so as the
             // plant sinks the pipe tiles progressively cover it instead of it sitting on top
             prop = (uint8_t)(prop | (uint8_t)S_PRIORITY);
         }
-        if (para == 0U && (tile == kTilePiranha || tile < kTileKoopaWalk0)) {
-            // a symmetric frame is one 8x16 pair; the right half is the same tile drawn flipped
-            left_tile = tile;
-            right_tile = tile;
-            right_prop = (uint8_t)(prop | (uint8_t)S_FLIPX);
-        } else {
-            // a facing frame carries both halves, and flipping swaps which side each draws on
-            if (e->dir < 0) {
-                prop = (uint8_t)(prop | (uint8_t)S_FLIPX);
-                left_tile = (uint8_t)(tile + 2U);
-                right_tile = tile;
-            } else {
-                left_tile = tile;
-                right_tile = (uint8_t)(tile + 2U);
-            }
-            right_prop = prop;
+        if (symmetric == 0U && e->dir < 0) {
+            mirror = (uint8_t)(mirror ^ 1U);
         }
-        if (drawn_tile[i] != left_tile || drawn_prop[i] != prop) {
-            if (drawn_prop[i] == 0xFFU) {
-                ++shown;
-                drawn_x[i] = 0xFF;
-            }
-            drawn_tile[i] = left_tile;
-            drawn_prop[i] = prop;
-            set_sprite_tile(oam, left_tile);
-            set_sprite_tile((uint8_t)(oam + 1U), right_tile);
-            set_sprite_prop(oam, prop);
-            set_sprite_prop((uint8_t)(oam + 1U), right_prop);
-        }
+        slot = next;
+        next = (uint8_t)(next + (tall != 0U ? (uint8_t)kEnemyOamTall : (uint8_t)kEnemyOamShort));
+        fresh = (uint8_t)((drawn_slot[i] != slot) ? 1U : 0U);
+        drawn_slot[i] = slot;
+
         {
             const uint8_t px = (uint8_t)(sx + kOamXOffset);
-            const uint8_t py = (uint8_t)(sy + kOamYOffset);
+            const uint8_t py = (uint8_t)(art_y + kOamYOffset);
+            const uint8_t moved = (uint8_t)((fresh != 0U || drawn_x[i] != px || drawn_y[i] != py) ? 1U : 0U);
+            const uint8_t redrawn =
+                (uint8_t)((fresh != 0U || drawn_tile[i] != base || drawn_prop[i] != prop) ? 1U : 0U);
 
-            if (drawn_x[i] != px || drawn_y[i] != py) {
-                drawn_x[i] = px;
-                drawn_y[i] = py;
-                move_sprite(oam, px, py);
-                move_sprite((uint8_t)(oam + 1U), (uint8_t)(px + 8U), py);
+            // a 16x32 box, whose eight tiles are [UL, UL+1, UR, UR+1, LL, LL+1, LR, LR+1]: the
+            // upper row is base/base+2 and the lower base+4/base+6. a symmetric one stores only its
+            // left column, top pair then bottom pair, so the two rows are base and base+2 and every
+            // right half is its own mirror. a 16x16 box is just the upper row. flipping vertically
+            // swaps the two rows as well as the rows inside each tile, which is the whole of a
+            // corpse's animation
+            const uint8_t lower = symmetric != 0U ? (uint8_t)(base + 2U) : (uint8_t)(base + 4U);
+            const uint8_t up_right = symmetric != 0U ? base : (uint8_t)(base + 2U);
+            const uint8_t low_right = symmetric != 0U ? lower : (uint8_t)(base + 6U);
+            const uint8_t swapped = (uint8_t)(tall != 0U && flip_y != 0U ? 1U : 0U);
+            const uint8_t low_y = (uint8_t)(py + kEnemyHeightPx);
+
+            if (moved == 0U && redrawn == 0U) {
+                continue;
+            }
+            drawn_tile[i] = base;
+            drawn_prop[i] = prop;
+            drawn_x[i] = px;
+            drawn_y[i] = py;
+            // the two are written apart on purpose: an enemy that merely walked keeps the tiles and
+            // props it already has, and only a pose change (or a slot changing hands) rewrites them
+            if (redrawn != 0U) {
+                pair_art(slot, swapped != 0U ? lower : base, swapped != 0U ? low_right : up_right, prop,
+                         mirror, symmetric);
+                if (tall != 0U) {
+                    pair_art((uint8_t)(slot + 2U), swapped != 0U ? base : lower,
+                             swapped != 0U ? up_right : low_right, prop, mirror, symmetric);
+                }
+            }
+            if (moved != 0U) {
+                pair_move(slot, px, py);
+                if (tall != 0U) {
+                    pair_move((uint8_t)(slot + 2U), px, low_y);
+                }
             }
         }
     }
-    // past the pool's live end: park whichever slots still show an enemy that has gone
+    // past the pool's live end nothing can be drawn, and neither can anything the loop skipped
     for (; i < kEnemySlots; ++i) {
-        if (drawn_prop[i] != 0xFFU) {
-            const uint8_t oam = (uint8_t)(kSpriteEnemyFirst + (uint8_t)(i << 1));
-
-            drawn_prop[i] = 0xFF;
-            --shown;
-            move_sprite(oam, 0, 0);
-            move_sprite((uint8_t)(oam + 1U), 0, 0);
-        }
+        drawn_slot[i] = 0xFF;
     }
+    // and the slots this frame gave back, which the last one still shows an enemy in
+    for (i = next; i < oam_used; ++i) {
+        move_sprite(i, 0, 0);
+    }
+    oam_used = next;
 }

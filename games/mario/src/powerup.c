@@ -307,13 +307,14 @@ void powerup_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         const int16_t sy = (int16_t)(f->pos_y - (int16_t)cam_y - kFireballPx);
         // the disassembly's spin: the drawn tile alternates every 4 frames (S_BANK picks bank 1's
         // frame B in place of bank 0's frame A) and the sprite is flipped both ways every 8 - two
-        // independent cadences that together read as a tumbling ball, drawn from kPalCoin's
-        // saturated gold/orange rather than the star's near-white set
+        // independent cadences that together read as a tumbling ball. m22's spin frames are the
+        // smbd sheet's own and are drawn in kPalStar's white/orange/red index order, which is the
+        // saturated fire the old hand art borrowed kPalCoin's gold for
         const uint8_t spin_bank = ((f->anim >> 2) & 1U) != 0U ? (uint8_t)S_BANK : 0U;
         const uint8_t spin_flip = ((f->anim >> 3) & 1U) != 0U ? (uint8_t)(S_FLIPX | S_FLIPY) : 0U;
 
         set_sprite_tile(oam, (uint8_t)kTileFireball);
-        set_sprite_prop(oam, (uint8_t)(kPalCoin | spin_bank | spin_flip));
+        set_sprite_prop(oam, (uint8_t)(kPalStar | spin_bank | spin_flip));
         move_sprite(oam, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
     }
     for (; i < shown; ++i) {

@@ -109,12 +109,12 @@ static uint8_t mario_pipe_x(uint8_t slot) {
 }
 
 // super mario as two rows of two 8x16 sprites, the same pose pair player.c draws him standing in.
-// the jump slab is the one pose that lives in vram bank 1, so its rows carry S_BANK
+// the whole big set lives in vram bank 1, so every row carries S_BANK
 static void file_draw_mario(uint8_t x, uint8_t y, uint8_t jumping) {
-    const uint8_t upper = jumping != 0U ? (uint8_t)kTileSuperJumpUpper : (uint8_t)kTileSuperUpper;
     const uint8_t frame = jumping != 0U ? (uint8_t)kFrameJump : (uint8_t)kFrameIdle;
-    const uint8_t lower = (uint8_t)(kTileSuperLowerFirst + frame * kSuperTilesPerFrame);
-    const uint8_t prop = (uint8_t)(kPalMario | (jumping != 0U ? (uint8_t)S_BANK : 0U));
+    const uint8_t upper = (uint8_t)(kTileSuperFirst + frame * kSuperTilesPerFrame);
+    const uint8_t lower = (uint8_t)(upper + 4U);
+    const uint8_t prop = (uint8_t)(kPalMario | (uint8_t)S_BANK);
     const uint8_t sx = (uint8_t)(x + kOamXOffset);
     const uint8_t sy = (uint8_t)(y + kOamYOffset);
 
@@ -124,8 +124,8 @@ static void file_draw_mario(uint8_t x, uint8_t y, uint8_t jumping) {
     set_sprite_tile(kSpriteMarioLowR, (uint8_t)(lower + 2U));
     set_sprite_prop(kSpriteMarioL, prop);
     set_sprite_prop(kSpriteMarioR, prop);
-    set_sprite_prop(kSpriteMarioLowL, (uint8_t)kPalMario);
-    set_sprite_prop(kSpriteMarioLowR, (uint8_t)kPalMario);
+    set_sprite_prop(kSpriteMarioLowL, prop);
+    set_sprite_prop(kSpriteMarioLowR, prop);
     move_sprite(kSpriteMarioL, sx, sy);
     move_sprite(kSpriteMarioR, (uint8_t)(sx + 8U), sy);
     move_sprite(kSpriteMarioLowL, sx, (uint8_t)(sy + kPlayerHeightPx));

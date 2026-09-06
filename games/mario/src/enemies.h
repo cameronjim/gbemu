@@ -37,7 +37,13 @@ uint8_t enemies_update(uint16_t player_px, int16_t player_py, uint8_t player_h, 
 // figure. 1 when it hit something, which is also the frame the ball itself is spent
 uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED;
 
-// writes each live enemy's two 8x16 sprites, or parks the ones that are gone or off screen
+// writes each live enemy's sprites - two for a 16x16 kind, four for a 16x32 one - or parks the
+// ones that are gone or off screen. the slots are handed out fresh every frame, in pool order
 void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
+
+// the first oam slot past everything enemies_draw wrote on the last frame it ran. hazards.c starts
+// its own pool at max(kHazardPoolFirst, this), so the two pools meet in the middle of oam instead
+// of each needing a fixed run of it - see mario.h's oam map
+uint8_t enemies_oam_top(void) BANKED;
 
 #endif

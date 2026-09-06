@@ -649,7 +649,10 @@ void player_begin_death(uint8_t from) {
     crouched = 0;
     skidding = 0;
     behind_bg = 0;
-    anim_frame = kFrameJump;
+    // the death pose is a small-mario-only frame (a big mario shrinks before he can die), so a big
+    // one left alive by some future path still falls in the jump pose rather than in the crouch
+    // the big set keeps at that same index
+    anim_frame = big != 0U ? (uint8_t)kFrameJump : (uint8_t)kFrameDeath;
     death_timer = 0;
     death_leaps = (from == (uint8_t)kDeathFromPit) ? 0U : 1U;
 }
@@ -873,50 +876,41 @@ void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
         player_hide();
         return;
     }
-    // the climb and jump poses live in vram bank 1, so their rows carry S_BANK in the prop. the
-    // slot cache compares (tile, prop) and the prop is what tells the two banks apart, so a pose
-    // that shares an id with a bank-0 one still reads as a change
-    if (climbing != 0U) {
-        const uint8_t climb_prop = (uint8_t)(prop | (uint8_t)S_BANK);
-
-        if (big == 0U) {
-            draw_row(kSpriteMarioL, (uint8_t)kTileClimbSmall, climb_prop, sx, sy);
-            move_sprite(kSpriteMarioLowL, 0, 0);
-            move_sprite(kSpriteMarioLowR, 0, 0);
-            return;
-        }
-        draw_row(kSpriteMarioL, (uint8_t)kTileClimbBigUpper, climb_prop, sx, sy);
-        draw_row(kSpriteMarioLowL, (uint8_t)kTileClimbBigLower, climb_prop, sx,
-                 (int16_t)(sy + kPlayerHeightPx));
-        return;
-    }
+    // the whole of big mario and small mario's climb grip live in vram bank 1, so their rows carry
+    // S_BANK in the prop. the slot cache compares (tile, prop) and the prop is what tells the two
+    // banks apart, so a pose that shares an id with a bank-0 one still reads as a change
     if (big == 0U) {
-        draw_row(kSpriteMarioL, (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame)),
-                 prop, sx, sy);
+        // the small poses are the pinned 0xe0 family in bank 0, except the climb grip and the death
+        // pose: the grip rides at the same id in bank 1, and the death pose took four of the ids
+        // super mario's old bank-0 block gave back
+        uint8_t tile;
+        uint8_t small_prop = prop;
+
+        if (climbing != 0U) {
+            tile = (uint8_t)kTileClimbSmall;
+            small_prop = (uint8_t)(prop | (uint8_t)S_BANK);
+        } else if (anim_frame == (uint8_t)kFrameDeath) {
+            tile = (uint8_t)kTileMarioDeath;
+        } else {
+            tile = (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame));
+        }
+        draw_row(kSpriteMarioL, tile, small_prop, sx, sy);
         move_sprite(kSpriteMarioLowL, 0, 0);
         move_sprite(kSpriteMarioLowR, 0, 0);
         return;
     }
-    if (crouched != 0U) {
-        // the fold is one 16x16 pose of its own, so the upper row parks; 0xff is never a real
-        // tile, so the cache cannot skip the set_sprite_tile the next standing frame owes
-        drawn_mario_tile[kSpriteMarioL] = 0xFF;
-        drawn_mario_prop[kSpriteMarioL] = 0xFF;
-        move_sprite(kSpriteMarioL, 0, 0);
-        move_sprite(kSpriteMarioR, 0, 0);
-        draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + kFrameCrouch * kSuperTilesPerFrame), prop,
-                 sx, (int16_t)(sy + kCrouchInsetPx));
-        return;
+    // every big pose is its own 16x32 box of eight tiles in vram bank 1, so all four slots draw the
+    // same way whatever he is doing: the upper row at the box's top, the lower one 16 px under it.
+    // the crouch is pose 6 and the flagpole grip pose 7 - the fold's 22-tall art is bottom-aligned
+    // inside the same box, so it needs no row parking and no origin of its own, only the art
+    {
+        const uint8_t pose = climbing != 0U ? (uint8_t)kFrameClimbBig : anim_frame;
+        const uint8_t base = (uint8_t)(kTileSuperFirst + (uint8_t)(pose * kSuperTilesPerFrame));
+        const uint8_t big_prop = (uint8_t)(prop | (uint8_t)S_BANK);
+
+        draw_row(kSpriteMarioL, base, big_prop, sx, sy);
+        draw_row(kSpriteMarioLowL, (uint8_t)(base + 4U), big_prop, sx, (int16_t)(sy + kPlayerHeightPx));
     }
-    // every standing pose but the jump shares one upper slab, which is why the jump could not raise
-    // an arm: its own slab is the one thing bank 1 holds for him
-    if (anim_frame == (uint8_t)kFrameJump) {
-        draw_row(kSpriteMarioL, (uint8_t)kTileSuperJumpUpper, (uint8_t)(prop | (uint8_t)S_BANK), sx, sy);
-    } else {
-        draw_row(kSpriteMarioL, (uint8_t)kTileSuperUpper, prop, sx, sy);
-    }
-    draw_row(kSpriteMarioLowL, (uint8_t)(kTileSuperLowerFirst + (uint8_t)(anim_frame * kSuperTilesPerFrame)),
-             prop, sx, (int16_t)(sy + kPlayerHeightPx));
 }
 
 uint16_t player_x(void) {

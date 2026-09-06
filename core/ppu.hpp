@@ -83,6 +83,10 @@ public:
     std::span<const uint8_t> vram() const {
         return vram_[0];
     }
+    // and for a host test that has to read cgb vram bank 1 - sprite art the game draws with S_BANK
+    std::span<const uint8_t> vram(int bank) const {
+        return vram_[static_cast<size_t>(bank) & 1U];
+    }
     uint8_t vram_bank() const {
         return vram_bank_;
     }

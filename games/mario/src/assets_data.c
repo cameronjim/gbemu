@@ -5,77 +5,92 @@
 
 #include "assets.h"
 #include "gen/bowser.h"
+#include "gen/fireball.h"
+#include "gen/flower.h"
+#include "gen/goomba.h"
+#include "gen/goomba_squash.h"
+#include "gen/items.h"
+#include "gen/koopa_green.h"
+#include "gen/mario_big.h"
+#include "gen/mario_small.h"
+#include "gen/mario_small_climb.h"
+#include "gen/paratroopa_red.h"
+#include "gen/piranha.h"
+#include "gen/shell_green.h"
+#include "gen/shell_red.h"
 #include "mario.h"
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
 #include <stdint.h>
 
-// ground: a 16x16 cobble pattern whose two courses are 6/8 and 8/6 wide, so the four
-// quadrants all differ and the block tiles seamlessly both ways. the top block is the same
-// rubble under two rows of grass, and shares the fill block's lower half (kGroundLowerTiles)
+// ground: smbd redraws the nes block as one 16x16 tile, the same in every surface and fill cell
+// (no grass cap - the deluxe rip's ground is tan/brown rubble top to bottom). it tiles seamlessly
+// both ways, so the fill block's upper pair is the surface block's own: kGroundTiles loads the
+// surface top pair and the fill top pair as the same two quadrants, and both blocks share the
+// lower half (kGroundLowerTiles). transcribed pixel for pixel off the deluxe 1-1 screenshot.
 // clang-format off
 static const uint8_t kGroundTiles[64] = {
-    // ground top left: grass edge with notches over rubble
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x83, 0x1E, // -..+++#-
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    0xFF, 0xFF, // ########
-    0xFF, 0x20, // --#-----
-    0x30, 0xEF, // ++#-++++
-    // ground top right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0xDF, // ++.++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0xFF, 0x10, // ---#----
-    0x18, 0xF7, // +++#-+++
-    // rubble upper left
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    0xFF, 0xFF, // ########
-    0xFF, 0x20, // --#-----
-    0x30, 0xEF, // ++#-++++
-    // rubble upper right
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0xFF, 0x10, // ---#----
-    0x18, 0xF7, // +++#-+++
-};
-// clang-format on
-
-// the rubble's lower half, which both ground blocks end on
-// clang-format off
-static const uint8_t kGroundLowerTiles[32] = {
-    // rubble lower left, shared by the top and fill blocks
-    0x30, 0xEF, // ++#-++++
-    0x30, 0xEF, // ++#-++++
-    0x30, 0xEF, // ++#-++++
-    0x30, 0xEF, // ++#-++++
-    0xFF, 0xFF, // ########
-    0xFF, 0x02, // ------#-
-    0x83, 0x7E, // -+++++#-
-    0x83, 0x7E, // -+++++#-
-    // rubble lower right
-    0x18, 0xF7, // +++#-+++
-    0x18, 0xF7, // +++#-+++
-    0x18, 0xF7, // +++#-+++
-    0x18, 0xF7, // +++#-+++
-    0xFF, 0xFF, // ########
+    // surface top left
     0xFF, 0x01, // -------#
     0x01, 0xFF, // +++++++#
     0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    // surface top right
+    0x79, 0x86, // +----++-
+    0x86, 0x7D, // -++++#-+
+    0x86, 0x7D, // -++++#-+
+    0x86, 0x7D, // -++++#-+
+    0xC6, 0x7D, // -#+++#-+
+    0x7A, 0xFD, // +####+-+
+    0xFE, 0x05, // -----#-+
+    0x86, 0x7D, // -++++#-+
+    // fill top left, the surface top left again
+    0xFF, 0x01, // -------#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    // fill top right, the surface top right again
+    0x79, 0x86, // +----++-
+    0x86, 0x7D, // -++++#-+
+    0x86, 0x7D, // -++++#-+
+    0x86, 0x7D, // -++++#-+
+    0xC6, 0x7D, // -#+++#-+
+    0x7A, 0xFD, // +####+-+
+    0xFE, 0x05, // -----#-+
+    0x86, 0x7D, // -++++#-+
+};
+// clang-format on
+
+// the block's lower half, which the surface and fill blocks both end on
+// clang-format off
+static const uint8_t kGroundLowerTiles[32] = {
+    // lower left, shared by the surface and fill blocks
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x03, 0xFE, // ++++++#-
+    0xC3, 0xFE, // ##++++#-
+    0xFE, 0x3D, // --####-+
+    0x3E, 0xC5, // ++---#-+
+    0x06, 0xFD, // +++++#-+
+    0xFB, 0xFD, // #####+-#
+    // lower right
+    0x86, 0x7D, // -++++#-+
+    0x86, 0x7D, // -++++#-+
+    0x07, 0xFF, // +++++###
+    0x07, 0xFC, // +++++#--
+    0x06, 0xFD, // +++++#-+
+    0x06, 0xFD, // +++++#-+
+    0x0E, 0xFD, // ++++##-+
+    0xF9, 0xFF, // #####++#
 };
 // clang-format on
 
@@ -1477,23 +1492,29 @@ void assets_load_bg_palettes_castle(void) BANKED {
     set_bkg_palette(kCamPalCoin, 1, lava);
 }
 
+// m22: every colour below is read straight off the smbd sprite sheets the art was ripped from, so
+// a generated tile's colour index and the slot it is worn in cannot drift apart. see mario.h's
+// kPal* block for which family wears which slot
 void assets_load_sprite_palettes(void) BANKED {
-    // warm family: 1 skin, 2 the cap/shirt/overall red, 3 the dark his hair, shoes, straps and
-    // outline accents are drawn in. color 0 is the sprite's transparency
-    palette_color_t mario[4] = {RGB(0, 0, 0), RGB(31, 22, 14), RGB(26, 2, 0), RGB(9, 4, 0)};
-    // fire mario keeps the art and swaps the two body shades for smb's white-over-red outfit. the
-    // dark slot goes deep red rather than the cap's own: it also paints his hair and mustache, and
-    // a bright red there reads as a wig against the white outfit
-    palette_color_t fire[4] = {RGB(0, 0, 0), RGB(31, 22, 14), RGB(31, 31, 31), RGB(22, 3, 1)};
+    // #ffb210 skin, #de0000 the cap/shirt/overall red, #736900 the dark his hair, shoes, straps
+    // and outline accents are drawn in. color 0 is the sprite's transparency
+    palette_color_t mario[4] = {RGB(0, 0, 0), RGB(31, 22, 2), RGB(27, 0, 0), RGB(14, 13, 0)};
+    // fire mario is the same tiles under a shifted ramp, exactly as the sheet's own fire block is:
+    // the red becomes #ffe3b5 cream and the dark becomes the red
+    palette_color_t fire[4] = {RGB(0, 0, 0), RGB(31, 22, 2), RGB(31, 28, 22), RGB(27, 0, 0)};
     set_sprite_palette(kPalMario, 1, mario);
     set_sprite_palette(kPalFire, 1, fire);
 }
 
 void assets_load_item_palettes(void) BANKED {
-    palette_color_t mushroom[4] = {RGB(0, 0, 0), RGB(31, 26, 19), RGB(28, 4, 2), RGB(0, 0, 0)};
-    palette_color_t star[4] = {RGB(0, 0, 0), RGB(31, 31, 24), RGB(31, 26, 4), RGB(12, 8, 0)};
-    // roster.json: smbd modernises the 1-up to a green cap, which is what this palette paints
-    palette_color_t oneup[4] = {RGB(0, 0, 0), RGB(31, 26, 19), RGB(2, 19, 2), RGB(0, 0, 0)};
+    // the power-up sheet's own three: white, #f5c144 yellow, #e23122 red. the STAR's tiles are
+    // drawn in this index order too, so it wears this slot rather than kPalStar (see blocks_draw)
+    palette_color_t mushroom[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(30, 24, 8), RGB(28, 6, 4)};
+    // white, #f8b010 koopa orange, #d80000 shell red: the red paratroopa, the red shell, the
+    // fireball and its puff, and the flash a star's invincibility strobes mario with
+    palette_color_t star[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(31, 22, 2), RGB(27, 0, 0)};
+    // the same white and yellow over #3e8b29 green: the 1-up mushroom and the fire flower
+    palette_color_t oneup[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(30, 24, 8), RGB(7, 17, 5)};
     palette_color_t coin[4] = {RGB(0, 0, 0), RGB(31, 26, 7), RGB(31, 17, 3), RGB(0, 0, 0)};
     set_sprite_palette(kPalMushroom, 1, mushroom);
     set_sprite_palette(kPalStar, 1, star);
@@ -1502,127 +1523,21 @@ void assets_load_item_palettes(void) BANKED {
 }
 
 void assets_load_enemy_palettes(void) BANKED {
-    // roster.json: the goomba is gray on the nes and recoloured in smbd, so ours is the mushroom
-    // brown the deluxe art reads as; the koopa keeps its green shell over tan skin
+    // the enemy sheet's overworld row: #f8c098 the goomba's tan face and feet, #984800 its body,
+    // black the outline and eyes. the koopa is #008010 green, #f8b010 orange skin and white - the
+    // three colours bowser is drawn in as well, which is why the castle re-tint below is a no-op
     palette_color_t goomba[4] = {RGB(0, 0, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
-    palette_color_t koopa[4] = {RGB(0, 0, 0), RGB(31, 26, 16), RGB(2, 19, 2), RGB(0, 0, 0)};
+    palette_color_t koopa[4] = {RGB(0, 0, 0), RGB(0, 16, 2), RGB(31, 22, 2), RGB(31, 31, 31)};
     set_sprite_palette(kPalGoomba, 1, goomba);
     set_sprite_palette(kPalKoopa, 1, koopa);
 }
 
-// the items. colors: 1 spots/shine, 2 the body, 3 the outline; color 0 is sprite transparency.
-// mushroom and 1-up share a silhouette and differ only by palette, exactly as smb's own do. the
-// rows below are the same ascii the terrain arrays carry: . transparent, - color 1, + 2, # 3
+// the coin a struck block pays out, the one item still drawn from hand art: one 8x16 pair, the
+// oval standing in both halves. the mushroom, the star and the 1-up beside it in the 0xd0
+// family are the smbd rip's own now (games/mario/src/gen/items.c) and so is the fireball's
+// spin frame (gen/fireball.c). colors: 1 the shine, 2 the body, 3 the outline
 // clang-format off
-static const uint8_t kItemTiles[256] = {
-    // mushroom l top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x0F, 0x0F, // ....####
-    0x30, 0x3F, // ..##++++
-    0x60, 0x7F, // .##+++++
-    0x4C, 0x73, // .#++--++
-    0x9C, 0xE3, // #++---++
-    0x9C, 0xE3, // #++---++
-    // mushroom l bot
-    0x98, 0xE7, // #++--+++
-    0x80, 0xFF, // #+++++++
-    0x60, 0x7F, // .##+++++
-    0x3F, 0x3F, // ..######
-    0x1F, 0x10, // ...#----
-    0x1F, 0x16, // ...#-##-
-    0x1F, 0x16, // ...#-##-
-    0x1F, 0x1F, // ...#####
-    // mushroom r top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0xF0, 0xF0, // ####....
-    0x0C, 0xFC, // ++++##..
-    0x06, 0xFE, // +++++##.
-    0x32, 0xCE, // ++--++#.
-    0x39, 0xC7, // ++---++#
-    0x39, 0xC7, // ++---++#
-    // mushroom r bot
-    0x19, 0xE7, // +++--++#
-    0x01, 0xFF, // +++++++#
-    0x06, 0xFE, // +++++##.
-    0xFC, 0xFC, // ######..
-    0xF8, 0x08, // ----#...
-    0xF8, 0x68, // -##-#...
-    0xF8, 0x68, // -##-#...
-    0xF8, 0xF8, // #####...
-    // star l top
-    0x01, 0x01, // .......#
-    0x02, 0x03, // ......#+
-    0x04, 0x07, // .....#++
-    0x04, 0x07, // .....#++
-    0xF0, 0xFF, // ####++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x40, 0x7F, // .#++++++
-    // star l bot
-    0x26, 0x3F, // ..#++##+
-    0x26, 0x3F, // ..#++##+
-    0x20, 0x3F, // ..#+++++
-    0x20, 0x3F, // ..#+++++
-    0x42, 0x7E, // .#++++#.
-    0x44, 0x7C, // .#+++#..
-    0x48, 0x78, // .#++#...
-    0x78, 0x78, // .####...
-    // star r top
-    0x80, 0x80, // #.......
-    0x40, 0xC0, // +#......
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x0F, 0xFF, // ++++####
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x02, 0xFE, // ++++++#.
-    // star r bot
-    0x64, 0xFC, // +##++#..
-    0x64, 0xFC, // +##++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x42, 0x7E, // .#++++#.
-    0x22, 0x3E, // ..#+++#.
-    0x12, 0x1E, // ...#++#.
-    0x1E, 0x1E, // ...####.
-    // oneup l top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x0F, 0x0F, // ....####
-    0x30, 0x3F, // ..##++++
-    0x60, 0x7F, // .##+++++
-    0x4C, 0x73, // .#++--++
-    0x9C, 0xE3, // #++---++
-    0x9C, 0xE3, // #++---++
-    // oneup l bot
-    0x98, 0xE7, // #++--+++
-    0x80, 0xFF, // #+++++++
-    0x60, 0x7F, // .##+++++
-    0x3F, 0x3F, // ..######
-    0x1F, 0x10, // ...#----
-    0x1F, 0x16, // ...#-##-
-    0x1F, 0x16, // ...#-##-
-    0x1F, 0x1F, // ...#####
-    // oneup r top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0xF0, 0xF0, // ####....
-    0x0C, 0xFC, // ++++##..
-    0x06, 0xFE, // +++++##.
-    0x32, 0xCE, // ++--++#.
-    0x39, 0xC7, // ++---++#
-    0x39, 0xC7, // ++---++#
-    // oneup r bot
-    0x19, 0xE7, // +++--++#
-    0x01, 0xFF, // +++++++#
-    0x06, 0xFE, // +++++##.
-    0xFC, 0xFC, // ######..
-    0xF8, 0x08, // ----#...
-    0xF8, 0x68, // -##-#...
-    0xF8, 0x68, // -##-#...
-    0xF8, 0xF8, // #####...
+static const uint8_t kCoinPopTiles[32] = {
     // coin pop top
     0x3C, 0x3C, // ..####..
     0x62, 0x5E, // .#-+++#.
@@ -1641,928 +1556,24 @@ static const uint8_t kItemTiles[256] = {
     0xE1, 0x9F, // #--++++#
     0x62, 0x5E, // .#-+++#.
     0x3C, 0x3C, // ..####..
-    // fireball top, blank so the ball is one 8x8
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // fireball bottom, spin frame A: an orange/red body (color 2), a two-pixel bright gold core
-    // (color 1) dead center, and a black outline (color 3) - drawn under kPalCoin, not the star's
-    // near-white set, which is the fix for "the fire should be more prominent and not just white"
-    0x3C, 0x3C, // ..####..
-    0x42, 0x7E, // .#++++#.
-    0x81, 0xFF, // #++++++#
-    0x99, 0xE7, // #++--++#
-    0x99, 0xE7, // #++--++#
-    0x81, 0xFF, // #++++++#
-    0x42, 0x7E, // .#++++#.
-    0x3C, 0x3C, // ..####..
-};
-// clang-format on
-
-// the fireball's spin frame B, a 45-degree-rotated silhouette of the same body/core/outline
-// coloring. it lives at the same tile id as frame A (kTileFireball/+1) but in CGB VRAM bank 1 -
-// bank 0's tile table is exactly full end to end (see the kTile* ids in mario.h), so a second
-// fireball frame has nowhere to go there. powerup_draw toggles the sprite's S_BANK attribute to
-// pick this frame instead, the same way a bg tile picks bank 1 for scenery
-// clang-format off
-static const uint8_t kFireballFrameBTiles[32] = {
-    // top, blank
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    // bottom, rotated
-    0x18, 0x18, // ...##...
-    0x24, 0x3C, // ..#++#..
-    0x42, 0x7E, // .#++++#.
-    0x99, 0xE7, // #++--++#
-    0x99, 0xE7, // #++--++#
-    0x42, 0x7E, // .#++++#.
-    0x24, 0x3C, // ..#++#..
-    0x18, 0x18, // ...##...
-};
-// clang-format on
-
-// small mario, drawn as two 8x16 sprites. colors: 1 his skin - face, bare forearms and hands - 2
-// the red cap, shirt and overalls, 3 his hair, mustache, shoes and the two overall buttons. stubby
-// proportions: cap and face take the top seven rows, the body the next seven, the shoes the last
-// two, and the sleeves stop at the elbow so the bare forearm reads against the red.
-// every frame lights row 0, row 15, column 1 and column 14 of the 16px box and nothing outside
-// columns 1..14, which is what lets the host tests read the sprite's exact top and side edges.
-// the run cycle is idle / walk0 open stride / walk1 rear leg lifted / walk2 trailing stride, with
-// the hands swinging between rows 8 and 11 so the three silhouettes read apart at speed; skid
-// leans the whole head one column back with the front arm thrown out, and jump tucks the rear leg
-// clang-format off
-static const uint8_t kMarioTiles[384] = {
-    // idle l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // idle l bot
-    0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x68, 0x1F, // .--+#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
-    // idle r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x00, 0xF8, // +++++...
-    // idle r bot
-    0x00, 0xFC, // ++++++..
-    0x06, 0xF8, // +++++--.
-    0x16, 0xF8, // +++#+--.
-    0x00, 0xF8, // +++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // walk0 l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // walk0 l bot
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x68, 0x1F, // .--+#+++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x3C, // ..++++..
-    0x00, 0x38, // ..+++...
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // walk0 r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x00, 0xF8, // +++++...
-    // walk0 r bot
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x10, 0xF8, // +++#+...
-    0x00, 0xF8, // +++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x38, // ..+++...
-    0x3C, 0x3C, // ..####..
-    0x3C, 0x3C, // ..####..
-    // walk1 l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // walk1 l bot
-    0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x68, 0x1F, // .--+#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x38, // ..+++...
-    0x78, 0x78, // .####...
-    0x00, 0x00, // ........
-    // walk1 r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x00, 0xF8, // +++++...
-    // walk1 r bot
-    0x00, 0xFC, // ++++++..
-    0x06, 0xF8, // +++++--.
-    0x16, 0xF8, // +++#+--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF0, // ++++....
-    0x00, 0x78, // .++++...
-    0x00, 0x7C, // .+++++..
-    0x7C, 0x7C, // .#####..
-    // walk2 l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // walk2 l bot
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x08, 0x1F, // ...+#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1C, // ...+++..
-    0x3C, 0x3C, // ..####..
-    0x3C, 0x3C, // ..####..
-    // walk2 r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x00, 0xF8, // +++++...
-    // walk2 r bot
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x16, 0xF8, // +++#+--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0x7C, // .+++++..
-    0x00, 0x3C, // ..++++..
-    0x1E, 0x1E, // ...####.
-    0x1E, 0x1E, // ...####.
-    // skid l top
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x40, 0x7F, // .#++++++
-    0x7F, 0x62, // .##---#-
-    0x7F, 0x42, // .#----#-
-    0x7F, 0x41, // .#-----#
-    0x3F, 0x00, // ..------
-    0x00, 0x3F, // ..++++++
-    // skid l bot
-    0x60, 0x1F, // .--+++++
-    0x08, 0x1F, // ...+#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1C, // ...+++..
-    0x00, 0x3C, // ..++++..
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // skid r top
-    0x00, 0x80, // +.......
-    0x00, 0xF0, // ++++....
-    0x00, 0xF8, // +++++...
-    0xF0, 0x00, // ----....
-    0xF8, 0x00, // -----...
-    0xF8, 0xF0, // ####-...
-    0xE0, 0x00, // ---.....
-    0x06, 0xF8, // +++++--.
-    // skid r bot
-    0x00, 0xF8, // +++++...
-    0x10, 0xF8, // +++#+...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x7C, // .+++++..
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
-    // jump l top
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x40, 0x7F, // .#++++++
-    0x7F, 0x62, // .##---#-
-    0x7F, 0x42, // .#----#-
-    0x7F, 0x41, // .#-----#
-    0x3F, 0x00, // ..------
-    0x00, 0x3F, // ..++++++
-    // jump l bot
-    0x60, 0x1F, // .--+++++
-    0x68, 0x1F, // .--+#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3E, // ..+++++.
-    0x00, 0x78, // .++++...
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    // jump r top
-    0x00, 0x80, // +.......
-    0x00, 0xF0, // ++++....
-    0x00, 0xF8, // +++++...
-    0xF6, 0x00, // ----.--.
-    0xFC, 0x00, // ------..
-    0xF8, 0xF6, // ####-++.
-    0xE0, 0x06, // ---..++.
-    0x00, 0xFE, // +++++++.
-    // jump r bot
-    0x00, 0xFC, // ++++++..
-    0x10, 0xF8, // +++#+...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x3C, // ..++++..
-    0x3C, 0x3C, // ..####..
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-};
-// clang-format on
-
-// the enemies. colors: 1 the light detail (goomba face, koopa skin and shell rim), 2 the body,
-// 3 the black outline, brows and eyes; 0 is sprite transparency. the four symmetric frames come
-// first, one 8x16 pair each - only their left half is stored and the right half is that same tile
-// drawn flipped - then the koopa's two facing frames in mario's left-top/left-bottom/right-top/
-// right-bottom order. roster.json animates the goomba by alternating states, which these two
-// frames do; being mirrored halves they cannot put one foot in front of the other, so the walk
-// alternates the feet wide and tucked instead, which is the same read at 8px
-// clang-format off
-static const uint8_t kEnemyTiles[256] = {
-    // goomba walk0 top
-    0x03, 0x03, // ......##
-    0x0F, 0x0F, // ....####
-    0x18, 0x1F, // ...##+++
-    0x30, 0x3F, // ..##++++
-    0x20, 0x3F, // ..#+++++
-    0x60, 0x7F, // .##+++++
-    0x7C, 0x7F, // .#####++
-    0x7E, 0x5F, // .#-####+
-    // goomba walk0 bottom
-    0x7C, 0x4F, // .#--##++
-    0x7C, 0x4F, // .#--##++
-    0x78, 0x47, // .#---+++
-    0x40, 0x7F, // .#++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0xF0, 0xFF, // ####++++
-    0xF0, 0xF0, // ####....
-    // goomba walk1 top
-    0x03, 0x03, // ......##
-    0x0F, 0x0F, // ....####
-    0x18, 0x1F, // ...##+++
-    0x30, 0x3F, // ..##++++
-    0x20, 0x3F, // ..#+++++
-    0x60, 0x7F, // .##+++++
-    0x7C, 0x7F, // .#####++
-    0x7E, 0x5F, // .#-####+
-    // goomba walk1 bottom
-    0x7C, 0x4F, // .#--##++
-    0x7C, 0x4F, // .#--##++
-    0x78, 0x47, // .#---+++
-    0x40, 0x7F, // .#++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x3C, 0x3F, // ..####++
-    0x3C, 0x3C, // ..####..
-    // goomba squash top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // goomba squash bottom
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x0F, 0x0F, // ....####
-    0x30, 0x3F, // ..##++++
-    0x70, 0x4F, // .#--++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0xF0, 0xF0, // ####....
-    // koopa shell top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x07, 0x07, // .....###
-    0x18, 0x1F, // ...##+++
-    0x20, 0x3F, // ..#+++++
-    0x40, 0x7F, // .#++++++
-    0x4C, 0x7F, // .#++##++
-    0x98, 0xFF, // #++##+++
-    // koopa shell bottom
-    0xB0, 0xFF, // #+##++++
-    0xA0, 0xFF, // #+#+++++
-    0x98, 0xFF, // #++##+++
-    0x86, 0xFF, // #++++##+
-    0x80, 0xFF, // #+++++++
-    0x7F, 0x7F, // .#######
-    0xFF, 0x00, // --------
-    0x7F, 0x7F, // .#######
-    // koopa walk0 l top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x39, 0x39, // ..###..#
-    0x62, 0x7E, // .##+++#.
-    0x41, 0x7F, // .#+++++#
-    // koopa walk0 l bot
-    0x80, 0xFF, // #+++++++
-    0x98, 0xFF, // #++##+++
-    0xA4, 0xFF, // #+#++#++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x7F, 0x7F, // .#######
-    0x38, 0x00, // ..---...
-    0x78, 0x00, // .----...
-    // koopa walk0 r top
-    0x78, 0x78, // .####...
-    0xFC, 0x84, // #----#..
-    0xFE, 0x32, // --##--#.
-    0xFF, 0x31, // --##---#
-    0xFF, 0x01, // -------#
-    0xFE, 0x02, // ------#.
-    0xFE, 0x82, // #-----#.
-    0xFC, 0x84, // #----#..
-    // koopa walk0 r bot
-    0x7C, 0xC4, // +#---#..
-    0x3C, 0xE4, // ++#--#..
-    0x18, 0xF8, // +++##...
-    0x10, 0xF0, // +++#....
-    0x10, 0xF0, // +++#....
-    0xE0, 0xE0, // ###.....
-    0xE0, 0x00, // ---.....
-    0xF0, 0x00, // ----....
-    // koopa walk1 l top
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x39, 0x39, // ..###..#
-    0x62, 0x7E, // .##+++#.
-    0x41, 0x7F, // .#+++++#
-    // koopa walk1 l bot
-    0x80, 0xFF, // #+++++++
-    0x98, 0xFF, // #++##+++
-    0xA4, 0xFF, // #+#++#++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x7F, 0x7F, // .#######
-    0x18, 0x00, // ...--...
-    0x3D, 0x00, // ..----.-
-    // koopa walk1 r top
-    0x78, 0x78, // .####...
-    0xFC, 0x84, // #----#..
-    0xFE, 0x32, // --##--#.
-    0xFF, 0x31, // --##---#
-    0xFF, 0x01, // -------#
-    0xFE, 0x02, // ------#.
-    0xFE, 0x82, // #-----#.
-    0xFC, 0x84, // #----#..
-    // koopa walk1 r bot
-    0x7C, 0xC4, // +#---#..
-    0x3C, 0xE4, // ++#--#..
-    0x18, 0xF8, // +++##...
-    0x10, 0xF0, // +++#....
-    0x10, 0xF0, // +++#....
-    0xE0, 0xE0, // ###.....
-    0xC0, 0x00, // --......
-    0xF0, 0x00, // ----....
-};
-// clang-format on
-
-// super mario. the shared upper slab comes first, then one lower slab per pose.
-// the slab holds cap, face and chest down to the overall bib's top line, so every standing pose
-// inherits the same torso and only the arms below the elbow, the legs and the shoes swing - which
-// is what lets six poses share it.
-// the crouch is the exception: its box is one cell tall, so its four tiles carry the whole folded
-// body - cap, squashed head, arms and shoes inside 16 rows - and the upper row of sprites parks
-// clang-format off
-static const uint8_t kSuperTiles[512] = {
-    // shared upper l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    // shared upper l bot
-    0x0F, 0x00, // ....----
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x08, 0x3F, // ..++#+++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    // shared upper r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0x04, 0xFC, // +++++#..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    // shared upper r bot
-    0xE0, 0x00, // ---.....
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x10, 0xFC, // +++#++..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    // idle lower l top
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    // idle lower l bot
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
-    0x7E, 0x7E, // .######.
-    // idle lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    // idle lower r bot
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    0x7E, 0x7E, // .######.
-    // walk0 lower l top
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3C, // ..++++..
-    // walk0 lower l bot
-    0x00, 0x3C, // ..++++..
-    0x00, 0x38, // ..+++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    // walk0 lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x7C, // .+++++..
-    // walk0 lower r bot
-    0x00, 0x7C, // .+++++..
-    0x00, 0x3C, // ..++++..
-    0x00, 0x3C, // ..++++..
-    0x00, 0x3E, // ..+++++.
-    0x00, 0x3E, // ..+++++.
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
-    // walk1 lower l top
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    // walk1 lower l bot
-    0x00, 0x0F, // ....++++
-    0x00, 0x0F, // ....++++
-    0x00, 0x0F, // ....++++
-    0x00, 0x0F, // ....++++
-    0x00, 0x0F, // ....++++
-    0x1F, 0x1F, // ...#####
-    0x1F, 0x1F, // ...#####
-    0x3F, 0x3F, // ..######
-    // walk1 lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    // walk1 lower r bot
-    0x00, 0xF0, // ++++....
-    0x00, 0xF0, // ++++....
-    0x00, 0xF0, // ++++....
-    0x00, 0xF0, // ++++....
-    0x00, 0xF0, // ++++....
-    0xF8, 0xF8, // #####...
-    0xF8, 0xF8, // #####...
-    0xFC, 0xFC, // ######..
-    // walk2 lower l top
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x0E, // ....+++.
-    // walk2 lower l bot
-    0x00, 0x1E, // ...++++.
-    0x00, 0x3E, // ..+++++.
-    0x3C, 0x3C, // ..####..
-    0x3C, 0x3C, // ..####..
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0x01, // .......#
-    // walk2 lower r top
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x78, // .++++...
-    // walk2 lower r bot
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7C, // .+++++..
-    0x7E, 0x7E, // .######.
-    0xFE, 0xFE, // #######.
-    0xFE, 0xFE, // #######.
-    // skid lower l top
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3E, // ..+++++.
-    0x00, 0x3C, // ..++++..
-    // skid lower l bot
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x00, 0x78, // .++++...
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    0x78, 0x78, // .####...
-    // skid lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x7C, // .+++++..
-    0x00, 0x3C, // ..++++..
-    // skid lower r bot
-    0x00, 0x3C, // ..++++..
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x00, 0x1E, // ...++++.
-    0x1E, 0x1E, // ...####.
-    0x1E, 0x1E, // ...####.
-    0x1E, 0x1E, // ...####.
-    // jump lower l top
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x60, 0x1F, // .--+++++
-    0x60, 0x1F, // .--+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3E, // ..+++++.
-    0x00, 0x3E, // ..+++++.
-    // jump lower l bot
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // jump lower r top
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7C, // .+++++..
-    // jump lower r bot
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7C, // .+++++..
-    0x00, 0x7E, // .++++++.
-    0x7E, 0x7E, // .######.
-    0x7E, 0x7E, // .######.
-    0xFE, 0xFE, // #######.
-    // crouch lower l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x3F, // ..++++++
-    // crouch lower l bot
-    0x40, 0x3F, // .-++++++
-    0x48, 0x3F, // .-++#+++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3C, // ..++++..
-    0x3C, 0x3C, // ..####..
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // crouch lower r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x04, 0xFC, // +++++#..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x00, 0xFC, // ++++++..
-    // crouch lower r bot
-    0x02, 0xFC, // ++++++-.
-    0x12, 0xFC, // +++#++-.
-    0x00, 0xFC, // ++++++..
-    0x00, 0xFC, // ++++++..
-    0x00, 0x3C, // ..++++..
-    0x3C, 0x3C, // ..####..
-    0x3E, 0x3E, // ..#####.
-    0x3E, 0x3E, // ..#####.
 };
 // clang-format on
 
 // the fire flower: white petals, a yellow heart and a dark stem, which is what the star's palette
 // paints once it is borrowed for the item
-// clang-format off
-static const uint8_t kFlowerTiles[64] = {
-    0x18, 0x18, 0x3C, 0x24, 0x3E, 0x22, 0x1F, 0x11, 0x0C, 0x0B, 0x18, 0x17, 0x18, 0x17, 0x0C, 0x0B, 0x07,
-    0x06, 0x01, 0x01, 0x0F, 0x0F, 0x19, 0x19, 0x19, 0x19, 0x0F, 0x0F, 0x01, 0x01, 0x01, 0x01, 0x18, 0x18,
-    0x3C, 0x24, 0x7C, 0x44, 0xF8, 0x88, 0x30, 0xD0, 0x18, 0xE8, 0x18, 0xE8, 0x30, 0xD0, 0xE0, 0x60, 0x80,
-    0x80, 0xC0, 0xC0, 0xB0, 0xB0, 0xB0, 0xB0, 0xC0, 0xC0, 0x80, 0x80, 0x80, 0x80, // flower l/r
-};
-// clang-format on
 
-// the three poses vram bank 0 has no tile ids left for, so they live in CGB VRAM BANK 1 and are
-// drawn with S_BANK set in the sprite's own prop - the same trick the fireball's second spin frame
-// already uses (see kFireballFrameBTiles and powerup_draw). each keeps an id inside the family it
-// belongs to, so the tile number alone still names the sprite: the jump slab inside super mario's
-// 0x60-0x7f run, the two climb poses inside small mario's own 0xe0-0xf7 run
-//
-// super mario's jump upper slab. every other pose of his shares one upper slab, which is why his
-// jump could not raise an arm: this is that slab redrawn with the head leaning back and the front
-// arm thrown up beside the cap, and player_draw swaps to it on kFrameJump alone
-// clang-format off
-static const uint8_t kSuperJumpUpperTiles[64] = {
-    // jump upper l top
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x40, 0x7F, // .#++++++
-    0x7F, 0x62, // .##---#-
-    0x7F, 0x42, // .#----#-
-    0x7F, 0x41, // .#-----#
-    0x3F, 0x00, // ..------
-    // jump upper l bot
-    0x1F, 0x00, // ...-----
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    0x10, 0x7F, // .++#++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    // jump upper r top
-    0x00, 0x80, // +.......
-    0x06, 0xF0, // ++++.--.
-    0x06, 0xF8, // +++++--.
-    0x0E, 0xF8, // ++++#--.
-    0xF0, 0x06, // ----.++.
-    0xF8, 0x06, // -----++.
-    0xF8, 0xF6, // ####-++.
-    0xE0, 0x06, // ---..++.
-    // jump upper r bot
-    0xC0, 0x06, // --...++.
-    0x00, 0xFE, // +++++++.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x20, 0xF8, // ++#++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-};
-// clang-format on
-
-// small mario's flagpole climb: both hands on the pole at his right, face turned to it. one 16x16
-// pose, held for the whole slide and the flip to the pole's far side
-// clang-format off
-static const uint8_t kClimbSmallTiles[64] = {
-    // climb l top
-    0x00, 0x0F, // ....++++
-    0x00, 0x1F, // ...+++++
-    0x20, 0x3F, // ..#+++++
-    0x3F, 0x31, // ..##---#
-    0x3F, 0x21, // ..#----#
-    0x3F, 0x20, // ..#-----
-    0x1F, 0x00, // ...-----
-    0x00, 0x1F, // ...+++++
-    // climb l bot
-    0x00, 0x3F, // ..++++++
-    0x08, 0x3F, // ..++#+++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // climb r top
-    0x00, 0xC0, // ++......
-    0x00, 0xF8, // +++++...
-    0x00, 0xFC, // ++++++..
-    0xF8, 0x00, // -----...
-    0xFC, 0x00, // ------..
-    0xFC, 0xF8, // #####-..
-    0xF0, 0x00, // ----....
-    0x06, 0xF0, // ++++.--.
-    // climb r bot
-    0x06, 0xF8, // +++++--.
-    0x20, 0xF8, // ++#++...
-    0x06, 0xF0, // ++++.--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-};
-// clang-format on
-
-// and super mario's, the same grip on a 16x32 body: its own upper slab (the shared one has both
-// arms down) over a lower slab with the second hand out and the legs held together
-// clang-format off
-static const uint8_t kClimbBigTiles[128] = {
-    // climb upper l top
-    0x00, 0x1F, // ...+++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x40, 0x7F, // .#++++++
-    0x7F, 0x62, // .##---#-
-    0x7F, 0x42, // .#----#-
-    0x7F, 0x41, // .#-----#
-    0x3F, 0x00, // ..------
-    // climb upper l bot
-    0x1F, 0x00, // ...-----
-    0x00, 0x3F, // ..++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    0x10, 0x7F, // .++#++++
-    0x00, 0x7F, // .+++++++
-    0x00, 0x7F, // .+++++++
-    // climb upper r top
-    0x00, 0x80, // +.......
-    0x00, 0xF0, // ++++....
-    0x00, 0xF8, // +++++...
-    0x08, 0xF8, // ++++#...
-    0xF0, 0x00, // ----....
-    0xF8, 0x00, // -----...
-    0xF8, 0xF0, // ####-...
-    0xE0, 0x00, // ---.....
-    // climb upper r bot
-    0xC0, 0x00, // --......
-    0x06, 0xF0, // ++++.--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x20, 0xF8, // ++#++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    // climb lower l top
-    0x00, 0x3F, // ..++++++
-    0x00, 0x3F, // ..++++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    // climb lower l bot
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x00, 0x1F, // ...+++++
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-    // climb lower r top
-    0x06, 0xF8, // +++++--.
-    0x06, 0xF8, // +++++--.
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    // climb lower r bot
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x00, 0xF8, // +++++...
-    0x7C, 0x7C, // .#####..
-    0x7C, 0x7C, // .#####..
-};
-// clang-format on
-
+// both mario sets stay resident, which is what lets the grow animation alternate them without a
+// single vram write. small mario's seven poses are one generated run: the six the 0xe0 family has
+// always pinned, then the death pose, which goes to the four ids super mario's old bank-0 block
+// gave back. big mario's eight 16x32 poses are 1 KB and vram bank 0 could never have held them, so
+// the whole set - not just a jump slab - lives in bank 1 at 0x00, and so does small mario's climb
 void assets_load_sprite_tiles(void) BANKED {
-    set_sprite_data(kTileMarioFirst, kMarioTileCount, kMarioTiles);
-    // both bodies stay resident, so growing and shrinking never touch vram
-    set_sprite_data(kTileSuperFirst, kSuperTileCount, kSuperTiles);
-    // the jump slab and the two climb poses ride in vram bank 1: bank 0's tile table is full end
-    // to end, and a sprite picks its bank from S_BANK in its own prop (see player_draw)
+    set_sprite_data(kTileMarioFirst, kMarioTileCount, kMarioSmallTiles);
+    set_sprite_data(kTileMarioDeath, kMarioTilesPerFrame, &kMarioSmallTiles[kMarioTileCount * 16U]);
+    // a sprite picks its tile bank from S_BANK in its own prop (see player_draw)
     VBK_REG = VBK_BANK_1;
-    set_sprite_data(kTileSuperJumpUpper, 4, kSuperJumpUpperTiles);
-    set_sprite_data(kTileClimbSmall, 4, kClimbSmallTiles);
-    set_sprite_data(kTileClimbBigUpper, 8, kClimbBigTiles);
+    set_sprite_data(kTileSuperFirst, kSuperTileCount, kMarioBigTiles);
+    set_sprite_data(kTileClimbSmall, kMarioSmallClimbTileCount, kMarioSmallClimbTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -2608,46 +1619,28 @@ static const uint8_t kDebrisTiles[96] = {
 };
 // clang-format on
 
+// the 0xd0 family: the three 16x16 items out of the rip, then the hand-drawn coin pop, then the
+// fireball's first spin frame - the generated run stores frame A's pair first and frame B's after
+// it, and B goes to the same id in vram bank 1 the way it always has, so powerup_draw still spins
+// the ball by toggling S_BANK
 void assets_load_item_tiles(void) BANKED {
-    set_sprite_data(kTileItemFirst, kItemTileCount, kItemTiles);
+    set_sprite_data(kTileItemFirst, kItemsTileCount, kItemsTiles);
+    set_sprite_data(kTileCoinPop, 2, kCoinPopTiles);
+    set_sprite_data(kTileFireball, 2, kFireballTiles);
     set_sprite_data(kTileFlowerFirst, kFlowerTileCount, kFlowerTiles);
     set_sprite_data(kTileDebris, kDebrisTileCount, kDebrisTiles);
-    // the fireball's second spin frame rides in bank 1 at the same id as the first, since bank 0's
-    // tile table has no room left; see the comment on kFireballFrameBTiles
     VBK_REG = VBK_BANK_1;
-    set_sprite_data(kTileFireball, 2, kFireballFrameBTiles);
+    set_sprite_data(kTileFireball, 2, &kFireballTiles[2 * 16U]);
     VBK_REG = VBK_BANK_0;
 }
 
-// m8a's four actors, one 8x16 pair each: a piranha head over its stem, a firebar flame in the top
-// half of its pair, a lift plank in the top half of its own, and the fake bowser
-//
-// the piranha is one mirrored 8x16 column (left_tile drawn normal, the same bitmap redrawn
-// S_FLIPX for the right half, see enemies.c's draw loop), so column 7 below is the sprite's own
-// centreline: it sits adjacent to its own mirror image, not the outer edge. the jaws start wide
-// apart at the top (col7 empty = an open gap down the middle), a tooth block ('-') rides the inner
-// edge where the gap is still open, then the gap closes into a solid taper that narrows to a thin
-// stem and flares back out into two leaf tips at the base, right above the pipe cap
+// the two hazards still drawn from hand art, one 8x16 pair each whose lower tile is blank: a
+// firebar flame in the top half of its pair and a lift plank in the top half of its own. the
+// piranha that used to head this run is the smbd rip's now - a 16x24 plant bottom-aligned in a
+// 16x32 box, still left-right symmetric and so still only its left column stored, in
+// games/mario/src/gen/piranha.c
 // clang-format off
-static const uint8_t kHazardTiles[96] = {
-    // piranha top - two scalloped jaw lobes opening around a gap that narrows going down
-    0x20, 0x30, // ..#+....
-    0x40, 0x78, // .#+++...
-    0x80, 0xF8, // #++++...
-    0x40, 0x7E, // .#+++++.
-    0x80, 0xFC, // #+++++..
-    0x44, 0x78, // .#+++-..
-    0x82, 0xFC, // #+++++-.
-    0x44, 0x78, // .#+++-..
-    // piranha bottom - teeth flank the gap as it closes, then the jaws taper to a stem and leaves
-    0x82, 0xFD, // #+++++-+
-    0x40, 0x7F, // .#++++++
-    0x20, 0x3F, // ..#+++++
-    0x10, 0x1F, // ...#++++
-    0x08, 0x0F, // ....#+++
-    0x04, 0x07, // .....#++
-    0x42, 0x63, // .#+...#+
-    0x85, 0xF7, // #+++.#+#
+static const uint8_t kHazardTiles[64] = {
     // a firebar segment, redrawn off the rip: a round fireball with a dark red rim, an orange body
     // and a white-hot core off centre toward the top. it wears the castle set's re-tinted
     // kPalStar (white, orange, dark red), which is also what bowser's breath burns in
@@ -2831,10 +1824,17 @@ static const uint8_t kParaTiles[128] = {
 };
 // clang-format on
 
+// the 0xc0 family holds what is still 16x16 - the goomba's one walk frame, its pancake and the
+// green shell - and the koopa's two 16x32 walk frames take the 0x60 run super mario left. the red
+// paratroopa and the red shell a stomped one leaves ride in vram bank 1
 void assets_load_enemy_tiles(void) BANKED {
-    set_sprite_data(kTileEnemyFirst, kEnemyTileCount, kEnemyTiles);
+    set_sprite_data(kTileGoombaWalk0, kGoombaTileCount, kGoombaTiles);
+    set_sprite_data(kTileGoombaSquash, kGoombaSquashTileCount, kGoombaSquashTiles);
+    set_sprite_data(kTileShell, kShellGreenTileCount, kShellGreenTiles);
+    set_sprite_data(kTileKoopaWalk0, kKoopaGreenTileCount, kKoopaGreenTiles);
     VBK_REG = VBK_BANK_1;
-    set_sprite_data(kTileParaFly0, kParaTileCount, kParaTiles);
+    set_sprite_data(kTileParaFly0, kParatroopaRedTileCount, kParatroopaRedTiles);
+    set_sprite_data(kTileShellRed, kShellRedTileCount, kShellRedTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -2951,7 +1951,8 @@ static const uint8_t kToadTiles[128] = {
 // clang-format on
 
 void assets_load_hazard_tiles(void) BANKED {
-    set_sprite_data(kTileHazardFirst, kHazardTileCount, kHazardTiles);
+    set_sprite_data(kTilePiranha, kPiranhaTileCount, kPiranhaTiles);
+    set_sprite_data(kTileFlame, kHazardTileCount, kHazardTiles);
     // bowser's own 512 bytes go to vram BANK 1: bank 0's sprite map has eight ids left in it and
     // he wants thirty-two. hazards_draw sets S_BANK on every sprite that reads them back
     VBK_REG = VBK_BANK_1;
@@ -3038,7 +2039,9 @@ void assets_load_toad_tiles(void) BANKED {
 
 void assets_load_enemy_palettes_castle(void) BANKED {
     // no koopa and no piranha stands in a castle, so the koopa slot is re-tinted for the fake
-    // bowser, in the deluxe sprite's own three colors read straight off its palette chunk:
+    // bowser. since m22 read the koopa's own three colours off the enemy sheet that re-tint writes
+    // exactly what assets_load_enemy_palettes already wrote, and it is kept only so the contract
+    // survives a future repaint of either. the deluxe sprite's palette chunk:
     // 0x008010 green for the shell and hide, 0xf8b010 orange for the brow, mouth, belly and claws,
     // and white for the horns, teeth, eyes and spikes. that is every color the sprite has - color 0
     // is a sprite's transparent index, so his outline is whatever is behind him, which in a castle

@@ -34,26 +34,30 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
 | 0x00-0x5f | gbdk ibm font, ascii 0x20-0x7f (`kFontFirstTile`-`kFontLastTile`) | `font_init()`/`font_load(font_ibm)`, `main()` | every screen | loaded exactly once at boot, never reloaded; `kTileSky` (0x00) is the font's own space glyph, reused as "blank" everywhere |
-| 0x60-0x9f | — | — | — | unclaimed as bg; would share bytes with bank-0 sprite ids in the same sub-range (super mario, flower, hazards, debris — see the sprite table below), so nothing loads bg data here |
+| 0x60-0x9f | — | — | — | unclaimed as bg; would share bytes with bank-0 sprite ids in the same sub-range (the green koopa, small mario's death and climb poses, the flower, the hazards, the debris — see the sprite table below), so nothing loads bg data here |
 | 0xa0-0xbf | pinned terrain block: ground/brick/question/spent/pipe/coin quadrants (`kTileGroundTopL`..`kTileCoinBr`) | `assets_load_bg_tiles` | level play (all three types), world map | exactly full per mario.h; a castle load overwrites the ground family's 4 upper ids (0xa0-0xa3) in place via `assets_load_bg_tiles_castle` — no new ids, just different pixels under the same 4 ids |
-| 0xc0-0xf7 | — | — | — | unclaimed as bg; shares bytes with bank-0 sprite families (enemy 0xc0-0xcf, item 0xd0-0xdf, mario 0xe0-0xf7) |
+| 0xc0-0xf7 | — | — | — | unclaimed as bg; shares bytes with bank-0 sprite families (enemy 0xc0-0xc7, item 0xd0-0xdf, small mario 0xe0-0xf7) |
 | 0xf8-0xff | ground fill (lower half) + hard block + thin platform (`kTileGroundFillBl`..`kTileThinUnder`) | `assets_load_bg_tiles` | level play, world map | butts directly against the mario sprite family ending at 0xf7 — no gap, no overlap |
 
 ## bank 0, sprite tile ids
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
-| 0x60-0x7f | super/fire mario: shared upper slab + 7 leg poses (`kTileSuperFirst`, 32 tiles) | `assets_load_sprite_tiles` | level play, world map (mario's walk sprite) | both small and super frame sets stay resident together so the grow animation never needs a vram write |
-| 0x80-0x83 | fire flower (`kTileFlowerFirst`, 4 tiles) | `assets_load_item_tiles` | level play | |
-| 0x84-0x89 | hazards: piranha, flame, lift deck (`kTileHazardFirst`/`kTilePiranha`/`kTileFlame`/`kTileLiftDeck`, 6 tiles) | `assets_load_hazard_tiles` | level play | |
-| 0x8a-0x8b | **FREE** | — | — | held the fake bowser back when he was one 16x16 pair; freed when m20 moved him to bank 1 (32x32) |
+| 0x60-0x6f | green koopa: two 16x24 walk frames, each bottom-aligned in a 16x32 box, 8 tiles a frame (`kTileKoopaWalk0`/`kTileKoopaWalk1`, `gen/koopa_green.c`) | `assets_load_enemy_tiles` | level play | m22's exact art made the koopa taller than 16x16, so it left the pinned 0xc0 family and took the run big mario gave back when he moved to bank 1 |
+| 0x70-0x73 | small mario's death pose, facing the viewer with both hands up (`kTileMarioDeath`, `gen/mario_small.c`'s seventh frame) | `assets_load_sprite_tiles` | level play (the death beat) | drawn only by `player_draw`'s dying branch, and only ever small: a big mario shrinks before he can die |
+| 0x74-0x77 | **FREE** (4 ids) | — | — | small mario's climb grip has the same four ids in **bank 1**; nothing claims them here |
+| 0x78-0x7f | **FREE** (8 ids) | — | — | the tail of what big mario's old 0x60-0x7f block gave back |
+| 0x80-0x83 | fire flower (`kTileFlowerFirst`, `gen/flower.c`, 4 tiles) | `assets_load_item_tiles` | level play | wears `kPalOneup` now — the smbd flower's white/yellow/green is the 1-up's index order, not the star's |
+| 0x84-0x87 | piranha plant: a 16x24 box's left column, top pair then bottom pair (`kTilePiranha`, `gen/piranha.c`) | `assets_load_hazard_tiles` | level play | left-right symmetric, so only the left half is stored and the right is the same pair drawn `S_FLIPX`; four slots of oam, two rows of two |
+| 0x88-0x8b | firebar flame + lift deck plank, one 8x16 pair each with a blank lower tile (`kTileFlame`, `kTileLiftDeck`, hand art in `assets_data.c`) | `assets_load_hazard_tiles` | level play | both moved up two ids when the piranha grew from one pair to two |
 | 0x8c-0x91 | throwaway anims: brick debris + fireball puffs (`kTileDebris`, `kTilePuffA`, `kTilePuffB`, 6 tiles) | `assets_load_item_tiles` | level play | |
 | 0x92-0x97 | world-map node markers: three 8x16 sprites, the red body, the blue one and the rim they share (`kTileMapMarkerRed`.., 6 tiles) | `map_art_load` | world map only | rings the three path nodes only - the reference leaves its castle bare. a marker is a solid 8x8 in four colors, one more than an obj palette's three opaque slots, so a body rides over a rim carrying only its orange edge |
 | 0x98-0x9f | **FREE** (8 ids) | — | — | what is left of the run mario.h calls unclaimed |
 | 0xa0-0xbf | — | — | — | belongs to bg's pinned terrain block; nothing sprite-side claims it |
-| 0xc0-0xcf | enemy family: goomba walk/squash, shell, koopa walk (`kTileEnemyFirst`, 16 tiles) | `assets_load_enemy_tiles` | level play | exactly full |
-| 0xd0-0xdf | item family: mushroom/star/1-up (16x16 each), coin pop, fireball frame A (`kTileItemFirst`..`kTileFireball`, 16 tiles) | `assets_load_item_tiles` | level play | exactly full; `kTileFireball` (0xde) is also loaded in **bank 1** as the projectile's second spin frame (see below) |
-| 0xe0-0xf7 | small mario, six 16x16 frames (`kTileMarioFirst`, 24 tiles) | `assets_load_sprite_tiles` | level play, world map | |
+| 0xc0-0xc7 | enemy family: goomba walk0 as a full 16x16 box (`kTileGoombaWalk0`, `gen/goomba.c`, 4 tiles), squashed goomba (`kTileGoombaSquash`, `gen/goomba_squash.c`), green shell (`kTileShell`, `gen/shell_green.c`) | `assets_load_enemy_tiles` | level play | the goomba's walk1 is walk0's exact mirror in the smbd rip, so it costs no ids: `enemies_draw` swaps the halves and sets `S_FLIPX`. the pancake and the shell are symmetric, one pair each |
+| 0xc8-0xcf | **FREE** (8 ids) | — | — | held the koopa while it was 16x16; freed when m22 moved it to 0x60 |
+| 0xd0-0xdf | item family: mushroom/star/1-up (16x16 each, `gen/items.c`), coin pop (hand art), fireball frame A (`gen/fireball.c`'s first pair) — `kTileItemFirst`..`kTileFireball`, 16 tiles | `assets_load_item_tiles` | level play | exactly full; `kTileFireball` (0xde) is also loaded in **bank 1** as the projectile's second spin frame (see below). the star's tiles are drawn in the mushroom's index order, so it wears `kPalMushroom` |
+| 0xe0-0xf7 | small mario, the six pinned 16x16 poses — idle, walk0, walk1, walk2, skid, jump (`kTileMarioFirst`, `gen/mario_small.c`, 24 tiles) | `assets_load_sprite_tiles` | level play, world map | the seventh frame of the generated run, the death pose, goes to 0x70 above |
 | 0xf8-0xff | — | — | — | belongs to bg's extra terrain ids |
 
 ---
@@ -85,20 +89,29 @@ are actually free. treat the table above, not that comment, as current.
 
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
-| 0x00-0x7b | — | — | — | unclaimed as sprite ids; bg ids below 0x80 do not share bytes with anything (see addressing rule), so this range is only ever bg |
-| 0x7c-0x7f | super mario's jump pose upper slab (`kTileSuperJumpUpper`, 4 tiles) | `assets_load_sprite_tiles` | level play | the one super-mario pose bank 0 had no id left for |
+| 0x00-0x3f | super/fire mario: all eight 16x32 poses — idle, walk0, walk1, walk2, skid, jump, crouch, climb — 8 tiles each (`kTileSuperFirst`, `gen/mario_big.c`, 64 tiles) | `assets_load_sprite_tiles` | level play, file select, world map | m22's exact art gives every pose its own upper half (the old set shared one slab across six of them, which is why its jump could not raise an arm), so the set is 1 KB and bank 0 could never hold it. both mario sets stay resident, which is what lets the grow animation alternate them without a vram write. the crouch is pose 6, whose 22-tall fold is bottom-aligned in the same box, and the flagpole grip pose 7 |
+| 0x40-0x4f | red paratroopa: two 16x24-in-a-16x32 fly frames, 8 tiles each (`kTileParaFly0`/`kTileParaFly1`, `gen/paratroopa_red.c`) | `assets_load_enemy_tiles` | level play (levels with a `koopa_para_red` enemy; currently 1-3) | the koopa's body under a wing that beats across both columns of the box, in `kPalStar`'s white/orange/red |
+| 0x50-0x51 | red shell, one symmetric 8x16 pair (`kTileShellRed`, `gen/shell_red.c`) | `assets_load_enemy_tiles` | level play | what a stomped red koopa or paratroopa leaves; the green koopa's shell is bank 0's 0xc6 |
+| 0x52-0x73 | **FREE** (34 ids) | — | — | bg ids below 0x80 do not share bytes with a sprite id (see addressing rule), so bank 1's bg scenery run is no obstacle here |
+| 0x74-0x77 | flagpole climb pose, small mario (`kTileClimbSmall`, `gen/mario_small_climb.c`, 4 tiles) | `assets_load_sprite_tiles` | level play (clear sequence) | it used to ride at 0xe0, the id his idle pose holds in bank 0. a framebuffer tile id carries the tile and a sprite bit but not the bank, so a host test could not tell the grip from the idle pose and so could not know which pose's art bounds it was measuring; four ids of its own fixed that |
+| 0x78-0x7f | **FREE** (8 ids) | — | — | between the climb grip and the reserved hud-font window |
 | 0x80-0x8c | **RESERVED, not loaded as sprite data** — shares bytes with bank-1 **bg** hud font (0x80-0x8c above) | — | level play | a sprite must never use these ids while the hud row is on screen (i.e. ever, during play) |
 | 0x8d-0x94 | **RESERVED, unused headroom** | — | — | mario.h's hud-font comment (near `kTileHudDigitFirst`) reserves the whole 0x80-0x94 span as off-limits to a future sprite, even though the actual hud font only reaches 0x8c today; keep new sprite work out of 0x8d-0x94 too unless the hud font grows into it first |
 | 0x95 | **FREE** | — | — | the one id between the reserved hud headroom and the bowser run; called out explicitly in mario.h |
 | 0x96-0xbd | bowser: two 32x32 body frames + fire-breath dart + open-jaw tell (`kTileBowserFirst`..`kTileBowserJaw`, 40 tiles total) | `assets_load_hazard_tiles` | level play (castle type only) | **correction below** |
-| 0xbe-0xbf | **FREE** (2 ids) | — | — | the gap between the jaw tile and the paratroopa run; not called out anywhere in code, found by inspection |
-| 0xc0-0xc7 | paratroopa's two fly frames (`kTileParaFly0`/`kTileParaFly1`, 8 tiles) | `assets_load_enemy_tiles` | level play (levels with a `koopa_para_red` enemy; currently 1-3) | body is walk0's for both frames — only the wing beats |
+| 0xbe-0xbf | **FREE** (2 ids) | — | — | the gap between the jaw tile and the toad run; not called out anywhere in code, found by inspection |
+| 0xc0-0xc7 | **FREE** (8 ids) | — | — | held the paratroopa while each fly frame was four tiles; freed when m22's 16x24 art moved the pair to 0x40 |
 | 0xc8-0xcf | toad-room retainer sprite, 8 tiles (`kTileToadFirst`) | `assets_load_toad_tiles` | toad room only | |
 | 0xd0-0xdd | **FREE** (14 ids) | — | — | |
 | 0xde-0xdf | fireball's second spin frame (`kTileFireball`, reusing the id bank 0's item family already owns) | `assets_load_item_tiles` | level play (fire mario) | drawn with `S_BANK` set to alternate with bank 0's frame A at the same id — a deliberate dual-bank reuse, not a collision |
-| 0xe0-0xe3 | flagpole climb pose, small mario (`kTileClimbSmall`, 4 tiles) | `assets_load_sprite_tiles` | level play (clear sequence) | |
-| 0xe4-0xeb | flagpole climb pose, big mario upper+lower (`kTileClimbBigUpper`, 8 tiles) | `assets_load_sprite_tiles` | level play (clear sequence) | |
+| 0xe0-0xeb | **FREE** (12 ids) | — | — | held small mario's climb grip (0xe0-0xe3, now at 0x74) and big mario's own (0xe4-0xeb, now just pose 7 of the 0x00 set) |
 | 0xec-0xff | **FREE** (20 ids) | — | — | the toad sign glyphs at the same numeric ids are bg, not sprite (see bg table) |
+
+correction (m22): the bank-1 sprite table above is where every id big mario, the red paratroopa,
+the red shell and small mario's climb grip live now. anything in an older commit's comment that
+still puts super mario at bank-0 0x60-0x7f, his jump slab at bank-1 0x7c-0x7f, the paratroopa at
+bank-1 0xc0-0xc7, the koopa at bank-0 0xc8-0xcf, the piranha at 0x84-0x85, the flame at 0x86 or the
+lift deck at 0x88 is stale; treat this file and `mario.h`'s current `#define`s as the truth.
 
 correction: the section heading and inline comments around `kTileBowserFirst` in mario.h say
 *"m20's bowser run, 0x96-0xbb"* and *"so 0x96-0xbb collides with none of them"*. that range only
@@ -107,6 +120,36 @@ tiles). `kTileBowserJaw` is defined separately at 0xbc and `assets_load_hazard_t
 there (`set_sprite_data(kTileBowserJaw, 2, kBowserJawTiles)`), so the run bowser actually occupies
 is **0x96-0xbd**, two ids past what the heading claims. update any future edit of that heading to
 say 0x96-0xbd.
+
+---
+
+## oam: the forty sprite slots
+
+vram ids are only half the contract — two actors that agree about tile ids and disagree about oam
+slots still overwrite each other. m22 made a koopa, a paratroopa and a piranha 16x24 bottom-aligned
+in a 16x32 box, which is two rows of two 8x16 sprites — four slots where the old 16x16 art took two
+— and oam has no spare forty-first slot, so the enemy pool and the hazards pool now **meet in the
+middle** instead of each owning a fixed run.
+
+| slots | owner | claimed by | notes |
+|---|---|---|---|
+| 0-3 | mario | `player_draw`, `mapscreen.c`'s `file_draw_mario` | small parks the lower row; every big pose is two rows of two |
+| 4-8 | brick debris (4) then the fireball's puff (1) | `debris.c` | the world map borrows 4-11 for its four node markers and the toad room 4-7 for the retainer, both on screens with no debris, no items and no enemies |
+| 9-10 | the loose item a block paid out | `blocks_draw.c` | |
+| 11 | the coin pop | `blocks_draw.c` | |
+| 12-13 | the two fireballs | `powerup.c` | |
+| 14-33 | **the enemy pool** — allocated fresh every frame, walking the live pool in order and giving each entry 2 slots if its art is 16x16 (goomba, pancake, either shell) or 4 if it is a 16x32 box (koopa, paratroopa, piranha, and any of the three upside down as a corpse) | `enemies_draw` | five pool entries times four slots is the ceiling, hence 20. nothing else hands out a slot inside this run, so no two enemies can ever share one. `enemies_oam_top()` publishes the first slot past what the pool actually used |
+| 24-39 | **the hazards pool** — a floor, not a fixed start: `hazards_draw` begins at `max(24, enemies_oam_top())` and hands what is above it to the deck planks (from slot 39 counting down), then bowser's body (from the floor counting up, 8 slots), then his breath (3 more above him), then a firebar's flames into whatever is left | `hazards.c`'s `claim_slot`/`settle_slots` | one owner byte per slot, so a slot that changes hands has its tile and palette written again and one nobody claims is parked |
+
+the two ends only actually collide on a frame with five live enemies of which three are tall **and**
+a lift or a bowser in view: 1-4 carries no walking enemy at all, 1-2's two lift shafts are 15 blocks
+apart so only one deck is ever on screen, and 1-3's two decks in one pit want 8 slots against an
+enemy pool that would have to reach 32 to touch them. a claimant that cannot get its slots is
+dropped for that frame — the same graceful degradation the pool already gave a third firebar.
+
+per-scanline cost did not change: a tall enemy's two sprite rows never share a scanline, so a line
+crossing a row of enemies still pays 2 sprites each and `kEnemyRowCap` (4, plus mario's 2 = the
+hardware's 10) still holds. only the slot count doubled.
 
 ---
 
@@ -129,7 +172,7 @@ previous screen left behind; only the bg map cells and window-layer content chan
   writes bank 1 bg 0x00-0x8e, bank 0 sprite 0x80-0xa7, seven bg palettes and one obj palette. see
   the title screen section above.
 - **world map** (`mapscreen.c` `map_reset`) — calls, in order: `assets_load_sprite_tiles` (bank 0
-  mario/super, bank 1 climb/jump poses), `assets_load_sprite_palettes`, then `map_art_load` (bank 1
+  small mario, bank 1 big mario and the climb grip), `assets_load_sprite_palettes`, then `map_art_load` (bank 1
   bg 0x00-0x5d, bank 0 sprite 0x92-0x97, all eight bg palettes and three obj ones). the sprite
   loaders run first on purpose: `assets_load_sprite_palettes` writes all eight obj slots, and
   `map_art_load` wants the last three of them for the markers. it loads no terrain, scenery or
@@ -148,7 +191,9 @@ previous screen left behind; only the bg map cells and window-layer content chan
 - **level play — castle** — same common call list, plus `assets_load_bg_tiles_castle` right after
   `assets_load_bg_tiles` (overwrites the ground family's 4 upper ids in place with masonry — no new
   ids) and `assets_load_enemy_palettes_castle` instead of the plain enemy palette loader (retints
-  the koopa/star sprite palette slots for the fake bowser and the fire ramp). a castle is also the
+  the koopa/star sprite palette slots for the fake bowser and the fire ramp — since m22 read the
+  koopa's own three colours off the enemy sheet, and they are exactly bowser's, the koopa half of
+  that retint now writes what the overworld already wrote and is kept only for the contract). a castle is also the
   only level type that can reach the toad room and the only one whose hazard set uses the bank-1
   bowser run (0x96-0xbd) and fire-breath tiles for real.
 - **toad room** (`toad.c` `toad_frame`, tick 0 only) — additionally calls `assets_load_toad_tiles`
@@ -194,7 +239,7 @@ them.
 |---|---|---|---|---|
 | bank 1 bg 0x00-0x1e | the whole 20x18 file select frame, 31 deduplicated tiles (`kFileSelectFirstTile`, `kFileSelectTileCount`) | `file_art_load` | file select only | every cell of the frame carries attribute bit 3, so the map reads bank 1 |
 | bank 1 bg 0x1f-0x32 | the five label strips, four tiles each, loaded straight after the frame's own tiles (`kFileLabelsTileCount`, 20 tiles) | `file_art_load` | file select only | `file_art_label` writes four cells per slot: strip 0 is NEW, strip N is 1-N. cut per label rather than per letter because a 24 px word centred over a 32 px pipe needs a 4 px offset no bg cell can carry |
-| bank 0 sprite 0x60-0x7f, bank 1 sprite 0x7c-0x7f | the level's own super mario, standing on the chosen pipe and arcing between them | `assets_load_sprite_tiles` | file select, world map, level play | not new art: the file select reuses the play set so its mario is the same figure, in oam slots 0-3 |
+| bank 1 sprite 0x00-0x3f | the level's own super mario, standing on the chosen pipe and arcing between them | `assets_load_sprite_tiles` | file select, world map, level play | not new art: the file select reuses the play set so its mario is the same figure, in oam slots 0-3 |
 
 this run overlaps the title's own bank-1 bg 0x00-0x8e reservation, which is fine because the two
 screens never coexist and each reloads everything it draws from - the same way a level load puts
@@ -227,7 +272,7 @@ world one fits the 160 px strip whole, so nothing on this screen scrolls.
 | bank 1 bg 0x54-0x59 | the lives readout, three cells by two (`kMapLivesFirst`) | `map_art_lives` | world map only | ids with no art of their own: the readout writes a digit's pre-shifted quadrants into them, and the middle cell of a two-digit readout is the or of both digits' halves |
 | bank 1 bg 0x5a-0x5d | the clear list's four fill variants (`kMapListFillTileCount`) | `map_art_load` | world map only | world one's own dash cells with the dash solid, one per column, so a cleared level's cell swaps id and keeps the frame's attribute byte |
 | bank 0 sprite 0x92-0x97 | the node markers, three 8x16 sprites (`kMapSpritesTileCount`, 6 tiles) | `map_art_load` | world map only | oam slots 4-9, two per path node: the body over the rim |
-| bank 0 sprite 0x60-0x7f, bank 1 sprite 0x7c-0x7f, bank 0 sprite 0xe0-0xf7 | the level's own mario, walking the map | `assets_load_sprite_tiles` | file select, world map, level play | oam slots 0-1, the small set - not new art |
+| bank 1 sprite 0x00-0x3f, bank 0 sprite 0xe0-0xf7 | the level's own mario, walking the map | `assets_load_sprite_tiles` | file select, world map, level play | oam slots 0-3, the big set - not new art |
 
 the four sparkle frames are never resident under an id of their own: `map_art_animate` swaps one
 straight into the tile id the frame already planned a palette for, which is why

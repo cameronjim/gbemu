@@ -12,6 +12,7 @@
 
 #include "assets.h"
 #include "camera.h"
+#include "enemies.h"
 #include "hud.h"
 #include "level.h"
 #include "mario.h"
@@ -105,15 +106,23 @@ static int16_t collapse_column;
 static uint8_t collapse_timer;
 uint8_t hazard_clear_busy;
 
-// oam bookkeeping. slots kHazardPoolFirst..+kHazardPoolSlots (24-39) are one pool shared by the
-// deck planks, bowser's body, his breath and a firebar's flames, and which of them holds a slot
-// changes from frame to frame. so the pool carries an owner byte each: slot_owner is what wrote a
-// slot's tile last, slot_claim is who wants it this frame. a claimant whose slot already held its
-// own art only moves the sprite; one taking a slot off another owner writes tile and palette
-// again; and a slot nobody claims is parked, which is what keeps a stale flame from lingering
+// oam bookkeeping. slots kHazardPoolFirst..kHazardPoolLast (24-39) are one pool shared by the deck
+// planks, bowser's body, his breath and a firebar's flames, and which of them holds a slot changes
+// from frame to frame. so the pool carries an owner byte each: slot_owner is what wrote a slot's
+// tile last, slot_claim is who wants it this frame. a claimant whose slot already held its own art
+// only moves the sprite; one taking a slot off another owner writes tile and palette again; and a
+// slot nobody claims is parked, which is what keeps a stale flame from lingering.
+//
+// m22's 16x32 enemies made 24 a FLOOR rather than a fixed start: the enemy pool grows up from 14
+// and can reach 34 on a frame with five tall enemies in view, so every pass below starts at
+// pool_floor - max(24, enemies_oam_top()) - and a claimant that cannot get its slots there is
+// simply not drawn that frame. the decks are handed the TOP of the pool counting down and bowser
+// the floor counting up, so the two ends of it stay as far apart as the frame allows
 enum { kOwnerNone = 0, kOwnerDeck, kOwnerBowser, kOwnerFire, kOwnerFlame };
 static uint8_t slot_owner[kHazardPoolSlots];
 static uint8_t slot_claim[kHazardPoolSlots];
+// this frame's floor, worked out once at the top of hazards_draw
+static uint8_t pool_floor = (uint8_t)kHazardPoolFirst;
 
 // this frame's segment offsets, worked out once for every bar rather than once per bar: seven bars
 // times six segments was forty two multiplies a frame on a budget that had none to give
@@ -225,12 +234,14 @@ static uint8_t hits_box(uint16_t bx, int16_t by, uint8_t bw, uint8_t bh) {
 
 static void park(uint8_t slot);
 
-// the oam slot one of a deck's four sprites takes. the first two decks own kSpriteLiftFirst; the
-// third's four come out of the flame/bowser run, which a level carrying one has to leave idle
+// the oam slot one of a deck's four sprites takes: the top of the pool, counting down. the first
+// two decks fit in 32-39 and a third reaches into 28-31, which is the flame/bowser run a level
+// carrying one has to leave idle. 0xff when the enemy pool has climbed over the slot, which is the
+// one frame a deck goes undrawn
 static uint8_t lift_slot(uint8_t sprite) {
-    return (sprite < (uint8_t)kSpriteLiftCount)
-               ? (uint8_t)(kSpriteLiftFirst + sprite)
-               : (uint8_t)(kSpriteLiftOverflowFirst + sprite - (uint8_t)kSpriteLiftCount);
+    const uint8_t slot = (uint8_t)((uint8_t)kSpriteLiftTop - sprite);
+
+    return (sprite <= (uint8_t)kSpriteLiftTop && slot >= pool_floor) ? slot : 0xFFU;
 }
 
 void hazards_load_level(void) BANKED {
@@ -723,7 +734,11 @@ static void settle_slots(void) {
     for (i = 0; i < (uint8_t)kHazardPoolSlots; ++i) {
         if (slot_claim[i] == (uint8_t)kOwnerNone) {
             if (slot_owner[i] != (uint8_t)kOwnerNone) {
-                park((uint8_t)(kHazardPoolFirst + i));
+                // a slot the enemy pool has climbed over is already being written by it this
+                // frame, so it is given up rather than parked - parking it would fight enemies_draw
+                if ((uint8_t)(kHazardPoolFirst + i) >= pool_floor) {
+                    park((uint8_t)(kHazardPoolFirst + i));
+                }
                 slot_owner[i] = (uint8_t)kOwnerNone;
             }
             continue;
@@ -750,6 +765,10 @@ static void draw_lifts(uint16_t cam_x, uint8_t cam_y) {
         for (half = 0; half < 4U; ++half) {
             const uint8_t slot = lift_slot(drawn);
 
+            if (slot == 0xFFU) {
+                ++drawn;
+                continue;
+            }
             if (claim_slot(slot, (uint8_t)kOwnerDeck) != 0U) {
                 set_sprite_tile(slot, (uint8_t)kTileLiftDeck);
                 set_sprite_prop(slot, (uint8_t)kPalGoomba);
@@ -802,7 +821,8 @@ static void draw_flames(uint16_t cam_x, uint8_t cam_y) {
                 fy >= (int16_t)kScreenHeightPx) {
                 continue;
             }
-            while (next < (uint8_t)kHazardPoolSlots && slot_claim[next] != (uint8_t)kOwnerNone) {
+            while (next < (uint8_t)kHazardPoolSlots && ((uint8_t)(kHazardPoolFirst + next) < pool_floor ||
+                                                        slot_claim[next] != (uint8_t)kOwnerNone)) {
                 ++next;
             }
             if (next >= (uint8_t)kHazardPoolSlots) {
@@ -840,7 +860,7 @@ static void draw_bowser(int16_t sx, int16_t sy) {
     // one run of eight rather than two of four: the low two bits of the index are the column and
     // the third is the row, which costs two masks where the pair of loops cost a multiply a sprite
     for (i = 0; i < 8U; ++i) {
-        const uint8_t slot = (uint8_t)(kSpriteBowserFirst + i);
+        const uint8_t slot = (uint8_t)(pool_floor + i);
 
         // his tile changes with the walk frame, so this one always writes rather than asking
         (void)claim_slot(slot, (uint8_t)kOwnerBowser);
@@ -852,11 +872,17 @@ static void draw_bowser(int16_t sx, int16_t sy) {
     }
 }
 
-// the breath, three 8x16 sprites off the top of the pool. draw_lifts has already claimed this
-// frame, so the test is against the decks actually on screen rather than the ones the level
-// loaded: 1-4 carries two lifts a hundred and thirty columns apart and never shows both, so the
-// breath always has its slots. on a frame that did show two the dart still flies and still burns,
-// it is only not drawn
+// where one of the three breath sprites goes: just above bowser's own eight, at the floor of the
+// pool. 0xff-ish values (past the pool's last slot) mean the enemy pool left no room for it
+static uint8_t bowser_fire_slot(uint8_t i) {
+    return (uint8_t)(pool_floor + (uint8_t)kSpriteBowserCount + i);
+}
+
+// the breath, three 8x16 sprites just over his body. draw_lifts has already claimed this frame, so
+// the test is against the decks actually on screen rather than the ones the level loaded: 1-4
+// carries two lifts a hundred and thirty columns apart and never shows both, so the breath always
+// has its slots. on a frame that did show two the dart still flies and still burns, it is only not
+// drawn
 static void draw_bowser_fire(uint16_t cam_x, uint8_t cam_y) {
     int16_t sx;
     int16_t sy;
@@ -866,7 +892,7 @@ static void draw_bowser_fire(uint16_t cam_x, uint8_t cam_y) {
         return;
     }
     for (i = 0; i < (uint8_t)kSpriteBowserFireCount; ++i) {
-        if (slot_free((uint8_t)(kSpriteBowserFireFirst + i)) == 0U) {
+        if (bowser_fire_slot(i) > (uint8_t)kHazardPoolLast || slot_free(bowser_fire_slot(i)) == 0U) {
             return;
         }
     }
@@ -877,7 +903,7 @@ static void draw_bowser_fire(uint16_t cam_x, uint8_t cam_y) {
         return;
     }
     for (i = 0; i < (uint8_t)kSpriteBowserFireCount; ++i) {
-        const uint8_t slot = (uint8_t)(kSpriteBowserFireFirst + i);
+        const uint8_t slot = bowser_fire_slot(i);
 
         if (claim_slot(slot, (uint8_t)kOwnerFire) != 0U) {
             set_sprite_tile(slot, (uint8_t)(kTileBowserFire + (i << 1)));
@@ -894,12 +920,19 @@ static void draw_bowser_fire(uint16_t cam_x, uint8_t cam_y) {
 // at all, where a bar drawing four flames instead of six still reads as a bar - and smb never
 // puts the two in one room anyway. settle_slots then parks whatever nobody took
 void hazards_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
+    // main_present draws the enemies first, so this is the pool the enemies actually used on THIS
+    // frame, not the last one
+    pool_floor = enemies_oam_top();
+    if (pool_floor < (uint8_t)kHazardPoolFirst) {
+        pool_floor = (uint8_t)kHazardPoolFirst;
+    }
     draw_lifts(cam_x, cam_y);
     if (bowser_live != 0U) {
         const int16_t sx = (int16_t)((int16_t)bowser_x - (int16_t)cam_x);
         const int16_t sy = (int16_t)(bowser_y - (int16_t)cam_y);
 
-        if (sx > -(int16_t)kBowserWidthPx && sx < (int16_t)kScreenWidthPx && sy > -(int16_t)kBowserHeightPx &&
+        if ((uint8_t)(pool_floor + kSpriteBowserCount - 1U) <= (uint8_t)kHazardPoolLast &&
+            sx > -(int16_t)kBowserWidthPx && sx < (int16_t)kScreenWidthPx && sy > -(int16_t)kBowserHeightPx &&
             sy < (int16_t)kScreenHeightPx) {
             draw_bowser(sx, sy);
         }

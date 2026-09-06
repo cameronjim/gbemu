@@ -12,9 +12,11 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
-// kItem* indexes both tables. the flower lives outside the 0xd0 family and has no palette slot of
-// its own, so it borrows the star's white/yellow set - see kPalFire in mario.h
-static const uint8_t kItemPalette[kItemKindCount] = {kPalMario, kPalMushroom, kPalStar, kPalOneup, kPalStar};
+// kItem* indexes both tables. m22's art pinned each item's palette to the index order its own tiles
+// are drawn in (see mario.h's kPal* block): the star's are the mushroom's white/yellow/red, and the
+// flower's are the 1-up's white/yellow/green, so neither wears kPalStar any more
+static const uint8_t kItemPalette[kItemKindCount] = {kPalMario, kPalMushroom, kPalMushroom, kPalOneup,
+                                                     kPalOneup};
 static const uint8_t kItemTile[kItemKindCount] = {
     kTileItemFirst,
     kTileItemFirst,

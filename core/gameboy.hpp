@@ -52,6 +52,10 @@ public:
     std::span<const uint8_t> debug_vram() const {
         return ppu_.vram();
     }
+    // the same, for either cgb vram bank
+    std::span<const uint8_t> debug_vram(int bank) const {
+        return ppu_.vram(bank);
+    }
     // debug accessor for the mooneye fibonacci protocol
     const CpuRegs& debug_regs() const {
         return cpu_.regs();

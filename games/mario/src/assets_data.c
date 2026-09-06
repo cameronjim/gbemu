@@ -94,174 +94,177 @@ static const uint8_t kGroundLowerTiles[32] = {
 };
 // clang-format on
 
-// brick: two 8px courses in running bond, each a black mortar line, a tan top highlight and
-// a brown body. the courses' vertical seams sit 4px apart so the wall never reads as a grid
+// brick: two 8px courses in running bond, each a tan top highlight, a brown body and a black
+// mortar line under it. the courses' vertical seams sit 8px apart so the wall never reads as a
+// grid. transcribed pixel for pixel off the smb1 rip, which smbd reuses with only its palettes
 // clang-format off
 static const uint8_t kBrickTiles[64] = {
     // brick upper left
+    0xFF, 0x00, // --------
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
-    0xFF, 0x02, // ------#-
-    0x02, 0xFF, // ++++++#+
-    0x02, 0xFF, // ++++++#+
-    0x02, 0xFF, // ++++++#+
-    0x02, 0xFF, // ++++++#+
-    0x02, 0xFF, // ++++++#+
-    0x02, 0xFF, // ++++++#+
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0xFF, 0xFF, // ########
     // brick upper right
+    0xFF, 0x00, // --------
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
-    0xFF, 0x01, // -------#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0xFF, 0xFF, // ########
     // brick lower left
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
-    0xFF, 0x20, // --#-----
-    0x20, 0xFF, // ++#+++++
-    0x20, 0xFF, // ++#+++++
-    0x20, 0xFF, // ++#+++++
-    0x20, 0xFF, // ++#+++++
-    0x20, 0xFF, // ++#+++++
-    0x20, 0xFF, // ++#+++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0x10, 0xFF, // +++#++++
+    0xFF, 0xFF, // ########
     // brick lower right
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
+    0x01, 0xFF, // +++++++#
     0xFF, 0xFF, // ########
-    0xFF, 0x10, // ---#----
     0x10, 0xFF, // +++#++++
     0x10, 0xFF, // +++#++++
     0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
+    0xFF, 0xFF, // ########
 };
 // clang-format on
 
-// question block: black outline, four corner rivets, a white serif ? and a 1px darker inner
-// edge down the right and along the bottom, which is what gives the face its bevel
+// question block: the rip draws a gold face with a brown bevel on the top and left and a black one
+// on the bottom and right, four black rivets and the serif ? in brown over black. the corners are
+// transparent. transcribed pixel for pixel off the smb1 rip, which smbd reuses with its palettes
 // clang-format off
 static const uint8_t kQuestionTiles[64] = {
     // question upper left
-    0xFF, 0xFF, // ########
-    0xFF, 0x80, // #-------
-    0xFF, 0xB0, // #-##----
-    0xFF, 0xB0, // #-##----
-    0xF8, 0x87, // #----+++
-    0xF9, 0x86, // #----++-
-    0xF9, 0x86, // #----++-
-    0xFF, 0x80, // #-------
+    0x00, 0x7F, // .+++++++
+    0x7F, 0x80, // +-------
+    0x7F, 0xA0, // +-#-----
+    0x78, 0x87, // +----+++
+    0x73, 0x8F, // +---++##
+    0x73, 0x8E, // +---++#-
+    0x73, 0x8E, // +---++#-
+    0x7F, 0x86, // +----##-
     // question upper right
-    0xFF, 0xFF, // ########
-    0xFF, 0x03, // ------##
-    0xFF, 0x0F, // ----####
-    0xFF, 0x0F, // ----####
-    0x1F, 0xE3, // +++---##
-    0x9F, 0x63, // -++---##
-    0x9F, 0x63, // -++---##
-    0x9F, 0x63, // -++---##
+    0x00, 0xFE, // +++++++.
+    0xFF, 0x01, // -------#
+    0xFF, 0x05, // -----#-#
+    0x3F, 0xC1, // ++-----#
+    0x9F, 0xE1, // #++----#
+    0x9F, 0x71, // -++#---#
+    0x9F, 0x71, // -++#---#
+    0x1F, 0xF1, // +++#---#
     // question lower left
-    0xFF, 0x80, // #-------
-    0xFE, 0x81, // #------+
-    0xFE, 0x81, // #------+
-    0xFF, 0x80, // #-------
-    0xFE, 0xB1, // #-##---+
-    0xFE, 0xB1, // #-##---+
-    0xFF, 0xFF, // ########
+    0x7E, 0x81, // +------+
+    0x7E, 0x81, // +------+
+    0x7F, 0x80, // +-------
+    0x7E, 0x81, // +------+
+    0x7E, 0x81, // +------+
+    0x7F, 0xA0, // +-#-----
+    0x7F, 0x80, // +-------
     0xFF, 0xFF, // ########
     // question lower right
-    0x3F, 0xC3, // ++----##
-    0x7F, 0x83, // +-----##
-    0x7F, 0x83, // +-----##
-    0xFF, 0x03, // ------##
-    0x7F, 0x8F, // +---####
-    0x7F, 0x8F, // +---####
-    0xFF, 0xFF, // ########
+    0x7F, 0xF1, // +###---#
+    0x7F, 0xC1, // +#-----#
+    0xFF, 0xC1, // ##-----#
+    0x7F, 0x81, // +------#
+    0x7F, 0xC1, // +#-----#
+    0xFF, 0xC5, // ##---#-#
+    0xFF, 0x01, // -------#
     0xFF, 0xFF, // ########
 };
 // clang-format on
 
-// spent block: the same shell drained of its glyph, so a used block reads as inert
+// spent block: the same shell drained of its glyph and its gold, so a used block reads as inert
 // clang-format off
 static const uint8_t kSpentTiles[64] = {
     // spent upper left
-    0xFF, 0xFF, // ########
-    0xFF, 0x80, // #-------
-    0xFF, 0xB0, // #-##----
-    0xFF, 0xB0, // #-##----
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
+    0x00, 0x7F, // .+++++++
+    0x7F, 0x80, // +-------
+    0x7F, 0xA0, // +-#-----
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
     // spent upper right
-    0xFF, 0xFF, // ########
-    0xFF, 0x03, // ------##
-    0xFF, 0x0F, // ----####
-    0xFF, 0x0F, // ----####
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
+    0x00, 0xFE, // +++++++.
+    0xFF, 0x01, // -------#
+    0xFF, 0x05, // -----#-#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
     // spent lower left
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0xB0, // #-##----
-    0xFF, 0xB0, // #-##----
-    0xFF, 0xFF, // ########
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0x80, // +-------
+    0x7F, 0xA0, // +-#-----
+    0x7F, 0x80, // +-------
     0xFF, 0xFF, // ########
     // spent lower right
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
-    0xFF, 0x03, // ------##
-    0xFF, 0x0F, // ----####
-    0xFF, 0x0F, // ----####
-    0xFF, 0xFF, // ########
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x01, // -------#
+    0xFF, 0x05, // -----#-#
+    0xFF, 0x01, // -------#
     0xFF, 0xFF, // ########
 };
 // clang-format on
 
-// hard/stair block: a beveled stone cube - tan top-left face, brown bevel down the right and
-// along the bottom, black outline with the four inner corners notched
+// hard/stair block: the rip's diagonal 3d block - a tan top-left face stepping down to a brown
+// body and a black shadow along the bottom-right - which is the shape the staircases and the
+// firebar pivot stand on. transcribed pixel for pixel off the smb1 rip
 // clang-format off
 static const uint8_t kHardTiles[64] = {
-    // stone cube upper left
-    0xFF, 0xFF, // ########
-    0xFF, 0x80, // #-------
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    // stone cube upper right
-    0xFF, 0xFF, // ########
+    // hard upper left
+    0x7F, 0x80, // +-------
+    0xBF, 0x40, // -+------
+    0xDF, 0x20, // --+-----
+    0xEF, 0x10, // ---+----
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    // hard upper right
     0xFF, 0x01, // -------#
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    // stone cube lower left
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
+    0xFF, 0x03, // ------##
+    0xFF, 0x07, // -----###
+    0xFF, 0x0F, // ----####
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    // hard lower left
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    0xF0, 0x0F, // ----++++
+    0xFF, 0x1F, // ---#####
+    0xFF, 0x3F, // --######
+    0xFF, 0x7F, // -#######
     0xFF, 0xFF, // ########
-    0xFF, 0xFF, // ########
-    // stone cube lower right
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0x03, 0xFF, // ++++++##
-    0xFF, 0xFF, // ########
-    0xFF, 0xFF, // ########
+    // hard lower right
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    0x0F, 0xFF, // ++++####
+    0xF7, 0xFF, // ####+###
+    0xFB, 0xFF, // #####+##
+    0xFD, 0xFF, // ######+#
+    0xFE, 0xFF, // #######+
 };
 // clang-format on
 
@@ -1421,7 +1424,7 @@ void assets_load_bg_palettes(void) BANKED {
     palette_color_t sky[4] = {kSkyRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
     palette_color_t ground[4] = {RGB(2, 17, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
     palette_color_t brick[4] = {kSkyRgb, RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
-    palette_color_t question[4] = {kSkyRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kSkyRgb, RGB(31, 23, 8), RGB(18, 9, 0), RGB(0, 0, 0)};
     palette_color_t pipe[4] = {kSkyRgb, RGB(14, 31, 6), RGB(2, 17, 0), RGB(0, 0, 0)};
     palette_color_t neutral[4] = {kSkyRgb, RGB(31, 31, 31), RGB(31, 24, 19), RGB(0, 0, 0)};
     palette_color_t spent[4] = {kSkyRgb, RGB(24, 15, 6), RGB(13, 6, 0), RGB(0, 0, 0)};

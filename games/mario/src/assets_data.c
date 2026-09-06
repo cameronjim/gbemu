@@ -1367,7 +1367,7 @@ void assets_load_bg_tiles(void) BANKED {
 }
 
 // a castle's floors, ceilings and walls are the same grey masonry as its scenery, not the
-// overworld's grass-capped ground: rather than recompile every castle grid onto a second terrain
+// overworld's tan/brown ground: rather than recompile every castle grid onto a second terrain
 // kind, the ground family's own tiles are overwritten with it at a castle load. the six ids are the
 // whole family - the surface block's two upper quadrants, its two lower ones, and the buried fill
 // block's upper pair - and the castle bg set colors kCamPalGround to match. each of them takes the
@@ -1415,10 +1415,9 @@ void assets_load_scenery_tiles(void) BANKED {
     VBK_REG = VBK_BANK_0;
 }
 
-// the overworld's eight cgb bg palettes. every slot but the ground's keeps the sky in color 0,
-// because most of these tiles leave part of their cell empty and that empty part is the backdrop.
-// the ground's color 0 is the grass instead: its blocks cover their whole 16x16 cell, and the two
-// rows of grass along the top of a surface block are the one place it shows
+// the overworld's eight cgb bg palettes. every slot keeps the sky in color 0 because most of these
+// tiles leave part of their cell empty and that empty part is the backdrop. the ground's own color
+// 0 goes unused - the rip's ground block is opaque tan/brown/black across its whole 16x16 cell
 void assets_load_bg_palettes(void) BANKED {
     // color 1 of the sky slot is the clouds' and the pennant's white, and the hud row's ink
     palette_color_t sky[4] = {kSkyRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};

@@ -128,7 +128,7 @@
 #define kBlockLava 15U
 #define kBlockBridge 16U
 #define kBlockAxe 17U
-// m18's background pass. a surface ground block wears two rows of grass, so the rows under it are
+// m18's background pass. a surface ground block is the rip's own rubble and the rows under it are
 // their own kind; the castle stopped being one uniform slab and became five; the flag grew a ball
 // and a pennant; and the last twelve are pure scenery, painted only where the bible left sky
 #define kBlockGroundFill 18U
@@ -224,7 +224,7 @@
 #define kTileSky kFontFirstTile // 0x00: the font's blank space glyph, same trick as flappy/crossy
 
 // --- the pinned terrain block, 0xa0-0xbf, exactly full -----------------------------------------
-// ground family 0xa0..0xa3: a surface block's grass-capped upper half, then the rubble's upper half
+// ground family 0xa0..0xa3: a surface block's upper half, then the fill block's, the same two tiles
 #define kTileGroundTopL 0xA0U
 #define kTileGroundTopR 0xA1U
 #define kTileGroundFillTl 0xA2U

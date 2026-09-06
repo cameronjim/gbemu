@@ -1038,8 +1038,8 @@ constexpr int kBowserFireLifeFrames = 100;
 constexpr int kBowserAnimFrames = 16;
 // and the tell: hazards.c swaps his head's own sprite for the open-jaw pair over the last of the
 // wait for a throw, which is smb's half-second of mouth before the flame
-constexpr int kBowserJawOpenFrames = 30;
-constexpr uint8_t kTileBowserJaw = 0xBC;
+[[maybe_unused]] constexpr int kBowserJawOpenFrames = 30;
+[[maybe_unused]] constexpr uint8_t kTileBowserJaw = 0xBC;
 // m22's fire zone: while the camera is at or past the level's own zone column and bowser is still
 // off the right edge, the dart comes in at that edge instead, at the block row mario's feet stand
 // in or one of the three over it - his own walk tick masked picks which. the four rows are ours;
@@ -1071,7 +1071,7 @@ constexpr uint8_t kTileBowserFireHi = 0xBB;
 constexpr uint8_t kTileBridge = 0x15;
 constexpr uint8_t kTileBridgeHi = 0x16;
 [[maybe_unused]] constexpr uint8_t kTileAxe = 0x13;
-constexpr uint8_t kTileCastleBrickLower = 0x12;
+[[maybe_unused]] constexpr uint8_t kTileCastleBrickLower = 0x12;
 [[maybe_unused]] constexpr uint8_t kTileCastleBrickUpper = 0x17;
 // hazards.c's lift deck plank, mirrored from mario.h's kTileLiftDeck
 constexpr uint8_t kTileLiftDeck = 0x88;
@@ -10022,7 +10022,7 @@ TEST_CASE("mario_tree_platforms") {
         const int feet_row = (s.y_pos + s.foot_h()) >> 4;
 
         // resting on a canopy: his feet sit exactly on the line of a tree-top cell
-        const auto canopy_at = [&lv](int column, int row) {
+        const auto canopy_at = [&](int column, int row) {
             const uint8_t kind = lv.grid[column][row];
             return kind >= kBlockTreeTopL && kind <= kBlockTreeTopR;
         };
@@ -12389,7 +12389,7 @@ void seed_slot(std::span<uint8_t> ram, int slot, uint8_t level, uint16_t score) 
 }
 
 // gbdk's ibm font puts ascii c on tile c - 0x20
-constexpr int font_tile(char c) {
+[[maybe_unused]] constexpr int font_tile(char c) {
     return c - 0x20;
 }
 

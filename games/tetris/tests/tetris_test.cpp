@@ -56,25 +56,25 @@ constexpr int kScreenCols = 20;
 
 // title screen rows, mirrored from tetris.h
 constexpr int kTitleRow = 7;
-constexpr int kPromptRow = 10;
+[[maybe_unused]] constexpr int kPromptRow = 10;
 constexpr int kBestRow = 12;
 
 // right panel geometry, mirrored from tetris.h. the panel is six cells, columns 14-19; every
 // element is centered in that span, with the five character labels baked into
 // half-cell-shifted six tile strips.
 constexpr int kPanelCol = 14;
-constexpr int kPanelCols = 6;
-constexpr int kScoreLabelCol = kPanelCol;
+[[maybe_unused]] constexpr int kPanelCols = 6;
+[[maybe_unused]] constexpr int kScoreLabelCol = kPanelCol;
 constexpr int kScoreLabelRow = 1;
 constexpr int kScoreValueRow = 2;
 constexpr int kScoreValueCol = kPanelCol;
 constexpr int kScoreDigits = 6;
-constexpr int kLevelLabelCol = kPanelCol;
+[[maybe_unused]] constexpr int kLevelLabelCol = kPanelCol;
 constexpr int kLevelLabelRow = 5;
 constexpr int kLevelValueRow = 6;
 constexpr int kLevelValueCol = 16;
 constexpr int kLevelDigits = 2;
-constexpr int kLinesLabelCol = kPanelCol;
+[[maybe_unused]] constexpr int kLinesLabelCol = kPanelCol;
 constexpr int kLinesLabelRow = 9;
 constexpr int kLinesValueRow = 10;
 constexpr int kLinesValueCol = 15;

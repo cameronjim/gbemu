@@ -324,6 +324,8 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/tiles/hard.png Hard tiles 4)
         mario_png_asset(games/mario/art/tiles/pipe.png Pipe tiles 4)
         mario_png_asset(games/mario/art/tiles/pipe_side.png PipeSide tiles 4)
+        # milestone 25: the one family 1-2's capture holds that 1-1's does not, the shaft joint
+        mario_png_asset(games/mario/art/tiles/pipe_joint.png PipeJoint tiles 4)
         mario_png_asset(games/mario/art/tiles/coin.png Coin tiles 4)
         mario_png_asset(games/mario/art/tiles/cloud.png Cloud tiles 4)
         mario_png_asset(games/mario/art/tiles/cloud_right.png CloudRight tiles 4)

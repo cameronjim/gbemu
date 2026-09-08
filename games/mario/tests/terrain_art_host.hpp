@@ -29,6 +29,7 @@ namespace terrain_art {
 #include "gen/hard.c"
 #include "gen/hill.c"
 #include "gen/pipe.c"
+#include "gen/pipe_joint.c"
 #include "gen/pipe_side.c"
 #include "gen/question.c"
 #include "gen/scen_tail.c"

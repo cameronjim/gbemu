@@ -257,7 +257,11 @@ constexpr uint8_t kBlockCastleWindowRight = 50;
 // a big hill's flat belly: the middle of the five-wide dome's bottom row, the one interior cell
 // the smbd capture draws without smb's two-pixel shading mark
 constexpr uint8_t kBlockHillCore = 51;
-constexpr uint8_t kBlockKindCount = 52;
+// the shaft joint of a sideways pipe, one kind per row of the mouth: the shaft's left cell there
+// wears the body's rim and joint over its own left column in both smbd captures
+constexpr uint8_t kBlockPipeJointT = 52;
+constexpr uint8_t kBlockPipeJointB = 53;
+constexpr uint8_t kBlockKindCount = 54;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -470,6 +474,11 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile >= 0x0A && tile <= 0x0F;
     case kBlockTrunk:
         return tile == 0x11;
+    // m25's shaft joint, five bank-1 tiles at 0xe0-0xe4: each kind's top-left tile is its own
+    case kBlockPipeJointT:
+        return tile == 0xE0;
+    case kBlockPipeJointB:
+        return tile == 0xE2;
     case kBlockSpent:
         return tile >= kTileSpentLo && tile <= kTileSpentHi;
     case kBlockCoin:
@@ -483,8 +492,10 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
 // ids past mario's frames, and the scenery run inside what is otherwise the font's own range
 bool is_known_terrain_family(uint8_t tile) {
     // 0xd0-0xdd is m23's rip run in vram bank 1: the right cloud cap, the right bush cap and the
-    // right half of each castle crenel, none of which the capture lets the rom mirror
-    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF) || (tile >= 0xD0 && tile <= 0xDD) || tile >= 0xF8;
+    // right half of each castle crenel, none of which the capture lets the rom mirror. 0xe0-0xe4
+    // is m25's shaft joint, the one family 1-2's capture holds that 1-1's does not
+    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF) || (tile >= 0xD0 && tile <= 0xDD) ||
+           (tile >= 0xE0 && tile <= 0xE4) || tile >= 0xF8;
 }
 
 // --- sub-milestone 3: the player ---------------------------------------------------------------
@@ -1072,7 +1083,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           kFloorSolid, kFloorSolid,
     kFloorSolid, kFloorSolid, 0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
-    kFloorSolid, 0,           0,           0,
+    kFloorSolid, 0,           0,           0,           kFloorSolid, kFloorSolid,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -6912,10 +6923,15 @@ TEST_CASE("mario_bonus_room_leaves_through_a_sideways_mouth") {
     REQUIRE(area.grid[13][12] == kBlockPipeSideBl);
     REQUIRE(area.grid[14][11] == kBlockPipeSideBodyT);
     REQUIRE(area.grid[14][12] == kBlockPipeSideBodyB);
-    // the shaft beside it: plain body from the room's own top row down to the mouth's floor, and
-    // the capture shows no cap in any of those rows
-    for (int row = 2; row <= 12; ++row) {
+    // the shaft beside it: plain body from the room's own top row down to the mouth, the joint pair
+    // in the mouth's two rows (the capture draws the body's rim and joint line across the shaft
+    // there, and 1-2's capture draws the same pair at its shafts), and no cap in any of those rows
+    for (int row = 2; row <= 10; ++row) {
         REQUIRE(area.grid[15][row] == kBlockPipeBodyL);
+    }
+    REQUIRE(area.grid[15][11] == kBlockPipeJointT);
+    REQUIRE(area.grid[15][12] == kBlockPipeJointB);
+    for (int row = 2; row <= 12; ++row) {
         REQUIRE(area.grid[16][row] == kBlockPipeBodyR);
     }
     for (int column = 0; column < area.columns; ++column) {
@@ -8702,7 +8718,8 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     // coin room's exit shaft both run to the top of the grid
     for (uint8_t row = 0; row <= 12; ++row) {
         REQUIRE(kLevel12Grid[24][row] == kBlockBrick);
-        REQUIRE(kLevel12Grid[215][row] == kBlockPipeBodyL);
+        REQUIRE(kLevel12Grid[215][row] == (row < 11 ? kBlockPipeBodyL
+                                                    : row == 11 ? kBlockPipeJointT : kBlockPipeJointB));
         REQUIRE(kLevel12Grid[216][row] == kBlockPipeBodyR);
     }
 
@@ -8713,8 +8730,10 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     REQUIRE(kLevel12Grid[190][9] == kBlockPipeSideBl);
     REQUIRE(kLevel12Grid[191][8] == kBlockPipeSideBodyT);
     REQUIRE(kLevel12Grid[191][9] == kBlockPipeSideBodyB);
+    // the shaft's left cell in the mouth's own two rows is the joint pair, plain body above it
     for (uint8_t row = 2; row <= 9; ++row) {
-        REQUIRE(kLevel12Grid[192][row] == kBlockPipeBodyL);
+        REQUIRE(kLevel12Grid[192][row] == (row < 8 ? kBlockPipeBodyL
+                                                   : row == 8 ? kBlockPipeJointT : kBlockPipeJointB));
         REQUIRE(kLevel12Grid[193][row] == kBlockPipeBodyR);
     }
     for (uint16_t column = 184; column <= 200; ++column) {
@@ -8785,6 +8804,9 @@ constexpr uint8_t kTilePipeLipRbr = 0xBA;
 // then four of the body (one tile per band, drawn in both halves of the cell)
 constexpr uint8_t kTilePipeSideMouth0L = 0x72;
 constexpr uint8_t kTilePipeSideBody3 = 0x7D;
+// m25's shaft joint: two tiles per joint kind and one bank-1 copy of the body's right column
+constexpr uint8_t kTilePipeJointT0 = 0xE0;
+constexpr uint8_t kTilePipeJointBody = 0xE4;
 
 // the bg tile drawn at one screen pixel, or -1 where a sprite covers it: framebuffer_tiles sets
 // 0x100 on a sprite pixel and its low byte is then the sprite's own tile, not the map's
@@ -9018,7 +9040,8 @@ TEST_CASE("mario_1_2_coins_blocks_and_enemies_match_the_measured_map") {
         }
     }
     REQUIRE(plants == std::vector<uint16_t>{127, 133, 139, 220});
-    REQUIRE(reds == std::vector<uint16_t>{169});
+    // the red koopa: the capture draws all sixteen pixels of it inside real column 146
+    REQUIRE(reds == std::vector<uint16_t>{170});
     // the goomba on the lone one-high block and the one on top of the coin-brick pillar stand on
     // those, not on the floor
     bool on_block = false;
@@ -9932,7 +9955,9 @@ TEST_CASE("mario_1_2_coin_room_compiles") {
             }
         }
     }
-    REQUIRE(coins == 18);
+    // seventeen: eight over the platform and nine along the floor. the first transcription's
+    // eighteenth, at the platform's right end, is a brick with a coin in it in both rips
+    REQUIRE(coins == 17);
     for (int row = 0; row <= 12; ++row) {
         REQUIRE(room->grid[0][row] == kBlockBrick);
     }
@@ -9946,7 +9971,8 @@ TEST_CASE("mario_1_2_coin_room_compiles") {
         REQUIRE(room->grid[1][row] == kBlockEmpty);
         REQUIRE(room->grid[2][row] == kBlockEmpty);
     }
-    REQUIRE(room->grid[13][11] == kBlockPipeTl);
+    // the way out is a sideways mouth, as the smbd capture draws it (see the test below)
+    REQUIRE(room->grid[13][11] == kBlockPipeSideTl);
 
     // and the pipe that leads down into it is the first piranha pipe
     const HostLevel& lv = kHostLevels[kLevel12];
@@ -9955,6 +9981,229 @@ TEST_CASE("mario_1_2_coin_room_compiles") {
     REQUIRE(down->column == 127);
     REQUIRE(down->row == 10);
     REQUIRE(down->param == 0);
+}
+
+// the pipe coin room's way out, re-measured off the smbd capture's own lower band: a sideways mouth
+// at columns 13-14 on rows 11-12 walked into from the left, its body running into a capless shaft
+// at 15-16, and the shaft's left cell in the mouth's two rows the joint pair - the same shape 1-1's
+// bonus room exit turned out to be. the first transcription read the nes map's vertical exit pipe
+// here. the coins moved with it: the upper row is eight at 4-11 (it was 3-10) and the platform's
+// last cell at 12 is a brick with a coin in it, not a loose coin
+TEST_CASE("mario_1_2_coin_room_leaves_through_a_sideways_mouth") {
+    const HostArea* room = coin_room();
+    REQUIRE(room != nullptr);
+    REQUIRE(LEVEL_1_2_AREA0_EXIT_COLUMN == 13u);
+    REQUIRE(LEVEL_1_2_AREA0_EXIT_TOP_ROW == 11u);
+    REQUIRE(room->grid[13][11] == kBlockPipeSideTl);
+    REQUIRE(room->grid[13][12] == kBlockPipeSideBl);
+    REQUIRE(room->grid[14][11] == kBlockPipeSideBodyT);
+    REQUIRE(room->grid[14][12] == kBlockPipeSideBodyB);
+    for (int row = 2; row <= 10; ++row) {
+        REQUIRE(room->grid[15][row] == kBlockPipeBodyL);
+        REQUIRE(room->grid[16][row] == kBlockPipeBodyR);
+    }
+    REQUIRE(room->grid[15][11] == kBlockPipeJointT);
+    REQUIRE(room->grid[15][12] == kBlockPipeJointB);
+    REQUIRE(room->grid[16][11] == kBlockPipeBodyR);
+    REQUIRE(room->grid[16][12] == kBlockPipeBodyR);
+    for (int column = 0; column < room->columns; ++column) {
+        for (int row = 0; row < kHostLevelRows; ++row) {
+            REQUIRE(room->grid[column][row] != kBlockPipeTl);
+            REQUIRE(room->grid[column][row] != kBlockPipeTr);
+        }
+    }
+    // eight coins over the platform, nine along the floor, and the platform runs out to 12
+    for (int column = 4; column <= 11; ++column) {
+        REQUIRE(room->grid[column][8] == kBlockCoin);
+    }
+    REQUIRE(room->grid[3][8] == kBlockEmpty);
+    REQUIRE(room->grid[12][8] == kBlockEmpty);
+    for (int column = 3; column <= 12; ++column) {
+        REQUIRE(room->grid[column][9] == kBlockBrick);
+    }
+    for (int column = 3; column <= 11; ++column) {
+        REQUIRE(room->grid[column][12] == kBlockCoin);
+    }
+    REQUIRE(room->grid[12][12] == kBlockEmpty);
+}
+
+// the shaft joint, the one piece of art 1-2's capture holds that 1-1's does not: where a sideways
+// pipe's body runs into its shaft, the shaft's left cell in each of the mouth's two rows carries
+// the body's rim and joint line over its own left column. two kinds, appended past the hill core,
+// solid like the shaft they stand in, outside the decor range, each with its own top-left tile in
+// the bank-1 run at 0xe0-0xe4. the compiler stamps them for every pipe_side: 1-2's two, the coin
+// room's, and 1-1's bonus room exit
+TEST_CASE("mario_pipe_shaft_joints_are_their_own_kinds") {
+    REQUIRE(kBlockPipeJointT == 52);
+    REQUIRE(kBlockPipeJointB == 53);
+    REQUIRE(kBlockKindCount == 54);
+    REQUIRE(kBlockFloorTable[kBlockPipeJointT] == kFloorSolid);
+    REQUIRE(kBlockFloorTable[kBlockPipeJointB] == kFloorSolid);
+    REQUIRE((kBlockPipeJointT < kBlockFirstDecor || kBlockPipeJointT > kBlockLastDecor));
+    REQUIRE((kBlockPipeJointB < kBlockFirstDecor || kBlockPipeJointB > kBlockLastDecor));
+    REQUIRE(tile_in_kind_family(0xE0, kBlockPipeJointT));
+    REQUIRE(tile_in_kind_family(0xE2, kBlockPipeJointB));
+    REQUIRE(!tile_in_kind_family(0xE0, kBlockPipeJointB));
+    REQUIRE(!tile_in_kind_family(0xB6, kBlockPipeJointT));
+    REQUIRE(is_known_terrain_family(0xE0));
+    REQUIRE(is_known_terrain_family(0xE4));
+
+    // the underground's exit shaft at 192-193, mouth rows 8-9; the coin room's at 215-216, rows
+    // 11-12; plain body above both, and the shaft's right column plain body throughout
+    REQUIRE(kLevel12Grid[192][8] == kBlockPipeJointT);
+    REQUIRE(kLevel12Grid[192][9] == kBlockPipeJointB);
+    REQUIRE(kLevel12Grid[192][7] == kBlockPipeBodyL);
+    REQUIRE(kLevel12Grid[193][8] == kBlockPipeBodyR);
+    REQUIRE(kLevel12Grid[193][9] == kBlockPipeBodyR);
+    REQUIRE(kLevel12Grid[215][11] == kBlockPipeJointT);
+    REQUIRE(kLevel12Grid[215][12] == kBlockPipeJointB);
+    REQUIRE(kLevel12Grid[215][10] == kBlockPipeBodyL);
+    REQUIRE(kLevel12Grid[216][11] == kBlockPipeBodyR);
+    REQUIRE(kLevel12Grid[216][12] == kBlockPipeBodyR);
+    // and the two rooms' own
+    REQUIRE(kHostAreas[0].level == kLevel11);
+    REQUIRE(kHostAreas[0].grid[15][11] == kBlockPipeJointT);
+    REQUIRE(kHostAreas[0].grid[15][12] == kBlockPipeJointB);
+    const HostArea* room = coin_room();
+    REQUIRE(room != nullptr);
+    REQUIRE(room->grid[15][11] == kBlockPipeJointT);
+    REQUIRE(room->grid[15][12] == kBlockPipeJointB);
+    // nothing else in the level is a joint
+    int joints = 0;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            const uint8_t kind = kLevel12Grid[column][row];
+            joints += (kind == kBlockPipeJointT || kind == kBlockPipeJointB) ? 1 : 0;
+        }
+    }
+    REQUIRE(joints == 4);
+}
+
+// 1-2's scenery, re-measured off the smbd capture and the nes map. the ending's hill stands with
+// its peak at 235 and the bottom row's right slope hidden behind the flag's base block at 237, so
+// it is clipped the way 1-1's hill at 192 is; the bush between the flag and the castle is a left
+// cap and a middle with its right cap in the castle's masonry, not the two caps the first pass
+// read; and the start's three clouds stand at the nes map's own rows, the nes map holding all
+// fifteen rows of this grid
+TEST_CASE("mario_1_2_scenery_stands_where_the_captures_draw_it") {
+    // the hill: peak, slopes, and a clipped bottom row
+    REQUIRE(kLevel12Grid[235][10] == kBlockHillPeak);
+    REQUIRE(kLevel12Grid[234][11] == kBlockHillSlopeL);
+    REQUIRE(kLevel12Grid[235][11] == kBlockHillFill);
+    REQUIRE(kLevel12Grid[236][11] == kBlockHillSlopeR);
+    REQUIRE(kLevel12Grid[233][12] == kBlockHillSlopeL);
+    REQUIRE(kLevel12Grid[234][12] == kBlockHillFill);
+    REQUIRE(kLevel12Grid[235][12] == kBlockHillCore);
+    REQUIRE(kLevel12Grid[236][12] == kBlockHillFill);
+    REQUIRE(kLevel12Grid[237][12] == kBlockHard);
+    REQUIRE(kLevel12Grid[232][12] == kBlockEmpty);
+    // the bush: cap, middle, and the castle where its right cap would be
+    REQUIRE(kLevel12Grid[239][12] == kBlockBushL);
+    REQUIRE(kLevel12Grid[240][12] == kBlockBushM);
+    REQUIRE(kLevel12Grid[241][12] == kBlockCastle);
+    // the start's clouds: a four at 3-6 on rows 3-4, a three at 9-11 on rows 7-8, a four at 18-21
+    // on rows 2-3
+    REQUIRE(kLevel12Grid[3][3] == kBlockCloudTl);
+    REQUIRE(kLevel12Grid[6][3] == kBlockCloudTr);
+    REQUIRE(kLevel12Grid[3][4] == kBlockCloudBl);
+    REQUIRE(kLevel12Grid[9][7] == kBlockCloudTl);
+    REQUIRE(kLevel12Grid[10][7] == kBlockCloudT);
+    REQUIRE(kLevel12Grid[11][8] == kBlockCloudBr);
+    REQUIRE(kLevel12Grid[18][2] == kBlockCloudTl);
+    REQUIRE(kLevel12Grid[21][3] == kBlockCloudBr);
+    // and the ending's, unchanged
+    REQUIRE(kLevel12Grid[221][5] == kBlockCloudTl);
+    REQUIRE(kLevel12Grid[232][6] == kBlockCloudTl);
+    REQUIRE(kLevel12Grid[244][6] == kBlockCloudTl);
+    int clouds = 0;
+    for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            const uint8_t kind = kLevel12Grid[column][row];
+            clouds += (kind >= kBlockCloudTl && kind <= kBlockCloudBr) ? 1 : 0;
+        }
+    }
+    // six clouds, 4+3+4 at the start and 4+3+3 at the ending, two rows each
+    REQUIRE(clouds == 42);
+}
+
+// the underground palette set is the 1-2 capture's colours, quantised as the hardware stores them
+// (each channel >> 3), the way mario_overworld_palettes_are_the_capture_s_colours pins 1-1's. the
+// whole run is 1-1's art under these eight slots, so the slots are the whole of what says 1-2 is
+// below ground: the floor and the hard block in near-white over teal, the brick in teal with its
+// mortar black, the question block's gold face with a brown left edge and a TEAL right and bottom
+// one (colour 3, black above ground), the coin's ring shaded teal, and the pipes rimmed dark green
+TEST_CASE("mario_underground_palettes_are_the_capture_s_colours") {
+    // games/mario/art/ref/smbd_ch_1-2.png's underground run, as rgb555
+    constexpr int kRoomBack = 0;                          // #000000
+    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);     // #008888
+    constexpr int kPale = 23 | (31 << 5) | (30 << 10);    // #b8f8f0
+    constexpr int kGold = 31 | (23 << 5) | (8 << 10);     // #f8b840
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);     // #984800
+    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);     // #70f830
+    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10);  // #108800
+    constexpr int kRim = 0 | (9 << 5) | (0 << 10);        // #004800
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy, kLevel12);
+
+    // the underground run in ten-column steps from just inside its wall, so every family gets on
+    // screen at its own row: the floor and the stair-steps low, the blocks and coins mid-way, the
+    // sideways pipe and its shaft joint at the end of the brick platform
+    std::set<int> ground;
+    std::set<int> brick;
+    std::set<int> hard;
+    std::set<int> question;
+    std::set<int> coin;
+    std::set<int> pipe;
+    Camera camera;
+    for (uint16_t column = 26; column <= 186; column = column + 10) {
+        for (uint8_t row : {static_cast<uint8_t>(5), static_cast<uint8_t>(13)}) {
+            camera.goto_xy(gameboy, scx_for_column(column), scy_for_row(row));
+            run(gameboy, 2);
+            REQUIRE(sky_color(gameboy) == kSkyUnderground);
+            collect_family_colors(gameboy, 0xA0, 0xA3, &ground);
+            collect_family_colors(gameboy, 0xF8, 0xF9, &ground);
+            collect_family_colors(gameboy, 0xA4, 0xA7, &brick);
+            collect_family_colors(gameboy, 0xFA, 0xFD, &hard);
+            collect_family_colors(gameboy, 0xA8, 0xAB, &question);
+            collect_family_colors(gameboy, 0xBC, 0xBF, &coin);
+            collect_family_colors(gameboy, 0xB0, 0xBB, &pipe);
+            collect_family_colors(gameboy, 0x72, 0x7D, &pipe);
+            collect_family_colors(gameboy, 0xE0, 0xE4, &pipe);
+        }
+    }
+
+    // the floor is opaque, so its slot's colour 0 never reaches a pixel; the brick never lights
+    // the slot's highlight below ground, because the pair of its tiles that would - the cell's top
+    // row - is the pair the underground load replaces. the hard block does, which is the whole
+    // reason the slot carries it
+    CHECK(ground == std::set<int>{kPale, kTeal, kRoomBack});
+    CHECK(brick == std::set<int>{kTeal, kRoomBack});
+    CHECK(hard == std::set<int>{kPale, kTeal, kRoomBack});
+    CHECK(question == std::set<int>{kRoomBack, kGold, kBrown, kTeal});
+    CHECK(coin == std::set<int>{kRoomBack, kGold, kBrown, kTeal});
+    CHECK(pipe == std::set<int>{kRoomBack, kLeaf, kDarkLeaf, kRim});
+}
+
+// and the tiles the underground load leaves in vram bank 0 once 1-2 is up: the brick's top pair
+// is the room's own, its lower pair the overworld's, and every other pinned family untouched -
+// the capture says the run is 1-1's art, so the rom must be showing 1-1's tiles
+TEST_CASE("mario_1_2_vram_holds_the_underground_terrain_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA0, terrain_art::kGroundTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickUndergroundTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA6, terrain_art::kBrickTiles + 2 * 16, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xB0, terrain_art::kPipeTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xF8, terrain_art::kGroundLowerTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kHardTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
 }
 
 // 1-2's underground is built out of bricks stamped straight into the grid as kBlockBrick cells,
@@ -10117,7 +10366,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 52);
+    REQUIRE(kBlockKindCount == 54);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);
@@ -10160,7 +10409,7 @@ TEST_CASE("mario_tree_kinds_are_consistent") {
 // tile, 0x4d - which is the whole point of giving it a kind instead of a tile run
 TEST_CASE("mario_hill_core_is_the_hills_flat_belly_cell") {
     REQUIRE(kBlockHillCore == 51);
-    REQUIRE(kBlockHillCore == kBlockKindCount - 1);
+    REQUIRE(kBlockHillCore == kBlockPipeJointT - 1);
     REQUIRE(kBlockFloorTable[kBlockHillCore] == 0);
     REQUIRE((kBlockHillCore < kBlockFirstDecor || kBlockHillCore > kBlockLastDecor));
     // 0x4d is the fill cell's flat tile and 0x4e the one that carries the mark, so a rendered
@@ -14011,6 +14260,9 @@ TEST_CASE("mario_vram_holds_the_generated_terrain_art") {
     // the sideways pipe, twelve tiles of it: 1-1's bonus room is the only place any capture in the
     // repo draws one, and it is the room's own way out
     CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
+    // and the shaft joint m25 cut off the 1-2 capture, five tiles at 0xe0-0xe4: 1-2's two sideways
+    // pipes and 1-1's bonus room exit all run their body into the shaft through it
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
 
     // and the id plan's own runs, so a family that moved shows up here rather than as an overlap
     static_assert(kTilePipeBodyRr - kTilePipeLipL + 1 == 12, "the pipe is twelve pinned tiles");
@@ -14022,6 +14274,8 @@ TEST_CASE("mario_vram_holds_the_generated_terrain_art") {
     static_assert(kTilePipeSideBody3 - kTilePipeSideMouth0L + 1 == 12,
                   "the sideways pipe is twelve pinned tiles");
     static_assert(sizeof(terrain_art::kPipeSideTiles) == 12 * 16, "and twelve generated ones");
+    static_assert(kTilePipeJointBody - kTilePipeJointT0 + 1 == 5, "the shaft joint is five pinned tiles");
+    static_assert(sizeof(terrain_art::kPipeJointTiles) == 5 * 16, "and five generated ones");
 }
 
 // the bonus room is the overworld's own art under the underground colours, with one exception the
@@ -14182,6 +14436,7 @@ TEST_CASE("mario_bonus_room_palettes_are_the_capture_s_colours") {
         collect_family_colors(gameboy, 0xBC, 0xBF, &coin);
         collect_family_colors(gameboy, 0xB0, 0xBB, &pipe);
         collect_family_colors(gameboy, 0x72, 0x7D, &pipe);
+        collect_family_colors(gameboy, 0xE0, 0xE4, &pipe);
         const Mario m = mario_at(gameboy);
         const int here = play_scx(gameboy) * 256 + (m.found ? m.box_left() : 0);
         stall = (here == last) ? stall + 1 : 0;

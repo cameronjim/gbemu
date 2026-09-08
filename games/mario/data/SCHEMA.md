@@ -3,14 +3,15 @@
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
 **all four levels are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and
-bonus room, 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
-castle), the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
+bonus room, the whole of 1-2 (its underground run, its coin rooms, its ending and, off the nes map
+that alone draws it, its above-ground start), the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
 lift rows, the staircase, the pole and the castle) and the whole of 1-4 (every wall run, all four
 lava pits, its eleven blocks, all seven firebars, the bridge, the axe and bowser) were extracted
 pixel by pixel from the official nes and smbd map images and carry `"confidence": "measured"`; see
-"measured levels" below. everything written about sequence-derived positions applies to 1-2's finer
-detail (coins/blocks/enemies, `"approx"`), to 1-3's start column and lift travel, and to 1-4's
-start column and its firebars' rotation speed/direction, which no still frame can show.
+"measured levels" below. everything written about sequence-derived positions applies to 1-2's two
+lifts (a rip catches a moving deck at one instant, `"approx"`), to 1-3's start column and lift
+travel, and to 1-4's start column and its firebars' rotation speed/direction, which no still frame
+can show.
 
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
@@ -234,11 +235,11 @@ compiles to nothing and never gets a pipe.
 none of the four levels is sequence-derived any more. every terrain run, block, enemy, decor shape, the
 flagpole and the castle were extracted from the official nes map images by classifying each 16x16
 cell against a tile sheet cut from the same image, and carry `"confidence": "measured"` wherever
-the extraction is solid (1-2's skeleton: floor pits, ceiling runs, pipe columns, the warp zone's
-order and destinations, the closing staircase, the flagpole and the castle). 1-2's finer detail -
-individual coin/block/enemy placement inside the underground run and its bonus room - remains
-`"approx"`: the tile classifier that produced the measurement is reliable on the skeleton and
-rough on small objects (see `confidence_notes` in `level-1-2.json`). 1-3 was transcribed the same
+the extraction is solid. 1-2 was first read cell by cell off the smbd map by hashing its cells,
+then audited a second time against that capture with `rip_tiles.py --check`, which compares every
+compiled cell's pixels with the capture's (see `confidence_notes` in `level-1-2.json` for what the
+second pass moved: the coin room's exit and coin row, the ending's hill and bush, one koopa, the
+start's clouds). 1-3 was transcribed the same
 way from both rips at once - the nes one and the smbd challenge one, classified separately and
 diffed column by column - and the smbd geometry is what got built wherever they differ (see that
 file's `smbd_deltas`); what stays `approx` there is its start column, which no rip draws, and each
@@ -281,9 +282,14 @@ from a coin count in its prose. such an entry uses:
 - `terrain[].kind = "bricks"`: a solid rectangle of brick from (`x0`,`y0`) to (`x1`,`y1`).
 - `terrain[].kind = "pipe"`: as in a level. the one carrying `"dest": "overworld"` is the
   room's exit, and its column and cap row become the area's `EXIT_COLUMN`/`EXIT_TOP_ROW`.
+- `terrain[].kind = "pipe_side"`: a room whose way out is a sideways mouth walked into from the
+  left, with the same fields as a level's entry; `"dest": "overworld"` on it makes its rim the
+  area's `EXIT_COLUMN`/`EXIT_TOP_ROW`, and the cell's kind is how the engine tells the two exits
+  apart. both measured rooms leave this way: the smbd captures draw the same mouth, body, shaft
+  and shaft joint in 1-1's bonus room and in 1-2's.
 - `coins`: every collectible coin, one `{"x":..,"y":..}` per coin. an area without this key
   falls back to the old behaviour, where the count is read out of the room's `notes` prose and
-  a flat row of coins is invented for it (which is what 1-2's bonus room still does).
+  a flat row of coins is invented for it (which no measured room does any more).
 
 ## 1-2's own primitives
 
@@ -310,6 +316,16 @@ a handful of things the real level does needed bible fields nothing else uses:
 - the seam between two segments is sealed by the bible's own terrain (1-2 uses the brick wall at
   column 24 and the coin room's exit shaft at 215-216, both carried up to row 0 so the roof walk
   cannot leak across), not by a compiler-invented wall.
+- a `pipe_side` needs no field for its shaft joint: the compiler stamps the shaft's left cell in
+  the mouth's two rows as `kBlockPipeJointT`/`kBlockPipeJointB` (the body's rim and joint line drawn
+  over the shaft, as both smbd captures have it) and plain body above them. this is what the 1-2
+  pass added to the engine, and 1-1's bonus room exit gets the same pair.
+- the 1-2 capture (`games/mario/art/ref/smbd_ch_1-2.png`) stands level for level: its column c is
+  level c + 24 through the underground run (the 24-column above-ground start is in no smbd rip and
+  comes off the nes map) and c + 25 through the ending, because level 216 - the exit shaft's right
+  column - is not in the image and its column 192 is already the ending's first column of sky. its
+  cells sit on a grid with y offset 8, six pixels lower than 1-1's; `rip_tiles.py` holds both frames
+  and audits every 1-2 cell, the coin room included, against the compiled grid.
 
 ## 1-3's own primitives
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""rips 1-1's block and terrain art out of the reference screenshots into the indexed pngs the
-art pipeline (png2tiles.py --mode tiles) turns into banked c. run as:
+"""rips the block and terrain art of 1-1 and 1-2 out of the reference screenshots into the indexed
+pngs the art pipeline (png2tiles.py --mode tiles) turns into banked c. run as:
 
-    rip_tiles.py [--root REPO] [--check] [--report]
+    rip_tiles.py [--root REPO] [--generated DIR] [--check] [--report]
 
 provenance
 ----------
@@ -13,28 +13,40 @@ ground's top edge sits at y = 178 = 2 + 16 * 11 (rip row 11, level row 13). the 
 bottom row - level row 14, the buried ground fill - is below the capture's last scanline, which
 is why the fill block wears the surface block's art (they are the same 16x16 unit in smb).
 
+games/mario/art/ref/smbd_ch_1-2.png is the same site's challenge-mode rip of 1-2: 3584x393, the
+same 16px cells with x offset 0 but y offset 8, so the floor's top edge is y = 184 and its bottom
+six scanlines run to y 199. its upper band is the underground run (capture columns 0-191, level
+columns 24-215) butted straight against the above-ground ending (capture 192-223, level 217-248):
+the exit shaft's right column, level 216, is not in the image at all, and column 192 is already the
+ending's first column of sky. the level's 24-column above-ground start is in no smbd rip. the pipe
+coin room hangs under the run in a second band whose left edge is x 1632 and top edge y 201, and
+its cells fall on the area grid's own (column, level row) from row 2. it is drawn on flat black
+like 1-1's bonus room and turns out to be the same art under the same colours, which is what the
+report and the 1-2 audit below prove - the one thing the run draws that no 1-1 cell holds is the
+joint where a sideways pipe's body runs into its shaft (pipe_joint_*, and 1-1's own room has it).
+
 games/mario/art/ref/sheet_tileset.png is the spriters resource "Tileset" sheet for the same
 game (resource id 171364, ripped by Depressed Mario). the capture is challenge mode, which
 draws each question block's CONTENTS over it (a coin, a mushroom, a fire flower) instead of the
 "?", and a level nobody has played has no used block at all, so those two blocks - and only
-those two - are taken from the sheet. both reference images are gitignored; the generated c
-under games/mario/src/gen is what ships.
+those two - are taken from the sheet. the sheet is optional: without it the three families cut
+from it (question, spent, coin) are neither written nor checked and the committed c stands. all
+reference images are gitignored; the generated c under games/mario/src/gen is what ships.
 
 what it does
 ------------
-every tile below names a quadrant of one 16x16 cell of one of the two references. the cells were
+every tile below names a quadrant of one 16x16 cell of one of the references. the cells were
 found by position (see ANCHORS) and every one of them is checked, by --check, against every cell
-of the compiled level grid that says it holds that kind. the cell's colours are resolved against
+of the compiled level grids that says it holds that kind. the cell's colours are resolved against
 its family's cgb palette slot, as rgb555 (each channel >> 3), which is what the hardware stores;
 a colour that is not in the slot aborts the run rather than being snapped to something close.
 
-the level grid and the capture do not agree on where everything stands - the json's decor was
-authored off the nes map and drifts from the capture by a column here and a row there - so
---check reports per-kind agreement rather than demanding it. see the AUDIT notes below.
+the 1-1 grid and its capture do not agree on where everything stands - the capture is missing a
+column (see COLUMN_SHIFT) - so --check reports per-kind agreement rather than demanding it. see
+the AUDIT notes below.
 """
 
 import argparse
-import collections
 import os
 import re
 import sys
@@ -45,10 +57,10 @@ import gbpng
 
 CELL = 16
 
-# ---------------------------------------------------------------- the two reference frames
+# ---------------------------------------------------------------- the reference frames
 
-# the capture's overworld frame: cell (col, row) is 16x16 at (16 * col, 2 + 16 * row), row being
-# a RIP row - level row 2 is rip row 0
+# the 1-1 capture's overworld frame: cell (col, row) is 16x16 at (16 * col, 2 + 16 * row), row
+# being a RIP row - level row 2 is rip row 0
 RIP_Y0 = 2
 # the bonus room hangs under the level on its own black background. its left edge is x 879 and
 # its ground row's top edge y 378, and from there its cells fall on the level's own 16px pitch,
@@ -56,6 +68,17 @@ RIP_Y0 = 2
 BONUS_X0 = 879
 BONUS_GROUND_Y = 378
 BONUS_GROUND_ROW = 13
+
+# the 1-2 capture's upper band: cell (col, row) is at (16 * col, 8 + 16 * row), row a RIP row
+# again with level row 2 at rip row 0, so the roof is rip row 0 and the floor rip row 11. from
+# this column on the band is the above-ground ending, drawn on sky rather than black
+RIP12_Y0 = 8
+RIP12_ENDING_COLUMN = 192
+# the pipe coin room in the band under it, addressed by the AREA grid's (column, level row)
+ROOM12_X0 = 1632
+ROOM12_Y0 = 201
+ROOM12_TOP_ROW = 2
+ROOM12_COLUMNS = 16
 
 # the sheet lays its global blocks out on a 17px pitch from x 4, all on one row at y 197
 SHEET_BLOCK_Y = 197
@@ -103,19 +126,23 @@ SLOTS = {
     "coin": [SKY, "F8B840", "984800", "000000"],
 }
 
-# the bonus room is the same art under different colours. it is drawn on black, its masonry goes
-# teal, and the brick's highlight collapses into its body - which is why colour 1 and colour 2 of
-# the underground brick slot are the same teal and the overworld brick tiles serve unchanged
+# below ground it is the same art under different colours: a black backdrop, masonry in the teal
+# 008888 under a near-white B8F8F0 highlight. the brick slot carries that highlight too, for the
+# hard block's bevel (1-2's stair-step blocks light it, 1-1's room has no hard block at all): the
+# brick's own tiles never use colour 1, because the underground load replaces the one pair that
+# did - the cell's top row - with the room's own, mortar joints showing
 UNDERGROUND = "000000"
 UNDERGROUND_SLOTS = {
     "sky": [UNDERGROUND, "F8F8F8", "30A0F8", "000000"],
     "ground": [UNDERGROUND, "B8F8F0", "008888", "000000"],
-    "brick": [UNDERGROUND, "008888", "008888", "000000"],
-    "question": [UNDERGROUND, "F8B840", "984800", "000000"],
+    "brick": [UNDERGROUND, "B8F8F0", "008888", "000000"],
+    # the question block's bottom and right edges are colour 3, black above ground and the
+    # masonry's teal below it (1-2's blocks, whose faces the challenge rip covers with their coins)
+    "question": [UNDERGROUND, "F8B840", "984800", "008888"],
     # every pipe the room draws outlines itself in this dark green rather than the overworld's
     # black - a black rim would be invisible against the room's own black backdrop
     "pipe": [UNDERGROUND, "70F830", "108800", "004800"],
-    "spent": [UNDERGROUND, "F8B840", "984800", "000000"],
+    "spent": [UNDERGROUND, "F8B840", "984800", "008888"],
     "coin": [UNDERGROUND, "F8B840", "984800", "008888"],
 }
 
@@ -126,26 +153,39 @@ UNDERGROUND_SLOTS = {
 # takes the slot's black instead and reads as a dark disc rather than a dark green one
 APPROXIMATIONS = {("sky", "008010"): "000000"}
 
-# a tile cut from the bonus room has to land on the same 2bpp values as the overworld tile it
-# stands in for, because the room reaches vram through the same palette slot with the colours
+# a tile cut from a black-backdrop frame has to land on the same 2bpp values as the overworld tile
+# it stands in for, because the room reaches vram through the same palette slot with the colours
 # below swapped in. teal is the masonry body (colour 2) and the room's near-white the highlight
 BONUS_TO_SLOT = {"008888": "984800", "B8F8F0": "F8C098", "000000": "000000"}
-# the sideways pipe is the one family whose only instance in the capture is IN the room, so its
-# tiles are cut from there and have to be lifted into the overworld pipe slot's four colours: the
-# room's backdrop is that slot's colour 0 and the room's dark green rim is its colour 3
+# the sideways pipe's only instance in the 1-1 capture is IN the room, so its tiles are cut from
+# there and have to be lifted into the overworld pipe slot's four colours: the room's backdrop is
+# that slot's colour 0 and the room's dark green rim is its colour 3. the shaft joint, cut from
+# 1-2's run, is lifted the same way
 BONUS_PIPE_TO_SLOT = {"000000": SKY, "70F830": "70F830", "108800": "108800", "004800": "000000"}
+# and a loose coin's ring shading, teal down there and black above
+BONUS_COIN_TO_SLOT = {"000000": SKY, "F8B840": "F8B840", "984800": "984800", "008888": "000000"}
 BONUS_RECOLOUR = {
     "pipe_side_mouth_t": BONUS_PIPE_TO_SLOT,
     "pipe_side_mouth_b": BONUS_PIPE_TO_SLOT,
     "pipe_side_body_t": BONUS_PIPE_TO_SLOT,
     "pipe_side_body_b": BONUS_PIPE_TO_SLOT,
+    "pipe_joint_t": BONUS_PIPE_TO_SLOT,
+    "pipe_joint_b": BONUS_PIPE_TO_SLOT,
+    "bonus_joint_t": BONUS_PIPE_TO_SLOT,
+    "bonus_joint_b": BONUS_PIPE_TO_SLOT,
+    "ug_pipe_lip_l12": BONUS_PIPE_TO_SLOT,
+    "ug_pipe_lip_r12": BONUS_PIPE_TO_SLOT,
+    "ug_pipe_body_l12": BONUS_PIPE_TO_SLOT,
+    "ug_pipe_body_r12": BONUS_PIPE_TO_SLOT,
+    "ug_coin12": BONUS_COIN_TO_SLOT,
 }
 
 # ---------------------------------------------------------------- the anchors
 #
 # one clean, sprite-free instance of each family, by cell. "rip" cells are (column, RIP row) in
-# the overworld frame; "bonus" cells are (column, LEVEL row) in the room's frame; "sheet" cells
-# are (x, y) pixel origins on the tileset sheet.
+# 1-1's overworld frame; "bonus" cells are (column, LEVEL row) in its room's frame; "rip12" cells
+# are (column, RIP row) in 1-2's upper band and "room12" cells (column, LEVEL row) in its coin
+# room; "sheet" cells are (x, y) pixel origins on the tileset sheet.
 ANCHORS = {
     # the ground row is 179 identical cells out of 208; the rest carry a goomba or a pit
     "ground": ("rip", 5, 11),
@@ -204,16 +244,46 @@ ANCHORS = {
     "ug_brick": ("bonus", 0, 3),
     "ug_ground": ("bonus", 0, 13),
     # the bonus room's exit: a SIDEWAYS pipe, its mouth facing left at room columns 13-14 on rows
-    # 11-12 and its body running right into the shaft at column 15. it is the only sideways pipe
-    # any capture in the repo holds, and it is not the vertical pipe transposed - the vertical
-    # pipe's cross section is 2px of backdrop, a 1px rim, 3 light, 2 dark, 5 light, 1 dark, 2
-    # light, and the sideways one's is a 1px rim, 4 light, 2 dark, 5 light, 1 dark, 3 light. no
-    # backdrop margin and one more light row: the roof sits flush on the cell's own top edge
+    # 11-12 and its body running right into the shaft at column 15. it is not the vertical pipe
+    # transposed - the vertical pipe's cross section is 2px of backdrop, a 1px rim, 3 light, 2
+    # dark, 5 light, 1 dark, 2 light, and the sideways one's is a 1px rim, 4 light, 2 dark, 5
+    # light, 1 dark, 3 light. no backdrop margin and one more light row: the roof sits flush on the
+    # cell's own top edge
     "pipe_side_mouth_t": ("bonus", 13, 11),
     "pipe_side_body_t": ("bonus", 14, 11),
     "pipe_side_mouth_b": ("bonus", 13, 12),
     "pipe_side_body_b": ("bonus", 14, 12),
+    # and the shaft cell the body runs into, in both rows of the mouth: the body's rim and joint
+    # continue over the shaft's own left column, so it is neither a body cell nor a side one
+    "bonus_joint_t": ("bonus", 15, 11),
+    "bonus_joint_b": ("bonus", 15, 12),
+    # the 1-2 capture. the underground run's own cells, read by the report and the 1-2 audit, and
+    # every one of them 1-1's art under the underground colours: the floor is the ground block, the
+    # roof and the walls the room's brick, the stair-steps the hard block, the pipes the pipe
+    "ug_ground12": ("rip12", 5, 11),
+    "ug_brick12": ("rip12", 0, 0),
+    "ug_hard12": ("rip12", 23, 7),
+    "ug_pipe_lip_l12": ("rip12", 109, 7),
+    "ug_pipe_lip_r12": ("rip12", 110, 7),
+    "ug_pipe_body_l12": ("rip12", 168, 0),
+    "ug_pipe_body_r12": ("rip12", 169, 0),
+    "ug_coin12": ("rip12", 180, 2),
+    # its ending, on sky: the same ground block in the overworld's tan and brown, and the stair
+    "end_ground12": ("rip12", 197, 11),
+    "end_stair12": ("rip12", 203, 4),
+    # the one family cut from this capture: the joint at the underground exit's shaft (real column
+    # 168, the two rows of the mouth). the shaft's left cell there carries the sideways body's rim
+    # along its top (or bottom) and the joint's dark line down its own left column, then the plain
+    # body's right column past it. 1-2 stands two of these pairs and 1-1's room one
+    "pipe_joint_t": ("rip12", 168, 6),
+    "pipe_joint_b": ("rip12", 168, 7),
 }
+
+
+def dark_frame(spec):
+    """whether a cell comes off a black backdrop: either coin room, or 1-2's underground run (its
+    ending, from RIP12_ENDING_COLUMN on, is open sky like 1-1)."""
+    return spec[0] in ("bonus", "room12") or (spec[0] == "rip12" and spec[1] < RIP12_ENDING_COLUMN)
 
 
 def Q(anchor, qx, qy):
@@ -268,6 +338,15 @@ FAMILIES = [
         Q("pipe_side_mouth_b", 0, 1), Q("pipe_side_mouth_b", 1, 1),
         Q("pipe_side_body_t", 0, 0), Q("pipe_side_body_t", 0, 1),
         Q("pipe_side_body_b", 0, 0), Q("pipe_side_body_b", 0, 1)]),
+    # bank 1 0xe0-0xe4: the shaft joint, where that body runs into its vertical shaft. the shaft's
+    # left cell there wears the body's rim and joint down its own left column and the plain
+    # body's right column past it, so each of the two joint kinds needs two tiles of its own; the
+    # fifth is a bank-1 copy of kTilePipeBodyM for the right column, because a kind's attribute
+    # byte picks one vram bank for all four quadrants and the body's own tile lives in bank 0
+    ("pipe_joint", "PipeJoint", "pipe", [
+        Q("pipe_joint_t", 0, 0), Q("pipe_joint_t", 0, 1),
+        Q("pipe_joint_b", 0, 0), Q("pipe_joint_b", 0, 1),
+        Q("pipe_body_l", 1, 0)]),
     # bank 1 scenery. 0x35-0x44 is the cloud's left cap and middle, over two cells each
     ("cloud", "Cloud", "sky", [
         Q("cloud_cap_t", 0, 0), Q("cloud_cap_t", 1, 0),
@@ -331,7 +410,7 @@ FAMILIES = [
     ("scen_tail", "ScenTail", "sky", [None]),
 ]
 
-# the kinds whose art the capture teaches: kind -> (label, anchor, palette slot). kind numbers
+# the kinds whose art the captures teach: kind -> (label, anchor, palette slot). kind numbers
 # are kBlock* from mario.h and must not move; the slot is the one kPaletteRom pins the kind to
 KIND_CELLS = {
     1: ("ground", "ground", "ground"),
@@ -373,17 +452,19 @@ KIND_CELLS = {
     41: ("pipe side body bottom", "pipe_side_body_b", "pipe"),
     42: ("castle crenel inner", "castle_crenel_inner", "brick"),
     50: ("castle window right", "castle_window_right", "brick"),
+    52: ("pipe joint top", "pipe_joint_t", "pipe"),
+    53: ("pipe joint bottom", "pipe_joint_b", "pipe"),
     # the pennant-over-shaft cell is the one kind whose two tile columns wear different slots
     # (terrain.c hands its right column kBlockFlagPole's), so no single slot can audit it
     47: ("flag pole + cloth", "flag_cloth_pole", None),
 }
 
-# AUDIT: the compiled grid and the capture do not stand in the same columns everywhere, and the
-# defect is the CAPTURE's. it is a stitch of screen-sized grabs, and it lost one column at its left
-# edge and gained a duplicate one around its fifth screen: the level's own column 0 is not in the
-# image at all. so a level column reads one column LEFT of itself for the first third of the level
-# and level-for-level after the seam. the nes map and the 1-2 pass both agree with the json's
-# geometry, so the json is right and this table is the correction:
+# AUDIT: the compiled 1-1 grid and its capture do not stand in the same columns everywhere, and
+# the defect is the CAPTURE's. it is a stitch of screen-sized grabs, and it lost one column at its
+# left edge and gained a duplicate one around its fifth screen: the level's own column 0 is not in
+# the image at all. so a level column reads one column LEFT of itself for the first third of the
+# level and level-for-level after the seam. the nes map and the 1-2 pass both agree with the
+# json's geometry, so the json is right and this table is the correction:
 COLUMN_SHIFT = ((0, 75, -1), (76, 207, 0))
 # the pins, in order along the level: the opening big hill, whose bottom row is
 # slope-fill-CORE-fill-slope and whose fill/core/fill cells sit at capture 0/1/2 - which puts the
@@ -398,15 +479,34 @@ COLUMN_SHIFT = ((0, 75, -1), (76, 207, 0))
 # five. so capture 75 is the duplicate - one middle cell of that cloud, repeated - and the cloud is
 # level 75-79, five wide. that is the only feature in capture 73-76; everything else there is open
 # sky in every row
+#
+# the 1-2 capture stands level for level: the underground run's column c is level c + 24 (the
+# 24-column start segment is in no smbd rip) and the ending's is c + 25, because level 216 - the
+# right column of the coin room's exit shaft, which the bible carries up to row 0 to seal the seam
+# - is not in the image and capture column 192 is already the ending's first column of sky. its
+# one defect is at capture column 63, level 87, where the hanging wall's right column is drawn
+# eight pixels wide over black on rows 1-7: a stitch that lost half a cell, since nothing in the
+# game is drawn on an 8px grid and both the nes map and the rest of the capture keep the wall two
+# columns wide
+COLUMN_SHIFT12 = ((24, 215, -24), (217, 248, -25))
 
 
 def rip_column(level_column):
-    """the capture column a level column stands in. level column 0 comes back as -1: the capture
-    does not hold it, and refs.cell() answers None for it."""
+    """the 1-1 capture column a level column stands in. level column 0 comes back as -1: the
+    capture does not hold it, and refs.cell() answers None for it."""
     for lo, hi, shift in COLUMN_SHIFT:
         if lo <= level_column <= hi:
             return level_column + shift
     return level_column
+
+
+def rip12_column(level_column):
+    """the 1-2 capture column a level column stands in, or None for the start segment and the
+    exit shaft's right column, which it does not hold."""
+    for lo, hi, shift in COLUMN_SHIFT12:
+        if lo <= level_column <= hi:
+            return level_column + shift
+    return None
 
 
 # ---------------------------------------------------------------- reading the references
@@ -415,8 +515,11 @@ def rip_column(level_column):
 class Refs:
     def __init__(self, ref_dir):
         self.rip = gbpng.read_png(os.path.join(ref_dir, "smbd_ch_1-1.png"))
-        self.sheet = gbpng.read_png(os.path.join(ref_dir, "sheet_tileset.png"))
+        self.rip12 = gbpng.read_png(os.path.join(ref_dir, "smbd_ch_1-2.png"))
+        sheet = os.path.join(ref_dir, "sheet_tileset.png")
+        self.sheet = gbpng.read_png(sheet) if os.path.exists(sheet) else None
         self.verify_frame()
+        self.verify_frame12()
 
     def verify_frame(self):
         """the y offset is only trustworthy if the ground's top edge really is at y 178, so the
@@ -430,6 +533,27 @@ class Refs:
                for x in range(CELL) for y in range(CELL)}
         if SKY in row or self._hex(self.rip, 5 * CELL, RIP_Y0 + 11 * CELL - 1) != SKY:
             raise SystemExit("y=178 is not the ground's top edge; the capture's y offset moved")
+
+    def verify_frame12(self):
+        """the same check on the 1-2 capture: the floor's top edge at y 184 under a cell of black
+        in column 5 (inside the entry shaft, where nothing stands), the ending's first column of
+        open sky at 192, and the coin room's roof brick at the top left of the lower band."""
+        above = {self._hex(self.rip12, 5 * CELL + x, RIP12_Y0 + 10 * CELL + y)
+                 for x in range(CELL) for y in range(CELL)}
+        if above != {UNDERGROUND}:
+            raise SystemExit("the cell above 1-2's floor at column 5 is not black; the y offset moved")
+        edge = RIP12_Y0 + 11 * CELL
+        if (self._hex(self.rip12, 5 * CELL, edge - 1) != UNDERGROUND
+                or self._hex(self.rip12, 5 * CELL, edge) != "008888"
+                or self._hex(self.rip12, 5 * CELL + 1, edge) != "B8F8F0"):
+            raise SystemExit("y=184 is not 1-2's floor top edge; the capture's y offset moved")
+        ending = {self._hex(self.rip12, RIP12_ENDING_COLUMN * CELL + x, RIP12_Y0 + y)
+                  for x in range(CELL) for y in range(CELL)}
+        if ending != {SKY}:
+            raise SystemExit("1-2's column 192 is not the ending's sky; the capture's stitch moved")
+        roof = self.cell(("room12", 3, ROOM12_TOP_ROW))
+        if roof is None or {p for row in roof for p in row} != {UNDERGROUND, "008888"}:
+            raise SystemExit("1-2's coin room roof is not at x 1680, y 201; the band moved")
 
     @staticmethod
     def _hex(img, x, y):
@@ -445,7 +569,20 @@ class Refs:
             img = self.rip
             x0 = BONUS_X0 + spec[1] * CELL
             y0 = BONUS_GROUND_Y - CELL * (BONUS_GROUND_ROW - spec[2])
+        elif frame == "rip12":
+            img, x0, y0 = self.rip12, spec[1] * CELL, RIP12_Y0 + spec[2] * CELL
+        elif frame == "room12":
+            # the band is sixteen columns wide and starts at level row 2: the room's own column
+            # 16, its shaft's right side, is past its edge, and its wall's rows 0-1 are above it,
+            # where the image holds the level's ending and the run's floor
+            if spec[1] >= ROOM12_COLUMNS or spec[2] < ROOM12_TOP_ROW:
+                return None
+            img = self.rip12
+            x0 = ROOM12_X0 + spec[1] * CELL
+            y0 = ROOM12_Y0 + CELL * (spec[2] - ROOM12_TOP_ROW)
         elif frame == "sheet":
+            if self.sheet is None:
+                return None
             img, x0, y0 = self.sheet, spec[1], spec[2]
         else:
             raise SystemExit("unknown frame %r" % (frame,))
@@ -460,10 +597,13 @@ class Refs:
         rows = self.cell(ANCHORS[name])
         if rows is None:
             raise SystemExit("anchor %s falls outside its reference image" % name)
-        if recolour and ANCHORS[name][0] == "bonus":
+        if recolour and dark_frame(ANCHORS[name]):
             table = BONUS_RECOLOUR.get(name, BONUS_TO_SLOT)
             rows = [[table.get(p, p) for p in row] for row in rows]
         return rows
+
+    def has(self, name):
+        return ANCHORS[name][0] != "sheet" or self.sheet is not None
 
 
 def quadrant(rows, qx, qy):
@@ -497,9 +637,14 @@ BLANK = [[0] * 8 for _ in range(8)]
 
 
 def build(refs):
-    """every family as (stem, Name, slot, [8x8 tiles of 2bpp values])."""
+    """every family as (stem, Name, slot, [8x8 tiles of 2bpp values]), and the stems of the
+    families that could not be built because the sheet they are cut from is not there."""
     built = []
+    skipped = []
     for stem, name, slot, sources in FAMILIES:
+        if not all(source is None or refs.has(source[0]) for source in sources):
+            skipped.append(stem)
+            continue
         tiles = []
         for source in sources:
             if source is None:
@@ -509,7 +654,7 @@ def build(refs):
             cell = refs.anchor(anchor, recolour=True)
             tiles.append(indices(quadrant(cell, qx, qy), slot, "%s/%s" % (stem, anchor)))
         built.append((stem, name, slot, tiles))
-    return built
+    return built, skipped
 
 
 # ---------------------------------------------------------------- the structural report
@@ -526,6 +671,11 @@ SHARING = [
     ("castle window right == mirror(window left)", "castle_window_right", "mirror",
      "castle_window"),
 ]
+
+
+def whole(anchor):
+    return [(anchor, 0, 0), (anchor, 1, 0), (anchor, 0, 1), (anchor, 1, 1)]
+
 
 QUADRANT_SHARING = [
     ("pipe lip: left cell's right column == right cell's left column",
@@ -597,12 +747,8 @@ QUADRANT_SHARING = [
     ("hill fill: only its upper right carries smb's shading mark",
      [("hill_fill", 0, 0), ("hill_fill", 0, 1), ("hill_fill", 1, 1)],
      [("hill_core", 0, 0), ("hill_core", 0, 0), ("hill_core", 0, 0)]),
-    ("bonus room ground == overworld ground",
-     [("ug_ground", 0, 0), ("ug_ground", 1, 0), ("ug_ground", 0, 1), ("ug_ground", 1, 1)],
-     [("ground", 0, 0), ("ground", 1, 0), ("ground", 0, 1), ("ground", 1, 1)], "recolour"),
-    ("bonus room brick == overworld brick",
-     [("ug_brick", 0, 0), ("ug_brick", 1, 0), ("ug_brick", 0, 1), ("ug_brick", 1, 1)],
-     [("brick", 0, 0), ("brick", 1, 0), ("brick", 0, 1), ("brick", 1, 1)], "recolour"),
+    ("bonus room ground == overworld ground", whole("ug_ground"), whole("ground"), "recolour"),
+    ("bonus room brick == overworld brick", whole("ug_brick"), whole("brick"), "recolour"),
     # the sideways pipe. the body column is flat across its width, which is what lets the rom draw
     # each of its 8px bands with one tile in both halves of the cell; the mouth column is not, and
     # its two cells do not share the middle pair the hand-drawn array used to give them
@@ -615,21 +761,41 @@ QUADRANT_SHARING = [
     ("pipe side mouth: the two cells share their middle pair",
      [("pipe_side_mouth_t", 0, 1), ("pipe_side_mouth_t", 1, 1)],
      [("pipe_side_mouth_b", 0, 0), ("pipe_side_mouth_b", 1, 0)]),
+    # the 1-2 capture against 1-1's, through the palette swap: every underground cell the run is
+    # built of is 1-1's art, and the ending's ground and stair are 1-1's own cells exactly
+    ("1-2 floor == 1-1 ground", whole("ug_ground12"), whole("ground"), "recolour"),
+    ("1-2 roof brick == 1-1 bonus room brick", whole("ug_brick12"), whole("ug_brick")),
+    ("1-2 stair-step block == 1-1 hard block", whole("ug_hard12"), whole("hard"), "recolour"),
+    ("1-2 pipe lip left == 1-1's", whole("ug_pipe_lip_l12"), whole("pipe_lip_l"), "recolour"),
+    ("1-2 pipe lip right == 1-1's", whole("ug_pipe_lip_r12"), whole("pipe_lip_r"), "recolour"),
+    ("1-2 pipe body left == 1-1's", whole("ug_pipe_body_l12"), whole("pipe_body_l"), "recolour"),
+    ("1-2 pipe body right == 1-1's", whole("ug_pipe_body_r12"), whole("pipe_body_r"), "recolour"),
+    ("1-2 loose coin == the sheet's coin", whole("ug_coin12"), whole("coin"), "recolour"),
+    ("1-2 ending ground == 1-1 ground", whole("end_ground12"), whole("ground")),
+    ("1-2 ending stair == 1-1 hard block", whole("end_stair12"), whole("hard")),
+    # the shaft joint. its right column is the plain body's, its two cells are not each other's,
+    # and 1-1's bonus room stands the identical pair at its own shaft
+    ("pipe joint top: its right column is the plain body's right column",
+     [("pipe_joint_t", 1, 0), ("pipe_joint_t", 1, 1)],
+     [("pipe_body_l", 1, 0), ("pipe_body_l", 1, 0)], "recolour"),
+    ("pipe joint bottom: its right column is the plain body's right column",
+     [("pipe_joint_b", 1, 0), ("pipe_joint_b", 1, 1)],
+     [("pipe_body_l", 1, 0), ("pipe_body_l", 1, 0)], "recolour"),
+    ("pipe joint top: its left column is not the plain body's",
+     [("pipe_joint_t", 0, 0), ("pipe_joint_t", 0, 1)],
+     [("ug_pipe_body_l12", 0, 0), ("ug_pipe_body_l12", 0, 1)]),
+    ("pipe joint: the two cells are not the same",
+     [("pipe_joint_t", 0, 0), ("pipe_joint_t", 0, 1)],
+     [("pipe_joint_b", 0, 0), ("pipe_joint_b", 0, 1)]),
+    ("1-1 bonus room shaft joint top == 1-2's", whole("bonus_joint_t"), whole("pipe_joint_t")),
+    ("1-1 bonus room shaft joint bottom == 1-2's", whole("bonus_joint_b"), whole("pipe_joint_b")),
 ]
-
-
-def shape_of(tile):
-    """the tile as colour ranks, so two tiles can be compared through a palette swap."""
-    order = collections.Counter(p for row in tile for p in row)
-    rank = {p: i for i, (p, _) in enumerate(sorted(order.items(), key=lambda kv: (-kv[1], kv[0])))}
-    return [[rank[p] for p in row] for row in tile]
 
 
 def structural_report(refs):
     lines = []
     for label, left, relation, right in SHARING:
-        a = refs.cell(left) if isinstance(left, tuple) and left[0] in ("rip", "bonus", "sheet") \
-            else refs.anchor(left)
+        a = refs.cell(left) if isinstance(left, tuple) else refs.anchor(left)
         b = refs.anchor(right)
         if relation == "mirror":
             b = mirror(b)
@@ -639,14 +805,18 @@ def structural_report(refs):
     for entry in QUADRANT_SHARING:
         label, left, right = entry[0], entry[1], entry[2]
         mode = entry[3] if len(entry) > 3 else "exact"
-        lefts = [quadrant(refs.anchor(a), qx, qy) for a, qx, qy in left]
+        names = [a for a, _, _ in left] + [a for a, _, _ in (right or [])]
+        if not all(refs.has(a) for a in names):
+            quads.append((label, None))
+            continue
+        # "recolour" lifts a black-backdrop cell into the overworld slot's colours first, so a
+        # room cell and an overworld one compare pixel for pixel through the palette swap
+        lift = mode == "recolour"
+        lefts = [quadrant(refs.anchor(a, recolour=lift), qx, qy) for a, qx, qy in left]
         if right is None:
             differ = sum(1 for t in lefts for row in t for p in row if p != SKY)
         else:
-            rights = [quadrant(refs.anchor(a), qx, qy) for a, qx, qy in right]
-            if mode == "recolour":
-                lefts = [shape_of(t) for t in lefts]
-                rights = [shape_of(t) for t in rights]
+            rights = [quadrant(refs.anchor(a, recolour=lift), qx, qy) for a, qx, qy in right]
             differ = sum(1 for ta, tb in zip(lefts, rights)
                          for ra, rb in zip(ta, tb) for x, y in zip(ra, rb) if x != y)
         quads.append((label, differ))
@@ -655,26 +825,30 @@ def structural_report(refs):
 
 # ---------------------------------------------------------------- the position audit
 
+# the compiled grids: level -> (its slug in the generated c, its main grid's array name)
+LEVEL_GRIDS = {"1-1": ("level_1_1", "kLevel11Grid"), "1-2": ("level_1_2", "kLevel12Grid")}
 
-def load_grid(root):
-    """kLevel11Grid[208][15] out of the compiled header, plus the bonus room's own grid."""
-    path = os.path.join(root, "build-mario", "generated", "level_1_1_grid.h")
+
+def load_grid(generated, level):
+    """the level's grid out of the compiled header, plus its first sub-area's own grid."""
+    slug, array = LEVEL_GRIDS[level]
+    path = os.path.join(generated, slug + "_grid.h")
     if not os.path.exists(path):
         return None, None
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
-    match = re.search(r"kLevel11Grid\[(\d+)\]\[(\d+)\] = \{(.*?)\n\};", text, re.S)
+    match = re.search(array + r"\[(\d+)\]\[(\d+)\] = \{(.*?)\n\};", text, re.S)
     if not match:
         return None, None
     grid = [[int(v) for v in line.strip().strip(",").strip("{}").split(",")]
             for line in match.group(3).strip().splitlines()]
 
     area = None
-    apath = os.path.join(root, "build-mario", "generated", "level_1_1_areas.c")
+    apath = os.path.join(generated, slug + "_areas.c")
     if os.path.exists(apath):
         with open(apath, "r", encoding="utf-8") as f:
             atext = f.read()
-        amatch = re.search(r"level_1_1_area0_blocks\[[^\]]*\]\[[^\]]*\] = \{(.*?)\n\};",
+        amatch = re.search(slug + r"_area0_blocks\[[^\]]*\]\[[^\]]*\] = \{(.*?)\n\};",
                            atext, re.S)
         if amatch:
             area = []
@@ -684,18 +858,19 @@ def load_grid(root):
     return grid, area
 
 
-def load_enemies(root):
+def load_enemies(generated, level):
     """the level's spawn list, so a ground cell a goomba stands on is not read as tile truth.
     the goomba's browns are the ground family's own, so nothing but the list can tell them
     apart. row is the surface row the enemy stands on top of."""
-    path = os.path.join(root, "build-mario", "generated", "level_1_1_objects.c")
+    slug = LEVEL_GRIDS[level][0]
+    path = os.path.join(generated, slug + "_objects.c")
     if not os.path.exists(path):
         return set()
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
 
     def array(name):
-        match = re.search(r"level_1_1_enemy_%s\[[^\]]*\]\s*=\s*\{(.*?)\};" % name, text, re.S)
+        match = re.search(slug + r"_enemy_%s\[[^\]]*\]\s*=\s*\{(.*?)\};" % name, text, re.S)
         if not match:
             return []
         return [int(v, 0) for v in match.group(1).replace("\n", "").split(",") if v.strip()]
@@ -712,9 +887,9 @@ def load_enemies(root):
 
 
 def collapse(cell, slot, palette):
-    """the cell as 2bpp values under `palette`, so an overworld cell and a bonus room cell can be
-    compared: the room's brick slot names the same teal twice, which is exactly how its masonry
-    loses the highlight the overworld's has."""
+    """the cell as 2bpp values under `palette`, so an overworld cell and an underground cell can
+    be compared: a slot may name one colour twice, which is exactly how a cell down there can
+    lose a highlight the overworld's has."""
     lookup = {}
     for index, colour in enumerate(palette):
         lookup.setdefault(colour, index)
@@ -730,74 +905,118 @@ def collapse(cell, slot, palette):
     return out
 
 
-# the capture only reaches rip rows 0..11 (level rows 2..13); level row 14, the buried ground
-# fill, is below its last scanline and no cell there can be audited
+GEN_ARRAY = re.compile(r"const uint8_t k(\w+)Tiles\[(\d+)\]\s*=\s*\{(.*?)\};", re.S)
+
+
+def gen_cell(gen_dir, name):
+    """a whole block's 2bpp values out of its committed c, for a family whose anchor is on the
+    missing sheet: its first four tiles are the cell's quadrants in Tl, Tr, Bl, Br order."""
+    source = os.path.join(gen_dir, snake(name) + ".c")
+    if not os.path.exists(source):
+        return None
+    with open(source, "r", encoding="utf-8") as f:
+        match = GEN_ARRAY.search(f.read())
+    if not match:
+        return None
+    data = bytes(int(t, 0) for t in match.group(3).replace("\n", "").split(",") if t.strip())
+    if len(data) < 4 * 16:
+        return None
+    tiles = [gbpng.decode_tile(data[i * 16:(i + 1) * 16]) for i in range(4)]
+    return [tiles[0][y] + tiles[1][y] for y in range(8)] + [tiles[2][y] + tiles[3][y] for y in range(8)]
+
+
+# the captures only reach rip rows 0..11 (level rows 2..13); level row 14, the buried ground
+# fill, is below their last scanline and no cell there can be audited
 LAST_RIP_ROW = 11
 
+# the families whose anchor is a sheet cell, and the generated c that stands in for it when the
+# sheet is not there
+SHEET_FAMILIES = {"question": "Question", "spent": "Spent", "coin": "Coin"}
 
-def audit(refs, grid, area, enemies):
-    """every grid cell that names a kind the capture teaches, against that kind's anchor.
+
+def sources_for(level, grid, area, enemies):
+    """every grid cell as (capture spec, overlaid) in the level's own frames, or None for a cell
+    the captures do not hold."""
+    out = []
+    if grid:
+        for column, strip in enumerate(grid):
+            for level_row, cell_kind in enumerate(strip):
+                if level_row - 2 > LAST_RIP_ROW or level_row < 2:
+                    out.append((cell_kind, None, False))
+                    continue
+                if level == "1-1":
+                    spec = ("rip", rip_column(column), level_row - 2)
+                else:
+                    rip_col = rip12_column(column)
+                    spec = None if rip_col is None else ("rip12", rip_col, level_row - 2)
+                out.append((cell_kind, spec, (column, level_row) in enemies))
+    if area:
+        frame = "bonus" if level == "1-1" else "room12"
+        for column, strip in enumerate(area):
+            for level_row, cell_kind in enumerate(strip):
+                out.append((cell_kind, (frame, column, level_row), False))
+    return out
+
+
+def audit(refs, gen_dir, level, grid, area, enemies):
+    """every grid cell that names a kind the captures teach, against that kind's anchor.
 
     a cell lands in one of four buckets: `same`, `overlay` (the capture draws a sprite, a red
     coin, a challenge marker or a caption over it, so it is not tile truth), `differ` (the
-    capture holds different art there, which for 1-1 is almost always the json standing in a
-    different cell than smb does - see COLUMN_SHIFT and the report) and `off frame`."""
+    capture holds different art there - for 1-1 almost always the json standing in a different
+    cell than smb does, see COLUMN_SHIFT; for 1-2 the question blocks, whose faces the challenge
+    rip covers with their contents in the slot's own colours) and `off frame`."""
+    sources = sources_for(level, grid, area, enemies)
     rows = []
     for kind in sorted(KIND_CELLS):
         label, anchor_name, slot = KIND_CELLS[kind]
         if slot is None:
             rows.append((kind, label, 0, 0, 0, 0, 0, []))
             continue
-        # an anchor cut from the room is stored in the room's own colours, so it has to be lifted
-        # into its slot before either comparison can read it
-        want = refs.anchor(anchor_name, recolour=ANCHORS[anchor_name][0] == "bonus")
-        if kind == 33:  # the right hill slope is the left one mirrored, as the rom draws it
-            want = mirror(refs.anchor("hill_slope"))
-        # the bonus room's brick is the one family whose ART differs down there, not just its
-        # colours: rip_tiles generates the room's own upper pair and the rom loads it over the
-        # overworld's, so the audit has to compare a room cell against the room's own anchor
-        want_room = refs.anchor("ug_brick", recolour=True) if kind == 2 else want
-        want_over = collapse(want, slot, SLOTS[slot])
-        # the room's palette can name one colour twice (its brick has no highlight), so the
-        # anchor's own 2bpp values are folded the way the room folds them before comparing
+        want = want_room = None
+        if refs.has(anchor_name):
+            # an anchor cut from a black-backdrop frame is stored in that frame's own colours, so
+            # it has to be lifted into its slot before either comparison can read it
+            want = refs.anchor(anchor_name, recolour=True)
+            if kind == 33:  # the right hill slope is the left one mirrored, as the rom draws it
+                want = mirror(refs.anchor("hill_slope"))
+            # the room's brick is the one family whose ART differs down there, not just its
+            # colours: rip_tiles generates the room's own upper pair and the rom loads it over the
+            # overworld's, so the audit has to compare a dark cell against the room's own anchor
+            want_room = refs.anchor("ug_brick", recolour=True) if kind == 2 else want
+            want_over = collapse(want, slot, SLOTS[slot])
+            want_room = collapse(want_room, slot, SLOTS[slot])
+        else:
+            want_over = want_room = gen_cell(gen_dir, SHEET_FAMILIES[anchor_name])
+            if want_over is None:
+                rows.append((kind, label, 0, 0, 0, 0, 0, ["no sheet and no generated c"]))
+                continue
+        # an underground slot can name one colour twice, so the anchor's own 2bpp values are
+        # folded the way the slot folds them before comparing
         under = UNDERGROUND_SLOTS[slot]
         fold = [min(j for j in range(4) if under[j] == under[i]) for i in range(4)]
-        want_under = [[fold[v] for v in row]
-                      for row in collapse(want_room, slot, SLOTS[slot])]
+        want_under = [[fold[v] for v in row] for row in want_room]
         same = overlay = differ = off = 0
         misses = []
-        sources = []
-        if grid:
-            for column, strip in enumerate(grid):
-                for level_row, cell_kind in enumerate(strip):
-                    if cell_kind != kind:
-                        continue
-                    if level_row - 2 > LAST_RIP_ROW or level_row < 2:
-                        off += 1
-                        continue
-                    sources.append(("rip", rip_column(column), level_row - 2,
-                                    (column, level_row) in enemies))
-        if area and kind in (1, 2, 5, 6, 7, 8, 13, 18, 38, 39, 40, 41):
-            for column, strip in enumerate(area):
-                for level_row, cell_kind in enumerate(strip):
-                    if cell_kind == kind:
-                        sources.append(("bonus", column, level_row, False))
-        for spec in sources:
-            got = refs.cell(spec[:3])
+        for cell_kind, spec, covered in sources:
+            if cell_kind != kind:
+                continue
+            got = refs.cell(spec) if spec is not None else None
             if got is None:
                 off += 1
                 continue
-            palette = UNDERGROUND_SLOTS[slot] if spec[0] == "bonus" else SLOTS[slot]
-            expect = want_under if spec[0] == "bonus" else want_over
+            dark = dark_frame(spec)
+            palette = UNDERGROUND_SLOTS[slot] if dark else SLOTS[slot]
+            expect = want_under if dark else want_over
             values = collapse(got, slot, palette)
-            if values is None or spec[3]:
+            if values is None or covered:
                 overlay += 1
             elif values == expect:
                 same += 1
             else:
                 differ += 1
                 if len(misses) < 4:
-                    misses.append(spec[:3])
+                    misses.append(spec)
         rows.append((kind, label, same + overlay + differ + off, same, overlay, differ, off,
                      misses))
     return rows
@@ -826,9 +1045,6 @@ def write_pngs(built, out_dir):
             raise SystemExit("%s did not round trip as an indexed png" % target)
         made.append((stem, name, len(tiles), target))
     return made
-
-
-GEN_ARRAY = re.compile(r"const uint8_t k(\w+)Tiles\[(\d+)\]\s*=\s*\{(.*?)\};", re.S)
 
 
 def snake(name):
@@ -861,14 +1077,16 @@ def check_generated(built, gen_dir):
 
 
 def occurrences(refs, name):
-    """how many cells of the whole overworld frame are pixel for pixel this anchor. an anchor
+    """how many cells of the anchor's own upper band are pixel for pixel this anchor. an anchor
     that is really a family's art turns up once per instance of that family in the level, which
     is evidence the json's own placement cannot give."""
     want = refs.anchor(name)
+    frame = ANCHORS[name][0]
+    img = refs.rip if frame == "rip" else refs.rip12
     count = 0
-    for column in range(refs.rip.width // CELL):
+    for column in range(img.width // CELL):
         for row in range(LAST_RIP_ROW + 1):
-            if refs.cell(("rip", column, row)) == want:
+            if refs.cell((frame, column, row)) == want:
                 count += 1
     return count
 
@@ -885,45 +1103,52 @@ def round_trip(built):
 
 def main():
     here = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
-    parser = argparse.ArgumentParser(description="rip mario's 1-1 terrain art")
+    parser = argparse.ArgumentParser(description="rip mario's 1-1 and 1-2 terrain art")
     parser.add_argument("--root", default=here, help="repo root (default: this file's repo)")
+    parser.add_argument("--generated", default=None,
+                        help="the compiled levels (default: ROOT/build-mario/generated)")
     parser.add_argument("--check", action="store_true",
-                        help="verify only: diff the generated c and audit the grid")
+                        help="verify only: diff the generated c and audit the grids")
     parser.add_argument("--report", action="store_true", help="print the structural report")
     args = parser.parse_args()
 
     ref_dir = os.path.join(args.root, "games", "mario", "art", "ref")
     out_dir = os.path.join(args.root, "games", "mario", "art", "tiles")
     gen_dir = os.path.join(args.root, "games", "mario", "src", "gen")
+    generated = args.generated or os.path.join(args.root, "build-mario", "generated")
     if not os.path.isdir(ref_dir):
         raise SystemExit("no reference images at %s (they are gitignored; copy them in)" % ref_dir)
 
     refs = Refs(ref_dir)
-    built = build(refs)
+    built, skipped = build(refs)
+    if skipped:
+        print("no tileset sheet: %s keep their committed c" % ", ".join(skipped))
 
     if args.report or args.check:
         print("structural relations (0 = the capture agrees with what the rom assumes)")
         flips, quads = structural_report(refs)
         for label, differ in flips + quads:
-            print("  %-58s %s" % (label, "yes" if differ == 0 else "no (%d px)" % differ))
-        print("how often each anchor's exact cell occurs in the capture")
+            verdict = "no sheet" if differ is None else ("yes" if differ == 0 else "no (%d px)" % differ)
+            print("  %-64s %s" % (label, verdict))
+        print("how often each anchor's exact cell occurs in its capture")
         for name in sorted(ANCHORS):
-            if ANCHORS[name][0] != "rip":
+            if ANCHORS[name][0] not in ("rip", "rip12"):
                 continue
             print("  %-22s %3d cells" % (name, occurrences(refs, name)))
-        grid, area = load_grid(args.root)
-        if grid:
-            enemies = load_enemies(args.root)
-            print("per-kind agreement against the compiled grid")
+        for level in sorted(LEVEL_GRIDS):
+            grid, area = load_grid(generated, level)
+            if not grid:
+                print("no compiled %s grid at %s - skipping its position audit" % (level, generated))
+                continue
+            enemies = load_enemies(generated, level)
+            print("per-kind agreement of %s against the compiled grid" % level)
             print("  %-22s %5s %6s %8s %7s %6s"
                   % ("kind", "cells", "same", "overlay", "differ", "off"))
             for kind, label, total, same, over, differ, off, misses in audit(
-                    refs, grid, area, enemies):
+                    refs, gen_dir, level, grid, area, enemies):
                 note = "" if not misses else "  first %s" % (misses[0],)
                 print("  %-22s %5d %6d %8d %7d %6d%s"
                       % (label, total, same, over, differ, off, note))
-        else:
-            print("no compiled grid at build-mario/generated - skipping the position audit")
 
     if args.check:
         print("check")

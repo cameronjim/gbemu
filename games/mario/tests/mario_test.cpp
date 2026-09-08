@@ -8660,10 +8660,11 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
             }
         }
     }
-    // above-ground start: the short decorative pipe (10) and the entrance pipe (12). underground
-    // run: the three piranha pipes (map 103/109/115). above-ground ending: its own piranha pipe
-    // (map 195). the two sideways exits have no cap of their own - their shafts run straight up
-    REQUIRE(pipe_caps == std::vector<uint16_t>{10, 12, 127, 133, 139, 220});
+    // above-ground start: the entrance pipe (12) - the short pipe beside it is a sideways mouth
+    // running into the tall pipe's side, not a second cap. underground run: the three piranha pipes
+    // (map 103/109/115). above-ground ending: its own piranha pipe (map 195). the sideways exits
+    // have no cap of their own - their shafts run straight up
+    REQUIRE(pipe_caps == std::vector<uint16_t>{12, 127, 133, 139, 220});
 
     // a pit is a column with no ground at either of the two floor rows
     std::vector<int> pits;
@@ -8898,10 +8899,10 @@ int pipe_body_dither_rows(const gb::Gameboy& gameboy) {
 
 } // namespace
 
-// the short decorative pipe at columns 10-11 and the tall entrance at 12-13 stand side by side, so
-// the two of them are four block columns of pipe in a row with nothing between - the case the bug
-// report showed drawn wrong. both caps come out whole, and no pipe body carries a dithered rib,
-// before and after streaming those columns out of the ring and back in
+// the sideways pipe at columns 10-11 runs into the tall entrance at 12-13, so the four of them are
+// four block columns of pipe in a row with nothing between - the case the bug report showed drawn
+// wrong. the entrance's cap comes out whole, and no pipe body carries a dithered rib, before and
+// after streaming those columns out of the ring and back in
 TEST_CASE("mario_1_2_opening_pipes_draw_as_whole_pipes") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -8919,7 +8920,7 @@ TEST_CASE("mario_1_2_opening_pipes_draw_as_whole_pipes") {
     int broken = 0;
     scan_pipe_caps(gameboy, &whole, &broken);
     REQUIRE(broken == 0);
-    REQUIRE(whole >= 2);
+    REQUIRE(whole >= 1);
     REQUIRE(pipe_body_dither_rows(gameboy) == 0);
 
     // and again after walking back to the level's left edge and returning, so every one of those
@@ -8932,12 +8933,12 @@ TEST_CASE("mario_1_2_opening_pipes_draw_as_whole_pipes") {
     broken = 0;
     scan_pipe_caps(gameboy, &whole, &broken);
     REQUIRE(broken == 0);
-    REQUIRE(whole >= 2);
+    REQUIRE(whole >= 1);
     REQUIRE(pipe_body_dither_rows(gameboy) == 0);
 }
 
-// only the tall pipe is a way underground. the short one beside it is grid cells and nothing else -
-// no object stands on its cap - so down on top of it is not a second entrance
+// only the tall pipe is a way underground. the sideways pipe beside it is grid cells and nothing
+// else - no object stands on its mouth - so down on top of it is not a second entrance
 TEST_CASE("mario_1_2_short_pipe_is_not_a_way_underground") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const HostLevel& lv = kHostLevels[kLevel12];
@@ -8948,9 +8949,15 @@ TEST_CASE("mario_1_2_short_pipe_is_not_a_way_underground") {
     REQUIRE(entrance->column == 12);
     REQUIRE(entrance->row == 9);
     REQUIRE(kLevel12Grid[12][9] == kBlockPipeTl);
-    // and the short pipe's own two columns carry no object of any kind
-    REQUIRE(kLevel12Grid[10][11] == kBlockPipeTl);
-    REQUIRE(kLevel12Grid[11][11] == kBlockPipeTr);
+    // and the sideways pipe's own two columns carry no object of any kind. it is a mouth and a
+    // body running into the tall pipe, whose left cells in those rows are the joint pair
+    REQUIRE(kLevel12Grid[10][11] == kBlockPipeSideTl);
+    REQUIRE(kLevel12Grid[10][12] == kBlockPipeSideBl);
+    REQUIRE(kLevel12Grid[11][11] == kBlockPipeSideBodyT);
+    REQUIRE(kLevel12Grid[11][12] == kBlockPipeSideBodyB);
+    REQUIRE(kLevel12Grid[12][11] == kBlockPipeJointT);
+    REQUIRE(kLevel12Grid[12][12] == kBlockPipeJointB);
+    REQUIRE(kLevel12Grid[12][10] == kBlockPipeBodyL);
     for (uint16_t i = 0; i < lv.object_count; ++i) {
         REQUIRE(lv.objects[i].column != 10);
         REQUIRE(lv.objects[i].column != 11);
@@ -10068,6 +10075,9 @@ TEST_CASE("mario_pipe_shaft_joints_are_their_own_kinds") {
     REQUIRE(room != nullptr);
     REQUIRE(room->grid[15][11] == kBlockPipeJointT);
     REQUIRE(room->grid[15][12] == kBlockPipeJointB);
+    // and the start's sideways pipe runs into the entrance pipe's side the same way
+    REQUIRE(kLevel12Grid[12][11] == kBlockPipeJointT);
+    REQUIRE(kLevel12Grid[12][12] == kBlockPipeJointB);
     // nothing else in the level is a joint
     int joints = 0;
     for (uint16_t column = 0; column < LEVEL_1_2_LENGTH_COLUMNS; ++column) {
@@ -10076,7 +10086,7 @@ TEST_CASE("mario_pipe_shaft_joints_are_their_own_kinds") {
             joints += (kind == kBlockPipeJointT || kind == kBlockPipeJointB) ? 1 : 0;
         }
     }
-    REQUIRE(joints == 4);
+    REQUIRE(joints == 6);
 }
 
 // 1-2's scenery, re-measured off the smbd capture and the nes map. the ending's hill stands with
@@ -14592,3 +14602,4 @@ TEST_CASE("mario_poses_light_the_ripped_bounds") {
     REQUIRE(walked.count(kFrameWalk1) == 1);
     REQUIRE(walked.count(kFrameWalk2) == 1);
 }
+

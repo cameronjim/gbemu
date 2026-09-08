@@ -39,19 +39,35 @@ clouds that give an overworld its depth. it is optional — a level that omits t
 scenery, which is what 1-2 and 1-4 do, and a sub-area never gets any. 1-1 has hills, bushes and
 clouds; 1-3, which is trees over open air, has clouds only.
 
-- scenery never displaces anything. the compiler stamps it last and skips any cell that is
-  already terrain, an object, or a hidden block's reserved cell, and clips anything past the
-  compiled level length. so a placement that collides with a staircase simply loses the cells
-  it collided with, and the rest of the shape still lands.
+- scenery never displaces anything: the compiler stamps it last and never writes over a cell
+  that is already terrain, an object, or a hidden block's reserved cell.
+- and by default a shape is placed **whole or not at all**. a hill is a dome over a pair of
+  slopes and a bush is two caps around a run of middles; drop one cell of either and what is
+  left is not a smaller hill, it is a broken one. so a shape that cannot have every one of its
+  cells is skipped entirely, and a shape that vanished means the `x` is wrong.
+- `"clip": true` on an entry says the opposite, for a measured reason: smb really does stand
+  this shape here and really does draw terrain over part of it. a clipped entry stamps exactly
+  the cells that are free and lets the terrain keep the rest. 1-1 uses it four times — two big
+  hills whose right slope stands behind a staircase and behind the flag's base block, and two
+  bushes with a cap buried in a staircase and in the castle's masonry. it is opt-in per shape
+  so that a plainly wrong `x` still shows up as a shape that disappeared.
 - `x` is the left column of the shape and uses the same grid every other coordinate does.
 - a `big_hill` is 5 columns wide and 3 rows tall, a `small_hill` 3 wide and 2 tall; both stand
   on row 12, the row the ground's grass grows out of, and their rows are derived, never given.
-- a `bush` is `width` columns on row 12: a left cap, `width - 2` middles, a right cap. a width
-  of 1 still spends two columns, because smb's narrowest bush is its two caps back to back.
+  the big hill's interior is two kinds, not one: smb shades every interior cell with a mark in
+  its upper right except the middle of the bottom row, which is flat, so that one cell compiles
+  to `kBlockHillCore` and the rest to `kBlockHillFill`. a small hill has no flat cell at all.
+- a `bush` is `width` columns on row 12: a left cap, `width - 2` middles, a right cap, and each
+  middle carries one of smb's rounded humps. the compiler's floor is 2 — two caps back to back —
+  but nothing measured is narrower than 3; 1-1's are 3, 4 and 5.
 - a `cloud` is the only kind that carries a row. `y` is its **top** row on this same grid and
-  the cloud occupies `y` and `y + 1`; `width` counts the top row's blocks including both caps.
-  a source map measured against the 13-row visible strip is 2 rows short of this grid, so add
-  2 when transcribing one.
+  the cloud occupies `y` and `y + 1`; `width` counts the top row's blocks including both caps,
+  and the `width - 2` middles are one repeating pair of cells. the floor is 2 here too and,
+  again, nothing measured is narrower than 3; 1-1's are 3, 4 and 5. a source map measured
+  against the 13-row visible strip is 2 rows short of this grid, so add 2 when transcribing one
+  — and add it **once**: the smbd captures drop the same two rows, so a cloud read off a capture
+  is already on this grid after that one correction (1-1's list was two rows low for a pass
+  because it was applied twice).
 
 ## how positions were derived (read before trusting a coordinate)
 
@@ -173,7 +189,8 @@ clouds; 1-3, which is trees over open air, has clouds only.
   level's `TOAD_COLUMN`, and the floor row he stands on (scanned from below the pedestal, because
   a castle's roof is solid over every column) to `TOAD_ROW`; `HAS_TOAD` is 0 on a bridge entry
   that names none, and there the clear walk ends the old way, a fixed run along the pedestal.
-- `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
+- `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`; every kind also takes the optional
+  `clip` flag described in the decor section above
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
 - `enemies.kind`: `goomba`, `koopa_green`, `koopa_red`, `koopa_para_green`, `koopa_para_red`,
@@ -321,7 +338,16 @@ a handful of things the real level does needed bible fields nothing else uses:
   wants both).
 - 1-3's decor is clouds and nothing else. over open air there is no ground for a hill or a bush to
   stand on, and neither rip draws one. two of its clouds have their lower row behind a canopy in
-  both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire.
+  both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire. they could
+  carry `clip` instead, but neither rip shows how much of either cloud is behind its canopy, so
+  they stay dropped until something measures them.
+- 1-1's decor was re-measured cell by cell from the smbd challenge-mode capture rather than from
+  the nes map: nineteen clouds of widths 3/4/5, eleven hills (five big, six small) and eleven
+  bushes of widths 3/4/5. it does **not** repeat on the clean 48-column period the earlier
+  nes-derived list assumed - two of the small hills are 47 apart and one bush sits a column off
+  the band - and four of its shapes carry `clip`. `games/mario/tools/rip_tiles.py` holds the
+  capture-to-level column mapping (the capture is missing the level's own column 0 and repeats one
+  column at a stitch seam) and its `--report` re-derives every relation quoted here.
 
 ## smbd-specific notes (apply to all 4 files)
 

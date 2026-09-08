@@ -58,6 +58,12 @@ void terrain_sync_palette(void) BANKED;
 uint8_t flow_warp_under_player(void) BANKED;
 
 // 1 while he stands on the sub-area's exit pipe, the way back up
+// whether the current sub-area's exit is a sideways mouth rather than a pipe cap - the exit cell's
+// own kind, so a room can carry either without a new field in the compiled area
+uint8_t flow_exit_is_sideways(void) BANKED;
+// 1 while he is standing on the ground with his right shoulder against a sideways exit's rim
+uint8_t flow_into_exit_mouth(void) BANKED;
+// 1 while he is standing on a pipe-cap exit; always 0 in a room whose exit is sideways
 uint8_t flow_over_exit_pipe(void) BANKED;
 
 // starts a run with three lives and no score at the given level, and answers with it. the file

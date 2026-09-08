@@ -77,7 +77,9 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | 0x80-0x8c | hud row glyphs: 10 digits, blank, coin icon, the letter x (`kTileHudDigitFirst`-`kTileHudLetterFirst`, 13 tiles) | `assets_load_hud_font` | level play only (the window-layer hud row is drawn only during play) | shares bytes with bank-1 **sprite** ids 0x80-0x8c — see the sprite table |
 | 0x8d-0xcf | **FREE** (67 ids) | — | — | mario.h reserves headroom up to 0x94 for the hud run (see note below) but nothing loads past 0x8c; the rest of this span is empty. note that 0x96-0xbd is bowser on the **sprite** side of this bank, and a bank-1 bg id at or above 0x80 shares its bytes with the sprite id of the same number — which is why m23's run below starts at 0xd0 rather than at 0x8d |
 | 0xd0-0xdd | m23's rip run: the right cloud cap (8 tiles, `kTileCloudCapRtl`..`kTileCloudCapRfr`), the right bush cap (4, `kTileBushCapRtl`..`kTileBushCapRbr`) and the right half of each castle crenel (`kTileCastleCrenelRight`, `kTileCastleCrenelInnerRight`) | `assets_load_scenery_tiles` | level play (whichever pieces a level's decor uses), world map (loaded, unused) | the scenery run at 0x20-0x5d assumed three of smb's pieces were their left twin drawn with `kCamAttrXFlip`; the smbd capture says only the right hill slope actually is. these fourteen are the ones that are not — the right cloud cap is 28 px from the left one mirrored, the right bush cap 13 px, the two crenel halves 56 px and 23 px apart |
-| 0xde-0xeb | **FREE** (14 ids) | — | — | what is left between m23's run and the toad sign glyphs |
+| 0xde-0xdf | **FREE** (2 ids) | — | — | shares bytes with the fireball's bank-1 **sprite** frame at the same ids (see the sprite table), so no bg data can live here during play |
+| 0xe0-0xe4 | m25's 1-2 pass: the sideways pipe's shaft joint (`kTilePipeJointT0`..`kTilePipeJointBody`, 5 tiles) | `assets_load_scenery_tiles` | level play (1-2's two sideways pipes and 1-1's bonus room exit), world map (loaded, unused) | where a sideways pipe's body runs into its shaft, both smbd captures draw the shaft's left cell with the body's rim across it and the joint's line down its own left column: two tiles per row of the mouth, plus one bank-1 copy of `kTilePipeBodyM` (0xb7) for the cell's right column, because a kind's attribute byte picks one bank for all four quadrants |
+| 0xe5-0xeb | **FREE** (7 ids) | — | — | what is left between the joint and the toad sign glyphs |
 
 m23 added no bg id beyond the fourteen at 0xd0-0xdd. `kBlockCastleWindowRight`, the kind it appended
 to the block tables (mario.h), needs none: it is `kBlockCastleWindow`'s own four
@@ -89,7 +91,7 @@ m24's scenery pass added **no bg id at all**, and 0x8d-0xcf / 0xde-0xeb are stil
 the cloud, hill and bush art inside the existing 0x20-0x5d run and at 0xd0-0xdd without moving one
 id — the anchors an earlier pass read the cloud family from were one column off and gave all six
 cloud kinds the middle cell's art, and the hill peak's anchor was the fill cell under the dome —
-and it appended one kind, `kBlockHillCore` (mario.h, `kBlockKindCount` 52). that kind needs no id
+and it appended one kind, `kBlockHillCore` (mario.h, `kBlockKindCount` 52 at the time). that kind needs no id
 either: smb shades a hill's interior with two dark pixels in each cell's upper right and leaves the
 middle of the five-wide dome's bottom row flat, so the flat cell is `kTileHillFillTl` (0x4d) in all
 four quadrants and only the *kind* is new. a side effect of the re-cut is that several ids in the
@@ -97,6 +99,15 @@ cloud and hill runs now hold blank (all-backdrop) or duplicated bytes — smb dr
 half a cell, so a cap cell is drawn in one quadrant and sky in the other three, and the hill's
 flat tile repeats across the fill and slope cells. the ids stay allocated per family so that the
 `kTile*Rom` tables and every test that pins an id keep working.
+
+m25's 1-2 pass added the five ids at 0xe0-0xe4 and two kinds, `kBlockPipeJointT` and
+`kBlockPipeJointB` (`kBlockKindCount` 54): the shaft cell a sideways pipe's body runs into, in each
+of the mouth's two rows, which the compiler used to stamp as plain `kBlockPipeBodyL` and both smbd
+captures draw with the body's rim and joint over the shaft's own left column. everything else 1-2's
+underground paints - floor, roof, walls, stair-steps, pipes, coins, the sideways pipes - is 1-1's
+own art under the underground palette set, which the pass re-read off the 1-2 capture: the brick
+slot now carries the near-white highlight in colour 1 (for the hard block's bevel; the brick's own
+tiles never use it below ground) and the question slot's colour 3 is the masonry's teal.
 | 0xec-0xfd | toad-room sign glyphs, one id per distinct character across the three sign lines (`kTileSignFirst`, 18 tiles) | `assets_load_toad_tiles` | toad room only (a castle whose bible names a `toad_x`, entered by touching the axe) | |
 | 0xfe-0xff | **FREE** (2 ids) | — | — | |
 
@@ -125,7 +136,8 @@ are actually free. treat the table above, not that comment, as current.
 | 0xc8-0xcf | toad-room retainer sprite, 8 tiles (`kTileToadFirst`) | `assets_load_toad_tiles` | toad room only | |
 | 0xd0-0xdd | **RESERVED, not loaded as sprite data** — shares bytes with bank-1 **bg** ids 0xd0-0xdd, m23's rip run (see the bg table) | — | level play | a sprite must never use these ids while a level's scenery is resident, i.e. ever during play |
 | 0xde-0xdf | fireball's second spin frame (`kTileFireball`, reusing the id bank 0's item family already owns) | `assets_load_item_tiles` | level play (fire mario) | drawn with `S_BANK` set to alternate with bank 0's frame A at the same id — a deliberate dual-bank reuse, not a collision |
-| 0xe0-0xeb | **FREE** (12 ids) | — | — | held small mario's climb grip (0xe0-0xe3, now at 0x74) and big mario's own (0xe4-0xeb, now just pose 7 of the 0x00 set) |
+| 0xe0-0xe4 | **RESERVED, not loaded as sprite data** — shares bytes with bank-1 **bg** ids 0xe0-0xe4, m25's shaft joint (see the bg table) | — | level play | the same rule as 0xd0-0xdd |
+| 0xe5-0xeb | **FREE** (7 ids) | — | — | held small mario's climb grip (0xe0-0xe3, now at 0x74) and big mario's own (0xe4-0xeb, now just pose 7 of the 0x00 set) |
 | 0xec-0xff | **FREE** (20 ids) | — | — | the toad sign glyphs at the same numeric ids are bg, not sprite (see bg table) |
 
 correction (m22): the bank-1 sprite table above is where every id big mario, the red paratroopa,

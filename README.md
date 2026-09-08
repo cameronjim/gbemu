@@ -12,18 +12,18 @@ building, and a one-command installer that sets everything below up.
 - Any other `.gb` file: drag it onto `dist\gbemu-sdl.exe`.
 - Plays Game Boy Color games too - drag any `.gbc` file onto the exe.
 
-If the search bar isn't returning any results, run any of the following inside the `dist` directory:
+If the search bar isn't returning any results, run any of the following inside the `dist` directory (PowerShell needs the `.\` prefix; plain cmd.exe does not):
 ```bash
-tetris.cmd
+.\tetris.cmd
 ```
 ```bash
-flappy.cmd
+.\flappy.cmd
 ```
 ```bash
-crossy.cmd
+.\crossy.cmd
 ```
 ```bash
-mario.cmd
+.\mario.cmd
 ```
 
 ## Controls

@@ -207,7 +207,16 @@
 // mark in the middle of the hill's belly where smb has none. it costs no vram id: all four of its
 // quadrants are kTileHillFillTl, the fill cell's own flat tile, so the kind is the whole change
 #define kBlockHillCore 51U
-#define kBlockKindCount 52U
+// the shaft joint of a sideways pipe, one kind per row of the mouth. where the horizontal body runs
+// into its vertical shaft, both smbd captures draw the shaft's left cell with the body's rim running
+// across it and the joint's dark line down its own left column - neither the plain body cell the
+// compiler used to stamp there nor a side-pipe cell. its right column IS the plain body's, so each
+// kind owns two tiles of its own and the pair shares one bank-1 copy of kTilePipeBodyM
+// (gen/pipe_joint.c): a kind's attribute byte picks one vram bank for all four quadrants, and the
+// body's own tile is in bank 0. 1-2 stands two pairs, 1-1's bonus room one. solid like the shaft
+#define kBlockPipeJointT 52U
+#define kBlockPipeJointB 53U
+#define kBlockKindCount 54U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -469,6 +478,18 @@
 #define kTilePipeSideBody1 0x7BU
 #define kTilePipeSideBody2 0x7CU
 #define kTilePipeSideBody3 0x7DU
+
+// the shaft joint's five tiles, 0xe0-0xe4 in vram bank 1 (gen/pipe_joint.c, anchors pipe_joint_*
+// in rip_tiles.py): each joint kind's own left column, top tile then bottom, and the one bank-1
+// copy of kTilePipeBodyM both wear down their right. they stand past m23's run at 0xd0-0xdd
+// because a bank-1 bg id at or above 0x80 shares its bytes with the sprite id of the same number,
+// and 0xde-0xdf is the fireball's second spin frame; 0xe0-0xeb is free on both sides (VRAM.md)
+#define kTilePipeJointT0 0xE0U
+#define kTilePipeJointT1 0xE1U
+#define kTilePipeJointB0 0xE2U
+#define kTilePipeJointB1 0xE3U
+#define kTilePipeJointBody 0xE4U
+#define kTilePipeJointCount 5U
 
 // cgb bg palette slots for the terrain: one per pinned tile family, plus a neutral one for
 // bridge/axe/platform. all eight cgb bg palettes are spoken for

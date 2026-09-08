@@ -102,6 +102,12 @@ BLOCK_CASTLE_WINDOW_RIGHT = 50
 # one in every interior cell except the bottom row's centre, which is flat green across. so the
 # five-wide dome's belly cell is its own kind; the three-wide small hill has no such cell
 BLOCK_HILL_CORE = 51
+# where a sideways pipe's body runs into its shaft, the shaft's left cell in each of the mouth's
+# two rows carries the body's rim and its joint over its own left column, so it is neither a plain
+# body cell nor a side-pipe one. the contract with mario.h's kBlockPipeJointT/B: both smbd captures
+# draw the pair cell for cell, at 1-2's two sideways pipes and at 1-1's bonus room exit
+BLOCK_PIPE_JOINT_T = 52
+BLOCK_PIPE_JOINT_B = 53
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -156,6 +162,8 @@ KIND_NAMES = {
     BLOCK_LAVA_FILL: "LAVA_FILL",
     BLOCK_CASTLE_WINDOW_RIGHT: "CASTLE_WINDOW_RIGHT",
     BLOCK_HILL_CORE: "HILL_CORE",
+    BLOCK_PIPE_JOINT_T: "PIPE_JOINT_T",
+    BLOCK_PIPE_JOINT_B: "PIPE_JOINT_B",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -619,7 +627,9 @@ def apply_pipe_side(grid, t, probes):
     """the sideways pipe smb draws as an L: the mouth's rim column and top row, the horizontal body
     out to the shaft, and the shaft itself rising from shaft_top to the mouth's bottom row. no cap
     on the shaft - both the 1-2 map and 1-1's bonus room draw it running straight up out of frame -
-    and the rim column is what a walk-in trigger is placed on. returns (rim column, top row)."""
+    and the rim column is what a walk-in trigger is placed on. the shaft's left cell in the two
+    rows the body meets it is the joint pair, not plain body: both captures draw the body's rim and
+    joint line across it. returns (rim column, top row)."""
     length_columns = len(grid)
     rim_x, top = t["x"], t["y"]
     shaft_x, shaft_top = t["shaft_x"], t.get("shaft_top", CEILING_ROW)
@@ -632,12 +642,19 @@ def apply_pipe_side(grid, t, probes):
             grid[column][top + 1] = BLOCK_PIPE_SIDE_BODY_B
     for row in range(shaft_top, top + 2):
         if 0 <= shaft_x < length_columns:
-            grid[shaft_x][row] = BLOCK_PIPE_BODY_L
+            if row == top:
+                grid[shaft_x][row] = BLOCK_PIPE_JOINT_T
+            elif row == top + 1:
+                grid[shaft_x][row] = BLOCK_PIPE_JOINT_B
+            else:
+                grid[shaft_x][row] = BLOCK_PIPE_BODY_L
         if 0 <= shaft_x + 1 < length_columns:
             grid[shaft_x + 1][row] = BLOCK_PIPE_BODY_R
     probes.append((rim_x, top, BLOCK_PIPE_SIDE_TL))
     probes.append((rim_x, top + 1, BLOCK_PIPE_SIDE_BL))
-    probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
+    probes.append((shaft_x, top, BLOCK_PIPE_JOINT_T))
+    if shaft_top < top:
+        probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
     return rim_x, top
 
 

@@ -44,6 +44,11 @@ uint8_t kBlockPalette[kBlockKindCount];
 // row's centre carries none, so the two cannot be the same kind - but they can and do share the
 // one flat tile, which is why the kind costs no vram
 //
+// kBlockPipeJointT and kBlockPipeJointB close every table after the hill core: the shaft cell a
+// sideways pipe's body runs into, in the mouth's top row and its bottom one. each wears its own
+// left column (gen/pipe_joint.c, off the 1-2 capture) and the plain body's right column, which is
+// kTilePipeBodyM copied into bank 1 because the cell's attribute byte picks one bank for all four
+//
 // kBlockHillSlopeR is the one kind the hardware still mirrors: it carries kBlockHillSlopeL's own
 // tiles with the two columns swapped and kCamAttrXFlip in its palette byte, which the capture
 // agrees with to the pixel. the right cloud caps and the right bush cap used to ride the same
@@ -65,7 +70,7 @@ static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTileCastleCrenelInner,
     kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
     kTileFlagClothPoleT, kTileCastleBrickUpper, kTileLavaDeep,   kTileCastleWindowTr,
-    kTileHillFillTl,
+    kTileHillFillTl,     kTilePipeJointT0,      kTilePipeJointB0,
 };
 // clang-format on
 // clang-format off
@@ -84,7 +89,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileCastleCrenelInnerRight,
     kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
     kTileFlagPoleR,      kTileCastleBrickUpper, kTileLavaDeep,   kTileCastleWindowTl,
-    kTileHillFillTl,
+    kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,
 };
 // clang-format on
 // clang-format off
@@ -103,7 +108,7 @@ static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTileCastleWall,
     kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
     kTileFlagClothPoleB, kTileCastleBrickLower, kTileLavaDeep,   kTileCastleWindowBr,
-    kTileHillFillTl,
+    kTileHillFillTl,     kTilePipeJointT1,      kTilePipeJointB1,
 };
 // clang-format on
 // clang-format off
@@ -122,7 +127,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileCastleWall,
     kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
     kTileFlagPoleR,      kTileCastleBrickLower, kTileLavaDeep,   kTileCastleWindowBl,
-    kTileHillFillTl,
+    kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,
 };
 // clang-format on
 // sky, the flag's four cells, a world coin, the axe, lava and every scenery kind are all
@@ -141,7 +146,7 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     0,
     kFloorSolid, kFloorSolid, kFloorSolid, 0,
     0, kFloorSolid, 0, 0,
-    0,
+    0, kFloorSolid, kFloorSolid,
 };
 // clang-format on
 // lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge takes
@@ -186,7 +191,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenBrick,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
     kScenSky,       kScenGround,   kCamPalCoin | kCamAttrVram1, kScenBrick,
-    kScenPipe,
+    kScenPipe,      kScenPipe,      kScenPipe,
 };
 // clang-format on
 

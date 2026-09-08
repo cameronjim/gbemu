@@ -34,6 +34,7 @@
 #include "gen/paratroopa_red.h"
 #include "gen/pipe.h"
 #include "gen/pipe_side.h"
+#include "gen/pipe_joint.h"
 #include "gen/piranha.h"
 #include "gen/question.h"
 #include "gen/scen_tail.h"
@@ -362,6 +363,8 @@ void assets_load_scenery_tiles(void) BANKED {
     // the sideways pipe is solid terrain, not scenery, but vram bank 0 has no tile ids left: it
     // rides here with the scenery and reads back through kCamAttrVram1 the same way
     set_bkg_data(kTilePipeSideMouth0L, kPipeSideTileCount, kPipeSideTiles);
+    // and the joint where that body meets its shaft, off the 1-2 capture, at 0xe0-0xe4
+    set_bkg_data(kTilePipeJointT0, kPipeJointTileCount, kPipeJointTiles);
     // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
     set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
     // m20's castle run right above it: the masonry's two courses, the axe's two blades and the
@@ -410,27 +413,31 @@ void assets_load_bg_palettes_underground(void) BANKED {
     // the same eight slots and, bar the brick's top row, the same art: only the colors say the
     // room is below ground. m23 read them off 1-1's own bonus room in the smbd capture, where the
     // backdrop is flat black, the masonry is the teal 0x008888 over a near-white 0xb8f8f0
-    // highlight, and the exit pipe keeps the overworld's greens.
+    // highlight, and the exit pipe keeps the overworld's greens; m25 read the rest off 1-2's own
+    // capture, whose underground run is the same art under the same colours.
     //
-    // the brick slot names that teal TWICE on purpose: the room's masonry has no highlight at
-    // all, so colour 1 and colour 2 collapsing onto one value is what makes the overworld's own
-    // brick tiles read correctly down here. the two tiles where that is not enough - the cell's
-    // top row - come from assets_load_bg_tiles_underground.
+    // the brick slot carries the near-white highlight in colour 1 for the hard block's bevel: 1-2's
+    // stair-step blocks light it, the same shape as the overworld's in teal and near-white. the
+    // brick itself never reaches that colour down here, because the one pair of its tiles that
+    // uses colour 1 - the cell's top row - is what assets_load_bg_tiles_underground swaps out.
     //
     // color 1 is the hud row's ink (see kHudBarAttr): white here as in the overworld set, which
     // costs nothing because the only tiles pinned to this slot are the clouds and the pennant and
     // neither ever stands in an underground segment
     palette_color_t sky[4] = {kUndergroundRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
     palette_color_t ground[4] = {kUndergroundRgb, RGB(23, 31, 30), RGB(0, 17, 17), RGB(0, 0, 0)};
-    palette_color_t brick[4] = {kUndergroundRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(0, 0, 0)};
-    palette_color_t question[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {kUndergroundRgb, RGB(23, 31, 30), RGB(0, 17, 17), RGB(0, 0, 0)};
+    // the question block's bottom and right edges and the strokes of its glyph are colour 3, which
+    // 1-2's capture draws in the masonry's teal where the overworld draws them black; the used
+    // block is the same block palette, so its edge follows
+    palette_color_t question[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 17, 17)};
     // the pipe's outline is the one colour that is NOT the overworld's down here: every pipe in the
     // capture's bonus room draws its rim and its stripe joints in the dark green 0x004800 where the
     // overworld draws them flat black. against a black backdrop a black outline would vanish, which
     // is exactly what the room's own art relies on not happening
     palette_color_t pipe[4] = {kUndergroundRgb, RGB(14, 31, 6), RGB(2, 17, 0), RGB(0, 9, 0)};
     palette_color_t neutral[4] = {kUndergroundRgb, RGB(24, 26, 31), RGB(12, 18, 31), RGB(0, 0, 0)};
-    palette_color_t spent[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 17, 17)};
     // the loose coin's fourth colour is the shading inside its ring, which the room draws in its
     // own teal where the overworld draws it black
     palette_color_t coin[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 17, 17)};

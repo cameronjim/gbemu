@@ -257,7 +257,15 @@ void debug_camera_frame(uint8_t keys) BANKED {
     } else if ((keys & J_DOWN) != 0U) {
         terrain_pan_y((int8_t)kCamStepPx);
     }
-    // the only bg writes of the camera state happen here, inside vblank
+    // the only bg writes of the camera state happen here, inside vblank - the streamer's included.
+    // a newly streamed column's cells are OWED (terrain.c's owed list) and paid off by the frames
+    // that cross no block boundary, and in play main.c calls this every frame. the camera state
+    // used not to call it at all, and got away with it everywhere but the end of a level: the next
+    // stream_column() flushes the debt before it starts its own, and the column being paid for is
+    // three blocks past the view's right edge, so nobody sees it - except at the scroll clamp,
+    // where the ring's right edge IS the view's right edge and no further column is ever streamed.
+    // the level's last column kept whatever its ring slot held sixteen columns earlier
+    terrain_stream_window();
     terrain_apply_scroll();
 }
 #endif

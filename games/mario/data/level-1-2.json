@@ -40,14 +40,6 @@
     },
     {
       "kind": "pipe",
-      "x": 10,
-      "height": 2,
-      "dest": null,
-      "confidence": "measured",
-      "notes": "the short decorative pipe left of the entrance, nes map band 0 rows 11-12"
-    },
-    {
-      "kind": "pipe",
       "x": 12,
       "height": 4,
       "dest": null,
@@ -55,6 +47,15 @@
       "jump_to_row": 2,
       "confidence": "measured",
       "notes": "the entrance pipe mario takes down. jump_to lands him at the top of the underground entry shaft (real col 3, ceiling row 2) and he falls the eleven rows to the floor exactly as the real game drops him in; the wall at column 24 and the closed roof either side of cols 25-29 keep him in the shaft"
+    },
+    {
+      "kind": "pipe_side",
+      "x": 10,
+      "y": 11,
+      "shaft_x": 12,
+      "shaft_top": 11,
+      "confidence": "measured",
+      "notes": "the sideways pipe that runs into the entrance pipe's side: a left-facing mouth at column 10 on rows 11-12, its body at 11 and the tall pipe itself as its shaft, which is why it comes after the pipe entry - the joint pair lands on the tall pipe's left cells in those two rows and its cap and upper body stay. the first pass read it off the nes map as a second vertical pipe two blocks tall, and drew two pipes standing side by side where the map (and the smbd start) draws one running into the other. no jump_to: nothing comes out of it"
     },
     {
       "kind": "ceiling_gap",

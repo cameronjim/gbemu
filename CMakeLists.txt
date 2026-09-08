@@ -53,6 +53,12 @@ else()
             target_link_libraries(gbemu-sdl PRIVATE SDL2::SDL2main)
         endif()
         target_link_libraries(gbemu-sdl PRIVATE gbcore SDL2::SDL2)
+        # a mingw exe otherwise needs libstdc++-6.dll, libgcc_s_seh-1.dll and libwinpthread-1.dll
+        # from the compiler's own bin folder, which the dist does not ship and a user's shell need
+        # not have on PATH. sdl2 still comes from its dll: the import library is what SDL2::SDL2 names
+        if(MINGW)
+            target_link_options(gbemu-sdl PRIVATE -static -static-libgcc -static-libstdc++)
+        endif()
     else()
         message(WARNING "sdl2 not found; skipping gbemu-sdl target")
     endif()

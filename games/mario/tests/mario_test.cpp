@@ -10131,7 +10131,9 @@ TEST_CASE("mario_1_2_scenery_stands_where_the_captures_draw_it") {
 // whole run is 1-1's art under these eight slots, so the slots are the whole of what says 1-2 is
 // below ground: the floor and the hard block in near-white over teal, the brick in teal with its
 // mortar black, the question block's gold face with a brown left edge and a TEAL right and bottom
-// one (colour 3, black above ground), the coin's ring shaded teal, and the pipes rimmed dark green
+// one (colour 3, black above ground), and the coin's ring shaded teal (the pipe slot is read in the
+// bonus room's own pin, whose pipes wear the same underground colours). the debug camera keeps whatever palette set the level opened with, and 1-2 opens above ground, so
+// this one is read in play: down the entrance pipe and along the run to the piranha pipes
 TEST_CASE("mario_underground_palettes_are_the_capture_s_colours") {
     // games/mario/art/ref/smbd_ch_1-2.png's underground run, as rgb555
     constexpr int kRoomBack = 0;                          // #000000
@@ -10139,40 +10141,37 @@ TEST_CASE("mario_underground_palettes_are_the_capture_s_colours") {
     constexpr int kPale = 23 | (31 << 5) | (30 << 10);    // #b8f8f0
     constexpr int kGold = 31 | (23 << 5) | (8 << 10);     // #f8b840
     constexpr int kBrown = 19 | (9 << 5) | (0 << 10);     // #984800
-    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);     // #70f830
-    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10);  // #108800
-    constexpr int kRim = 0 | (9 << 5) | (0 << 10);        // #004800
 
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
-    enter_camera(gameboy, kLevel12);
+    enter_level(gameboy, kLevel12);
+    std::vector<uint8_t> fall;
+    PlayerSim sim = stand_on_the_1_2_floor(gameboy, fall);
+    replay(gameboy, fall, 0, fall.size());
+    REQUIRE(sky_color(gameboy) == kSkyUnderground);
 
-    // the underground run in ten-column steps from just inside its wall, so every family gets on
-    // screen at its own row: the floor and the stair-steps low, the blocks and coins mid-way, the
-    // sideways pipe and its shaft joint at the end of the brick platform
+    // the twin plans the run from the entry shaft to the arch at 62, the same walk the grid-brick
+    // tests take, and the replay is fed a frame at a time so every family crosses the screen on
+    // the way: the floor, the opening blocks, the stair-steps, the arch's bricks and its coins.
+    // the pipes stand past the planner's reach; the bonus room palette pin reads the pipe slot
+    const Route route = plan_level(kLevel12, 4000, static_cast<uint16_t>(62U * kBlockPx), &sim);
+    REQUIRE(route.reached);
+
     std::set<int> ground;
     std::set<int> brick;
     std::set<int> hard;
     std::set<int> question;
     std::set<int> coin;
-    std::set<int> pipe;
-    Camera camera;
-    for (uint16_t column = 26; column <= 186; column = column + 10) {
-        for (uint8_t row : {static_cast<uint8_t>(5), static_cast<uint8_t>(13)}) {
-            camera.goto_xy(gameboy, scx_for_column(column), scy_for_row(row));
-            run(gameboy, 2);
-            REQUIRE(sky_color(gameboy) == kSkyUnderground);
-            collect_family_colors(gameboy, 0xA0, 0xA3, &ground);
-            collect_family_colors(gameboy, 0xF8, 0xF9, &ground);
-            collect_family_colors(gameboy, 0xA4, 0xA7, &brick);
-            collect_family_colors(gameboy, 0xFA, 0xFD, &hard);
-            collect_family_colors(gameboy, 0xA8, 0xAB, &question);
-            collect_family_colors(gameboy, 0xBC, 0xBF, &coin);
-            collect_family_colors(gameboy, 0xB0, 0xBB, &pipe);
-            collect_family_colors(gameboy, 0x72, 0x7D, &pipe);
-            collect_family_colors(gameboy, 0xE0, 0xE4, &pipe);
-        }
+    for (size_t i = 0; i < route.script.size(); ++i) {
+        replay(gameboy, route.script, i, i + 1);
+        REQUIRE(sky_color(gameboy) == kSkyUnderground);
+        collect_family_colors(gameboy, 0xA0, 0xA3, &ground);
+        collect_family_colors(gameboy, 0xF8, 0xF9, &ground);
+        collect_family_colors(gameboy, 0xA4, 0xA7, &brick);
+        collect_family_colors(gameboy, 0xFA, 0xFD, &hard);
+        collect_family_colors(gameboy, 0xA8, 0xAB, &question);
+        collect_family_colors(gameboy, 0xBC, 0xBF, &coin);
     }
 
     // the floor is opaque, so its slot's colour 0 never reaches a pixel; the brick never lights
@@ -10184,26 +10183,6 @@ TEST_CASE("mario_underground_palettes_are_the_capture_s_colours") {
     CHECK(hard == std::set<int>{kPale, kTeal, kRoomBack});
     CHECK(question == std::set<int>{kRoomBack, kGold, kBrown, kTeal});
     CHECK(coin == std::set<int>{kRoomBack, kGold, kBrown, kTeal});
-    CHECK(pipe == std::set<int>{kRoomBack, kLeaf, kDarkLeaf, kRim});
-}
-
-// and the tiles the underground load leaves in vram bank 0 once 1-2 is up: the brick's top pair
-// is the room's own, its lower pair the overworld's, and every other pinned family untouched -
-// the capture says the run is 1-1's art, so the rom must be showing 1-1's tiles
-TEST_CASE("mario_1_2_vram_holds_the_underground_terrain_art") {
-    const std::vector<uint8_t> rom = read_mario_rom();
-    gb::Gameboy gameboy;
-    REQUIRE(gameboy.load_rom(rom));
-    enter_level(gameboy, kLevel12);
-
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xA0, terrain_art::kGroundTiles, 4));
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickUndergroundTiles, 2));
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xA6, terrain_art::kBrickTiles + 2 * 16, 2));
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xB0, terrain_art::kPipeTiles, 12));
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xF8, terrain_art::kGroundLowerTiles, 2));
-    CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kHardTiles, 4));
-    CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
-    CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
 }
 
 // 1-2's underground is built out of bricks stamped straight into the grid as kBlockBrick cells,
@@ -14300,6 +14279,25 @@ TEST_CASE("mario_bonus_room_swaps_only_the_bricks_top_pair") {
     // the room's own upper pair, and the overworld's lower pair still untouched under it
     CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickUndergroundTiles, 2));
     CHECK(vram_bg_art_matches(gameboy, 0, 0xA6, terrain_art::kBrickTiles + 2 * 16, 2));
+}
+
+// and the tiles the underground load leaves in vram bank 0 once 1-2 is up: the brick's top pair
+// is the room's own, its lower pair the overworld's, and every other pinned family untouched -
+// the capture says the run is 1-1's art, so the rom must be showing 1-1's tiles
+TEST_CASE("mario_1_2_vram_holds_the_underground_terrain_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA0, terrain_art::kGroundTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickUndergroundTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA6, terrain_art::kBrickTiles + 2 * 16, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xB0, terrain_art::kPipeTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xF8, terrain_art::kGroundLowerTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kHardTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
 }
 
 // and the other half of the pin: the eight cgb bg palette slots. a generated tile is nothing but

@@ -21,6 +21,13 @@ void assets_load_bg_tiles(void) BANKED;
 // back
 void assets_load_bg_tiles_castle(void) BANKED;
 
+// and the underground's own, much smaller override: the smbd capture's bonus room draws the brick
+// with the two mortar joints of its top row still showing where the overworld paints a solid tan
+// highlight across them, which is two tiles of the brick family. everything else about the room is
+// the same art under assets_load_bg_palettes_underground's colours. call it after
+// assets_load_bg_tiles, and only for a level or sub-area that starts below ground
+void assets_load_bg_tiles_underground(void) BANKED;
+
 // and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into
 // vram BANK 1 at 0x20-0x5d. those ids are the font's own glyphs in bank 0 and collide with nothing:
 // a cgb bg map attribute picks a tile's bank per cell, and every scenery kind's kBlockPalette entry

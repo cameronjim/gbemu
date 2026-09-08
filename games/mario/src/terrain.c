@@ -244,6 +244,13 @@ void terrain_init(uint8_t next_area) {
     // land after the plain loader above, which is also what restores the grass for every other type
     if (level->type == (uint8_t)kLevelTypeCastle) {
         assets_load_bg_tiles_castle();
+    } else if (level_sub != 0 || level->type == (uint8_t)kLevelTypeUnderground) {
+        // and the same trick for a room below ground, where the capture's brick keeps the two
+        // mortar joints along its top row that the overworld's paints a highlight over. only the
+        // brick's upper pair differs, and only a level (or sub-area) that STARTS underground gets
+        // it: a mid-level segment change syncs palettes with the lcd on and cannot rewrite vram,
+        // which is why 1-2's above-ground ends keep the room's pair rather than the other way round
+        assets_load_bg_tiles_underground();
     }
 
     world_x = 0;

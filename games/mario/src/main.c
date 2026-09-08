@@ -175,6 +175,19 @@ void main(void) {
                         continue;
                     }
                 }
+            } else if ((keys & J_RIGHT) != 0U && player_standing() != 0U &&
+                       flow_into_exit_mouth() != 0U) {
+                // a room whose way out is a sideways mouth (1-1's coin room, as the capture draws
+                // it) is left by walking into it, exactly the way the main grid's own sideways
+                // pipes are entered. the same pipe-down state runs it; only the animation differs.
+                // this comes FIRST in the chain so a player still holding down from the entry pipe
+                // can walk out - flow_into_exit_mouth answers 0 in a room whose exit is a cap, so
+                // the two kinds of exit never contend
+                pending_warp = 0xFF;
+                player_begin_pipe_side();
+                state = kStatePipeDown;
+                main_present();
+                continue;
             } else if (down_held != 0U) {
                 target = flow_warp_under_player();
                 if (target != 0xFF) {

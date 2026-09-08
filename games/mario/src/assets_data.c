@@ -5,361 +5,46 @@
 
 #include "assets.h"
 #include "gen/bowser.h"
+#include "gen/brick.h"
+#include "gen/brick_underground.h"
+#include "gen/bush.h"
+#include "gen/bush_right.h"
+#include "gen/castle.h"
+#include "gen/castle_crenel_inner.h"
+#include "gen/castle_crenel_right.h"
+#include "gen/cloud.h"
+#include "gen/cloud_right.h"
+#include "gen/coin.h"
 #include "gen/fireball.h"
+#include "gen/flag_ball.h"
+#include "gen/flag_head.h"
+#include "gen/flag_pole.h"
 #include "gen/flower.h"
 #include "gen/goomba.h"
 #include "gen/goomba_squash.h"
+#include "gen/ground.h"
+#include "gen/ground_lower.h"
+#include "gen/hard.h"
+#include "gen/hill.h"
 #include "gen/items.h"
 #include "gen/koopa_green.h"
 #include "gen/mario_big.h"
 #include "gen/mario_small.h"
 #include "gen/mario_small_climb.h"
 #include "gen/paratroopa_red.h"
+#include "gen/pipe.h"
+#include "gen/pipe_side.h"
 #include "gen/piranha.h"
+#include "gen/question.h"
+#include "gen/scen_tail.h"
 #include "gen/shell_green.h"
 #include "gen/shell_red.h"
+#include "gen/spent.h"
 #include "mario.h"
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
 #include <stdint.h>
-
-// ground: smbd redraws the nes block as one 16x16 tile, the same in every surface and fill cell
-// (no grass cap - the deluxe rip's ground is tan/brown rubble top to bottom). it tiles seamlessly
-// both ways, so the fill block's upper pair is the surface block's own: kGroundTiles loads the
-// surface top pair and the fill top pair as the same two quadrants, and both blocks share the
-// lower half (kGroundLowerTiles). transcribed pixel for pixel off the deluxe 1-1 screenshot.
-// clang-format off
-static const uint8_t kGroundTiles[64] = {
-    // surface top left
-    0xFF, 0x01, // -------#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // surface top right
-    0x79, 0x86, // +----++-
-    0x86, 0x7D, // -++++#-+
-    0x86, 0x7D, // -++++#-+
-    0x86, 0x7D, // -++++#-+
-    0xC6, 0x7D, // -#+++#-+
-    0x7A, 0xFD, // +####+-+
-    0xFE, 0x05, // -----#-+
-    0x86, 0x7D, // -++++#-+
-    // fill top left, the surface top left again
-    0xFF, 0x01, // -------#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // fill top right, the surface top right again
-    0x79, 0x86, // +----++-
-    0x86, 0x7D, // -++++#-+
-    0x86, 0x7D, // -++++#-+
-    0x86, 0x7D, // -++++#-+
-    0xC6, 0x7D, // -#+++#-+
-    0x7A, 0xFD, // +####+-+
-    0xFE, 0x05, // -----#-+
-    0x86, 0x7D, // -++++#-+
-};
-// clang-format on
-
-// the block's lower half, which the surface and fill blocks both end on
-// clang-format off
-static const uint8_t kGroundLowerTiles[32] = {
-    // lower left, shared by the surface and fill blocks
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x03, 0xFE, // ++++++#-
-    0xC3, 0xFE, // ##++++#-
-    0xFE, 0x3D, // --####-+
-    0x3E, 0xC5, // ++---#-+
-    0x06, 0xFD, // +++++#-+
-    0xFB, 0xFD, // #####+-#
-    // lower right
-    0x86, 0x7D, // -++++#-+
-    0x86, 0x7D, // -++++#-+
-    0x07, 0xFF, // +++++###
-    0x07, 0xFC, // +++++#--
-    0x06, 0xFD, // +++++#-+
-    0x06, 0xFD, // +++++#-+
-    0x0E, 0xFD, // ++++##-+
-    0xF9, 0xFF, // #####++#
-};
-// clang-format on
-
-// brick: two 8px courses in running bond, each a tan top highlight, a brown body and a black
-// mortar line under it. the courses' vertical seams sit 8px apart so the wall never reads as a
-// grid. transcribed pixel for pixel off the smb1 rip, which smbd reuses with only its palettes
-// clang-format off
-static const uint8_t kBrickTiles[64] = {
-    // brick upper left
-    0xFF, 0x00, // --------
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0xFF, 0xFF, // ########
-    // brick upper right
-    0xFF, 0x00, // --------
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0xFF, 0xFF, // ########
-    // brick lower left
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0xFF, 0xFF, // ########
-    // brick lower right
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0xFF, 0xFF, // ########
-};
-// clang-format on
-
-// question block: the rip draws a gold face with a brown bevel on the top and left and a black one
-// on the bottom and right, four black rivets and the serif ? in brown over black. the corners are
-// transparent. transcribed pixel for pixel off the smb1 rip, which smbd reuses with its palettes
-// clang-format off
-static const uint8_t kQuestionTiles[64] = {
-    // question upper left
-    0x00, 0x7F, // .+++++++
-    0x7F, 0x80, // +-------
-    0x7F, 0xA0, // +-#-----
-    0x78, 0x87, // +----+++
-    0x73, 0x8F, // +---++##
-    0x73, 0x8E, // +---++#-
-    0x73, 0x8E, // +---++#-
-    0x7F, 0x86, // +----##-
-    // question upper right
-    0x00, 0xFE, // +++++++.
-    0xFF, 0x01, // -------#
-    0xFF, 0x05, // -----#-#
-    0x3F, 0xC1, // ++-----#
-    0x9F, 0xE1, // #++----#
-    0x9F, 0x71, // -++#---#
-    0x9F, 0x71, // -++#---#
-    0x1F, 0xF1, // +++#---#
-    // question lower left
-    0x7E, 0x81, // +------+
-    0x7E, 0x81, // +------+
-    0x7F, 0x80, // +-------
-    0x7E, 0x81, // +------+
-    0x7E, 0x81, // +------+
-    0x7F, 0xA0, // +-#-----
-    0x7F, 0x80, // +-------
-    0xFF, 0xFF, // ########
-    // question lower right
-    0x7F, 0xF1, // +###---#
-    0x7F, 0xC1, // +#-----#
-    0xFF, 0xC1, // ##-----#
-    0x7F, 0x81, // +------#
-    0x7F, 0xC1, // +#-----#
-    0xFF, 0xC5, // ##---#-#
-    0xFF, 0x01, // -------#
-    0xFF, 0xFF, // ########
-};
-// clang-format on
-
-// spent block: the same shell drained of its glyph and its gold, so a used block reads as inert
-// clang-format off
-static const uint8_t kSpentTiles[64] = {
-    // spent upper left
-    0x00, 0x7F, // .+++++++
-    0x7F, 0x80, // +-------
-    0x7F, 0xA0, // +-#-----
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    // spent upper right
-    0x00, 0xFE, // +++++++.
-    0xFF, 0x01, // -------#
-    0xFF, 0x05, // -----#-#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    // spent lower left
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0x80, // +-------
-    0x7F, 0xA0, // +-#-----
-    0x7F, 0x80, // +-------
-    0xFF, 0xFF, // ########
-    // spent lower right
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x05, // -----#-#
-    0xFF, 0x01, // -------#
-    0xFF, 0xFF, // ########
-};
-// clang-format on
-
-// hard/stair block: the rip's diagonal 3d block - a tan top-left face stepping down to a brown
-// body and a black shadow along the bottom-right - which is the shape the staircases and the
-// firebar pivot stand on. transcribed pixel for pixel off the smb1 rip
-// clang-format off
-static const uint8_t kHardTiles[64] = {
-    // hard upper left
-    0x7F, 0x80, // +-------
-    0xBF, 0x40, // -+------
-    0xDF, 0x20, // --+-----
-    0xEF, 0x10, // ---+----
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    // hard upper right
-    0xFF, 0x01, // -------#
-    0xFF, 0x03, // ------##
-    0xFF, 0x07, // -----###
-    0xFF, 0x0F, // ----####
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    // hard lower left
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    0xF0, 0x0F, // ----++++
-    0xFF, 0x1F, // ---#####
-    0xFF, 0x3F, // --######
-    0xFF, 0x7F, // -#######
-    0xFF, 0xFF, // ########
-    // hard lower right
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    0x0F, 0xFF, // ++++####
-    0xF7, 0xFF, // ####+###
-    0xFB, 0xFF, // #####+##
-    0xFD, 0xFF, // ######+#
-    0xFE, 0xFF, // #######+
-};
-// clang-format on
-
-// pipe: a 32px lip over a 28px body inset 2px on each side. the shading runs in columns across
-// the whole width - a 4px light band just inside the left outline, dark green all the way to the
-// right outline - so the lip's middle 16px is one repeated tile. smb's pipes only ever have those
-// two greens: a first pass put a 2px light/dark dither in front of the right outline as a third
-// shade, and with the palette's light green being the bright one it read on screen as a checkered
-// rib rather than a shadow, which also made the lip's right half look like a plain body segment
-// clang-format off
-static const uint8_t kPipeTiles[144] = {
-    // lip left, upper
-    0xFF, 0xFF, // ########
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    // lip middle, upper
-    0xFF, 0xFF, // ########
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // lip right, upper
-    0xFF, 0xFF, // ########
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // lip left, lower
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xF8, 0x87, // #----+++
-    0xFF, 0xFF, // ########
-    // lip middle, lower
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0xFF, 0xFF, // ########
-    // lip right, lower
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    // body left edge
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    0x3E, 0x21, // ..#----+
-    // body middle
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // body right edge
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-};
-// clang-format on
-
 // 1-3's tree, transcribed pixel for pixel off the smb1 map rip (mariouniverse's 1-3.png, the tree
 // at column 18). the canopy uses exactly four colors there - sky, a bright green body, a dark
 // green accent under its scalloped bottom edge, and a black outline - which is kCamPalPipe's
@@ -440,708 +125,6 @@ static const uint8_t kTreeTiles[128] = {
     0x10, 0xFF, // +++#++++
     0x10, 0xFF, // +++#++++
     0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
-// and the same lip and body turned on their side, which is the whole of the sideways pipe's art:
-// every tile is kPipeTiles' own transposed, pixel (x,y) read at (y,x). that is the turn a pipe
-// wants rather than a plain rotation, because it keeps smb's light where smb keeps it - top left.
-// the cap's top outline becomes the rim line down the mouth's LEFT edge, its side outlines become
-// the pipe's roof and floor, and the 4px highlight that ran down the vertical pipe's left side now
-// runs along the TOP of the whole horizontal run, mouth and body alike, and the bottom is plain
-// green in to its outline the same way the vertical pipe's right side is. generated from the array
-// above rather than drawn again, so the two cannot disagree about a single pixel
-// clang-format off
-static const uint8_t kPipeSideTiles[144] = {
-    // mouth top left: the cap's top outline transposed, so the rim faces left
-    0xFF, 0xFF, // ########
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    // mouth top right: the cap's lower half, the inner line the body starts behind
-    0xFF, 0xFF, // ########
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // mouth middle left
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    // mouth middle right
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // mouth bottom left
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0x80, 0xFF, // #+++++++
-    0xFF, 0xFF, // ########
-    // mouth bottom right
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0xFF, 0xFF, // ########
-    // horizontal body, top edge: the vertical body's inset and highlight, now its roof
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0xFF, 0xFF, // ########
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0x00, 0xFF, // ++++++++
-    // horizontal body, middle
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // horizontal body, bottom edge: plain green to its outline, then the 2px inset under it
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0xFF, 0xFF, // ########
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-};
-// clang-format on
-
-// the flag shaft, standing in the middle of its block rather than in the left quarter of it: three
-// px at x7-x9 of the 16px cell, which straddles the cell's two tiles. the left tile carries the
-// shaft's black left outline - the column the pennant's own right edge butts against - and the
-// right tile the two lit columns, bright green then dark. one 8x8 tile could not hold a centred
-// shaft, which is why the flag left vram bank 0 (kTileBridge in mario.h)
-// clang-format off
-static const uint8_t kFlagPoleTiles[32] = {
-    // left tile: the outline at x7, every row
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    0x01, 0x01, // .......#
-    // right tile: the lit pair at x8-x9
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-    0x80, 0x40, // -+......
-};
-// clang-format on
-
-// the ball's left half and the white pennant that hangs off the pole's left. the pennant is the
-// same 16x16 shape it always was, only 8px further right so its black right edge lands on the
-// shaft's outline: that puts its left half in the cloth cell's right tile column (kTileFlagClothT/
-// B) and its right half in the pole cell's left one (kTileFlagClothPoleT/B, the kBlockFlagPoleCloth
-// kind). those two tiles carry the shaft's outline at x7 on every row, the pennant's rows included,
-// so the shaft runs unbroken behind the flag
-// clang-format off
-static const uint8_t kFlagHeadTiles[80] = {
-    // the ball's left half. the ball is 6px wide, centred on the shaft at x5-x10, so it straddles
-    // the cell's tiles the way the shaft does; the shaft runs out of its bottom row
-    0x00, 0x00, // ........
-    0x03, 0x03, // ......##
-    0x06, 0x05, // .....#-+
-    0x06, 0x05, // .....#-+
-    0x04, 0x07, // .....#++
-    0x04, 0x07, // .....#++
-    0x03, 0x03, // ......##
-    0x01, 0x01, // .......#
-    // pennant near half, top: the cloth cell's upper right tile
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x03, 0x03, // ......##
-    0x0F, 0x0C, // ....##--
-    0x3F, 0x30, // ..##----
-    // pennant near half, bottom: the cloth cell's lower right tile
-    0x3F, 0x30, // ..##----
-    0x0F, 0x0C, // ....##--
-    0x03, 0x03, // ......##
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // pennant far half, top: the pole cell's upper left tile, its last column the shaft's outline
-    0x01, 0x01, // .......#
-    0x03, 0x03, // ......##
-    0x0F, 0x0D, // ....##-#
-    0x3F, 0x31, // ..##---#
-    0xFF, 0xC1, // ##-----#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    // pennant far half, bottom: the pole cell's lower left tile
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0xC1, // ##-----#
-    0x3F, 0x31, // ..##---#
-    0x0F, 0x0D, // ....##-#
-    0x03, 0x03, // ......##
-    0x01, 0x01, // .......#
-};
-// clang-format on
-
-// the castle, five kinds of block: plain wall, crenellation, an arched window, and the two
-// halves of the door. the wall tile repeats in all four corners of its block and the merlon
-// tile in both upper ones, so the two of them cost one tile each
-// clang-format off
-static const uint8_t kCastleTiles[224] = {
-    // wall: 4px courses of small brick
-    0xFF, 0xFF, // ########
-    0xFF, 0x11, // ---#---#
-    0x11, 0xFF, // +++#+++#
-    0x11, 0xFF, // +++#+++#
-    0xFF, 0xFF, // ########
-    0x44, 0xFF, // +#+++#++
-    0x44, 0xFF, // +#+++#++
-    0x44, 0xFF, // +#+++#++
-    // merlon: a tan-capped tooth with a sky gap beside it
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0xFC, 0x00, // ------..
-    0x10, 0xFC, // +++#++..
-    0x10, 0xFC, // +++#++..
-    0xFC, 0xFC, // ######..
-    0x40, 0xFC, // +#++++..
-    0x40, 0xFC, // +#++++..
-    // window upper left
-    0xFF, 0xFF, // ########
-    0xFF, 0x11, // ---#---#
-    0x17, 0xF8, // +++#+---
-    0x1F, 0xF3, // +++#--##
-    0xFF, 0xF7, // ####-###
-    0x4F, 0xF7, // +#++-###
-    0x4F, 0xF7, // +#++-###
-    0x4F, 0xF7, // +#++-###
-    // window upper right
-    0xFF, 0xFF, // ########
-    0xFF, 0x11, // ---#---#
-    0xF1, 0x1F, // ---#+++#
-    0xF1, 0xCF, // ##--+++#
-    0xFF, 0xEF, // ###-####
-    0xF4, 0xEF, // ###-+#++
-    0xF4, 0xEF, // ###-+#++
-    0xF4, 0xEF, // ###-+#++
-    // window lower left
-    0xFF, 0xF7, // ####-###
-    0xFF, 0x17, // ---#-###
-    0x1F, 0xF7, // +++#-###
-    0x1F, 0xF7, // +++#-###
-    0xFF, 0xF7, // ####-###
-    0x4F, 0xF0, // +#++----
-    0x44, 0xFF, // +#+++#++
-    0x44, 0xFF, // +#+++#++
-    // window lower right
-    0xFF, 0xEF, // ###-####
-    0xFF, 0xE1, // ###----#
-    0xF1, 0xEF, // ###-+++#
-    0xF1, 0xEF, // ###-+++#
-    0xFF, 0xEF, // ###-####
-    0xF4, 0x0F, // ----+#++
-    0x44, 0xFF, // +#+++#++
-    0x44, 0xFF, // +#+++#++
-    // door arch upper left
-    0xFF, 0xFF, // ########
-    0xFF, 0x11, // ---#---#
-    0x17, 0xF8, // +++#+---
-    0x1F, 0xF3, // +++#--##
-    0xFF, 0xE7, // ###--###
-    0x7F, 0xCF, // +#--####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    // door arch upper right
-    0xFF, 0xFF, // ########
-    0xFF, 0x11, // ---#---#
-    0xF1, 0x1F, // ---#+++#
-    0xF1, 0xCF, // ##--+++#
-    0xFF, 0xE7, // ###--###
-    0xFC, 0xF3, // ####--++
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    // door arch lower left
-    0xFF, 0xDF, // ##-#####
-    0xFF, 0x1F, // ---#####
-    0x3F, 0xDF, // ++-#####
-    0x3F, 0xDF, // ++-#####
-    0xFF, 0xDF, // ##-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    // door arch lower right
-    0xFF, 0xFB, // #####-##
-    0xFF, 0xF9, // #####--#
-    0xFD, 0xFB, // #####-+#
-    0xFD, 0xFB, // #####-+#
-    0xFF, 0xFB, // #####-##
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    // doorway upper left
-    0xFF, 0xDF, // ##-#####
-    0xFF, 0x1F, // ---#####
-    0x3F, 0xDF, // ++-#####
-    0x3F, 0xDF, // ++-#####
-    0xFF, 0xDF, // ##-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    // doorway upper right
-    0xFF, 0xFB, // #####-##
-    0xFF, 0xF9, // #####--#
-    0xFD, 0xFB, // #####-+#
-    0xFD, 0xFB, // #####-+#
-    0xFF, 0xFB, // #####-##
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    // doorway lower left
-    0xFF, 0xDF, // ##-#####
-    0xFF, 0x1F, // ---#####
-    0x3F, 0xDF, // ++-#####
-    0x3F, 0xDF, // ++-#####
-    0xFF, 0xDF, // ##-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    0x7F, 0xDF, // +#-#####
-    // doorway lower right
-    0xFF, 0xFB, // #####-##
-    0xFF, 0xF9, // #####--#
-    0xFD, 0xFB, // #####-+#
-    0xFD, 0xFB, // #####-+#
-    0xFF, 0xFB, // #####-##
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-    0xFC, 0xFB, // #####-++
-};
-// clang-format on
-
-// the inner merlon, the one the keep's own battlement row is stamped from. the outer merlon leaves
-// its notch and the two rows above its cap transparent, so the sky showed through the row the tower
-// stands on; here the notch is the castle's black mortar and the tooth runs the full 8px, which
-// puts masonry under the tower and keeps the notches reading as crenellation
-// clang-format off
-static const uint8_t kCastleCrenelInnerTile[16] = {
-    0xFF, 0x03, // ------##
-    0xFF, 0x13, // ---#--##
-    0x13, 0xFF, // +++#++##
-    0x13, 0xFF, // +++#++##
-    0xFF, 0xFF, // ########
-    0x47, 0xFF, // +#+++###
-    0x47, 0xFF, // +#+++###
-    0x47, 0xFF, // +#+++###
-};
-// clang-format on
-
-// clouds, two block rows tall: a rounded left cap and a repeatable middle, each drawn as one
-// 16x32 mass with three bumps across its top, a black outline and a cloud-blue underside.
-// the right cap is the left one mirrored, which the block's own x-flip attribute pays for
-// clang-format off
-static const uint8_t kCloudTiles[256] = {
-    // cap upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0x01, // .......#
-    0x07, 0x06, // .....##-
-    0x0F, 0x08, // ....#---
-    0x1F, 0x10, // ...#----
-    0x3F, 0x20, // ..#-----
-    // cap upper right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x10, 0x10, // ...#....
-    0xFF, 0xEF, // ###-####
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // cap lower left
-    0x3F, 0x20, // ..#-----
-    0x7F, 0x40, // .#------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFC, 0x83, // #-----++
-    0xFB, 0x84, // #----+--
-    0xFF, 0x80, // #-------
-    // cap lower right
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0x7F, 0x80, // +-------
-    0xFF, 0x00, // --------
-    // middle upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x0F, 0x0F, // ....####
-    0x3F, 0x30, // ..##----
-    0x7F, 0x40, // .#------
-    0xFF, 0x80, // #-------
-    0xFF, 0x00, // --------
-    // middle upper right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x80, 0x80, // #.......
-    0xF8, 0x78, // -####...
-    0xFE, 0x06, // -----##.
-    0xFF, 0x01, // -------#
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // middle lower left
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // middle lower right
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // cap bottom-row upper left
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xBF, 0xC0, // #+------
-    0xBF, 0xC0, // #+------
-    0x5F, 0x60, // .#+-----
-    // cap bottom-row upper right
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // cap bottom-row lower left
-    0x2F, 0x30, // ..#+----
-    0x27, 0x38, // ..#++---
-    0x11, 0x1E, // ...#+++-
-    0x08, 0x0F, // ....#+++
-    0x06, 0x07, // .....##+
-    0x01, 0x01, // .......#
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // cap bottom-row lower right
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0x10, 0xEF, // +++-++++
-    0x00, 0xFF, // ++++++++
-    0xEF, 0xFF, // ###+####
-    0x10, 0x10, // ...#....
-    0x00, 0x00, // ........
-    // middle bottom-row upper left
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xF9, 0x06, // -----++-
-    0xF6, 0x09, // ----+--+
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // middle bottom-row upper right
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // middle bottom-row lower left
-    0x7F, 0x80, // +-------
-    0x3F, 0xC0, // ++------
-    0x8F, 0xF0, // #+++----
-    0x40, 0x7F, // .#++++++
-    0x30, 0x3F, // ..##++++
-    0x0F, 0x0F, // ....####
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // middle bottom-row lower right
-    0xFF, 0x00, // --------
-    0xFE, 0x01, // -------+
-    0xF8, 0x07, // -----+++
-    0x81, 0x7F, // -++++++#
-    0x06, 0xFE, // +++++##.
-    0x78, 0xF8, // +####...
-    0x80, 0x80, // #.......
-    0x00, 0x00, // ........
-};
-// clang-format on
-
-// background hills: a rounded summit, a 45-degree left slope and a speckled body. the right
-// slope is the left one mirrored by its block's x-flip attribute
-// clang-format off
-static const uint8_t kHillTiles[192] = {
-    // peak upper left
-    0x0F, 0x0F, // ....####
-    0x0C, 0x0B, // ....#-++
-    0x18, 0x17, // ...#-+++
-    0x18, 0x17, // ...#-+++
-    0x18, 0x17, // ...#-+++
-    0x30, 0x2F, // ..#-++++
-    0x30, 0x2F, // ..#-++++
-    0x30, 0x2F, // ..#-++++
-    // peak upper right
-    0xF0, 0xF0, // ####....
-    0x10, 0xF0, // +++#....
-    0x08, 0xF8, // ++++#...
-    0x08, 0xF8, // ++++#...
-    0x08, 0xF8, // ++++#...
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    0x04, 0xFC, // +++++#..
-    // peak lower left
-    0x30, 0x2F, // ..#-++++
-    0x60, 0x5F, // .#-+++++
-    0x60, 0x5F, // .#-+++++
-    0x60, 0x5F, // .#-+++++
-    0x60, 0x5F, // .#-+++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    0xC0, 0xBF, // #-++++++
-    // peak lower right
-    0x04, 0xFC, // +++++#..
-    0x02, 0xFE, // ++++++#.
-    0x02, 0xFE, // ++++++#.
-    0x02, 0xFE, // ++++++#.
-    0x02, 0xFE, // ++++++#.
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    0x01, 0xFF, // +++++++#
-    // left slope upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // left slope upper right
-    0x01, 0x01, // .......#
-    0x03, 0x02, // ......#-
-    0x06, 0x05, // .....#-+
-    0x0C, 0x0B, // ....#-++
-    0x18, 0x17, // ...#-+++
-    0x30, 0x2F, // ..#-++++
-    0x60, 0x5F, // .#-+++++
-    0xC0, 0xBF, // #-++++++
-    // left slope lower left
-    0x01, 0x01, // .......#
-    0x03, 0x02, // ......#-
-    0x06, 0x05, // .....#-+
-    0x0C, 0x0B, // ....#-++
-    0x18, 0x17, // ...#-+++
-    0x30, 0x2F, // ..#-++++
-    0x60, 0x5F, // .#-+++++
-    0xC0, 0xBF, // #-++++++
-    // left slope lower right
-    0x80, 0x7F, // -+++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // fill upper left
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x0C, 0xFF, // ++++##++
-    0x0C, 0xFF, // ++++##++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // fill upper right
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x30, 0xFF, // ++##++++
-    // fill lower left
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x06, 0xFF, // +++++##+
-    0x06, 0xFF, // +++++##+
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    // fill lower right
-    0x30, 0xFF, // ++##++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
-// bushes, one block row tall and sitting straight on the grass: a rounded cap and a repeatable
-// middle, light green over a scalloped dark-green underside. the right cap is the cap mirrored
-// clang-format off
-static const uint8_t kBushTiles[128] = {
-    // bush cap upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // bush cap upper right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // bush cap lower left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x01, 0x01, // .......#
-    0x03, 0x02, // ......#-
-    0x23, 0x22, // ..#...#-
-    0xFF, 0xDC, // ##-###--
-    0xFF, 0x00, // --------
-    // bush cap lower right
-    0x00, 0x00, // ........
-    0x08, 0x08, // ....#...
-    0x7F, 0x77, // .###-###
-    0xFF, 0x80, // #-------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xF7, 0x08, // ----+---
-    0x80, 0x7F, // -+++++++
-    // bush middle upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x0F, 0x0F, // ....####
-    0x1F, 0x10, // ...#----
-    // bush middle upper right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x80, 0x80, // #.......
-    0xF8, 0x78, // -####...
-    0xFC, 0x04, // -----#..
-    // bush middle lower left
-    0x3F, 0x20, // ..#-----
-    0x7F, 0x40, // .#------
-    0xFF, 0x80, // #-------
-    0xF0, 0x0F, // ----++++
-    0xE0, 0x1F, // ---+++++
-    0xC0, 0x3F, // --++++++
-    0x80, 0x7F, // -+++++++
-    0x00, 0xFF, // ++++++++
-    // bush middle lower right
-    0xFE, 0x02, // ------#.
-    0xFF, 0x01, // -------#
-    0x7F, 0x80, // +-------
-    0x07, 0xF8, // +++++---
-    0x03, 0xFC, // ++++++--
-    0x01, 0xFE, // +++++++-
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
-// the tail of the scenery run: the blank quadrant a bank-1 cell needs (bank 0's sky tile is the map
-// screen's own art over here) and the ball's right half, which is the ball's other three columns
-// over the shaft's two lit ones
-// clang-format off
-static const uint8_t kScenTailTiles[32] = {
-    // the empty half of the cloth cell
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // the ball's right half, the shaft running out of its bottom row
-    0x00, 0x00, // ........
-    0xC0, 0xC0, // ##......
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0xC0, 0xC0, // ##......
-    0x80, 0x40, // -+......
 };
 // clang-format on
 
@@ -1301,51 +284,6 @@ static const uint8_t kAxeTiles[32] = {
     0x78, 0x80, // +----...
     0x00, 0x80, // +.......
 };
-// clang-format on
-
-// a world coin: a six-px oval standing in an otherwise empty cell, so its palette's color 0
-// has to be the backdrop
-// clang-format off
-static const uint8_t kCoinTiles[64] = {
-    // coin upper left
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x03, 0x03, // ......##
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    // coin upper right
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0xC0, 0xC0, // ##......
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    // coin lower left
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    0x07, 0x04, // .....#--
-    0x03, 0x03, // ......##
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    // coin lower right
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0x20, 0xE0, // ++#.....
-    0xC0, 0xC0, // ##......
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-};
-// clang-format on
-
 // m18's art pass gives most blocks four distinct quadrants instead of one tile stamped four times,
 // which is 99 background tiles where the old placeholder art was 21. bank 0's tile space cannot
 // hold that beside the sprites, so the art is split: everything a level's terrain needs stays in
@@ -1354,6 +292,10 @@ static const uint8_t kCoinTiles[64] = {
 // bank 1, which nothing else in the game has ever used for tiles. a cgb bg map attribute picks a
 // tile's bank per cell (kCamAttrVram1 in mario.h), so the two sets coexist with no id conflict at
 // all: the font keeps its own glyph range in bank 0 and never has to be reloaded
+//
+// m23 replaced every hand-transcribed array below with one generated by
+// games/mario/tools/rip_tiles.py off the smbd capture; only the pieces 1-1 never shows (the thin
+// platform, lava, the bridge, the axe, 1-2's sideways pipe, 1-3's tree) are still hand-drawn
 void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileGroundTopL, 4, kGroundTiles);
     set_bkg_data(kTileGroundFillBl, 2, kGroundLowerTiles);
@@ -1361,9 +303,18 @@ void assets_load_bg_tiles(void) BANKED {
     set_bkg_data(kTileQuestionTl, 4, kQuestionTiles);
     set_bkg_data(kTileSpentTl, 4, kSpentTiles);
     set_bkg_data(kTileHardTl, 4, kHardTiles);
-    set_bkg_data(kTilePipeLipL, 9, kPipeTiles);
+    set_bkg_data(kTilePipeLipL, kPipeTileCount, kPipeTiles);
     set_bkg_data(kTileThin, 2, kThinTiles);
     set_bkg_data(kTileCoinTl, 4, kCoinTiles);
+}
+
+// an underground segment is the same masonry under the underground palette everywhere except the
+// brick's top row: the overworld paints a solid tan highlight across it and the bonus room leaves
+// its two mortar joints showing, which is two pixels of the cell and so two tiles of the family.
+// they are written over the brick's upper pair the way a castle load writes its course over the
+// ground family, and assets_load_bg_tiles above puts the overworld pair back
+void assets_load_bg_tiles_underground(void) BANKED {
+    set_bkg_data(kTileBrickTl, kBrickUndergroundTileCount, kBrickUndergroundTiles);
 }
 
 // a castle's floors, ceilings and walls are the same grey masonry as its scenery, not the
@@ -1391,17 +342,26 @@ void assets_load_bg_tiles_castle(void) BANKED {
 void assets_load_scenery_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileLavaTop, 2, kLavaTiles);
-    set_bkg_data(kTileCastleWall, 14, kCastleTiles);
-    set_bkg_data(kTileCastleCrenelInner, 1, kCastleCrenelInnerTile);
-    set_bkg_data(kTileFlagBallL, 5, kFlagHeadTiles);
-    set_bkg_data(kTileCloudCapTl, 16, kCloudTiles);
-    set_bkg_data(kTileHillPeakTl, 12, kHillTiles);
-    set_bkg_data(kTileBushCapTl, 8, kBushTiles);
-    set_bkg_data(kTileFlagPoleL, 2, kFlagPoleTiles);
-    set_bkg_data(kTileScenBlank, 2, kScenTailTiles);
+    set_bkg_data(kTileCastleWall, kCastleTileCount, kCastleTiles);
+    set_bkg_data(kTileCastleCrenelInner, kCastleCrenelInnerTileCount, kCastleCrenelInnerTiles);
+    // the ball's two halves sit at the two ends of the scenery run, 0x30 and 0x5d, so its one
+    // family is written into them by two calls rather than one
+    set_bkg_data(kTileFlagBallL, 1, kFlagBallTiles);
+    set_bkg_data(kTileFlagBallR, 1, &kFlagBallTiles[16U]);
+    set_bkg_data(kTileFlagClothT, kFlagHeadTileCount, kFlagHeadTiles);
+    set_bkg_data(kTileCloudCapTl, kCloudTileCount, kCloudTiles);
+    set_bkg_data(kTileHillPeakTl, kHillTileCount, kHillTiles);
+    set_bkg_data(kTileBushCapTl, kBushTileCount, kBushTiles);
+    set_bkg_data(kTileFlagPoleL, kFlagPoleTileCount, kFlagPoleTiles);
+    set_bkg_data(kTileScenBlank, kScenTailTileCount, kScenTailTiles);
+    // m23: the three pieces the capture proved are not their left twin mirrored, plus the right
+    // half of each castle crenel. 0xd0-0xdd, clear of the hud-font headroom and of bowser
+    set_bkg_data(kTileCloudCapRtl, kCloudRightTileCount, kCloudRightTiles);
+    set_bkg_data(kTileBushCapRtl, kBushRightTileCount, kBushRightTiles);
+    set_bkg_data(kTileCastleCrenelRight, kCastleCrenelRightTileCount, kCastleCrenelRightTiles);
     // the sideways pipe is solid terrain, not scenery, but vram bank 0 has no tile ids left: it
     // rides here with the scenery and reads back through kCamAttrVram1 the same way
-    set_bkg_data(kTilePipeSideTl, 9, kPipeSideTiles);
+    set_bkg_data(kTilePipeSideMouth0L, kPipeSideTileCount, kPipeSideTiles);
     // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
     set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
     // m20's castle run right above it: the masonry's two courses, the axe's two blades and the
@@ -1416,18 +376,26 @@ void assets_load_scenery_tiles(void) BANKED {
 }
 
 // the overworld's eight cgb bg palettes. every slot keeps the sky in color 0 because most of these
-// tiles leave part of their cell empty and that empty part is the backdrop. the ground's own color
-// 0 goes unused - the rip's ground block is opaque tan/brown/black across its whole 16x16 cell
+// tiles leave part of their cell empty and that empty part is the backdrop; the ground's own
+// color 0 goes unused, because a ground block is opaque across its whole 16x16 cell.
+//
+// m23 read every colour below off the smbd capture as rgb555, so a generated tile's colour index
+// and the slot it is worn in cannot drift apart (the same rule m22 applied to the sprites). the
+// four the level actually paints with are the tan 0xf8c098, the brown 0x984800, the gold
+// 0xf8b840 and black, plus the pipe family's two greens 0x70f830 and 0x108800, the clouds' white
+// and their scallop blue 0x30a0f8, and the sky itself. the used block wears the question block's
+// own gold - smbd draws both out of one block palette - so kCamPalSpent's entries are the
+// question slot's, which is also what lets the used block keep a slot of its own for free
 void assets_load_bg_palettes(void) BANKED {
     // color 1 of the sky slot is the clouds' and the pennant's white, and the hud row's ink
     palette_color_t sky[4] = {kSkyRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
-    palette_color_t ground[4] = {RGB(2, 17, 0), RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {kSkyRgb, RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
     palette_color_t brick[4] = {kSkyRgb, RGB(31, 24, 19), RGB(19, 9, 0), RGB(0, 0, 0)};
-    palette_color_t question[4] = {kSkyRgb, RGB(31, 23, 8), RGB(18, 9, 0), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kSkyRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
     palette_color_t pipe[4] = {kSkyRgb, RGB(14, 31, 6), RGB(2, 17, 0), RGB(0, 0, 0)};
     palette_color_t neutral[4] = {kSkyRgb, RGB(31, 31, 31), RGB(31, 24, 19), RGB(0, 0, 0)};
-    palette_color_t spent[4] = {kSkyRgb, RGB(24, 15, 6), RGB(13, 6, 0), RGB(0, 0, 0)};
-    palette_color_t coin[4] = {kSkyRgb, RGB(31, 26, 7), RGB(31, 20, 8), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kSkyRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
+    palette_color_t coin[4] = {kSkyRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);
@@ -1439,20 +407,33 @@ void assets_load_bg_palettes(void) BANKED {
 }
 
 void assets_load_bg_palettes_underground(void) BANKED {
-    // the same eight slots and the same art: only the colors say the room is below ground. the
-    // backdrop goes to a near-black navy, the masonry from brown to blue and the pipes to teal,
-    // and the two warm slots keep their gold so a coin still reads as one
+    // the same eight slots and, bar the brick's top row, the same art: only the colors say the
+    // room is below ground. m23 read them off 1-1's own bonus room in the smbd capture, where the
+    // backdrop is flat black, the masonry is the teal 0x008888 over a near-white 0xb8f8f0
+    // highlight, and the exit pipe keeps the overworld's greens.
+    //
+    // the brick slot names that teal TWICE on purpose: the room's masonry has no highlight at
+    // all, so colour 1 and colour 2 collapsing onto one value is what makes the overworld's own
+    // brick tiles read correctly down here. the two tiles where that is not enough - the cell's
+    // top row - come from assets_load_bg_tiles_underground.
+    //
     // color 1 is the hud row's ink (see kHudBarAttr): white here as in the overworld set, which
     // costs nothing because the only tiles pinned to this slot are the clouds and the pennant and
     // neither ever stands in an underground segment
-    palette_color_t sky[4] = {kUndergroundRgb, RGB(31, 31, 31), RGB(6, 14, 26), RGB(0, 0, 0)};
-    palette_color_t ground[4] = {RGB(8, 14, 28), RGB(14, 20, 31), RGB(5, 9, 22), RGB(0, 0, 0)};
-    palette_color_t brick[4] = {kUndergroundRgb, RGB(12, 18, 31), RGB(6, 10, 26), RGB(0, 0, 0)};
-    palette_color_t question[4] = {kUndergroundRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
-    palette_color_t pipe[4] = {kUndergroundRgb, RGB(8, 31, 24), RGB(0, 20, 16), RGB(0, 0, 0)};
+    palette_color_t sky[4] = {kUndergroundRgb, RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {kUndergroundRgb, RGB(23, 31, 30), RGB(0, 17, 17), RGB(0, 0, 0)};
+    palette_color_t brick[4] = {kUndergroundRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
+    // the pipe's outline is the one colour that is NOT the overworld's down here: every pipe in the
+    // capture's bonus room draws its rim and its stripe joints in the dark green 0x004800 where the
+    // overworld draws them flat black. against a black backdrop a black outline would vanish, which
+    // is exactly what the room's own art relies on not happening
+    palette_color_t pipe[4] = {kUndergroundRgb, RGB(14, 31, 6), RGB(2, 17, 0), RGB(0, 9, 0)};
     palette_color_t neutral[4] = {kUndergroundRgb, RGB(24, 26, 31), RGB(12, 18, 31), RGB(0, 0, 0)};
-    palette_color_t spent[4] = {kUndergroundRgb, RGB(8, 11, 20), RGB(4, 6, 14), RGB(0, 0, 0)};
-    palette_color_t coin[4] = {kUndergroundRgb, RGB(31, 26, 7), RGB(31, 20, 8), RGB(0, 0, 0)};
+    palette_color_t spent[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 0, 0)};
+    // the loose coin's fourth colour is the shading inside its ring, which the room draws in its
+    // own teal where the overworld draws it black
+    palette_color_t coin[4] = {kUndergroundRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(0, 17, 17)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);

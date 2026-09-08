@@ -9,6 +9,7 @@
 // the generated smbd title art, compiled here so the expected title frame is the rom's own bytes
 #include "file_art_host.hpp"
 #include "map_art_host.hpp"
+#include "terrain_art_host.hpp"
 #include "title_art_host.hpp"
 
 // m22's generated character art, compiled straight in the same way: the vram pin tests below then
@@ -252,7 +253,11 @@ constexpr uint8_t kBlockCastleBrick = 48;
 // and the rows of a lava pit under its surface one: BLOCK_LAVA's wave belongs at the top of a pit
 // and nowhere else, so the compiler fills the cells below it with this flat-red kind
 constexpr uint8_t kBlockLavaFill = 49;
-constexpr uint8_t kBlockKindCount = 50;
+constexpr uint8_t kBlockCastleWindowRight = 50;
+// a big hill's flat belly: the middle of the five-wide dome's bottom row, the one interior cell
+// the smbd capture draws without smb's two-pixel shading mark
+constexpr uint8_t kBlockHillCore = 51;
+constexpr uint8_t kBlockKindCount = 52;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -379,7 +384,9 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockPipeTr:
     case kBlockPipeBodyL:
     case kBlockPipeBodyR:
-        return tile >= 0xB0 && tile <= 0xB8;
+        // m23's rip pass widened the pinned pipe run to twelve tiles, 0xb0-0xbb: the capture's
+        // right half is not its left half mirrored and the two cells share no tile column
+        return tile >= 0xB0 && tile <= 0xBB;
     // the whole flag is in vram bank 1 now that the shaft stands in the middle of its block: a
     // centred shaft straddles the two tiles of its cell and bank 0 had one id free, not two. the
     // pole's top-left tile is the shaft's black left outline (kTileFlagPoleL, its lit pair is the
@@ -388,8 +395,10 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     // top-left quadrant is the blank one, because the flag hangs in the right half of that cell
     case kBlockFlagPole:
         return tile == 0x59;
+    // m23: the capture draws the ball in the LOWER half of its cell with open sky above it, so the
+    // ball's own two tiles (0x30, 0x5d) moved to the block's bottom pair and its top pair is blank
     case kBlockFlagBall:
-        return tile == 0x30;
+        return tile == 0x5C;
     case kBlockFlagCloth:
         return tile == 0x5C;
     case kBlockFlagPoleCloth:
@@ -401,6 +410,8 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     case kBlockCastleCrenelInner:
         return tile == 0x5B;
     case kBlockCastleWindow:
+    case kBlockCastleWindowRight:
+        // the same four tiles, the two columns swapped
         return tile >= 0x24 && tile <= 0x27;
     case kBlockCastleDoorTop:
         return tile >= 0x28 && tile <= 0x2B;
@@ -421,14 +432,18 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
     // the masonry's two courses: a cell's top pair is the upper one, its bottom pair the lower
     case kBlockCastleBrick:
         return tile == 0x17;
+    // m23 measured the capture and found the right cloud cap is NOT the left one mirrored (28 px
+    // apart), so it lost its kCamAttrXFlip and took eight tiles of its own at 0xd0-0xd7
     case kBlockCloudTl:
-    case kBlockCloudTr:
         return tile >= 0x35 && tile <= 0x36;
+    case kBlockCloudTr:
+        return tile >= 0xD0 && tile <= 0xD1;
     case kBlockCloudT:
         return tile >= 0x39 && tile <= 0x3A;
     case kBlockCloudBl:
-    case kBlockCloudBr:
         return tile >= 0x3D && tile <= 0x3E;
+    case kBlockCloudBr:
+        return tile >= 0xD4 && tile <= 0xD5;
     case kBlockCloudB:
         return tile >= 0x41 && tile <= 0x42;
     case kBlockHillPeak:
@@ -438,9 +453,15 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile >= 0x49 && tile <= 0x4A;
     case kBlockHillFill:
         return tile >= 0x4D && tile <= 0x4E;
+    // a big hill's flat belly cell borrows the fill cell's own flat tile in all four quadrants,
+    // so it adds a kind and not one vram id
+    case kBlockHillCore:
+        return tile == 0x4D;
     case kBlockBushL:
-    case kBlockBushR:
         return tile >= 0x51 && tile <= 0x52;
+    // and the right bush cap the same way, at 0xd8-0xdb
+    case kBlockBushR:
+        return tile >= 0xD8 && tile <= 0xD9;
     case kBlockBushM:
         return tile >= 0x55 && tile <= 0x56;
     case kBlockTreeTopL:
@@ -461,7 +482,9 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
 // every family a terrain cell may legitimately render as: the pinned 0xa0-0xbf block, the eight
 // ids past mario's frames, and the scenery run inside what is otherwise the font's own range
 bool is_known_terrain_family(uint8_t tile) {
-    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF) || tile >= 0xF8;
+    // 0xd0-0xdd is m23's rip run in vram bank 1: the right cloud cap, the right bush cap and the
+    // right half of each castle crenel, none of which the capture lets the rom mirror
+    return tile <= 0x5F || (tile >= 0xA0 && tile <= 0xBF) || (tile >= 0xD0 && tile <= 0xDD) || tile >= 0xF8;
 }
 
 // --- sub-milestone 3: the player ---------------------------------------------------------------
@@ -1049,7 +1072,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           kFloorSolid, kFloorSolid,
     kFloorSolid, kFloorSolid, 0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
-    kFloorSolid, 0,
+    kFloorSolid, 0,           0,           0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -4121,6 +4144,21 @@ int taper(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
     return width[static_cast<size_t>(first)] - width[static_cast<size_t>(last)];
 }
 
+// every rgb555 painted on a bg pixel whose tile is in [lo, hi], added to `out`
+void collect_family_colors(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi, std::set<int>* out) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= lo && tile <= hi) {
+            out->insert(static_cast<int>(colors[i]));
+        }
+    }
+}
+
 // the rgb555 of the first visible pixel belonging to a bg tile in [lo, hi], or -1
 int family_color(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
@@ -4142,7 +4180,8 @@ int family_color(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
 // color 0 of each palette set's sky, straight out of assets_data.c. no two are close, and the
 // backdrop is on screen in every level, so this one probe names the level type the rom loaded
 constexpr int kSkyOverworld = 13 | (17 << 5) | (31 << 10);
-constexpr int kSkyUnderground = 1 | (1 << 5) | (6 << 10);
+// m23 read the room off the smbd capture, which draws it on flat black rather than navy
+constexpr int kSkyUnderground = 0;
 constexpr int kSkyCastle = 1 | (1 << 5) | (3 << 10);
 // the between-states cards still paint card_begin's own sky; the title is generated art with its
 // own, the top-left cell of games/mario/art/title/title_screen.png
@@ -5116,29 +5155,37 @@ TEST_CASE("mario_scenery_lands_where_the_bible_puts_it") {
         for (int row = 0; row < kLevelRows; ++row) {
             const uint8_t kind = lv.grid[column][row];
 
-            if (kind < kBlockFirstDecor || kind > kBlockLastDecor) {
+            const bool decor =
+                (kind >= kBlockFirstDecor && kind <= kBlockLastDecor) || kind == kBlockHillCore;
+            if (!decor) {
                 continue;
             }
             REQUIRE(kBlockFloorTable[kind] == 0);
             REQUIRE(!solid_at(lv, column, row));
-            if (kind >= kBlockHillPeak && kind <= kBlockHillFill) {
+            if ((kind >= kBlockHillPeak && kind <= kBlockHillFill) || kind == kBlockHillCore) {
                 ++hills;
                 REQUIRE(row >= 10);
                 REQUIRE(row <= 12);
-            } else if (kind >= kBlockBushL) {
+            } else if (kind >= kBlockBushL && kind <= kBlockBushR) {
                 ++bushes;
                 REQUIRE(row == 12);
             } else {
                 ++clouds;
+                REQUIRE(row >= 2);
                 REQUIRE(row <= 8);
             }
         }
     }
-    // the bible places eleven hills, eleven bushes and nineteen clouds; whatever the compiled
-    // length clips off the far end, most of each kind has to have landed
-    REQUIRE(hills >= 30);
-    REQUIRE(bushes >= 15);
-    REQUIRE(clouds >= 40);
+    // m24 re-measured the whole list off the smbd capture, so these are exact rather than a floor:
+    // eleven hills - five big at 0/48/96/144/192 and six small at 16/35/64/82/112/160 - eleven
+    // bushes and nineteen clouds. a big hill is nine cells, a small one four, and the two big hills
+    // whose right slope stands behind terrain (the staircase at 148, the flag's base at 196) are
+    // clipped to eight: 3 * 9 + 2 * 8 + 6 * 4 = 67. the bushes are 5+3+4+5+3+4+4+3+3+3+3 columns
+    // with two of them clipped by a column each, 38, and the clouds two rows of
+    // 4+3+3+5+4+3+3+5+3+3+5+4+3+3+5+4+4+3+3, 140
+    REQUIRE(hills == 67);
+    REQUIRE(bushes == 38);
+    REQUIRE(clouds == 140);
 
     // and a bush standing on the grass leaves the ground under it exactly as it was: solid at 13,
     // open at 12 and 11, which is what lets him walk straight through the bush he is standing in
@@ -5169,7 +5216,9 @@ TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
         for (int row = 0; row < kLevelRows; ++row) {
             const uint8_t kind = lv.grid[column][row];
 
-            if (kind < kBlockFirstDecor || kind > kBlockLastDecor || seen.count(kind) != 0) {
+            const bool decor =
+                (kind >= kBlockFirstDecor && kind <= kBlockLastDecor) || kind == kBlockHillCore;
+            if (!decor || seen.count(kind) != 0) {
                 continue;
             }
             seen.insert(kind);
@@ -5180,9 +5229,10 @@ TEST_CASE("mario_scenery_renders_and_he_walks_through_it") {
             REQUIRE(tile_in_kind_family(tile, kind));
         }
     }
-    // all thirteen: six cloud kinds (a cap, a middle and a mirrored cap on each of its two rows),
-    // four hill and three bush
-    REQUIRE(seen.size() == 13u);
+    // all fourteen: six cloud kinds (a cap, a middle and a cap of its own on each of its two
+    // rows - only the hill's right slope is still drawn as a mirror), five hill and three bush
+    REQUIRE(seen.size() == 14u);
+    REQUIRE(seen.count(kBlockHillCore) == 1u);
 
     // he starts inside the big hill the bible puts at column 0 and stands on the ground through it
     gb::Gameboy play;
@@ -6494,40 +6544,21 @@ Route enter_bonus_room(gb::Gameboy& gameboy) {
     return climb;
 }
 
-// 1 while the pipe's cap is the row directly under his feet, which is the stance the rom's pipe
-// press wants. reading it off the screen keeps the room's navigation honest about where he is
-bool on_pipe_cap(const gb::Gameboy& gameboy) {
-    const Mario m = mario_at(gameboy);
-    if (!m.found) {
-        return false;
-    }
-    // the cell directly under his feet, not the topmost cap on screen: the bonus room stands a tall
-    // pipe shaft beside its short exit pipe, and that shaft's own cap is always higher up the picture
-    const int x = m.box_left() + kPlayerBoxPx / 2;
-    const int y = m.box_top() + kPlayerBoxPx;
-    if (x < 0 || x >= static_cast<int>(gb::kLcdWidth) || y < 0 || y >= static_cast<int>(gb::kLcdHeight)) {
-        return false;
-    }
-    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-    const uint16_t id = ids[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
-    if ((id & 0x100u) != 0) {
-        return false;
-    }
-    const uint8_t tile = static_cast<uint8_t>(id);
-    return tile >= 0xB0 && tile <= 0xB7;
-}
-
-// crosses the bonus room to its exit pipe and hops onto the cap. the measured room is not one flat
-// walk: the drop lands him left of a seven-wide brick platform three blocks tall that carries the
-// bottom coin row, and the exit pipe stands on the floor past its right edge. so the crossing is
-// driven off the screen rather than off a script - hold right, and jump whenever holding right has
-// stopped moving him, which climbs the platform, walks its coin row, drops off the far side and
-// finally hops the two-block pipe. mario's own screen box is pinned by the camera while he walks,
-// so "stopped moving" is read off the room's own scenery instead
+// crosses the bonus room to its way out. the measured room is not one flat walk: the drop lands him
+// left of a seven-wide brick platform three blocks tall that carries the bottom coin row, and the
+// exit stands on the floor past its right edge. so the crossing is driven off the screen rather than
+// off a script - hold right, and jump whenever holding right has stopped moving him, which climbs
+// the platform, walks its coin row and drops off the far side. mario's own screen box is pinned by
+// the camera while he walks, so "stopped moving" is read off the room's own scenery instead.
+//
+// the room's exit is a SIDEWAYS pipe mouth (the smbd capture's own geometry - see level-1-1.json's
+// area terrain), so the crossing and the exit are one act: pressing right into the rim is what takes
+// him, and there is no cap to climb. the walk therefore ends when the room's own backdrop does
 bool cross_room_to_exit(gb::Gameboy& gameboy, int budget) {
     int stall = 0;
     int jump = 0;
     int last = -1;
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
     for (int i = 0; i < budget; ++i) {
         gameboy.set_button(gb::Button::Right, true);
         gameboy.set_button(gb::Button::A, jump > 0);
@@ -6535,11 +6566,11 @@ bool cross_room_to_exit(gb::Gameboy& gameboy, int budget) {
             --jump;
         }
         gameboy.run_frame();
-        if (on_pipe_cap(gameboy)) {
+        if (family_color(gameboy, kTileSky, kTileSky) != room_sky) {
             gameboy.set_button(gb::Button::Right, false);
             gameboy.set_button(gb::Button::A, false);
-            run(gameboy, 20);
-            return on_pipe_cap(gameboy);
+            run(gameboy, 60);
+            return true;
         }
         // the view scrolls while he covers ground, and his own box starts moving once the camera
         // hits the room's right edge: either one changing means the walk is still getting somewhere
@@ -6571,11 +6602,13 @@ void walk_room(gb::Gameboy& gameboy, int frames) {
 // the screen; the counter is the one reading that does not care where the camera stands
 int hud_coins(const gb::Gameboy& gameboy);
 
-bool climb_exit_pipe(gb::Gameboy& gameboy) {
+// crosses the room and leaves through its sideways mouth, retrying the last stretch from a standing
+// start if the walk got hung up on the platform. returns whether he is out
+bool leave_through_exit_mouth(gb::Gameboy& gameboy) {
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
     if (cross_room_to_exit(gameboy, 900)) {
         return true;
     }
-    // whatever it got stuck against, back off and try the last hop from a standing start
     for (int nudge = 8; nudge <= 44; nudge += 2) {
         for (int i = 0; i < 110; ++i) {
             gameboy.set_button(gb::Button::A, i < 34);
@@ -6585,7 +6618,8 @@ bool climb_exit_pipe(gb::Gameboy& gameboy) {
         gameboy.set_button(gb::Button::A, false);
         gameboy.set_button(gb::Button::Right, false);
         run(gameboy, 40);
-        if (on_pipe_cap(gameboy)) {
+        if (family_color(gameboy, kTileSky, kTileSky) != room_sky) {
+            run(gameboy, 60);
             return true;
         }
         press(gameboy, gb::Button::Left, 30);
@@ -6624,7 +6658,8 @@ TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_200") {
 
     const auto castle_cell = [](uint8_t kind) {
         return kind == kBlockCastle || kind == kBlockCastleCrenel || kind == kBlockCastleWindow ||
-               kind == kBlockCastleDoorTop || kind == kBlockCastleDoor || kind == kBlockCastleCrenelInner;
+               kind == kBlockCastleWindowRight || kind == kBlockCastleDoorTop || kind == kBlockCastleDoor ||
+               kind == kBlockCastleCrenelInner;
     };
     int first = -1;
     int last = -1;
@@ -6647,6 +6682,48 @@ TEST_CASE("mario_1_1_is_two_hundred_and_eight_columns_with_the_castle_at_200") {
     REQUIRE(last == 204);
     REQUIRE(top == 8);
     REQUIRE(bottom == 12);
+
+    // the small castle cell for cell, the way the smbd capture draws it (columns 200-204, rows
+    // 8-12). the row that matters here is the keep's battlement at row 10: its two END cells carry
+    // no masonry behind the notch between their merlons, because there is sky above them and not
+    // tower, and the capture's cells there are byte-identical to the CRENEL the tower itself wears
+    // one row up - not mirrored, the same cell twice. only the three columns under the tower are
+    // CRENEL_INNER. rip_tiles.py --check audits both kinds against those exact cells
+    const char* keep[5] = {".CCC.", ".WKR.", "CIIIC", "KKTKK", "KKDKK"};
+    for (int dy = 0; dy < 5; ++dy) {
+        for (int dx = 0; dx < 5; ++dx) {
+            uint8_t want = kBlockEmpty;
+            switch (keep[dy][dx]) {
+            case 'C':
+                want = kBlockCastleCrenel;
+                break;
+            case 'I':
+                want = kBlockCastleCrenelInner;
+                break;
+            case 'K':
+                want = kBlockCastle;
+                break;
+            case 'W':
+                want = kBlockCastleWindow;
+                break;
+            case 'R':
+                want = kBlockCastleWindowRight;
+                break;
+            case 'T':
+                want = kBlockCastleDoorTop;
+                break;
+            case 'D':
+                want = kBlockCastleDoor;
+                break;
+            default:
+                break;
+            }
+            if (want == kBlockEmpty) {
+                continue;
+            }
+            REQUIRE(kLevel11Grid[200 + dx][8 + dy] == want);
+        }
+    }
 }
 
 TEST_CASE("mario_1_1_leaves_eight_clear_columns_between_the_stairs_and_the_flag") {
@@ -6775,13 +6852,12 @@ TEST_CASE("mario_pipe_round_trip") {
     const int coins_before = bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi);
     REQUIRE(coins_before > 0);
 
-    // cross the room to its exit pipe, collecting what is in the way, and climb onto the cap
-    REQUIRE(climb_exit_pipe(gameboy));
-    REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) < coins_before);
-
-    // up on the cap sends him back through the link, emerging at the main area's own column
-    press(gameboy, gb::Button::Up, 4);
-    run(gameboy, 80);
+    // cross the room to its exit, collecting what is in the way. the room's way out is the sideways
+    // mouth at its right end, so walking right into the rim is the whole of it: the same
+    // player_begin_pipe_side transition the main grid's own sideways pipes use, and it lands him
+    // back at the main area's own column
+    REQUIRE(leave_through_exit_mouth(gameboy));
+    run(gameboy, 20);
 
     REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == 0);
     REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
@@ -6819,11 +6895,36 @@ TEST_CASE("mario_pipe_round_trip") {
     REQUIRE(advanced);
 }
 
-// every other pipe in the game takes down, so the bonus room's own exit pipe should too, not just
-// up: main.c's sub-area input now checks flow_over_exit_pipe() on a down press once
-// flow_warp_under_player() comes back empty. this repeats the round trip half of
-// mario_pipe_round_trip with down instead of up
-TEST_CASE("mario_pipe_round_trip_down") {
+// the room's way out is a sideways mouth, not a pipe cap: the smbd capture draws its exit
+// horizontally striped, mouth flared on its LEFT edge at room columns 13-14 with a shaft rising at
+// 15-16 and no cap on any of it. so the compiled room must hold no pipe cap at all, and the exit
+// cell the area header names must be the mouth's rim - which is what flow.c reads to tell the two
+// kinds of exit apart. the crossing itself is then made with down held down the whole way, which
+// used to be the input that took him and now must neither take him nor stop the mouth from doing so
+TEST_CASE("mario_bonus_room_leaves_through_a_sideways_mouth") {
+    // the geometry first, straight out of the compiled room
+    REQUIRE(LEVEL_1_1_AREA0_EXIT_COLUMN == 13u);
+    REQUIRE(LEVEL_1_1_AREA0_EXIT_TOP_ROW == 11u);
+    const HostArea& area = kHostAreas[0];
+    REQUIRE(area.level == kLevel11);
+    REQUIRE(area.columns == LEVEL_1_1_AREA0_COLUMNS);
+    REQUIRE(area.grid[13][11] == kBlockPipeSideTl);
+    REQUIRE(area.grid[13][12] == kBlockPipeSideBl);
+    REQUIRE(area.grid[14][11] == kBlockPipeSideBodyT);
+    REQUIRE(area.grid[14][12] == kBlockPipeSideBodyB);
+    // the shaft beside it: plain body from the room's own top row down to the mouth's floor, and
+    // the capture shows no cap in any of those rows
+    for (int row = 2; row <= 12; ++row) {
+        REQUIRE(area.grid[15][row] == kBlockPipeBodyL);
+        REQUIRE(area.grid[16][row] == kBlockPipeBodyR);
+    }
+    for (int column = 0; column < area.columns; ++column) {
+        for (int row = 0; row < kHostLevelRows; ++row) {
+            REQUIRE(area.grid[column][row] != kBlockPipeTl);
+            REQUIRE(area.grid[column][row] != kBlockPipeTr);
+        }
+    }
+
     const std::vector<uint8_t> rom = read_mario_rom();
 
     gb::Gameboy gameboy;
@@ -6839,25 +6940,27 @@ TEST_CASE("mario_pipe_round_trip_down") {
     REQUIRE(room_sky >= 0);
     REQUIRE(room_sky != overworld_sky);
 
-    // cross the room to its exit pipe and climb onto the cap
-    REQUIRE(climb_exit_pipe(gameboy));
-
-    // down on the cap should send him back through the link, same as up does
-    press(gameboy, gb::Button::Down, 4);
+    // down held for the whole crossing. it is the input the old vertical exit answered, so if
+    // flow_over_exit_pipe still fired on a sideways exit this would leave the room from the wrong
+    // cell (or, on the far side, drop him straight back down the entry pipe)
+    gameboy.set_button(gb::Button::Down, true);
+    REQUIRE(leave_through_exit_mouth(gameboy));
+    // let go and give the camera its frames back: holding down pans the view down while he stands,
+    // so the screen geometry below is only meaningful once the pan has run out
+    gameboy.set_button(gb::Button::Down, false);
     run(gameboy, 80);
 
     REQUIRE(bg_family_cells(gameboy, kTileWorldCoinLo, kTileWorldCoinHi) == 0);
     REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
 
-    // camera_init frames him on where he comes to rest, so his screen box follows from the link
-    const int rest_top = static_cast<int>(kReturnTopRow) * kBlockPx - kPlayerBoxPx;
-    const int band = std::max(0, std::min(static_cast<int>(kScyMax),
-                                          rest_top + kPlayerBoxPx + kCamGroundOffsetPx - kScreenHeightPx));
+    // where he lands. the vertical band camera_init frames him in is mario_pipe_round_trip's pin;
+    // it cannot be checked here because holding down pans the view down while he stands and the pan
+    // does not run back out on its own. what still holds with the view panned is everything read
+    // relative to his own box: he is at the camera's follow column, and the cap of the overworld
+    // pipe he came up out of is the row directly under his feet
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.box_left() == kCamFollowX);
-    REQUIRE(back.box_top() == rest_top - band);
-    // and he really is standing on the pipe he went down: its cap is the row under his feet
     REQUIRE(first_tile_row(gameboy, 0xB0, 0xB7) == back.box_top() + kPlayerBoxPx);
 }
 
@@ -6919,10 +7022,10 @@ TEST_CASE("mario_holding_down_out_of_bonus_room_does_not_reenter_it") {
     REQUIRE(room_sky >= 0);
     REQUIRE(room_sky != overworld_sky);
 
-    REQUIRE(climb_exit_pipe(gameboy));
-
-    // hold down through the whole round trip out of the room and well beyond it
+    // hold down through the whole round trip out of the room and well beyond it. the mouth is
+    // walked into with right, so down is held from before the exit and never released
     gameboy.set_button(gb::Button::Down, true);
+    REQUIRE(leave_through_exit_mouth(gameboy));
     run(gameboy, 200);
     REQUIRE(family_color(gameboy, kTileSky, kTileSky) == overworld_sky);
 
@@ -6953,14 +7056,13 @@ TEST_CASE("mario_bonus_room_coin_stays_collected_after_reentry") {
     REQUIRE(coins_before > 0);
     REQUIRE(hud_coins(gameboy) == 0);
 
-    // walk through some of the room's coins and out through the exit pipe; the return lands him
+    // walk through some of the room's coins and out through the exit mouth; the return lands him
     // right back on the entry pipe's own cap (kReturnColumn == kPipeColumn), so going straight
     // back in is just another press of down
     walk_room(gameboy, 400);
     REQUIRE(hud_coins(gameboy) > 0);
-    REQUIRE(climb_exit_pipe(gameboy));
-    press(gameboy, gb::Button::Up, 4);
-    run(gameboy, 80);
+    REQUIRE(leave_through_exit_mouth(gameboy));
+    run(gameboy, 20);
     const int taken = hud_coins(gameboy);
     press(gameboy, gb::Button::Down, 4);
     run(gameboy, 60);
@@ -8673,7 +8775,16 @@ constexpr uint8_t kTilePipeLipLb = 0xB3;
 constexpr uint8_t kTilePipeLipMb = 0xB4;
 constexpr uint8_t kTilePipeLipRb = 0xB5;
 constexpr uint8_t kTilePipeBodyL = 0xB6;
-constexpr uint8_t kTilePipeBodyR = 0xB8;
+constexpr uint8_t kTilePipeBodyM = 0xB7;
+[[maybe_unused]] constexpr uint8_t kTilePipeBodyR = 0xB8;
+// m23's three extra pipe ids: the right lip cell's own right column, and the right body cell's
+constexpr uint8_t kTilePipeLipRr = 0xB9;
+constexpr uint8_t kTilePipeLipRbr = 0xBA;
+[[maybe_unused]] constexpr uint8_t kTilePipeBodyRr = 0xBB;
+// the sideways pipe's own run, bank 1: four 8px bands of the mouth (a left and a right tile each)
+// then four of the body (one tile per band, drawn in both halves of the cell)
+constexpr uint8_t kTilePipeSideMouth0L = 0x72;
+constexpr uint8_t kTilePipeSideBody3 = 0x7D;
 
 // the bg tile drawn at one screen pixel, or -1 where a sprite covers it: framebuffer_tiles sets
 // 0x100 on a sprite pixel and its low byte is then the sprite's own tile, not the map's
@@ -8690,8 +8801,10 @@ int bg_tile_px(const gb::Gameboy& gameboy, int x, int y) {
 // of is skipped rather than judged. this is the shape the bug report saw broken: a cap whose right
 // half was drawn as a body segment would land in `broken`
 void scan_pipe_caps(const gb::Gameboy& gameboy, int* whole, int* broken) {
-    static const uint8_t upper[4] = {kTilePipeLipL, kTilePipeLipM, kTilePipeLipM, kTilePipeLipR};
-    static const uint8_t lower[4] = {kTilePipeLipLb, kTilePipeLipMb, kTilePipeLipMb, kTilePipeLipRb};
+    // m23's rip pass gave the lip's right cell its own two tile columns, so the four ids across a
+    // whole cap are no longer left/middle/middle/right but one per column
+    static const uint8_t upper[4] = {kTilePipeLipL, kTilePipeLipM, kTilePipeLipR, kTilePipeLipRr};
+    static const uint8_t lower[4] = {kTilePipeLipLb, kTilePipeLipMb, kTilePipeLipRb, kTilePipeLipRbr};
 
     *whole = 0;
     *broken = 0;
@@ -8725,11 +8838,14 @@ void scan_pipe_caps(const gb::Gameboy& gameboy, int* whole, int* broken) {
     }
 }
 
-// pixel rows inside a pipe body that differ from the row beneath them. a pipe's shading runs in
-// unbroken vertical columns - outline, a light band, then the dark green to the far outline - so
-// every such pair matches. the checkered rib a first pass drew in front of the right outline
-// alternated the palette's bright green with the body's dark one row by row, which is exactly what
-// this counts
+// pixel rows inside the LEFT half of a pipe body that differ from the row beneath them. that half's
+// shading runs in unbroken vertical columns - outline, a light band, then the dark green - so every
+// such pair matches, and the checkered rib a hand-drawn first pass put in front of the right
+// outline is exactly what this counts.
+//
+// only the left half: m23's rip pass showed smbd itself dithers the RIGHT half of a pipe, two
+// alternating pixel rows that fade the bright green into the dark one towards the far outline. that
+// rib is the real art, pinned byte for byte by mario_vram_holds_the_generated_terrain_art
 int pipe_body_dither_rows(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     const std::span<const uint16_t> colors = gameboy.framebuffer_color();
@@ -8747,7 +8863,7 @@ int pipe_body_dither_rows(const gb::Gameboy& gameboy) {
             }
             const uint8_t here = static_cast<uint8_t>(ids[i] & 0xFFu);
             if (here != static_cast<uint8_t>(ids[j] & 0xFFu) || here < kTilePipeBodyL ||
-                here > kTilePipeBodyR) {
+                here > kTilePipeBodyM) {
                 continue;
             }
             if (colors[i] != colors[j]) {
@@ -9022,7 +9138,14 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     // the castle the level opens with, standing on that plateau: a five-wide keep at 0-4 with its
     // battlement row at 10 and the tower's two rows above it. scenery, so the walk out of it is
     // through it
-    REQUIRE(kLevel13Grid[0][10] == kBlockCastleCrenelInner);
+    // the battlement row obeys the capture's own rule: the two ends of it have sky above them, so
+    // they are plain CRENEL with the notch open, and only the three columns the tower stands on are
+    // CRENEL_INNER with the notch backed by masonry
+    REQUIRE(kLevel13Grid[0][10] == kBlockCastleCrenel);
+    REQUIRE(kLevel13Grid[1][10] == kBlockCastleCrenelInner);
+    REQUIRE(kLevel13Grid[2][10] == kBlockCastleCrenelInner);
+    REQUIRE(kLevel13Grid[3][10] == kBlockCastleCrenelInner);
+    REQUIRE(kLevel13Grid[4][10] == kBlockCastleCrenel);
     REQUIRE(kLevel13Grid[2][8] == kBlockCastleCrenel);
     REQUIRE(kLevel13Grid[2][11] == kBlockCastleDoorTop);
     REQUIRE(kLevel13Grid[2][12] == kBlockCastleDoor);
@@ -9093,7 +9216,7 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
     REQUIRE(LEVEL_1_3_CASTLE_COLUMN == 152);
     REQUIRE(LEVEL_1_3_LENGTH_COLUMNS == 160);
     const char* keep[11] = {
-        "...CCC...", "...WKW...", "..CIIIC..", "..KKTKK..", "..KKDKK..", "CCIIIIICC",
+        "...CCC...", "...WKR...", "..CIIIC..", "..KKTKK..", "..KKDKK..", "CCIIIIICC",
         "KKKTKTKKK", "KKKDKDKKK", "KKKKKKKKK", "KKTKTKTKK", "KKDKDKDKK",
     };
     for (int dy = 0; dy < 11; ++dy) {
@@ -9115,6 +9238,11 @@ TEST_CASE("mario_1_3_trees_gaps_and_lifts_match_the_measured_map") {
                 break;
             case 'W':
                 want = kBlockCastleWindow;
+                break;
+            case 'R':
+                // the tower's far-side window, whose opening hugs the
+                // middle column the way the near one does
+                want = kBlockCastleWindowRight;
                 break;
             case 'T':
                 want = kBlockCastleDoorTop;
@@ -9206,7 +9334,7 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
             if (kind == kBlockCloudTl) {
                 cloud_caps.push_back({column, row});
             }
-            hills += (kind >= kBlockHillPeak && kind <= kBlockBushR) ? 1 : 0;
+            hills += ((kind >= kBlockHillPeak && kind <= kBlockBushR) || kind == kBlockHillCore) ? 1 : 0;
         }
     }
     REQUIRE(hills == 0);
@@ -9989,7 +10117,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 50);
+    REQUIRE(kBlockKindCount == 52);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);
@@ -10020,6 +10148,28 @@ TEST_CASE("mario_tree_kinds_are_consistent") {
     REQUIRE(tile_in_kind_family(0x11, kBlockTrunk));
     REQUIRE(!tile_in_kind_family(0x11, kBlockTreeTopM));
     REQUIRE(!tile_in_kind_family(0x0B, kBlockTrunk));
+}
+
+// the row assets.c appends after those, and the one kind m24's scenery pass added: a big hill's
+// flat belly. smb shades a hill's interior with two dark pixels in each cell's upper right and the
+// smbd capture leaves exactly one interior cell - the middle of the five-wide dome's bottom row -
+// flat green across, so the fill cell and that one cannot be the same kind. it is appended past
+// the decor range for the same reason the trunk and the pennant's pole cell are, so it takes the
+// same three pins: walk-through, outside [kBlockFirstDecor, kBlockLastDecor], and its own answer
+// from tile_in_kind_family. it costs no vram id - all four quadrants are the fill cell's own flat
+// tile, 0x4d - which is the whole point of giving it a kind instead of a tile run
+TEST_CASE("mario_hill_core_is_the_hills_flat_belly_cell") {
+    REQUIRE(kBlockHillCore == 51);
+    REQUIRE(kBlockHillCore == kBlockKindCount - 1);
+    REQUIRE(kBlockFloorTable[kBlockHillCore] == 0);
+    REQUIRE((kBlockHillCore < kBlockFirstDecor || kBlockHillCore > kBlockLastDecor));
+    // 0x4d is the fill cell's flat tile and 0x4e the one that carries the mark, so a rendered
+    // cell's tile alone tells the two kinds apart - which is what
+    // mario_compiler_probes_match_the_rendered_level checks against the rom's own bg map
+    REQUIRE(tile_in_kind_family(0x4D, kBlockHillCore));
+    REQUIRE(!tile_in_kind_family(0x4E, kBlockHillCore));
+    REQUIRE(tile_in_kind_family(0x4E, kBlockHillFill));
+    REQUIRE(is_known_terrain_family(0x4D));
 }
 
 // the flyer 1-3's bible names. compile_level.py maps koopa_para_red to its own kind now, and the
@@ -13701,6 +13851,19 @@ namespace {
 
 // one run of sprite tiles out of either cgb vram bank, against the generated array the rom was
 // built from. the id plan is games/mario/VRAM.md's sprite tables and mario.h's kTile* defines
+// the same pin for a BACKGROUND tile id. the rom runs the bg in the 0x8800 addressing mode, where
+// a tile id is signed against 0x9000: an id at or above 0x80 lands at the same byte a sprite id
+// would (0x8000 + id * 16) but an id below it lands 0x1000 further up
+bool vram_bg_art_matches(const gb::Gameboy& gameboy, int bank, uint8_t first_tile, const uint8_t* art,
+                         size_t tiles) {
+    const std::span<const uint8_t> vram = gameboy.debug_vram(bank);
+    const size_t off = static_cast<size_t>(first_tile) * 16U + (first_tile < 0x80U ? 0x1000U : 0U);
+    if (off + tiles * 16U > vram.size()) {
+        return false;
+    }
+    return std::equal(art, art + tiles * 16U, vram.begin() + static_cast<std::ptrdiff_t>(off));
+}
+
 bool vram_art_matches(const gb::Gameboy& gameboy, int bank, uint8_t first_tile, const uint8_t* art,
                       size_t tiles) {
     const std::span<const uint8_t> vram = gameboy.debug_vram(bank);
@@ -13806,6 +13969,242 @@ TEST_CASE("mario_vram_holds_the_generated_sprite_art") {
     REQUIRE(kSmallArt[kFrameIdle].right == 13);
     REQUIRE(kSmallArt[kFrameIdle].top == 0);
     REQUIRE(kSmallArt[kFrameIdle].bottom == 15);
+}
+
+// the same pin for m23's terrain art, which is the whole of what 1-1 paints. every family below
+// was cut out of games/mario/art/ref/smbd_ch_1-1.png by games/mario/tools/rip_tiles.py, so a pass
+// here says the capture, the png, the generated c, the loader and the id plan in mario.h all still
+// agree - the failure mode that draws a cloud's left cap on the right end of a cloud
+TEST_CASE("mario_vram_holds_the_generated_terrain_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+
+    // vram bank 0: the pinned terrain block at 0xa0-0xbf and the eight ids past mario's last frame
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA0, terrain_art::kGroundTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA8, terrain_art::kQuestionTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xAC, terrain_art::kSpentTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xB0, terrain_art::kPipeTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xBC, terrain_art::kCoinTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xF8, terrain_art::kGroundLowerTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kHardTiles, 4));
+
+    // vram bank 1: the scenery run at 0x20-0x5d, then m23's own additions at 0xd0-0xdd
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x22, terrain_art::kCastleTiles, 14));
+    // the ball's two halves stand at the two ends of the scenery run, so one generated family is
+    // checked in the two places assets_load_scenery_tiles writes it
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x30, terrain_art::kFlagBallTiles, 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x31, terrain_art::kFlagHeadTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x35, terrain_art::kCloudTiles, 16));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x45, terrain_art::kHillTiles, 12));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x51, terrain_art::kBushTiles, 8));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x59, terrain_art::kFlagPoleTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x5B, terrain_art::kCastleCrenelInnerTiles, 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x5C, terrain_art::kScenTailTiles, 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x5D, &terrain_art::kFlagBallTiles[16], 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xD0, terrain_art::kCloudRightTiles, 8));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xD8, terrain_art::kBushRightTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0xDC, terrain_art::kCastleCrenelRightTiles, 2));
+    // the sideways pipe, twelve tiles of it: 1-1's bonus room is the only place any capture in the
+    // repo draws one, and it is the room's own way out
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
+
+    // and the id plan's own runs, so a family that moved shows up here rather than as an overlap
+    static_assert(kTilePipeBodyRr - kTilePipeLipL + 1 == 12, "the pipe is twelve pinned tiles");
+    static_assert(sizeof(terrain_art::kPipeTiles) == 12 * 16, "and twelve generated ones");
+    static_assert(sizeof(terrain_art::kCloudRightTiles) + sizeof(terrain_art::kBushRightTiles) +
+                          sizeof(terrain_art::kCastleCrenelRightTiles) ==
+                      14 * 16,
+                  "the bank-1 rip run is the fourteen tiles 0xd0-0xdd");
+    static_assert(kTilePipeSideBody3 - kTilePipeSideMouth0L + 1 == 12,
+                  "the sideways pipe is twelve pinned tiles");
+    static_assert(sizeof(terrain_art::kPipeSideTiles) == 12 * 16, "and twelve generated ones");
+}
+
+// the bonus room is the overworld's own art under the underground colours, with one exception the
+// capture is explicit about: its brick keeps the two mortar joints along the cell's top row that
+// the overworld paints a solid highlight over. that is the brick family's upper pair and nothing
+// else, so entering the room has to swap exactly those two tiles and leave the other two alone
+TEST_CASE("mario_bonus_room_swaps_only_the_bricks_top_pair") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    REQUIRE(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickTiles, 4));
+
+    const Route route = plan_level(kLevel11, 4000, static_cast<uint16_t>(kPipeColumn * kBlockPx));
+    REQUIRE(route.reached);
+    replay(gameboy, route.script, 0, route.script.size());
+    press(gameboy, gb::Button::Down, 4);
+    REQUIRE(wait_for_sky(gameboy, kSkyUnderground, 240) >= 0);
+    run(gameboy, 20);
+
+    // the room's own upper pair, and the overworld's lower pair still untouched under it
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickUndergroundTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xA6, terrain_art::kBrickTiles + 2 * 16, 2));
+}
+
+// and the other half of the pin: the eight cgb bg palette slots. a generated tile is nothing but
+// four palette INDICES, so the art is only right if the slot each family is pinned to holds the
+// colours rip_tiles.py resolved that family's pixels against. every value below is the capture's
+// own, quantised the way the hardware quantises it (each channel >> 3)
+TEST_CASE("mario_overworld_palettes_are_the_capture_s_colours") {
+    // games/mario/art/ref/smbd_ch_1-1.png, as rgb555
+    constexpr int kSky = 13 | (17 << 5) | (31 << 10);    // #6888f8
+    constexpr int kWhite = 31 | (31 << 5) | (31 << 10);  // #f8f8f8
+    constexpr int kScallop = 6 | (20 << 5) | (31 << 10); // #30a0f8
+    constexpr int kBlack = 0;                            // #000000
+    constexpr int kTan = 31 | (24 << 5) | (19 << 10);    // #f8c098
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);    // #984800
+    constexpr int kGold = 31 | (23 << 5) | (8 << 10);    // #f8b840
+    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);    // #70f830
+    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10); // #108800
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy);
+
+    // the whole of 1-1 in ten-column steps, so every family gets on screen at its own row
+    std::set<int> ground;
+    std::set<int> brick;
+    std::set<int> question;
+    std::set<int> pipe;
+    std::set<int> cloud;
+    Camera camera;
+    for (uint16_t column = 0; column < LEVEL_1_1_LENGTH_COLUMNS; column = column + 10) {
+        for (uint8_t row : {static_cast<uint8_t>(5), static_cast<uint8_t>(13)}) {
+            camera.goto_xy(gameboy, scx_for_column(column), scy_for_row(row));
+            run(gameboy, 2);
+            collect_family_colors(gameboy, 0xA0, 0xA3, &ground);
+            collect_family_colors(gameboy, 0xF8, 0xF9, &ground);
+            collect_family_colors(gameboy, 0xA4, 0xA7, &brick);
+            collect_family_colors(gameboy, 0xFA, 0xFD, &brick);
+            collect_family_colors(gameboy, 0xA8, 0xAB, &question);
+            collect_family_colors(gameboy, 0xB0, 0xBB, &pipe);
+            collect_family_colors(gameboy, 0x35, 0x44, &cloud);
+            collect_family_colors(gameboy, 0xD0, 0xD7, &cloud);
+        }
+    }
+
+    // a ground or brick cell is opaque, so its slot's colour 0 never reaches a pixel
+    CHECK(ground == std::set<int>{kTan, kBrown, kBlack});
+    CHECK(brick == std::set<int>{kTan, kBrown, kBlack});
+    CHECK(question == std::set<int>{kSky, kGold, kBrown, kBlack});
+    CHECK(pipe == std::set<int>{kSky, kLeaf, kDarkLeaf, kBlack});
+    CHECK(cloud == std::set<int>{kSky, kWhite, kScallop, kBlack});
+    // the hills and bushes share the pipe slot, so 1-1 needs no ninth palette for its scenery
+    std::set<int> scenery;
+    camera.goto_xy(gameboy, scx_for_column(0), scy_for_row(13));
+    run(gameboy, 2);
+    collect_family_colors(gameboy, 0x45, 0x58, &scenery);
+    CHECK(!scenery.empty());
+    for (const int colour : scenery) {
+        CHECK(pipe.count(colour) == 1);
+    }
+
+    // and the flag's ball, which is the one flag piece NOT on the sky slot and the one whose two
+    // halves live at the two ends of the scenery run rather than side by side. it is pinned here
+    // because a blank pair of tiles at those two ids passes every byte-for-byte check going -
+    // which is exactly how the ball came to be missing: the generator was cutting the ball cell's
+    // EMPTY top half, while the block table draws the cell's bottom half. so the demand is that
+    // the ball paints the pipe slot's two greens and its black, and reaches all three
+    std::set<int> ball;
+    int ball_column = -1;
+    for (uint16_t column = 0; column < LEVEL_1_1_LENGTH_COLUMNS; ++column) {
+        if (kLevel11Grid[column][2] == kBlockFlagBall) {
+            ball_column = static_cast<int>(column);
+        }
+    }
+    REQUIRE(ball_column > 5);
+    camera.goto_xy(gameboy, scx_for_column(static_cast<uint16_t>(ball_column - 5)), scy_for_row(2));
+    run(gameboy, 2);
+    collect_family_colors(gameboy, 0x30, 0x30, &ball);
+    collect_family_colors(gameboy, 0x5D, 0x5D, &ball);
+    CHECK(ball == std::set<int>{kSky, kLeaf, kDarkLeaf, kBlack});
+}
+
+// the same pin for the room under it. the bonus room is the overworld's art (bar the brick's top
+// pair) under assets_load_bg_palettes_underground's colours, so the room is only right if those
+// slots hold what rip_tiles.py's UNDERGROUND_SLOTS resolved the room's own cells against. the one
+// colour down here that is NOT the overworld's is the pipe slot's colour 3: every pipe in the
+// capture's room outlines itself in a dark green, where the overworld outlines in flat black - and
+// black is the room's backdrop, so a black rim would leave the pipes with no edge at all
+TEST_CASE("mario_bonus_room_palettes_are_the_capture_s_colours") {
+    // games/mario/art/ref/smbd_ch_1-1.png's bonus room (x 879-1134), as rgb555
+    constexpr int kRoomBack = 0;                          // #000000
+    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);     // #008888
+    constexpr int kPale = 23 | (31 << 5) | (30 << 10);    // #b8f8f0
+    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);     // #70f830
+    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10);  // #108800
+    constexpr int kRim = 0 | (9 << 5) | (0 << 10);        // #004800
+    constexpr int kGold = 31 | (23 << 5) | (8 << 10);     // #f8b840
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);     // #984800
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    enter_bonus_room(gameboy);
+
+    const int room_sky = family_color(gameboy, kTileSky, kTileSky);
+    REQUIRE(room_sky >= 0);
+
+    // the room is wider than the screen and its pipes stand at its right end, so the collection
+    // runs across the whole crossing - the same hold-right, jump-when-stuck walk the round trip
+    // uses - and stops the frame the room hands back
+    std::set<int> ground;
+    std::set<int> brick;
+    std::set<int> coin;
+    std::set<int> pipe;
+    int stall = 0;
+    int jump = 0;
+    int last = -1;
+    bool left = false;
+    for (int i = 0; i < 900 && !left; ++i) {
+        gameboy.set_button(gb::Button::Right, true);
+        gameboy.set_button(gb::Button::A, jump > 0);
+        if (jump > 0) {
+            --jump;
+        }
+        gameboy.run_frame();
+        if (family_color(gameboy, kTileSky, kTileSky) != room_sky) {
+            left = true;
+            break;
+        }
+        collect_family_colors(gameboy, 0xA0, 0xA3, &ground);
+        collect_family_colors(gameboy, 0xF8, 0xF9, &ground);
+        collect_family_colors(gameboy, 0xA4, 0xA7, &brick);
+        collect_family_colors(gameboy, 0xBC, 0xBF, &coin);
+        collect_family_colors(gameboy, 0xB0, 0xBB, &pipe);
+        collect_family_colors(gameboy, 0x72, 0x7D, &pipe);
+        const Mario m = mario_at(gameboy);
+        const int here = play_scx(gameboy) * 256 + (m.found ? m.box_left() : 0);
+        stall = (here == last) ? stall + 1 : 0;
+        last = here;
+        if (jump == 0 && stall > 10) {
+            jump = 26;
+            stall = 0;
+        }
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    gameboy.set_button(gb::Button::A, false);
+    REQUIRE(left);
+
+    // the floor is opaque, so its slot's colour 0 never reaches a pixel; the brick's highlight and
+    // its body collapse onto the same teal down here, which is what lets the overworld's own brick
+    // tiles read correctly in the room
+    CHECK(ground == std::set<int>{kPale, kTeal, kRoomBack});
+    CHECK(brick == std::set<int>{kTeal, kRoomBack});
+    // a loose coin's fourth colour is the shading inside its ring, teal here and black upstairs
+    CHECK(coin == std::set<int>{kRoomBack, kGold, kBrown, kTeal});
+    // both pipes in the room - the vertical shaft and the sideways mouth walked into beside it -
+    // and all four of the slot's colours, the dark rim included
+    CHECK(pipe == std::set<int>{kRoomBack, kLeaf, kDarkLeaf, kRim});
 }
 
 // m22 draws the red paratroopa out of VRAM BANK 1 (kTileParaFly0/1), which means the S_BANK bit in

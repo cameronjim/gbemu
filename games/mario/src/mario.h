@@ -152,9 +152,9 @@
 #define kBlockBushL 35U
 #define kBlockBushM 36U
 #define kBlockBushR 37U
-// 1-2's sideways pipe mouth, the classic L: a 2-row-tall mouth facing left, then a column of
-// horizontal body, then an ordinary vertical shaft. all four are solid, and their art is the
-// vertical pipe's own tiles turned on their side (see kPipeSideTiles in assets_data.c)
+// the sideways pipe mouth, the classic L: a 2-row-tall mouth facing left, then a column of
+// horizontal body, then an ordinary vertical shaft. all four are solid. 1-2 has two of them and
+// 1-1's bonus room is the way out of the coin room; their art is the capture's own (gen/pipe_side.c)
 #define kBlockPipeSideTl 38U
 #define kBlockPipeSideBl 39U
 #define kBlockPipeSideBodyT 40U
@@ -192,7 +192,22 @@
 // kBlockLava and fills the rows under it with this, whose four quadrants are all flat red. scenery
 // like the lava itself: the pit kills through the death plane, not through a kind
 #define kBlockLavaFill 49U
-#define kBlockKindCount 50U
+// the castle window's mirror twin. the smbd capture's window is one 8px tile, not a whole cell:
+// the tower carries a window either side of its middle column, and each opening hugs the middle -
+// so the left cell is [masonry, opening] and the right one [opening, masonry]. that is not an
+// x flip of the left cell, because the masonry's mortar joint runs down one edge of its tile and a
+// flip would move it (kCamAttrXFlip costs 24 px against the capture, see rip_tiles.py's SHARING
+// report). it needs no art of its own either: it is kBlockCastleWindow's own four tiles with the
+// columns swapped, so it adds a kind and not one vram id
+#define kBlockCastleWindowRight 50U
+// a big hill's own middle. smb draws a hill's interior with a shading mark - two dark pixels in
+// the upper right of each 16x16 cell - and the capture puts one in every interior cell EXCEPT the
+// bottom row's centre, which is flat green all the way across. that is one cell of the five-wide
+// dome (the small hill has none of it at all), and stamping kBlockHillFill there instead put a
+// mark in the middle of the hill's belly where smb has none. it costs no vram id: all four of its
+// quadrants are kTileHillFillTl, the fill cell's own flat tile, so the kind is the whole change
+#define kBlockHillCore 51U
+#define kBlockKindCount 52U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -243,20 +258,26 @@
 #define kTileSpentTr 0xADU
 #define kTileSpentBl 0xAEU
 #define kTileSpentBr 0xAFU
-// pipe family 0xb0..0xb8. a pipe is 32px wide and its shading runs in columns across the whole of
-// it, so the lip is a left edge, a middle repeated twice and a right edge, top half then bottom
-#define kTilePipeLipL 0xB0U
-#define kTilePipeLipM 0xB1U
-#define kTilePipeLipR 0xB2U
-#define kTilePipeLipLb 0xB3U
-#define kTilePipeLipMb 0xB4U
-#define kTilePipeLipRb 0xB5U
-#define kTilePipeBodyL 0xB6U
-#define kTilePipeBodyM 0xB7U
-#define kTilePipeBodyR 0xB8U
-// 0xb9-0xbb are free: the pole shaft left for bank 1 when the shaft was centred in its cell,
-// and the bridge and the axe followed when the rip gave each of them two tiles (kTileBridge,
-// kTileAxeLeft below). the world coin's four quadrants close the pinned block
+// pipe family 0xb0..0xbb. m23's rip pass measured the capture's pipe and found that neither
+// shortcut the old nine-tile layout took actually holds: the right half is not the left half
+// mirrored (136 pixels apart on the body alone), and the two cells do not share a tile column
+// down the middle (70 pixels apart on the lip). so all four cells - the lip's two and the body's
+// two - carry their own quadrants, twelve tiles in all. the three extra ids are 0xb9-0xbb, which
+// were the last free ids of the pinned block. the body is still one row of tiles repeated down
+// the pipe, because the capture's body cell IS its own top half twice
+#define kTilePipeLipL 0xB0U   // the left lip cell, top left
+#define kTilePipeLipM 0xB1U   // the left lip cell, top right
+#define kTilePipeLipR 0xB2U   // the right lip cell, top left
+#define kTilePipeLipLb 0xB3U  // the left lip cell, bottom left
+#define kTilePipeLipMb 0xB4U  // the left lip cell, bottom right
+#define kTilePipeLipRb 0xB5U  // the right lip cell, bottom left
+#define kTilePipeBodyL 0xB6U  // the left body cell, left column
+#define kTilePipeBodyM 0xB7U  // the left body cell, right column
+#define kTilePipeBodyR 0xB8U  // the right body cell, left column
+#define kTilePipeLipRr 0xB9U  // the right lip cell, top right
+#define kTilePipeLipRbr 0xBAU // the right lip cell, bottom right
+#define kTilePipeBodyRr 0xBBU // the right body cell, right column
+// the world coin's four quadrants close the pinned block
 #define kTileCoinTl 0xBCU
 #define kTileCoinTr 0xBDU
 #define kTileCoinBl 0xBEU
@@ -352,6 +373,34 @@
 #define kTileFlagBallR 0x5DU
 #define kTileSceneryLast 0x5DU
 
+// --- m23's rip pass: the scenery the capture would not let the rom mirror, 0xd0-0xdd -----------
+// the run above assumed three of smb's scenery pieces were their left twin flipped, and the smbd
+// capture says only one of them is. the right hill slope really is the left one mirrored, pixel
+// for pixel, and keeps kCamAttrXFlip; the right cloud cap (28 px apart on its top row, 26 on its
+// bottom) and the right bush cap (13 px) do not, and neither do the right halves of the castle's
+// two crenels (56 px and 23 px). those fourteen tiles are what this run holds.
+//
+// they sit at 0xd0 rather than at the 0x8d the bank-1 bg table's first free span starts at,
+// because a bank-1 bg id at or above 0x80 shares its bytes with the bank-1 SPRITE id of the same
+// number: 0x8d-0x94 is reserved as hud-font headroom and 0x96-0xbd is bowser. 0xd0-0xdd is free
+// on both sides of that table (see VRAM.md)
+#define kTileCloudCapRtl 0xD0U
+#define kTileCloudCapRtr 0xD1U
+#define kTileCloudCapRml 0xD2U
+#define kTileCloudCapRmr 0xD3U
+#define kTileCloudCapRbl 0xD4U
+#define kTileCloudCapRbr 0xD5U
+#define kTileCloudCapRfl 0xD6U
+#define kTileCloudCapRfr 0xD7U
+#define kTileBushCapRtl 0xD8U
+#define kTileBushCapRtr 0xD9U
+#define kTileBushCapRbl 0xDAU
+#define kTileBushCapRbr 0xDBU
+#define kTileCastleCrenelRight 0xDCU
+#define kTileCastleCrenelInnerRight 0xDDU
+#define kTileSceneryRipFirst 0xD0U
+#define kTileSceneryRipCount 14U
+
 // --- 1-3's tree run, 0x0a-0x11, also in VRAM BANK 1 ---------------------------------------------
 // the scenery run above is contiguous and exactly full: 0x5e-0x5f is only two ids and 0x60-0x71
 // is the map screen's own bank-1 art. so the tree takes the eight free ids under the map screen's
@@ -397,23 +446,29 @@
 // of kBlockLavaFill
 #define kTileLavaDeep 0x18U
 
-// the sideways pipe's nine tiles, the vertical pipe's own lip and body turned on their side - a
-// transpose, not a rotation, so smb's light stays at the top left: the cap's top outline becomes
-// the rim line down the mouth's left edge and the highlight runs along the pipe's top for its
-// whole horizontal length (see kPipeSideTiles in assets_data.c). vram bank 0 has no tile ids left
-// at all, so they ride in bank 1 past the map screen's own run (0x60-0x71, declared in assets.h),
-// and their kBlockPalette entries carry kCamAttrVram1 the way every scenery kind's does.
-// the mouth is one block column of two block rows - top quadrants then bottom - and the body the
-// same shape again, so nine tiles cover all four kinds
-#define kTilePipeSideTl 0x72U
-#define kTilePipeSideTr 0x73U
-#define kTilePipeSideMl 0x74U
-#define kTilePipeSideMr 0x75U
-#define kTilePipeSideBl 0x76U
-#define kTilePipeSideBr 0x77U
-#define kTilePipeSideBodyT 0x78U
-#define kTilePipeSideBodyM 0x79U
-#define kTilePipeSideBodyB 0x7AU
+// the sideways pipe's twelve tiles, ripped off the smbd capture's own bonus room (gen/pipe_side.c,
+// anchors pipe_side_* in rip_tiles.py). the run is 32px tall - the mouth cell over its lower cell,
+// and the body the same again - so four 8px bands cover it. the mouth column needs a left and a
+// right tile per band, because the rim line runs down its left edge and the joint to the body down
+// its right; the body column is flat across its 16px, so one tile per band is drawn in both halves
+// of the cell. it is NOT the vertical pipe transposed, which is what the nine hand-drawn tiles this
+// replaces assumed: the capture's sideways cross section has no backdrop margin and one more light
+// row than the vertical one, and the mouth's two cells share no tile.
+// vram bank 0 has no tile ids left at all, so they ride in bank 1 past the map screen's own run
+// (0x60-0x71, declared in assets.h), and their kBlockPalette entries carry kCamAttrVram1 the way
+// every scenery kind's does
+#define kTilePipeSideMouth0L 0x72U
+#define kTilePipeSideMouth0R 0x73U
+#define kTilePipeSideMouth1L 0x74U
+#define kTilePipeSideMouth1R 0x75U
+#define kTilePipeSideMouth2L 0x76U
+#define kTilePipeSideMouth2R 0x77U
+#define kTilePipeSideMouth3L 0x78U
+#define kTilePipeSideMouth3R 0x79U
+#define kTilePipeSideBody0 0x7AU
+#define kTilePipeSideBody1 0x7BU
+#define kTilePipeSideBody2 0x7CU
+#define kTilePipeSideBody3 0x7DU
 
 // cgb bg palette slots for the terrain: one per pinned tile family, plus a neutral one for
 // bridge/axe/platform. all eight cgb bg palettes are spoken for
@@ -440,7 +495,8 @@
 // two of them the same, so it is also what the host tests read to name the palette set that is up.
 // only assets_data.c expands these; they live here so the three sets cannot drift apart
 #define kSkyRgb RGB(13, 17, 31)
-#define kUndergroundRgb RGB(1, 1, 6)
+// m23 read this off the bonus room in the smbd capture, which is drawn on flat black
+#define kUndergroundRgb RGB(0, 0, 0)
 #define kCastleRgb RGB(1, 1, 3)
 
 // sprite family 0xe0.. per the milestone's tile-id contract. small mario is 16x16 = two 8x16

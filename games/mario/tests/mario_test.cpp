@@ -4633,7 +4633,7 @@ const LevelBlock* plain_brick() {
 }
 
 // games/mario/src/mario.h's kBumpFrames, the frames a struck block spends drawn one row higher
-constexpr int kBumpFramesHost = 8;
+constexpr int kBumpFramesHost = 11;
 
 // walks the twin toward a world x and lets it coast to a halt there
 bool append_walk(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t target) {
@@ -5596,6 +5596,70 @@ TEST_CASE("mario_animation_changes_with_state") {
     }
     gameboy.set_button(gb::Button::Left, false);
     REQUIRE(turning.count(kFrameSkid) == 1u);
+}
+
+// the lengths of every complete run of one pose in a frame-by-frame sequence: the first and the
+// last runs are cut by the window and are not counted
+std::vector<int> pose_runs(const std::vector<int>& seq) {
+    std::vector<int> runs;
+    int length = 0;
+    for (size_t i = 0; i < seq.size(); ++i) {
+        ++length;
+        if (i + 1 == seq.size() || seq[i + 1] != seq[i]) {
+            runs.push_back(length);
+            length = 0;
+        }
+    }
+    if (runs.size() >= 2) {
+        runs.erase(runs.begin());
+        runs.pop_back();
+    } else {
+        runs.clear();
+    }
+    return runs;
+}
+
+std::vector<int> walk_frames(gb::Gameboy& gameboy, int frames) {
+    std::vector<int> seq;
+    for (int i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        REQUIRE(m.found);
+        REQUIRE(m.frame >= kFrameWalk0);
+        REQUIRE(m.frame <= kFrameWalk2);
+        seq.push_back(m.frame);
+    }
+    return seq;
+}
+
+// smbdis PlayerAnimTmrData: at the run cap a pose holds two frames, at the walk cap four (the 7 of
+// a slow start is passed through too quickly to pin). two fresh carts, because a run that long
+// down 1-1 reaches its first goomba
+TEST_CASE("mario_walk_poses_hold_the_disassembly_s_frames") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy runner;
+    REQUIRE(runner.load_rom(rom));
+    enter_play(runner);
+    runner.set_button(gb::Button::Right, true);
+    runner.set_button(gb::Button::B, true);
+    run(runner, 60);
+    const std::vector<int> running = pose_runs(walk_frames(runner, 24));
+    REQUIRE(running.size() >= 6u);
+    for (int length : running) {
+        REQUIRE(length == 2);
+    }
+
+    gb::Gameboy walker;
+    REQUIRE(walker.load_rom(rom));
+    enter_play(walker);
+    walker.set_button(gb::Button::Right, true);
+    run(walker, 60);
+    const std::vector<int> walking = pose_runs(walk_frames(walker, 40));
+    REQUIRE(walking.size() >= 6u);
+    for (int length : walking) {
+        REQUIRE(length == 4);
+    }
 }
 
 TEST_CASE("mario_play_is_deterministic") {
@@ -13123,6 +13187,30 @@ TEST_CASE("mario_flag_scoring") {
     enter_play(jumper);
     const int jumped = base_score_after(jumper, high);
     REQUIRE(jumped > walked);
+
+    // and the bands are smb's own (flow.c kFlagBandEdgePx, off smbdis FlagpoleYPosData): running
+    // into the shaft at ground level is the bottom band, and the jump pays whichever band the twin
+    // says his feet were in over the base block. the pole's own points are the card's score less
+    // whatever the hud already showed on the frame before contact: the hud row stops updating
+    // the moment the clear sequence owns the frame
+    constexpr int kFlagBandEdgePx[4] = {16, 56, 80, 126};
+    constexpr int kFlagBandPoints[5] = kFlagBandPointsInit;
+    const auto before_contact = [&rom](const Route& route) {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_play(gameboy);
+        replay(gameboy, route.script, 0, route.script.size() - 1);
+        return hud_score_shown(gameboy);
+    };
+    REQUIRE(walked - before_contact(low) == kFlagBandPoints[0]);
+    const int base = (kHostLevels[kLevel11].flag_base_row + 1) * kBlockPx;
+    const int above = base - (high.end.y_pos + high.end.foot_h());
+    int band = 0;
+    while (band < 4 && above >= kFlagBandEdgePx[band]) {
+        ++band;
+    }
+    REQUIRE(band > 0);
+    REQUIRE(jumped - before_contact(high) == kFlagBandPoints[band]);
 }
 
 // --- m19: three save slots, the SELECT FILE screen and world one's map -------------------------

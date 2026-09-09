@@ -33,102 +33,21 @@
 #include "gen/mario_small_climb.h"
 #include "gen/paratroopa_red.h"
 #include "gen/pipe.h"
-#include "gen/pipe_side.h"
 #include "gen/pipe_joint.h"
+#include "gen/pipe_side.h"
 #include "gen/piranha.h"
 #include "gen/question.h"
 #include "gen/scen_tail.h"
 #include "gen/shell_green.h"
 #include "gen/shell_red.h"
 #include "gen/spent.h"
+#include "gen/tree.h"
+#include "gen/trunk.h"
 #include "mario.h"
 
 #include <gb/cgb.h>
 #include <gb/gb.h>
 #include <stdint.h>
-// 1-3's tree, transcribed pixel for pixel off the smb1 map rip (mariouniverse's 1-3.png, the tree
-// at column 18). the canopy uses exactly four colors there - sky, a bright green body, a dark
-// green accent under its scalloped bottom edge, and a black outline - which is kCamPalPipe's
-// overworld set in that order, so the greens the hills and bushes already share color the tree too.
-// the trunk is the brick browns: color 2 fills it and color 3 draws the dark stripes, whose 8px
-// period in both axes is why the whole column is one tile
-// clang-format off
-static const uint8_t kTreeTiles[128] = {
-    // kTileTreeCapTl 0x0a - the left cap, rounded into the sky
-    0x3F, 0x3F, // ..######
-    0x7F, 0x60, // .##-----
-    0x7F, 0x40, // .#------
-    0xFF, 0xC0, // ##------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    // kTileTreeTop 0x0b - the plain top row, also both of the middle and the right cap
-    0xFF, 0xFF, // ########
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    // kTileTreeCapBl 0x0c - the left cap again, rounded the other way
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x80, // #-------
-    0xFF, 0x81, // #------#
-    0x7E, 0x42, // .#----#.
-    0x3C, 0x3C, // ..####..
-    // kTileTreeBot 0x0d - a plain scalloped bottom, also the right cap left half
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x01, // -------#
-    0xFE, 0x82, // #-----#.
-    0x7C, 0x7C, // .#####..
-    // kTileTreeBotM 0x0e - the middle's bottom, the only one with dark green in it
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x00, // --------
-    0xFF, 0x01, // -------#
-    0xFE, 0x83, // #-----#+
-    0x7C, 0xFF, // +#####++
-    // kTileTreeCapTr 0x0f - the right cap top
-    0xF8, 0xF8, // #####...
-    0xFC, 0x04, // -----#..
-    0xFE, 0x02, // ------#.
-    0xFE, 0x02, // ------#.
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    // kTileTreeCapBr 0x10 - the right cap bottom
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x01, // -------#
-    0xFF, 0x81, // #------#
-    0x7E, 0x42, // .#----#.
-    0x3C, 0x3C, // ..####..
-    // kTileTrunk 0x11 - one tile that tiles the whole column, 8px stripe period both axes
-    0x00, 0xFF, // ++++++++
-    0x08, 0xFF, // ++++#+++
-    0x08, 0xFF, // ++++#+++
-    0x08, 0xFF, // ++++#+++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x10, 0xFF, // +++#++++
-    0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
 // 1-3's thin platform: a four-px plank with sky under it
 // clang-format off
 static const uint8_t kThinTiles[32] = {
@@ -365,8 +284,12 @@ void assets_load_scenery_tiles(void) BANKED {
     set_bkg_data(kTilePipeSideMouth0L, kPipeSideTileCount, kPipeSideTiles);
     // and the joint where that body meets its shaft, off the 1-2 capture, at 0xe0-0xe4
     set_bkg_data(kTilePipeJointT0, kPipeJointTileCount, kPipeJointTiles);
-    // and 1-3's tree, in the eight bank-1 ids under the map screen's own castle run
+    // and 1-3's tree, in the bank-1 ids under the map screen's own castle run. m26 cut both
+    // families off the smbd 1-3 capture: the canopy's five tiles on kCamPalPipe's greens (the
+    // right cap is the left one mirrored, so it costs none of its own) and the trunk's single
+    // tile on the brick slot's browns
     set_bkg_data(kTileTreeFirst, kTileTreeCount, kTreeTiles);
+    set_bkg_data(kTileTrunk, kTrunkTileCount, kTrunkTiles);
     // m20's castle run right above it: the masonry's two courses, the axe's two blades and the
     // bridge's two halves. all three are terrain rather than scenery, but bank 0 is out of bg ids
     // and a kCamAttrVram1 attribute reads them back the same way

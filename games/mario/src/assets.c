@@ -49,11 +49,13 @@ uint8_t kBlockPalette[kBlockKindCount];
 // left column (gen/pipe_joint.c, off the 1-2 capture) and the plain body's right column, which is
 // kTilePipeBodyM copied into bank 1 because the cell's attribute byte picks one bank for all four
 //
-// kBlockHillSlopeR is the one kind the hardware still mirrors: it carries kBlockHillSlopeL's own
-// tiles with the two columns swapped and kCamAttrXFlip in its palette byte, which the capture
-// agrees with to the pixel. the right cloud caps and the right bush cap used to ride the same
-// trick and no longer can - the capture draws each of them differently from its left twin (28, 26
-// and 13 px, see rip_tiles.py's SHARING report), so they carry tiles of their own
+// kBlockHillSlopeR and kBlockTreeTopR are the two kinds the hardware mirrors: each carries its
+// left twin's own tiles with the two columns swapped and kCamAttrXFlip in its palette byte, which
+// the captures agree with to the pixel (the 1-3 capture's tree cap mirrors its twin exactly, which
+// is what let m26's re-cut drop the two tiles the hand-drawn right cap used to spend). the right
+// cloud caps and the right bush cap used to ride the same trick and no longer can - the capture
+// draws each of them differently from its left twin (28, 26 and 13 px, see rip_tiles.py's
+// relations report), so they carry tiles of their own
 // clang-format off
 static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTileSky,            kTileGroundTopL,      kTileBrickTl,       kTileQuestionTl,
@@ -87,7 +89,7 @@ static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileBushMidTr,      kTileBushCapRtr,
     kTilePipeSideMouth0R, kTilePipeSideMouth2R, kTilePipeSideBody0, kTilePipeSideBody2,
     kTileCastleCrenelInnerRight,
-    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
+    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTl,     kTileTrunk,
     kTileFlagPoleR,      kTileCastleBrickUpper, kTileLavaDeep,   kTileCastleWindowTl,
     kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,
 };
@@ -125,7 +127,7 @@ static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileBushMidBr,      kTileBushCapRbr,
     kTilePipeSideMouth1R, kTilePipeSideMouth3R, kTilePipeSideBody1, kTilePipeSideBody3,
     kTileCastleWall,
-    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
+    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBl,     kTileTrunk,
     kTileFlagPoleR,      kTileCastleBrickLower, kTileLavaDeep,   kTileCastleWindowBl,
     kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,
 };
@@ -189,7 +191,7 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenBrick,
-    kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
+    kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip, kScenBrick,
     kScenSky,       kScenGround,   kCamPalCoin | kCamAttrVram1, kScenBrick,
     kScenPipe,      kScenPipe,      kScenPipe,
 };

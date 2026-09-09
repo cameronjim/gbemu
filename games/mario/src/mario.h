@@ -410,26 +410,35 @@
 #define kTileSceneryRipFirst 0xD0U
 #define kTileSceneryRipCount 14U
 
-// --- 1-3's tree run, 0x0a-0x11, also in VRAM BANK 1 ---------------------------------------------
+// --- 1-3's tree run, 0x0a-0x0f, also in VRAM BANK 1 ---------------------------------------------
 // the scenery run above is contiguous and exactly full: 0x5e-0x5f is only two ids and 0x60-0x71
-// is the map screen's own bank-1 art. so the tree takes the eight free ids under the map screen's
+// is the map screen's own bank-1 art. so the tree takes the free ids under the map screen's
 // castle instead (bank-1 bg 0x00-0x09, see assets.h), which nothing else in either screen touches.
 //
-// eight is all the canopy costs because the shape repeats: a plain top row serves the left cap's
-// right quadrant, both of the middle's and the right cap's left one, and one plain scalloped
-// bottom serves the left cap's inner quadrant and the right cap's. the rip's dark-green notch
-// accents only appear under the middle, so its bottom is its own tile. the trunk's stripes have an
-// 8px period in both axes, so one tile stamped four times is the whole column
+// m26 re-cut every one of these off the smbd 1-3 capture (games/mario/tools/rip_tiles.py --level
+// 1-3, gen/tree.c and gen/trunk.c) and the re-cut cost two ids LESS than the hand art it replaced,
+// because the capture says the canopy's right cap is the left one's EXACT mirror - the first right
+// cap in this game that is (1-1's cloud cap is 28 px off its twin and its bush cap 13, which is
+// why those carry tiles of their own at 0xd0-0xdb). so kBlockTreeTopR is drawn as the left cap's
+// four tiles with the columns swapped and kCamAttrXFlip in its palette byte, the trick
+// kBlockHillSlopeR already rides, and the two tiles the hand art spent on it (the old
+// kTileTreeCapTr/kTileTreeCapBr at 0x0f-0x10) are gone. 0x10-0x11 are FREE again.
+//
+// five tiles is all the canopy costs because the rest of the shape repeats: a plain top row serves
+// the left cap's inner quadrant and both of the middle's, and one plain scalloped bottom serves
+// the left cap's inner one. the capture's dark-green notch accents only appear under the middle -
+// they are where the next scallop of an unbroken run starts, and a run ends at a cap - so the
+// middle's bottom is its own tile. the trunk's stripes have an 8px period in both axes, so one
+// tile stamped four times is the whole column, and it is the one tree tile on the brick slot's
+// browns rather than the pipe slot's greens
 #define kTileTreeFirst 0x0AU
 #define kTileTreeCapTl 0x0AU
 #define kTileTreeTop 0x0BU
 #define kTileTreeCapBl 0x0CU
 #define kTileTreeBot 0x0DU
 #define kTileTreeBotM 0x0EU
-#define kTileTreeCapTr 0x0FU
-#define kTileTreeCapBr 0x10U
-#define kTileTrunk 0x11U
-#define kTileTreeCount 8U
+#define kTileTreeCount 5U
+#define kTileTrunk 0x0FU
 
 // --- m20's castle run, 0x12-0x17, in VRAM BANK 1 -----------------------------------------------
 // the six bg tiles the castle pass needed and bank 0 had no ids for. the bridge and the axe each

@@ -345,6 +345,10 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/tiles/flag_ball.png FlagBall tiles 4)
         mario_png_asset(games/mario/art/tiles/flag_head.png FlagHead tiles 4)
         mario_png_asset(games/mario/art/tiles/scen_tail.png ScenTail tiles 4)
+        # m26's 1-3 pass: the tree canopy's five tiles and the trunk's one, cut off the smbd
+        # 1-3 capture by rip_tiles.py --level 1-3
+        mario_png_asset(games/mario/art/tiles/tree.png Tree tiles 4)
+        mario_png_asset(games/mario/art/tiles/trunk.png Trunk tiles 4)
         mario_png_asset(games/mario/art/title/title_screen.png TitleScreen screen 7 --vram-bank 1)
         mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
                         --palette 000000,F8E800,A89000,584010)

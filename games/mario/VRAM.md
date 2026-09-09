@@ -67,13 +67,15 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
 | 0x00-0x5d | the whole 20x18 world map frame plus its runtime tile run (see the world map section below) | `map_art_load` | world map only | the title's and the file select's own frames reuse the same low ids while they are up; each screen reloads what it draws |
-| 0x0a-0x11 | 1-3's tree canopy + trunk (`kTileTreeFirst`, 8 tiles) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
+| 0x0a-0x0e | 1-3's tree canopy (`kTileTreeFirst`, 5 tiles, `gen/tree.c`) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | m26 re-cut these off `smbd_ch_1-3.png` and the re-cut cost **two ids less** than the hand art it replaced: the capture draws the canopy's right cap as the left one's exact mirror, so `kBlockTreeTopR` carries the left cap's four tiles with the columns swapped and `kCamAttrXFlip` in its palette byte (the trick `kBlockHillSlopeR` already rides) and the old `kTileTreeCapTr`/`kTileTreeCapBr` are gone. also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
+| 0x0f | 1-3's tree trunk (`kTileTrunk`, 1 tile, `gen/trunk.c`) | `assets_load_scenery_tiles` | level play (as above) | one tile is the whole column: the capture's stripe pair has an 8px period in *both* axes, so all four quadrants of a trunk cell are this id. it is the one tree tile on the brick slot's browns rather than the pipe slot's greens, which is why it is its own generated family and its own `set_bkg_data` call |
+| 0x10-0x11 | **FREE** (2 ids) | — | — | what m26's mirror gave back from the tree run |
 | 0x12-0x18 | castle masonry courses, axe, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `assets_load_scenery_tiles` | level play (castle type for the masonry/axe/bridge; any level type with a >1-deep lava pit for the lava fill) | |
 | 0x19-0x1f | **FREE** (7 ids) | — | — | called out unclaimed in mario.h |
 | 0x20-0x5d | scenery run: lava top, castle wall/window/door-frame, flag ball/cloth/pole-adjacent cells, clouds, hills, bushes, pole shaft, inner crenel, blank + ball-right (`kTileSceneryFirst`-`kTileSceneryLast`, exactly full) | `assets_load_scenery_tiles` | level play (whichever pieces a level's type/decor use), world map (loaded, unused) | m23 re-cut every tile in this run from the capture without moving one id. the one thing that did move inside it is the flag ball: its two halves sit at the run's two ends, `kTileFlagBallL` (0x30) and `kTileFlagBallR` (0x5d), so they are one generated family (`gen/flag_ball.c`) written into the two ids by two `set_bkg_data` calls, and `gen/flag_head.c` is now the four pennant tiles at 0x31-0x34 rather than five at 0x30. the ball is also the only flag piece off the sky palette slot — the capture draws it in the pipe's greens over black, which is what `kPaletteRom` pins `kBlockFlagBall` to |
 | 0x5e-0x5f | **FREE** (2 ids) | — | — | see correction below — mario.h's own comment near `kTileCastleBrickLower` is wrong about this range |
-| 0x72-0x7a | sideways pipe, 9 tiles (`kTilePipeSideTl`-`kTilePipeSideBodyB`) | `assets_load_scenery_tiles` | level play (levels with a `pipe_side` terrain entry; currently 1-2), world map (loaded, unused) | vram bank 0 had no ids left for this, per mario.h |
-| 0x7b-0x7f | **FREE** (5 ids) | — | — | between the side-pipe run and the hud font |
+| 0x72-0x7d | sideways pipe, 12 tiles (`kTilePipeSideMouth0L`-`kTilePipeSideBody3`, `gen/pipe_side.c`) | `assets_load_scenery_tiles` | level play (levels with a `pipe_side` terrain entry; currently 1-2, and 1-1's bonus room), world map (loaded, unused) | vram bank 0 had no ids left for this, per mario.h. **correction:** this row used to read 0x72-0x7a / 9 tiles, which was true of the hand-drawn art m23 replaced — the capture's mouth column does not share a middle pair between its two cells, so the family became twelve tiles (and `mario_vram_holds_the_generated_terrain_art` has pinned twelve at 0x72 since that pass). m26 corrected the ledger |
+| 0x7e-0x7f | **FREE** (2 ids) | — | — | between the side-pipe run and the hud font |
 | 0x80-0x8c | hud row glyphs: 10 digits, blank, coin icon, the letter x (`kTileHudDigitFirst`-`kTileHudLetterFirst`, 13 tiles) | `assets_load_hud_font` | level play only (the window-layer hud row is drawn only during play) | shares bytes with bank-1 **sprite** ids 0x80-0x8c — see the sprite table |
 | 0x8d-0xcf | **FREE** (67 ids) | — | — | mario.h reserves headroom up to 0x94 for the hud run (see note below) but nothing loads past 0x8c; the rest of this span is empty. note that 0x96-0xbd is bowser on the **sprite** side of this bank, and a bank-1 bg id at or above 0x80 shares its bytes with the sprite id of the same number — which is why m23's run below starts at 0xd0 rather than at 0x8d |
 | 0xd0-0xdd | m23's rip run: the right cloud cap (8 tiles, `kTileCloudCapRtl`..`kTileCloudCapRfr`), the right bush cap (4, `kTileBushCapRtl`..`kTileBushCapRbr`) and the right half of each castle crenel (`kTileCastleCrenelRight`, `kTileCastleCrenelInnerRight`) | `assets_load_scenery_tiles` | level play (whichever pieces a level's decor uses), world map (loaded, unused) | the scenery run at 0x20-0x5d assumed three of smb's pieces were their left twin drawn with `kCamAttrXFlip`; the smbd capture says only the right hill slope actually is. these fourteen are the ones that are not — the right cloud cap is 28 px from the left one mirrored, the right bush cap 13 px, the two crenel halves 56 px and 23 px apart |
@@ -99,6 +101,17 @@ cloud and hill runs now hold blank (all-backdrop) or duplicated bytes — smb dr
 half a cell, so a cap cell is drawn in one quadrant and sky in the other three, and the hill's
 flat tile repeats across the fill and slope cells. the ids stay allocated per family so that the
 `kTile*Rom` tables and every test that pins an id keep working.
+
+m26's 1-3 pass added **no bg id at all** and gave two back: `0x10-0x11`. it re-cut the tree canopy
+and the trunk off `games/mario/art/ref/smbd_ch_1-3.png`
+(`games/mario/tools/rip_tiles.py --level 1-3`, `gen/tree.c` and `gen/trunk.c`) and the capture said
+the canopy's right cap is its left twin mirrored to the pixel — the first right cap in this game
+that is — so `kBlockTreeTopR` lost its two dedicated tiles and took `kCamAttrXFlip` instead, and
+`kTileTrunk` moved down from 0x11 onto 0x0f to keep the run contiguous. it added no kind and no
+palette either: every colour the 1-3 capture paints is already in the eight overworld slots, the
+canopy's four being exactly `kCamPalPipe`'s and the trunk's two `kCamPalBrick`'s. the only thing it
+changed outside the art was three `decor` entries in `games/mario/data/level-1-3.json`, which the
+capture shows are clipped by terrain rather than absent.
 
 m25's 1-2 pass added the five ids at 0xe0-0xe4 and two kinds, `kBlockPipeJointT` and
 `kBlockPipeJointB` (`kBlockKindCount` 54): the shaft cell a sideways pipe's body runs into, in each

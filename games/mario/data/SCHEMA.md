@@ -190,6 +190,9 @@ clouds; 1-3, which is trees over open air, has clouds only.
   level's `TOAD_COLUMN`, and the floor row he stands on (scanned from below the pedestal, because
   a castle's roof is solid over every column) to `TOAD_ROW`; `HAS_TOAD` is 0 on a bridge entry
   that names none, and there the clear walk ends the old way, a fixed run along the pedestal.
+  the compiler also stamps `kBlockBridgeChain` in the cell over the deck's last column when it is
+  open air: the chain both castle rips draw running up to the axe, scenery the engine clears the
+  frame the axe is taken. it takes no bible field.
 - `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`; every kind also takes the optional
   `clip` flag described in the decor section above
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`

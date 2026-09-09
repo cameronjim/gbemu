@@ -229,8 +229,10 @@ void assets_load_bg_palettes_castle(void) BANKED {
     // dark shadow - the course leaves a mortar line down its last column and along its last row,
     // which is what makes a wall read as brickwork rather than as a slab. the brick slot is the
     // castle's own solid block, a brown face in a grey-green border with the backdrop showing
-    // through its corners; the question block and the used block are one teal-faced, grey-edged
-    // block on their two slots; the axe takes the pipe slot's two oranges and grey, nothing else on
+    // through its corners; the question block keeps the overworld's gold face and brown bevel by
+    // choice - the capture draws 1-4's one ? block teal-faced, the nes rip draws it orange, and the
+    // gold reads as a ? block where the teal read as a glitch - with the capture's grey along its
+    // right and bottom edge; the axe takes the pipe slot's two oranges and grey, nothing else on
     // that slot standing in a castle; the bridge is white plank, grey rail and red links on the
     // neutral slot; the lava is white foam over red. kCastleRgb stays one shade off the capture's
     // flat black so a castle's sky still tells it apart from the underground, which the host tests
@@ -238,7 +240,7 @@ void assets_load_bg_palettes_castle(void) BANKED {
     palette_color_t sky[4] = {kCastleRgb, RGB(31, 31, 31), RGB(15, 15, 15), RGB(0, 0, 0)};
     palette_color_t ground[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(23, 23, 23), RGB(15, 15, 15)};
     palette_color_t brick[4] = {kCastleRgb, RGB(19, 9, 0), RGB(12, 13, 12), RGB(0, 0, 0)};
-    palette_color_t question[4] = {kCastleRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(15, 15, 15)};
+    palette_color_t question[4] = {kCastleRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(15, 15, 15)};
     palette_color_t pipe[4] = {kCastleRgb, RGB(31, 20, 8), RGB(28, 11, 2), RGB(15, 15, 15)};
     palette_color_t neutral[4] = {kCastleRgb, RGB(31, 31, 31), RGB(15, 15, 15), RGB(31, 7, 0)};
     // the used block is not in the capture (nothing has hit its one ? block), so this slot keeps

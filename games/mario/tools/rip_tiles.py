@@ -144,9 +144,9 @@ UNDERGROUND_SLOTS = {
 # the castle set, read off the 1-4 capture. the masonry is the ground slot - black mortar, a white
 # highlight, a light face and a dark shadow - and every other castle piece borrows a slot nothing
 # else in a castle uses: the castle's own solid block wears the brick slot (brown face, grey-green
-# border, backdrop corners), the question block and the used block are the same teal-faced,
-# grey-edged block on their two slots (the challenge rip covers the one face with its mushroom, so
-# only the edges are read here), the axe takes the pipe slot's two oranges and grey (nothing else on
+# border, backdrop corners), the question block keeps its gold face and brown bevel by choice with
+# the capture's grey edge (the capture draws the one ? block teal-faced; the nes rip draws it
+# orange), the axe takes the pipe slot's two oranges and grey (nothing else on
 # that slot stands in a castle), the bridge the neutral slot's white, grey and red, and the lava the
 # coin slot's white foam over red. colour 0 of every slot is the backdrop; kCastleRgb keeps it one
 # shade off black on purpose so the host tests can still tell a castle from the underground by its
@@ -156,7 +156,9 @@ CASTLE_SLOTS = {
     "sky": [CASTLE, "FFFFFF", "7F7F7F", "000000"],
     "ground": [CASTLE, "FFFFFF", "BFBFBF", "7F7F7F"],
     "brick": [CASTLE, "984800", "606860", "000000"],
-    "question": [CASTLE, "008888", "008888", "7F7F7F"],
+    # the capture's one ? block is teal-faced; the rom keeps the gold face and brown bevel on purpose
+    # (see assets_load_bg_palettes_castle), so this slot is what the rom draws, not the capture
+    "question": [CASTLE, "F8B840", "984800", "7F7F7F"],
     "pipe": [CASTLE, "FFA347", "E75F13", "7F7F7F"],
     "neutral": [CASTLE, "FFFFFF", "7F7F7F", "F83800"],
     # no used block is in the capture; the slot keeps the coin's gold and brown for the hud icon

@@ -268,7 +268,9 @@ constexpr uint8_t kBlockHillCore = 51;
 // wears the body's rim and joint over its own left column in both smbd captures
 constexpr uint8_t kBlockPipeJointT = 52;
 constexpr uint8_t kBlockPipeJointB = 53;
-constexpr uint8_t kBlockKindCount = 54;
+// the chain from 1-4's bridge up to its axe, one cell over the deck's last column
+constexpr uint8_t kBlockBridgeChain = 54;
+constexpr uint8_t kBlockKindCount = 55;
 // the decorative kinds are the closed range [kBlockFirstDecor, kBlockLastDecor], as
 // games/mario/src/mario.h says: the side pipe and the castle's inner crenel were both
 // appended past them, so a decor test has to take the range and not everything from here up
@@ -489,6 +491,9 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile == 0xE0;
     case kBlockPipeJointB:
         return tile == 0xE2;
+    // the chain's top-left quadrant is empty, the blank scenery cell; its line is 0x1b-0x1c
+    case kBlockBridgeChain:
+        return tile == 0x5C;
     case kBlockSpent:
         return tile >= kTileSpentLo && tile <= kTileSpentHi;
     case kBlockCoin:
@@ -1094,6 +1099,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           kFloorSolid, kFloorSolid,
     kFloorSolid, kFloorSolid, 0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
     kFloorSolid, 0,           0,           0,           kFloorSolid, kFloorSolid,
+    0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's
@@ -10050,7 +10056,7 @@ TEST_CASE("mario_1_2_coin_room_leaves_through_a_sideways_mouth") {
 TEST_CASE("mario_pipe_shaft_joints_are_their_own_kinds") {
     REQUIRE(kBlockPipeJointT == 52);
     REQUIRE(kBlockPipeJointB == 53);
-    REQUIRE(kBlockKindCount == 54);
+    REQUIRE(kBlockKindCount == 55);
     REQUIRE(kBlockFloorTable[kBlockPipeJointT] == kFloorSolid);
     REQUIRE(kBlockFloorTable[kBlockPipeJointB] == kFloorSolid);
     REQUIRE((kBlockPipeJointT < kBlockFirstDecor || kBlockPipeJointT > kBlockLastDecor));
@@ -10363,7 +10369,7 @@ TEST_CASE("mario_big_mario_clears_the_one_block_gap") {
 // "only ever over sky" rule and every decor probe in this suite would take them for clouds if
 // they had. what the canopy actually looks like is pinned by whatever level stamps it
 TEST_CASE("mario_tree_kinds_are_consistent") {
-    REQUIRE(kBlockKindCount == 54);
+    REQUIRE(kBlockKindCount == 55);
     REQUIRE(kBlockTreeTopL == 43);
     REQUIRE(kBlockTreeTopM == 44);
     REQUIRE(kBlockTreeTopR == 45);
@@ -11978,6 +11984,8 @@ TEST_CASE("mario_axe_ends_1_4") {
     run(gameboy, 8);
     const int mid = bg_family_cells(gameboy, kTileBridge, kTileBridgeHi);
     REQUIRE(mid > 0);
+    // the chain that hung from the deck's far end up to the axe is the first thing to go
+    REQUIRE(bg_family_cells(gameboy, 0x1B, 0x1C) == 0);
     const int span = kHostLevels[kLevel14].bridge_x1 - kHostLevels[kLevel14].bridge_x0 + 1;
     run(gameboy, span * kBridgeDropFrames + 60);
     REQUIRE(bg_family_cells(gameboy, kTileBridge, kTileBridgeHi) == 0);
@@ -14410,6 +14418,125 @@ TEST_CASE("mario_1_2_vram_holds_the_underground_terrain_art") {
     CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kHardTiles, 4));
     CHECK(vram_bg_art_matches(gameboy, 1, 0x72, terrain_art::kPipeSideTiles, 12));
     CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
+}
+
+// the chain from the bridge's far end up to the axe, the one cell of 1-4 the bible had nothing for
+// until the smbd capture was read cell by cell: a diagonal of white over stone through the cell's
+// upper right and lower left quadrants over the deck's last column. scenery on the masonry's slot,
+// appended past the shaft joints, and it goes with the axe
+TEST_CASE("mario_1_4_bridge_chain_hangs_over_the_decks_last_column") {
+    REQUIRE(kBlockBridgeChain == 54);
+    REQUIRE(kBlockKindCount == 55);
+    REQUIRE(kBlockFloorTable[kBlockBridgeChain] == 0);
+    REQUIRE((kBlockBridgeChain < kBlockFirstDecor || kBlockBridgeChain > kBlockLastDecor));
+    // its top-left tile is the blank scenery cell; the drawn quadrants are 0x1b-0x1c
+    REQUIRE(tile_in_kind_family(0x5C, kBlockBridgeChain));
+    REQUIRE(is_known_terrain_family(0x1B));
+    REQUIRE(is_known_terrain_family(0x1C));
+
+    const HostLevel& lv = kHostLevels[kLevel14];
+    REQUIRE(kLevel14Grid[lv.bridge_x1][lv.bridge_row - 1] == kBlockBridgeChain);
+    REQUIRE(!solid_at(lv, lv.bridge_x1, lv.bridge_row - 1));
+    // the axe stands one column past it, one row higher: the chain runs up into it
+    REQUIRE(lv.axe_column == lv.bridge_x1 + 1);
+    REQUIRE(lv.axe_row == lv.bridge_row - 2);
+    int chains = 0;
+    for (uint16_t column = 0; column < LEVEL_1_4_LENGTH_COLUMNS; ++column) {
+        for (uint8_t row = 0; row < kHostLevelRows; ++row) {
+            chains += kLevel14Grid[column][row] == kBlockBridgeChain ? 1 : 0;
+        }
+    }
+    REQUIRE(chains == 1);
+}
+
+// the castle set is the 1-4 capture's colours, quantised as the hardware stores them, the way the
+// overworld and underground pins read theirs. the ripper wrote its greys unquantised (ffffff,
+// bfbfbf, 7f7f7f), which store as 31, 23 and 15. the debug camera opens 1-4 under the castle set,
+// since the whole level is one type, so the scan can sweep the level. kCastleRgb is the one colour
+// deliberately off the capture: one shade from black, so a castle's sky still names the level type
+TEST_CASE("mario_castle_palettes_are_the_capture_s_colours") {
+    // games/mario/art/ref/smbd_ch_1-4.png, as rgb555
+    constexpr int kMortar = 0;                             // #000000, the ground slot's colour 0
+    constexpr int kWhite = 31 | (31 << 5) | (31 << 10);    // #ffffff
+    constexpr int kStone = 23 | (23 << 5) | (23 << 10);    // #bfbfbf
+    constexpr int kShadow = 15 | (15 << 5) | (15 << 10);   // #7f7f7f
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);      // #984800
+    constexpr int kBorder = 12 | (13 << 5) | (12 << 10);   // #606860
+    constexpr int kLavaRed = 31 | (7 << 5) | (0 << 10);    // #f83800
+    constexpr int kBlade = 31 | (20 << 5) | (8 << 10);     // #ffa347
+    constexpr int kBladeDark = 28 | (11 << 5) | (2 << 10); // #e75f13
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy, kLevel14);
+    REQUIRE(sky_color(gameboy) == kSkyCastle);
+
+    // the whole castle in ten-column steps, at the roof and at the floor, then the bridge room's
+    // own cells: the deck, the chain and the axe stand at 128-141 and the lava under them
+    std::set<int> masonry;
+    std::set<int> block;
+    std::set<int> lava;
+    std::set<int> bridge;
+    std::set<int> axe;
+    std::set<int> chain;
+    Camera camera;
+    for (uint16_t column = 0; column <= 140; column = column + 10) {
+        for (uint8_t row : {static_cast<uint8_t>(4), static_cast<uint8_t>(13)}) {
+            camera.goto_xy(gameboy, scx_for_column(column), scy_for_row(row));
+            run(gameboy, 2);
+            collect_family_colors(gameboy, 0xA0, 0xA3, &masonry);
+            collect_family_colors(gameboy, 0xF8, 0xF9, &masonry);
+            collect_family_colors(gameboy, 0x12, 0x12, &masonry);
+            collect_family_colors(gameboy, 0x17, 0x17, &masonry);
+            collect_family_colors(gameboy, 0xFA, 0xFD, &block);
+            collect_family_colors(gameboy, 0x20, 0x21, &lava);
+            collect_family_colors(gameboy, 0x18, 0x18, &lava);
+            collect_family_colors(gameboy, 0x15, 0x16, &bridge);
+            collect_family_colors(gameboy, 0x13, 0x14, &axe);
+            collect_family_colors(gameboy, 0x19, 0x1A, &axe);
+            collect_family_colors(gameboy, 0x1B, 0x1C, &chain);
+        }
+    }
+
+    // the masonry's mortar is its slot's colour 0, pure black, and the course is opaque; every
+    // other castle cell shows the backdrop through some of its pixels
+    CHECK(masonry == std::set<int>{kMortar, kWhite, kStone, kShadow});
+    CHECK(block == std::set<int>{kSkyCastle, kBrown, kBorder});
+    CHECK(lava == std::set<int>{kSkyCastle, kWhite, kLavaRed});
+    CHECK(bridge == std::set<int>{kSkyCastle, kWhite, kShadow, kLavaRed});
+    CHECK(axe == std::set<int>{kSkyCastle, kBlade, kBladeDark, kShadow});
+    // the chain rides the masonry's slot, whose colour 0 is the mortar's pure black
+    CHECK(chain == std::set<int>{kMortar, kWhite, kStone});
+}
+
+// and the tiles a castle load leaves in vram once 1-4 is up: the masonry course pair over the
+// ground family and in the bank-1 castle run, the castle's own block over the hard block's four ids,
+// and the lava, bridge, axe and chain families the pass cut off the capture
+TEST_CASE("mario_1_4_vram_holds_the_castle_terrain_art") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+
+    for (uint8_t id : {static_cast<uint8_t>(0xA0), static_cast<uint8_t>(0xA1), static_cast<uint8_t>(0xA2),
+                       static_cast<uint8_t>(0xA3)}) {
+        CHECK(vram_bg_art_matches(gameboy, 0, id, terrain_art::kCastleBrickTiles, 1));
+    }
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xF8, terrain_art::kCastleBrickTiles + 16, 1));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xF9, terrain_art::kCastleBrickTiles + 16, 1));
+    CHECK(vram_bg_art_matches(gameboy, 0, 0xFA, terrain_art::kCastleHardTiles, 4));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x12, terrain_art::kCastleBrickTiles + 16, 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x17, terrain_art::kCastleBrickTiles, 1));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x13, terrain_art::kAxeTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x19, terrain_art::kAxeTiles + 32, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x15, terrain_art::kBridgeTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x1B, terrain_art::kChainTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x20, terrain_art::kLavaTiles, 2));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x18, terrain_art::kLavaTiles + 16, 1));
+    static_assert(sizeof(terrain_art::kAxeTiles) == 4 * 16, "the axe is four generated tiles");
+    static_assert(sizeof(terrain_art::kChainTiles) == 2 * 16, "the chain is two");
+    static_assert(sizeof(terrain_art::kCastleHardTiles) == 4 * 16, "the castle block is four");
 }
 
 // and the other half of the pin: the eight cgb bg palette slots. a generated tile is nothing but

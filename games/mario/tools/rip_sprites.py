@@ -127,23 +127,35 @@ SHEETS = {
 # out of the green cells with the shell body swapped to red before the palette lookup
 GREEN_TO_RED = {"008010": "D80000"}
 
+# the sheet's rows are NOT gameplay order, and the first cut of this table read them as if they
+# were: it put the jump pose and the death pose into the walk cycle, skidded with the third walk
+# frame, jumped with the skid and died in a climbing pose. the poses below were identified by
+# smbdis's PlayerGraphicsTable (14399) instead, whose shared tile ids say which poses share a head:
+# walk frame 1 wears the jump's and the swim frames' head (32,33 vs 32,41), frame 3 the standing
+# pose's (3a,37), frame 2 only the standing pose's right half (37); the skid's head is unique and
+# the death pose is left-right symmetric (9e,9e,9f,9f). every claim was checked pixel for pixel
+# against the sheet before the rectangles moved
 SMALL_MARIO = [
     ("idle", "friendly", (12, 5, 12, 16), "mario"),
-    ("walk0", "friendly", (29, 5, 16, 16), "mario"),
-    ("walk1", "friendly", (50, 7, 14, 14), "mario"),
-    ("walk2", "friendly", (69, 6, 12, 15), "mario"),
-    ("skid", "friendly", (86, 5, 13, 16), "mario"),
-    ("jump", "friendly", (12, 26, 13, 16), "mario"),
-    ("death", "friendly", (50, 26, 11, 16), "mario"),
+    ("walk0", "friendly", (69, 6, 12, 15), "mario"),
+    ("walk1", "friendly", (30, 26, 15, 16), "mario"),
+    ("walk2", "friendly", (86, 5, 13, 16), "mario"),
+    ("skid", "friendly", (12, 26, 13, 16), "mario"),
+    ("jump", "friendly", (29, 5, 16, 16), "mario"),
+    ("death", "friendly", (50, 7, 14, 14), "mario"),
 ]
 
+# the same table for the big set: walk frame 1 wears the standing pose's head (00,01), frame 2 the
+# head every swim, climb, crouch and throw pose shares (08,09) and the legs the throw shares (0e,0f),
+# frame 3 a head of its own (10,11); the skid and the jump are unique, and the jump is the one with
+# the fist over the cap
 BIG_MARIO = [
     ("idle", "friendly", (10, 66, 16, 32), "mario"),
-    ("walk0", "friendly", (73, 68, 16, 30), "mario"),
-    ("walk1", "friendly", (94, 68, 14, 30), "mario"),
-    ("walk2", "friendly", (113, 71, 14, 27), "mario"),
-    ("skid", "friendly", (31, 105, 16, 30), "mario"),
-    ("jump", "friendly", (10, 103, 16, 32), "mario"),
+    ("walk0", "friendly", (71, 103, 16, 32), "mario"),
+    ("walk1", "friendly", (73, 68, 16, 30), "mario"),
+    ("walk2", "friendly", (10, 103, 16, 32), "mario"),
+    ("skid", "friendly", (113, 71, 14, 27), "mario"),
+    ("jump", "friendly", (31, 66, 16, 32), "mario"),
     ("crouch", "friendly", (52, 76, 16, 22), "mario"),
     ("climb", "friendly", (52, 104, 14, 31), "mario"),
 ]

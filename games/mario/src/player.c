@@ -452,7 +452,7 @@ static void step_anim(void) {
     if (anim_accum == 0U) {
         anim_accum = speed_abs >= (uint8_t)kWalkAnimRunSubpx    ? (uint8_t)kWalkAnimRunFrames
                      : speed_abs >= (uint8_t)kWalkAnimWalkSubpx ? (uint8_t)kWalkAnimWalkFrames
-                                                                 : (uint8_t)kWalkAnimSlowFrames;
+                                                                : (uint8_t)kWalkAnimSlowFrames;
         ++walk_step;
         if (walk_step >= (uint8_t)kWalkFrameCount) {
             walk_step = 0;

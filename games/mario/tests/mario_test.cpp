@@ -1098,8 +1098,7 @@ constexpr uint8_t kBlockFloorTable[kBlockKindCount] = {
     0,           0,           0,           0,           0,           0,           0,           0,
     0,           0,           0,           0,           0,           0,           kFloorSolid, kFloorSolid,
     kFloorSolid, kFloorSolid, 0,           kFloorSolid, kFloorSolid, kFloorSolid, 0,           0,
-    kFloorSolid, 0,           0,           0,           kFloorSolid, kFloorSolid,
-    0,
+    kFloorSolid, 0,           0,           0,           kFloorSolid, kFloorSolid, 0,
 };
 
 // terrain.c's rule, against the same compiled grid the rom reads out of its banked copy: the level's

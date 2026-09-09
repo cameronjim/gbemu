@@ -5,12 +5,14 @@
 
 #include "powerup.h"
 
+#include "blocks.h"
 #include "debris.h"
 #include "enemies.h"
 #include "hazards.h"
 #include "hud.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "popup.h"
 #include "states.h"
 #include "terrain.h"
 
@@ -124,10 +126,13 @@ static void publish(void) {
 }
 
 uint8_t powerup_collect(uint8_t item_kind) BANKED {
-    // roster.json pays the same flat figure for any powerup taken; the 1-up pays a life instead
+    // roster.json pays the same flat figure for any powerup taken; the 1-up pays a life instead.
+    // the label rises from where the item was, whose position blocks.c has not cleared
     if (item_kind != kItemOneup) {
         hud_score = (uint16_t)(hud_score + kScoreTens(kPowerupPoints));
     }
+    popup_show(blocks_item_x, blocks_item_y,
+               item_kind == kItemOneup ? (uint16_t)kPopupOneUp : (uint16_t)kScoreTens(kPowerupPoints));
     if (item_kind == kItemStar) {
         star_timer = (uint16_t)kStarFrames;
         publish();

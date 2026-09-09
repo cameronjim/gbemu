@@ -674,7 +674,9 @@
 //          and each takes two oam slots if its art is 16x16 (goomba, squashed goomba, either
 //          shell) or four if it is a 16x32 box (koopa, paratroopa, piranha, and any of the three
 //          upside down as a corpse). five slots of four is the ceiling, hence 20; nothing else may
-//          hand out a slot in that run, so no two enemies can ever share one
+//          hand out a slot in that run, so no two enemies can ever share one. the score popup
+//          (popup.c) is the one thing drawn inside it: the two slots right past what the pool used
+//          this frame, only while they lie under 24, and parked on a frame they do not
 //   24-39  THE HAZARDS POOL, whose floor is whatever the enemy pool left: hazards.c starts at
 //          max(24, enemies_oam_top()) each frame and hands what is above it to the deck planks,
 //          bowser's body, his breath and a firebar's flames. the two ends only actually collide on
@@ -890,6 +892,14 @@
 #define kCoinPopLaunchDy -5
 #define kCoinPopGravity 0x50U
 #define kCoinPopEndDy 5
+
+// the floating score (games/mario/src/popup.c). smbdis SetupFloateyNumber (11533) gives the label
+// 0x30 frames and FloateyPart (1325) lifts it a pixel on each of them, drawn 8 px over the point it
+// was set at. kPopupOneUp is the tens value that means the 1-UP label rather than a number
+#define kPopupFrames 48U
+#define kPopupRisePx 1
+#define kPopupLiftPx 8
+#define kPopupOneUp 0U
 // an item that walks this far off either side of the camera is despawned
 #define kItemDespawnMarginPx 32
 
@@ -953,6 +963,10 @@
 // and the shell a stomped red paratroopa leaves, which is red where the koopa's is green: one
 // symmetric 8x16 pair of its own in bank 1, worn with kPalStar
 #define kTileShellRed 0x50U // bank 1, 0x50-0x51
+// the score popup's strip (popup.c, gen/popup.c): nine 8x16 columns in bank 1's free run past the
+// red shell. the ids are numerically the koopa's bank-0 0x60-0x6f only for the 1-UP pair, which is
+// why the strip starts here and not higher up
+#define kTilePopupFirst 0x52U // bank 1, 0x52-0x63
 #define kShellRedTileCount 2U
 
 // --- the toad room, the beat past 1-4's axe (games/mario/src/toad.c) ---------------------------

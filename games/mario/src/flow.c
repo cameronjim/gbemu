@@ -15,6 +15,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
+#include "popup.h"
 #include "powerup.h"
 #include "save.h"
 #include "terrain.h"
@@ -198,6 +199,9 @@ void flow_score_flag(int16_t feet) BANKED {
         ++band;
     }
     hud_score = (uint16_t)(hud_score + kScoreTens(kBandPoints[band]));
+    // FlagpoleGfxHandler (13282) hangs the number off the pole's far side, level with the grab
+    popup_show((uint16_t)((uint16_t)(level->flag_column + 1U) << 4), (int16_t)(feet - (int16_t)kBlockPx),
+               (uint16_t)kScoreTens(kBandPoints[band]));
 }
 
 // how long the card on screen has been up; the states that own one all live here

@@ -7,7 +7,10 @@
 
 #include "blocks.h"
 
+#include "hud.h"
 #include "mario.h"
+#include "physics_constants.h"
+#include "popup.h"
 
 #include <gb/gb.h>
 #include <stdint.h>
@@ -55,6 +58,7 @@ static void step_coin(void) {
     // JCoinRun: the coin is over once it falls at 5, and what it leaves behind is the "200"
     if (coin_dy >= (int8_t)kCoinPopEndDy) {
         blocks_coin_active = 0;
+        popup_show(blocks_coin_x, blocks_coin_y, (uint16_t)kScoreTens(kCoinPoints));
     }
 }
 

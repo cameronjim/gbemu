@@ -317,6 +317,9 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/sprites/items.png Items sprites16 4)
         mario_png_asset(games/mario/art/sprites/flower.png Flower sprites16 4)
         mario_png_asset(games/mario/art/sprites/fireball.png Fireball sprites16 4)
+        # the score popup's glyph strip, drawn by games/mario/tools/draw_popup.py rather than ripped;
+        # bank 6 with popup.c, because bank 4 is full
+        mario_png_asset(games/mario/art/sprites/popup.png Popup sprites16 6)
         # milestone 23: 1-1's block and terrain art, ripped off the smbd challenge-mode capture
         # (and, for the two blocks it cannot show, off the tileset sheet) by
         # games/mario/tools/rip_tiles.py. indexed again, so the png's index IS the entry of the
@@ -408,6 +411,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/castle_art.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/popup.c
                     ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
@@ -435,6 +439,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/assets.c games/mario/src/assets.h
                     games/mario/src/assets_data.c
                     games/mario/src/castle_art.c games/mario/src/castle_art.h
+                    games/mario/src/popup.c games/mario/src/popup.h
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}

@@ -67,6 +67,19 @@ void debris_poof(uint16_t px, int16_t py) BANKED {
     publish();
 }
 
+void debris_clear(void) BANKED {
+    uint8_t i;
+
+    debris_timer = 0;
+    debris_puff = 0;
+    frag_shown = 0;
+    puff_shown = 0;
+    for (i = 0; i < (uint8_t)kSpriteFreeCount; ++i) {
+        hide((uint8_t)(kSpriteFreeFirst + i));
+    }
+    publish();
+}
+
 void debris_frame(uint16_t cam_x, uint8_t cam_y) BANKED {
     uint8_t spin = 0;
     uint8_t i;

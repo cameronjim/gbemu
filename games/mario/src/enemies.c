@@ -9,6 +9,7 @@
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "popup.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -125,11 +126,13 @@ static uint8_t foot_of(const Enemy* e) {
     return (uint8_t)((uint16_t)(e->pos_x + (kEnemyWidthPx / 2U)) >> 4);
 }
 
-static void award(const uint16_t* table, uint8_t count, uint8_t* chain) {
+static void award(const uint16_t* table, uint8_t count, uint8_t* chain, const Enemy* e) {
     const uint8_t step = (*chain < count) ? *chain : (uint8_t)(count - 1U);
 
     hud_score = (uint16_t)(hud_score + table[step]);
-    // roster.json ends both sequences in a 1-up; m8b pays that life once the table runs out
+    // roster.json ends both sequences in a 1-up; m8b pays that life once the table runs out, and
+    // the label over the victim says which it was
+    popup_show(e->pos_x, e->pos_y, *chain >= count ? (uint16_t)kPopupOneUp : table[step]);
     if (*chain >= count) {
         hud_add_life();
     }
@@ -540,13 +543,13 @@ static void collide_enemies(void) {
                 // the kill leaves the body in its slot flipping out of the level, so the shell
                 // walks on over it rather than the pool closing up behind it
                 flip_kill(j);
-                award(kShellChain, kShellChainCount, &shell_chain);
+                award(kShellChain, kShellChainCount, &shell_chain, b);
                 ++j;
                 continue;
             }
             if (b->state == kEnemyShellMove && a->state != kEnemyShellMove) {
                 flip_kill(i);
-                award(kShellChain, kShellChainCount, &shell_chain);
+                award(kShellChain, kShellChainCount, &shell_chain, a);
                 break;
             }
             // a flyer holds its column: the nudge below must not shove it sideways, and it is not
@@ -581,7 +584,7 @@ static uint8_t stomp(Enemy* e) {
         shell_chain = 0;
         return kEnemyHitShellStomp;
     }
-    award(kStompChain, kStompChainCount, &stomp_chain);
+    award(kStompChain, kStompChainCount, &stomp_chain, e);
     // roster.json: a paratroopa stomps down into a plain koopa. it keeps the slot and the position
     // it was hit at, loses the wings, and falls out of the air to whatever is under it - a second
     // stomp is what puts it in its shell. the points are the koopa's, paid by the award above
@@ -614,9 +617,12 @@ static uint8_t stomp(Enemy* e) {
 // a fireball or a star kill pays a flat per-kind figure and starts no chain. roster.json says the
 // star's consecutive-defeat scoring escalates but calls its smb1-era values must-verify, so the
 // escalation is left out rather than invented
-static void award_kill(uint8_t kind) {
-    hud_score = (uint16_t)(hud_score + (kind == kEnemyGoomba ? kScoreTens(kGoombaKillPoints)
-                                                             : kScoreTens(kKoopaKillPoints)));
+static void award_kill(const Enemy* e) {
+    const uint16_t tens = e->kind == kEnemyGoomba ? (uint16_t)kScoreTens(kGoombaKillPoints)
+                                                  : (uint16_t)kScoreTens(kKoopaKillPoints);
+
+    hud_score = (uint16_t)(hud_score + tens);
+    popup_show(e->pos_x, e->pos_y, tens);
 }
 
 static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t player_h, int8_t player_dy,
@@ -657,7 +663,7 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
         from_above = (feet <= (int16_t)(e->pos_y + kEnemyStompLinePx)) ? 1U : 0U;
         // the star takes anything it touches off the pool outright, stomp or not
         if ((flags & kEnemyFlagStar) != 0U && (from_above == 0U || e->kind == kEnemyPiranha)) {
-            award_kill(e->kind);
+            award_kill(e);
             release_at(i, kRosterDead);
             continue;
         }
@@ -725,7 +731,7 @@ uint8_t enemies_fireball_hit(uint16_t px, int16_t py) BANKED {
         if ((int16_t)(py + kFireballPx) <= e->pos_y || (int16_t)(e->pos_y + kEnemyHeightPx) <= py) {
             continue;
         }
-        award_kill(e->kind);
+        award_kill(e);
         flip_kill(i);
         return 1;
     }
@@ -744,6 +750,7 @@ void enemies_load_level(void) BANKED {
     uint8_t i;
 
     assets_load_enemy_tiles();
+    popup_art_load();
     if (level->type == (uint8_t)kLevelTypeCastle) {
         assets_load_enemy_palettes_castle();
     } else {
@@ -945,8 +952,12 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
     uint8_t next = (uint8_t)kSpriteEnemyFirst;
     uint8_t i;
 
-    // the same fast path: an empty pool with nothing left in oam writes nothing at all
+    // the same fast path: an empty pool with nothing left in oam writes nothing at all - but for
+    // the score label, which draws in the slots right past the pool and so is placed from here
     if (live == 0U && oam_used == (uint8_t)kSpriteEnemyFirst) {
+        if (popup_busy != 0U) {
+            popup_frame(cam_y, (uint8_t)kSpriteEnemyFirst);
+        }
         return;
     }
 
@@ -1107,4 +1118,7 @@ void enemies_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         move_sprite(i, 0, 0);
     }
     oam_used = next;
+    if (popup_busy != 0U) {
+        popup_frame(cam_y, next);
+    }
 }

@@ -7,6 +7,7 @@
 #include "assets.h"
 #include "blocks.h"
 #include "camera.h"
+#include "debris.h"
 #include "enemies.h"
 #include "hazards.h"
 #include "hud.h"
@@ -14,11 +15,13 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
+#include "popup.h"
 #include "powerup.h"
 #include "save.h"
 #include "terrain.h"
 #include "title.h"
 
+#include <gb/cgb.h>
 #include <gb/gb.h>
 #include <stdint.h>
 
@@ -93,62 +96,112 @@ uint8_t flow_begin_run(uint8_t selected) {
     return selected;
 }
 
-// the pennant's row as it comes down the pole, and its own step timer. they live in this bank with
-// the code that walks them; nothing outside it ever reads either
-static uint8_t flag_row;
-static uint8_t flag_timer;
+// the pennant's top in world px while it is coming down as a sprite, and 1 from the arm until it
+// has gone back into the map. both live in this bank with the code that moves them; nothing outside
+// it ever reads either
+static int16_t flag_y;
+static uint8_t flag_flying;
+
+static int16_t flag_rest_y(void) {
+    return (int16_t)((int16_t)level->flag_base_row << 4);
+}
+
+static void pennant_hide(void) {
+    move_sprite(kSpritePennantL, 0, 0);
+    move_sprite(kSpritePennantR, 0, 0);
+}
 
 void flow_flag_arm(void) BANKED {
-    flag_row = level->flag_top_row;
-    flag_timer = 0;
+    // the sky slot's white, blue and black, the three the cloth's tiles are drawn in
+    static const palette_color_t cloth[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(6, 20, 31), RGB(0, 0, 0)};
+
+    if (level->has_flag == 0U) {
+        return;
+    }
+    // the two cells apply_flag_head stamped go back to sky and plain shaft: the centred shaft
+    // leaves only 8 px of the pole's own cell for the flag to touch it in, so the pennant's near
+    // half hangs in the column left of the pole and its far half is the pole cell's own left tile
+    terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)level->flag_top_row,
+                     (uint8_t)kBlockEmpty);
+    terrain_set_cell((int16_t)level->flag_column, (int16_t)level->flag_top_row, (uint8_t)kBlockFlagPole);
+    flag_y = (int16_t)((int16_t)level->flag_top_row << 4);
+    flag_flying = 1;
+    // its slots are the brick debris's first two - nothing can break a brick from here on, and a
+    // break still in the air is dropped - and its colours are the coin pop's palette retinted: no
+    // coin can pop during the clear, and the item loader puts the gold back for the next level
+    debris_clear();
+    set_sprite_palette(kPalCoin, 1, cloth);
+    set_sprite_tile(kSpritePennantL, kTilePennant);
+    set_sprite_tile(kSpritePennantR, (uint8_t)(kTilePennant + 2U));
+    set_sprite_prop(kSpritePennantL, kPalCoin);
+    set_sprite_prop(kSpritePennantR, kPalCoin);
+    flow_flag_draw();
 }
 
 uint8_t flow_flag_step(void) BANKED {
-    if (level->has_flag == 0U || flag_row >= level->flag_base_row) {
+    const int16_t rest = flag_rest_y();
+
+    if (level->has_flag == 0U || flag_flying == 0U) {
         return 1;
     }
-    ++flag_timer;
-    if (flag_timer >= (uint8_t)kClearFlagStepFrames) {
-        flag_timer = 0;
-        // the old row back to sky and plain shaft, the pennant one row lower. it takes two cells:
-        // the centred shaft leaves only 8px of the pole's own cell for the flag to touch it in, so
-        // the pennant's near half hangs in the column left of the pole and its far half is the
-        // pole cell's own left tile (kBlockFlagPoleCloth)
-        terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row, (uint8_t)kBlockEmpty);
-        terrain_set_cell((int16_t)level->flag_column, (int16_t)flag_row, (uint8_t)kBlockFlagPole);
-        ++flag_row;
-        terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)flag_row,
+    if (flag_y >= rest) {
+        // at rest it goes back into the map, in the shaft's last cell, and the sprites are parked.
+        // a frame after it got there, not on the frame: a bg write lands in the picture this vblank
+        // draws and an oam write only in the next one (gbdk's shadow oam is copied by the vbl isr),
+        // so painting on arrival showed the cloth at rest under a sprite still one step up
+        terrain_set_cell((int16_t)((int16_t)level->flag_column - 1), (int16_t)level->flag_base_row,
                          (uint8_t)kBlockFlagCloth);
-        terrain_set_cell((int16_t)level->flag_column, (int16_t)flag_row, (uint8_t)kBlockFlagPoleCloth);
+        terrain_set_cell((int16_t)level->flag_column, (int16_t)level->flag_base_row,
+                         (uint8_t)kBlockFlagPoleCloth);
+        pennant_hide();
+        flag_flying = 0;
+        return 1;
     }
-    return (uint8_t)(flag_row >= level->flag_base_row ? 1U : 0U);
+    flag_y = (int16_t)(flag_y + kClearSlidePx);
+    if (flag_y > rest) {
+        flag_y = rest;
+    }
+    return 0;
 }
 
-// roster.json: "contact height determines the score bonus", in five bands from the pole's base to
-// its top. the shaft's own span is split evenly between them - the bible gives no pixel boundaries
+void flow_flag_draw(void) BANKED {
+    int16_t sx;
+    int16_t sy;
+
+    if (level->has_flag == 0U || flag_flying == 0U) {
+        return;
+    }
+    // the cloth is the 16 px straddling the pole cell's left edge
+    sx = (int16_t)((int16_t)((int16_t)level->flag_column << 4) - 8 - (int16_t)camera_pos_x);
+    sy = (int16_t)(flag_y - (int16_t)camera_pos_y);
+    // the pole's top can stand above the view while he is low on it; it comes down into the picture
+    if (sy <= -(int16_t)kBlockPx) {
+        pennant_hide();
+        return;
+    }
+    move_sprite(kSpritePennantL, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+    move_sprite(kSpritePennantR, (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
+}
+
+// smbdis FlagpoleYPosData (12150), read at ChkFlagpoleYPosLoop (12187): the five bands are cut at
+// player y 0x22, 0x50, 0x68 and 0x90. smb's player y is his feet less 32 whichever size he is, and
+// its pole stands on a base block whose top is 0xc0 - the same nine shaft cells as ours - so the
+// cuts are his feet's height over that block: under 16 px is the bottom band, then under 56, 80
+// and 126, and anything higher is the top. physics.json interactions.flagpole_scoring
+static const uint8_t kFlagBandEdgePx[kFlagBandCount - 1U] = {16, 56, 80, 126};
+
 void flow_score_flag(int16_t feet) BANKED {
     static const uint16_t kBandPoints[kFlagBandCount] = kFlagBandPointsInit;
-    const int16_t base = (int16_t)((int16_t)(level->flag_base_row + 1U) << 4);
-    const int16_t top = (int16_t)((int16_t)level->flag_top_row << 4);
-    int16_t span = (int16_t)(base - top);
-    int16_t step = 0;
-    int16_t edge = base;
+    const int16_t above = (int16_t)((int16_t)((int16_t)(level->flag_base_row + 1U) << 4) - feet);
     uint8_t band = 0;
 
-    // by subtraction, not by dividing: one divide here pulls sdcc's signed 16-bit helper into
-    // bank 0, which m8b had no room for
-    while (span >= (int16_t)kFlagBandCount) {
-        span = (int16_t)(span - (int16_t)kFlagBandCount);
-        ++step;
-    }
-    while (band + 1U < (uint8_t)kFlagBandCount) {
-        edge = (int16_t)(edge - step);
-        if (feet > edge) {
-            break;
-        }
+    while (band < (uint8_t)(kFlagBandCount - 1U) && above >= (int16_t)kFlagBandEdgePx[band]) {
         ++band;
     }
     hud_score = (uint16_t)(hud_score + kScoreTens(kBandPoints[band]));
+    // FlagpoleGfxHandler (13282) hangs the number off the pole's far side, level with the grab
+    popup_show((uint16_t)((uint16_t)(level->flag_column + 1U) << 4), (int16_t)(feet - (int16_t)kBlockPx),
+               (uint16_t)kScoreTens(kBandPoints[band]));
 }
 
 // how long the card on screen has been up; the states that own one all live here

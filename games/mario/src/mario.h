@@ -592,6 +592,11 @@
 // big grip is pose 7 of the set above and needs no id of its own at all
 #define kTileClimbSmall 0x74U
 
+// the pennant as it comes down the pole: the flag head's four bg tiles (bank 1, kTileFlagClothT..)
+// written again as two 8x16 sprites in bank 0's 0x78-0x7b, the run big mario's old block gave back.
+// the family is already stored column by column, so one call lays both pairs
+#define kTilePennant 0x78U // 0x78-0x7b
+
 // the fire flower, the one item outside the 0xd0 family
 #define kTileFlowerFirst 0x80U // 0x80-0x83; gen/flower.h's kFlowerTileCount is the count
 
@@ -661,13 +666,17 @@
 //   0-3    mario. small parks the lower row; big is two rows of two, every pose (see player_draw)
 //   4-8    the throwaway animations: four brick fragments then the fireball's puff (debris.c).
 //          the world map borrows 4-11 for its four node markers and the toad room 4-7 for the
-//          retainer, both on screens that have no debris, no items and no enemies
+//          retainer, both on screens that have no debris, no items and no enemies; the clear
+//          borrows 4-5 for the pennant coming down the pole (flow.c), dropping any break still in
+//          the air - nothing can break a brick once the pole has him
 //   9-10   the loose item a block paid out       11  the coin pop      12-13  the two fireballs
 //   14-33  THE ENEMY POOL, allocated fresh every frame: the live slots are walked in pool order
 //          and each takes two oam slots if its art is 16x16 (goomba, squashed goomba, either
 //          shell) or four if it is a 16x32 box (koopa, paratroopa, piranha, and any of the three
 //          upside down as a corpse). five slots of four is the ceiling, hence 20; nothing else may
-//          hand out a slot in that run, so no two enemies can ever share one
+//          hand out a slot in that run, so no two enemies can ever share one. the score popup
+//          (popup.c) is the one thing drawn inside it: the two slots right past what the pool used
+//          this frame, only while they lie under 24, and parked on a frame they do not
 //   24-39  THE HAZARDS POOL, whose floor is whatever the enemy pool left: hazards.c starts at
 //          max(24, enemies_oam_top()) each frame and hands what is above it to the deck planks,
 //          bowser's body, his breath and a firebar's flames. the two ends only actually collide on
@@ -681,6 +690,8 @@
 #define kSpriteMarioLowR 3U
 #define kSpriteFreeFirst 4U
 #define kSpriteFreeCount 5U
+#define kSpritePennantL 4U
+#define kSpritePennantR 5U
 // the world map's own claim on the same run: two sprites per node, four nodes, slots 4-11. it is a
 // card screen - no debris, no items, no enemies - so it owns all forty and hands these back the
 // moment a level loads
@@ -772,8 +783,14 @@
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible
 #define kPlayerHitInsetPx 2
 #define kPlayerHitWidthPx (kPlayerWidthPx - 2 * kPlayerHitInsetPx) // 12
-// our own cadence, not the bible's: the walk cycle advances once this many subpixels have passed
-#define kWalkAnimStepSubpx 48U
+// smbdis PlayerAnimTmrData (6192) via GetPlayerAnimSpeed (6195): a walk pose holds 2 frames at
+// 0x1c subpx a frame or faster, 4 at 0x0e or faster, and 7 below that. the same 1/16 px unit as
+// our speeds, so the two thresholds are the disassembly's bytes
+#define kWalkAnimRunSubpx 0x1CU
+#define kWalkAnimWalkSubpx 0x0EU
+#define kWalkAnimRunFrames 2U
+#define kWalkAnimWalkFrames 4U
+#define kWalkAnimSlowFrames 7U
 
 // the play camera (games/mario/src/camera.c). horizontal: mario is held at kCamFollowX and holding
 // select slides that anchor toward kCamLookAheadX to show more of what is ahead; both directions
@@ -811,9 +828,12 @@
 // scy on the level's flat opening ground, which is where the default band lands there
 #define kPlayScy kScyMax
 
-// the level-clear sequence, all our own cadence (smbd's exact frame counts are unsourced). smb's
-// beat: grab the pole, slide down it with the flag coming down alongside, flip to the pole's far
-// side and wait there while the flag finishes, hop off, walk to the castle and step into the door
+// the level-clear sequence, our own cadence but for the slide (smbd's exact frame counts are
+// unsourced). smb's beat: grab the pole, slide down it with the flag coming down alongside, flip to
+// the pole's far side and wait there while the flag finishes, hop off, walk to the castle and step
+// into the door. the slide is smb's own 2 px a frame, his and the pennant's alike: smbdis
+// FlagpoleRoutine (6590) moves the flag 1 px plus the carry of a 0xff adder every frame, and
+// AutoControlPlayer climbs him down at the same rate
 #define kClearSlidePx 2
 // the shaft's lit column is px 8 of its block - the middle of it (kFlagPoleTiles in assets_data.c)
 // - so his box sits this far left of that block while he climbs: it lands the last lit column of
@@ -825,13 +845,11 @@
 // the pause on that side. in smb it lasts as long as the flag needs, so this is a floor and the
 // flag's own descent can hold the phase open past it
 #define kClearFlipFrames 48U
-// the pennant comes down one 16 px cell per this many frames. cell-granular because oam is full
-// (40/40) and the flag has to be repainted bg cells rather than a sprite
-#define kClearFlagStepFrames 6U
 #define kClearHopFrames 12
 #define kClearHopPx 2
 #define kClearWalkPx 1
-#define kClearWalkAnimFrames 8U
+// 1 px a frame is 16 subpx, the middle of PlayerAnimTmrData's three: a pose every 4 frames
+#define kClearWalkAnimFrames kWalkAnimWalkFrames
 // the walk ends at the castle's door column when the level has a castle. a level whose compiler
 // placed none falls back to this many blocks along the closing ground
 #define kClearWalkBlocks 5
@@ -849,7 +867,10 @@
 // cell's 2x2 face is redrawn one tile row higher for kBumpFrames and then put back, which costs two
 // 2x3 vram writes on the bump frame and two on the restore frame - a fraction of one streamed column
 #define kBumpRisePx 8U
-#define kBumpFrames 8U
+// smbdis BumpBlock (7307) sends the block up at 2 px a frame under ImposeGravityBlock's 0x50/256
+// gravity (7660) and kills it when its y comes back within 5 px (7480): a 14-frame arc that sits
+// 4 px or higher, i.e. rounds to the raised tile row, for 11 of them
+#define kBumpFrames 11U
 // level-1-1.json: the ten-coin brick. the bible gives no per-hit timeout, only the total
 #define kMulticoinBudget 10U
 
@@ -865,10 +886,20 @@
 // the star's own gravity: smb1's star hops about two blocks, not the mushroom's much longer arc, so
 // it falls back to earth faster than kItemGravitySubpx would let it (apex ~32px, ~16 frames up)
 #define kStarGravitySubpx 64U
-// the coin a block pays out pops straight up and falls back over kCoinPopFrames; smb's own arc
-// length is unsourced in the bible, so this cadence is ours
-#define kCoinPopFrames 30U
-#define kCoinPopRisePx 2
+// smbdis JCoinC (6989) and JCoinRun (7046): the coin a block pays out leaves at -5 px a frame under
+// 0x50/256 gravity, in smb's 8.8 fixed point, and is over the moment it is falling at 5 - 32 frames,
+// 43 px up at frame 15. blocks_draw.c steps it, because bank 0 has no room for the arithmetic
+#define kCoinPopLaunchDy -5
+#define kCoinPopGravity 0x50U
+#define kCoinPopEndDy 5
+
+// the floating score (games/mario/src/popup.c). smbdis SetupFloateyNumber (11533) gives the label
+// 0x30 frames and FloateyPart (1325) lifts it a pixel on each of them, drawn 8 px over the point it
+// was set at. kPopupOneUp is the tens value that means the 1-UP label rather than a number
+#define kPopupFrames 48U
+#define kPopupRisePx 1
+#define kPopupLiftPx 8
+#define kPopupOneUp 0U
 // an item that walks this far off either side of the camera is despawned
 #define kItemDespawnMarginPx 32
 
@@ -932,6 +963,10 @@
 // and the shell a stomped red paratroopa leaves, which is red where the koopa's is green: one
 // symmetric 8x16 pair of its own in bank 1, worn with kPalStar
 #define kTileShellRed 0x50U // bank 1, 0x50-0x51
+// the score popup's strip (popup.c, gen/popup.c): nine 8x16 columns in bank 1's free run past the
+// red shell. the ids are numerically the koopa's bank-0 0x60-0x6f only for the 1-UP pair, which is
+// why the strip starts here and not higher up
+#define kTilePopupFirst 0x52U // bank 1, 0x52-0x63
 #define kShellRedTileCount 2U
 
 // --- the toad room, the beat past 1-4's axe (games/mario/src/toad.c) ---------------------------

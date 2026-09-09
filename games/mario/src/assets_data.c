@@ -110,6 +110,8 @@ void assets_load_bg_tiles_underground(void) BANKED {
 // runs with the lcd off, which is where this is called from; vbk goes back before anything else
 // touches the map, because set_bkg_tiles would otherwise write tile numbers into the attribute map
 void assets_load_scenery_tiles(void) BANKED {
+    // the pennant's second life, as the two sprites the clear brings down the pole (flow.c)
+    set_sprite_data(kTilePennant, kFlagHeadTileCount, kFlagHeadTiles);
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileCastleWall, kCastleTileCount, kCastleTiles);
     set_bkg_data(kTileCastleCrenelInner, kCastleCrenelInnerTileCount, kCastleCrenelInnerTiles);

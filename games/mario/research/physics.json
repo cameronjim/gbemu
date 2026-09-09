@@ -171,7 +171,9 @@
         { "y_position_hex_max_exclusive": "0x68", "points": 800 },
         { "y_position_hex_max_exclusive": "0x90", "points": 400 },
         { "y_position_hex_max_exclusive": null,   "points": 100, "note": "0x90 and below (lowest contact)" }
-      ]
+      ],
+      "feet_over_base_block_px_max_exclusive": [16, 56, 80, 126],
+      "feet_note": "Player_Y_Position is the top of a 32 px box whichever size he is, so his feet are y+32, and the pole's base block tops out at 0xc0; the four cuts above expressed as his feet's height over that block are what flow.c's kFlagBandEdgePx holds (bottom band under 16, then 56, 80, 126, top above)"
     }
   },
 

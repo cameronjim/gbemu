@@ -7,7 +7,10 @@
 
 #include "blocks.h"
 
+#include "hud.h"
 #include "mario.h"
+#include "physics_constants.h"
+#include "popup.h"
 
 #include <gb/gb.h>
 #include <stdint.h>
@@ -28,6 +31,35 @@ static const uint8_t kItemTile[kItemKindCount] = {
 // oam y 0 parks a sprite entirely above the screen
 static void hide(uint8_t slot) {
     move_sprite(slot, 0, 0);
+}
+
+// the coin's flight in smb's 8.8 fixed point (smbdis ImposeGravity, 7704): whole px a frame, a
+// 1/256 px force that gravity adds to, and the fraction the force accumulates into, whose carry is
+// the odd extra pixel
+static int8_t coin_dy;
+static uint8_t coin_force;
+static uint8_t coin_frac;
+
+static void step_coin(void) {
+    uint16_t sum;
+
+    if (blocks_coin_active == (uint8_t)kCoinPopFresh) {
+        blocks_coin_active = kCoinPopFlying;
+        coin_dy = kCoinPopLaunchDy;
+        coin_force = 0;
+        coin_frac = 0;
+    }
+    sum = (uint16_t)((uint16_t)coin_frac + (uint16_t)coin_force);
+    coin_frac = (uint8_t)sum;
+    blocks_coin_y = (int16_t)(blocks_coin_y + coin_dy + (int16_t)(sum >> 8));
+    sum = (uint16_t)((uint16_t)coin_force + kCoinPopGravity);
+    coin_force = (uint8_t)sum;
+    coin_dy = (int8_t)(coin_dy + (int8_t)(sum >> 8));
+    // JCoinRun: the coin is over once it falls at 5, and what it leaves behind is the "200"
+    if (coin_dy >= (int8_t)kCoinPopEndDy) {
+        blocks_coin_active = 0;
+        popup_show(blocks_coin_x, blocks_coin_y, (uint16_t)kScoreTens(kCoinPoints));
+    }
 }
 
 void blocks_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
@@ -63,6 +95,9 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y) BANKED {
         }
     }
 
+    if (blocks_coin_active != 0U) {
+        step_coin();
+    }
     if (blocks_coin_active == 0U) {
         if (blocks_coin_shown != 0U) {
             blocks_coin_shown = 0;

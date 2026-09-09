@@ -297,6 +297,14 @@ constexpr uint8_t kTileOneupLo = 0xD8;
 constexpr uint8_t kTileOneupHi = 0xDB;
 constexpr uint8_t kTileCoinPopLo = 0xDC;
 constexpr uint8_t kTileCoinPopHi = 0xDD;
+// the pennant's sprite form during the clear, mario.h kTilePennant
+constexpr uint8_t kTilePennantLo = 0x78;
+constexpr uint8_t kTilePennantHi = 0x7B;
+// the score popup's digit columns (bank 1, mario.h kTilePopupFirst): the 1-UP pair past them shares
+// its numbers with the bank-0 koopa, so it is left out of the range a test reads
+constexpr uint8_t kTilePopupLo = 0x52;
+constexpr uint8_t kTilePopupHi = 0x5F;
+constexpr int kPopupFrames = 48;
 
 constexpr uint16_t kBlockPx = 16;
 constexpr uint16_t kScreenWidthPx = 160;
@@ -4633,7 +4641,7 @@ const LevelBlock* plain_brick() {
 }
 
 // games/mario/src/mario.h's kBumpFrames, the frames a struck block spends drawn one row higher
-constexpr int kBumpFramesHost = 8;
+constexpr int kBumpFramesHost = 11;
 
 // walks the twin toward a world x and lets it coast to a halt there
 bool append_walk(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t target) {
@@ -4893,18 +4901,17 @@ void require_no_garbage(const gb::Gameboy& gameboy) {
 
 } // namespace
 
-// the topmost and bottommost screen rows carrying a pennant bg pixel, or {-1,-1}. the pennant is
-// repainted bg cells and not a sprite (oam is full), so it is read out of the tile map like terrain
+// the topmost and bottommost screen rows carrying a pennant pixel, or {-1,-1}. at rest the pennant
+// is bg cells (0x31-0x34, read out of the tile map like terrain); coming down the pole it is the
+// same four tiles as two sprites at bank-0 0x78-0x7b (mario.h kTilePennant), and both count
 std::pair<int, int> cloth_rows(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     int top = -1;
     int bottom = -1;
     for (size_t i = 0; i < ids.size(); ++i) {
-        if ((ids[i] & 0x100u) != 0) {
-            continue;
-        }
+        const bool sprite = (ids[i] & 0x100u) != 0;
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        if (tile < 0x31 || tile > 0x34) {
+        if (sprite ? (tile < 0x78 || tile > 0x7B) : (tile < 0x31 || tile > 0x34)) {
             continue;
         }
         const int y = static_cast<int>(i / gb::kLcdWidth);
@@ -5596,6 +5603,70 @@ TEST_CASE("mario_animation_changes_with_state") {
     }
     gameboy.set_button(gb::Button::Left, false);
     REQUIRE(turning.count(kFrameSkid) == 1u);
+}
+
+// the lengths of every complete run of one pose in a frame-by-frame sequence: the first and the
+// last runs are cut by the window and are not counted
+std::vector<int> pose_runs(const std::vector<int>& seq) {
+    std::vector<int> runs;
+    int length = 0;
+    for (size_t i = 0; i < seq.size(); ++i) {
+        ++length;
+        if (i + 1 == seq.size() || seq[i + 1] != seq[i]) {
+            runs.push_back(length);
+            length = 0;
+        }
+    }
+    if (runs.size() >= 2) {
+        runs.erase(runs.begin());
+        runs.pop_back();
+    } else {
+        runs.clear();
+    }
+    return runs;
+}
+
+std::vector<int> walk_frames(gb::Gameboy& gameboy, int frames) {
+    std::vector<int> seq;
+    for (int i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        REQUIRE(m.found);
+        REQUIRE(m.frame >= kFrameWalk0);
+        REQUIRE(m.frame <= kFrameWalk2);
+        seq.push_back(m.frame);
+    }
+    return seq;
+}
+
+// smbdis PlayerAnimTmrData: at the run cap a pose holds two frames, at the walk cap four (the 7 of
+// a slow start is passed through too quickly to pin). two fresh carts, because a run that long
+// down 1-1 reaches its first goomba
+TEST_CASE("mario_walk_poses_hold_the_disassembly_s_frames") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy runner;
+    REQUIRE(runner.load_rom(rom));
+    enter_play(runner);
+    runner.set_button(gb::Button::Right, true);
+    runner.set_button(gb::Button::B, true);
+    run(runner, 60);
+    const std::vector<int> running = pose_runs(walk_frames(runner, 24));
+    REQUIRE(running.size() >= 6u);
+    for (int length : running) {
+        REQUIRE(length == 2);
+    }
+
+    gb::Gameboy walker;
+    REQUIRE(walker.load_rom(rom));
+    enter_play(walker);
+    walker.set_button(gb::Button::Right, true);
+    run(walker, 60);
+    const std::vector<int> walking = pose_runs(walk_frames(walker, 40));
+    REQUIRE(walking.size() >= 6u);
+    for (int length : walking) {
+        REQUIRE(length == 4);
+    }
 }
 
 TEST_CASE("mario_play_is_deterministic") {
@@ -6290,6 +6361,54 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
     REQUIRE(sequence <= 6 * 60);
 }
 
+// the pennant comes down the pole the way he does: kClearSlidePx a frame, every frame, from the
+// top cell to the shaft's last one. read against his own feet on the screen, so the view's motion
+// cancels: the gap never grows (it would if the pennant stalled) and never closes by more than a
+// slide step (it would if the pennant jumped a cell). smbdis FlagpoleRoutine moves the flag 2 px a
+// frame too
+TEST_CASE("mario_pennant_comes_down_the_pole_with_him") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    int prev_gap = 1000;
+    int flying = 0;
+    int settled_at = -1;
+    std::pair<int, int> cloth{-1, -1};
+    for (int i = 0; i < 200 && settled_at < 0; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        cloth = cloth_rows(gameboy);
+        REQUIRE(m.found);
+        REQUIRE(cloth.first >= 0);
+        const int gap = m.bottom - cloth.second;
+        if (prev_gap < 1000) {
+            REQUIRE(gap <= prev_gap);
+            REQUIRE(prev_gap - gap <= kClearSlidePx);
+        }
+        prev_gap = gap;
+        // the sprites are parked the frame it goes back into the map, and that is the slide over.
+        // (the bg cloth the compiler stamped at the top can outlive the arm by a repaint frame, so
+        // the map alone cannot say)
+        if (!sprite_box(gameboy, kTilePennantLo, kTilePennantHi).found) {
+            settled_at = i;
+        } else {
+            ++flying;
+        }
+    }
+    REQUIRE(settled_at > 0);
+    REQUIRE(flying >= 8);
+    // and where it settled is beside him: its bottom edge within a block of his feet
+    const Mario at_rest = mario_at(gameboy);
+    REQUIRE(at_rest.found);
+    REQUIRE(std::abs(cloth.second - at_rest.bottom) <= kBlockPx);
+}
+
 // --- sub-milestone 5: block reactions, items and the pipe sub-area ------------------------------
 
 TEST_CASE("mario_bump_coin_block") {
@@ -6627,6 +6746,7 @@ void walk_room(gb::Gameboy& gameboy, int frames) {
 // off the screen only means anything read twice from the same vantage, and the room is wider than
 // the screen; the counter is the one reading that does not care where the camera stands
 int hud_coins(const gb::Gameboy& gameboy);
+int hud_score_shown(const gb::Gameboy& gameboy);
 
 // crosses the room and leaves through its sideways mouth, retrying the last stretch from a standing
 // start if the walk got hung up on the platform. returns whether he is out
@@ -7201,6 +7321,65 @@ TEST_CASE("mario_stomp_squashes") {
     // and the flat goomba is gone a squash timer later, with nothing walking in its place
     run(gameboy, kSquashFrames + 8);
     REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
+}
+
+// the floating score: a stomp raises smb's floatey number over the goomba - two sprites out of the
+// popup strip - which rises a pixel a frame and is gone kPopupFrames later, and the hud has moved
+// by exactly what the label said
+TEST_CASE("mario_stomp_raises_a_score_popup") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    const int before = hud_score_shown(gameboy);
+    REQUIRE(before >= 0);
+    REQUIRE(!sprite_box(gameboy, kTilePopupLo, kTilePopupHi).found);
+    replay(gameboy, stomp.script, 0, stomp.frame + 1);
+
+    // the label is up within a frame or two of the landing, over the pancake
+    SpriteBox popup;
+    int shown_at = -1;
+    for (int i = 0; i < 4 && shown_at < 0; ++i) {
+        gameboy.run_frame();
+        popup = sprite_box(gameboy, kTilePopupLo, kTilePopupHi);
+        if (popup.found) {
+            shown_at = i;
+        }
+    }
+    REQUIRE(shown_at >= 0);
+    const SpriteBox flat = sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi);
+    REQUIRE(flat.found);
+    REQUIRE(std::abs(popup.left - flat.left) <= kBlockPx);
+    REQUIRE(popup.top < flat.top);
+
+    // it rises, a pixel a frame, and is gone once its frames are spent
+    int top = popup.top;
+    int rose = 0;
+    int gone_at = -1;
+    for (int i = 0; i < kPopupFrames + 8 && gone_at < 0; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTilePopupLo, kTilePopupHi);
+        if (!now.found) {
+            gone_at = i;
+            break;
+        }
+        REQUIRE(now.top <= top);
+        rose += (now.top < top) ? 1 : 0;
+        top = now.top;
+    }
+    REQUIRE(gone_at >= 0);
+    REQUIRE(gone_at <= kPopupFrames);
+    REQUIRE(rose >= kPopupFrames / 2);
+
+    // and the hud moved by the chain's opening step, which is what the label showed
+    REQUIRE(hud_score_shown(gameboy) - before == kStompChainTable[0]);
 }
 
 // m22 stores only the LEFT half of every left-right symmetric frame - the pancake, either shell,
@@ -13123,6 +13302,30 @@ TEST_CASE("mario_flag_scoring") {
     enter_play(jumper);
     const int jumped = base_score_after(jumper, high);
     REQUIRE(jumped > walked);
+
+    // and the bands are smb's own (flow.c kFlagBandEdgePx, off smbdis FlagpoleYPosData): running
+    // into the shaft at ground level is the bottom band, and the jump pays whichever band the twin
+    // says his feet were in over the base block. the pole's own points are the card's score less
+    // whatever the hud already showed on the frame before contact: the hud row stops updating
+    // the moment the clear sequence owns the frame
+    constexpr int kFlagBandEdgePx[4] = {16, 56, 80, 126};
+    constexpr int kFlagBandPoints[5] = kFlagBandPointsInit;
+    const auto before_contact = [&rom](const Route& route) {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_play(gameboy);
+        replay(gameboy, route.script, 0, route.script.size() - 1);
+        return hud_score_shown(gameboy);
+    };
+    REQUIRE(walked - before_contact(low) == kFlagBandPoints[0]);
+    const int base = (kHostLevels[kLevel11].flag_base_row + 1) * kBlockPx;
+    const int above = base - (high.end.y_pos + high.end.foot_h());
+    int band = 0;
+    while (band < 4 && above >= kFlagBandEdgePx[band]) {
+        ++band;
+    }
+    REQUIRE(band > 0);
+    REQUIRE(jumped - before_contact(high) == kFlagBandPoints[band]);
 }
 
 // --- m19: three save slots, the SELECT FILE screen and world one's map -------------------------

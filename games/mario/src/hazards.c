@@ -18,6 +18,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "player.h"
+#include "popup.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -677,6 +678,7 @@ uint8_t hazards_fireball_hit(uint16_t px, int16_t py) BANKED {
     ++bowser_hits;
     if (bowser_hits >= (uint8_t)kBowserFireballHits) {
         hud_score = (uint16_t)(hud_score + kScoreTens(kBowserKillPoints));
+        popup_show(bowser_x, bowser_y, (uint16_t)kScoreTens(kBowserKillPoints));
         bowser_falling = 1;
         bowser_dy = 0;
         fire_ttl = 0;

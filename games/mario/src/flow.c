@@ -124,28 +124,19 @@ uint8_t flow_flag_step(void) BANKED {
     return (uint8_t)(flag_row >= level->flag_base_row ? 1U : 0U);
 }
 
-// roster.json: "contact height determines the score bonus", in five bands from the pole's base to
-// its top. the shaft's own span is split evenly between them - the bible gives no pixel boundaries
+// smbdis FlagpoleYPosData (12150), read at ChkFlagpoleYPosLoop (12187): the five bands are cut at
+// player y 0x22, 0x50, 0x68 and 0x90. smb's player y is his feet less 32 whichever size he is, and
+// its pole stands on a base block whose top is 0xc0 - the same nine shaft cells as ours - so the
+// cuts are his feet's height over that block: under 16 px is the bottom band, then under 56, 80
+// and 126, and anything higher is the top. physics.json interactions.flagpole_scoring
+static const uint8_t kFlagBandEdgePx[kFlagBandCount - 1U] = {16, 56, 80, 126};
+
 void flow_score_flag(int16_t feet) BANKED {
     static const uint16_t kBandPoints[kFlagBandCount] = kFlagBandPointsInit;
-    const int16_t base = (int16_t)((int16_t)(level->flag_base_row + 1U) << 4);
-    const int16_t top = (int16_t)((int16_t)level->flag_top_row << 4);
-    int16_t span = (int16_t)(base - top);
-    int16_t step = 0;
-    int16_t edge = base;
+    const int16_t above = (int16_t)((int16_t)((int16_t)(level->flag_base_row + 1U) << 4) - feet);
     uint8_t band = 0;
 
-    // by subtraction, not by dividing: one divide here pulls sdcc's signed 16-bit helper into
-    // bank 0, which m8b had no room for
-    while (span >= (int16_t)kFlagBandCount) {
-        span = (int16_t)(span - (int16_t)kFlagBandCount);
-        ++step;
-    }
-    while (band + 1U < (uint8_t)kFlagBandCount) {
-        edge = (int16_t)(edge - step);
-        if (feet > edge) {
-            break;
-        }
+    while (band < (uint8_t)(kFlagBandCount - 1U) && above >= (int16_t)kFlagBandEdgePx[band]) {
         ++band;
     }
     hud_score = (uint16_t)(hud_score + kScoreTens(kBandPoints[band]));

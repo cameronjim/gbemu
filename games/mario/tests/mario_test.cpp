@@ -297,6 +297,9 @@ constexpr uint8_t kTileOneupLo = 0xD8;
 constexpr uint8_t kTileOneupHi = 0xDB;
 constexpr uint8_t kTileCoinPopLo = 0xDC;
 constexpr uint8_t kTileCoinPopHi = 0xDD;
+// the pennant's sprite form during the clear, mario.h kTilePennant
+constexpr uint8_t kTilePennantLo = 0x78;
+constexpr uint8_t kTilePennantHi = 0x7B;
 
 constexpr uint16_t kBlockPx = 16;
 constexpr uint16_t kScreenWidthPx = 160;
@@ -4893,18 +4896,17 @@ void require_no_garbage(const gb::Gameboy& gameboy) {
 
 } // namespace
 
-// the topmost and bottommost screen rows carrying a pennant bg pixel, or {-1,-1}. the pennant is
-// repainted bg cells and not a sprite (oam is full), so it is read out of the tile map like terrain
+// the topmost and bottommost screen rows carrying a pennant pixel, or {-1,-1}. at rest the pennant
+// is bg cells (0x31-0x34, read out of the tile map like terrain); coming down the pole it is the
+// same four tiles as two sprites at bank-0 0x78-0x7b (mario.h kTilePennant), and both count
 std::pair<int, int> cloth_rows(const gb::Gameboy& gameboy) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     int top = -1;
     int bottom = -1;
     for (size_t i = 0; i < ids.size(); ++i) {
-        if ((ids[i] & 0x100u) != 0) {
-            continue;
-        }
+        const bool sprite = (ids[i] & 0x100u) != 0;
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        if (tile < 0x31 || tile > 0x34) {
+        if (sprite ? (tile < 0x78 || tile > 0x7B) : (tile < 0x31 || tile > 0x34)) {
             continue;
         }
         const int y = static_cast<int>(i / gb::kLcdWidth);
@@ -6352,6 +6354,54 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
     const int sequence = gone_at + 24 + 72;
     REQUIRE(sequence >= 4 * 60);
     REQUIRE(sequence <= 6 * 60);
+}
+
+// the pennant comes down the pole the way he does: kClearSlidePx a frame, every frame, from the
+// top cell to the shaft's last one. read against his own feet on the screen, so the view's motion
+// cancels: the gap never grows (it would if the pennant stalled) and never closes by more than a
+// slide step (it would if the pennant jumped a cell). smbdis FlagpoleRoutine moves the flag 2 px a
+// frame too
+TEST_CASE("mario_pennant_comes_down_the_pole_with_him") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    const Route route = plan_route(0, true, 4000);
+    REQUIRE(route.reached);
+    replay(gameboy, route.script, 0, route.script.size());
+
+    int prev_gap = 1000;
+    int flying = 0;
+    int settled_at = -1;
+    std::pair<int, int> cloth{-1, -1};
+    for (int i = 0; i < 200 && settled_at < 0; ++i) {
+        gameboy.run_frame();
+        const Mario m = mario_at(gameboy);
+        cloth = cloth_rows(gameboy);
+        REQUIRE(m.found);
+        REQUIRE(cloth.first >= 0);
+        const int gap = m.bottom - cloth.second;
+        if (prev_gap < 1000) {
+            REQUIRE(gap <= prev_gap);
+            REQUIRE(prev_gap - gap <= kClearSlidePx);
+        }
+        prev_gap = gap;
+        // the sprites are parked the frame it goes back into the map, and that is the slide over.
+        // (the bg cloth the compiler stamped at the top can outlive the arm by a repaint frame, so
+        // the map alone cannot say)
+        if (!sprite_box(gameboy, kTilePennantLo, kTilePennantHi).found) {
+            settled_at = i;
+        } else {
+            ++flying;
+        }
+    }
+    REQUIRE(settled_at > 0);
+    REQUIRE(flying >= 8);
+    // and where it settled is beside him: its bottom edge within a block of his feet
+    const Mario at_rest = mario_at(gameboy);
+    REQUIRE(at_rest.found);
+    REQUIRE(std::abs(cloth.second - at_rest.bottom) <= kBlockPx);
 }
 
 // --- sub-milestone 5: block reactions, items and the pipe sub-area ------------------------------

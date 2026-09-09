@@ -48,7 +48,6 @@ static uint8_t item_grounded;
 
 // the single coin-pop slot: 8x16, one sprite
 uint8_t blocks_coin_active;
-static uint8_t coin_timer;
 uint16_t blocks_coin_x;
 int16_t blocks_coin_y;
 
@@ -147,11 +146,11 @@ static void start_bump(int16_t column, int16_t row) {
 }
 
 static void pop_coin(int16_t column, int16_t row) {
-    // the 8 px sprite sits centered in the block's 16 px cell and starts one cell above it
+    // the 8 px sprite sits centered in the block's 16 px cell and leaves from the cell's own top,
+    // as smb's does (SetupJumpCoin). kCoinPopFresh: blocks_draw arms the arc on its first frame
     blocks_coin_x = (uint16_t)(((uint16_t)column << 4) + 4U);
-    blocks_coin_y = (int16_t)(((int16_t)row << 4) - (int16_t)kBlockPx);
-    coin_timer = 0;
-    blocks_coin_active = 1;
+    blocks_coin_y = (int16_t)((int16_t)row << 4);
+    blocks_coin_active = kCoinPopFresh;
     ++coins_collected;
     // the hud counters are plain ram, so a coin costs an increment and an add rather than a
     // trampoline into bank 5; hud_frame picks up the change on the same frame
@@ -549,15 +548,6 @@ uint8_t blocks_update(uint16_t player_px, int16_t player_py, uint8_t player_h, u
         --bump_timer;
         if (bump_timer == 0U) {
             terrain_restore_block(bump_column, bump_row);
-        }
-    }
-    if (blocks_coin_active != 0U) {
-        blocks_coin_y =
-            (int16_t)(blocks_coin_y +
-                      (coin_timer < (uint8_t)(kCoinPopFrames / 2U) ? -kCoinPopRisePx : kCoinPopRisePx));
-        ++coin_timer;
-        if (coin_timer >= (uint8_t)kCoinPopFrames) {
-            blocks_coin_active = 0;
         }
     }
     taken = item_update(player_px, player_py, player_h, cam_x);

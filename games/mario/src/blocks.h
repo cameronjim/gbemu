@@ -55,7 +55,11 @@ void blocks_draw(uint16_t cam_x, uint8_t cam_y) BANKED;
 extern uint8_t blocks_item_kind;
 extern uint16_t blocks_item_x;
 extern int16_t blocks_item_y;
+// 0 when no coin is up; kCoinPopFresh on the frame pop_coin raised it, and kCoinPopFlying once
+// blocks_draw has armed the arc. the arc itself steps in blocks_draw, bank 6 - bank 0 is full
 extern uint8_t blocks_coin_active;
+#define kCoinPopFresh 1U
+#define kCoinPopFlying 2U
 extern uint16_t blocks_coin_x;
 extern int16_t blocks_coin_y;
 extern uint8_t blocks_item_shown;

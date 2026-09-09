@@ -108,6 +108,10 @@ BLOCK_HILL_CORE = 51
 # draw the pair cell for cell, at 1-2's two sideways pipes and at 1-1's bonus room exit
 BLOCK_PIPE_JOINT_T = 52
 BLOCK_PIPE_JOINT_B = 53
+# the chain from a bridge's far end up to its axe, one cell over the deck's last column: the smbd
+# castle capture draws it and the nes one too. scenery on the masonry's slot, and the contract with
+# mario.h's kBlockBridgeChain; the engine clears it the frame the axe is taken
+BLOCK_BRIDGE_CHAIN = 54
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -164,6 +168,7 @@ KIND_NAMES = {
     BLOCK_HILL_CORE: "HILL_CORE",
     BLOCK_PIPE_JOINT_T: "PIPE_JOINT_T",
     BLOCK_PIPE_JOINT_B: "PIPE_JOINT_B",
+    BLOCK_BRIDGE_CHAIN: "BRIDGE_CHAIN",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -173,7 +178,7 @@ WALK_THROUGH = frozenset(
      BLOCK_COIN, BLOCK_AXE,
      BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
      BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE_WINDOW_RIGHT, BLOCK_TRUNK,
-     BLOCK_HILL_CORE]
+     BLOCK_HILL_CORE, BLOCK_BRIDGE_CHAIN]
     + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
 )
 
@@ -1108,6 +1113,11 @@ def compile_grid(bible, level_type):
         for column in range(x0, x1 + 1):
             grid[column][bridge_row] = BLOCK_BRIDGE
         grid[axe_column][axe_row] = BLOCK_AXE
+        # the chain over the deck's last column, running up to the axe. only into open air: a
+        # measured bridge whose far end meets a wall has nothing to hang a chain in
+        if bridge_row > 0 and grid[x1][bridge_row - 1] == BLOCK_EMPTY:
+            grid[x1][bridge_row - 1] = BLOCK_BRIDGE_CHAIN
+            probes.append((x1, bridge_row - 1, BLOCK_BRIDGE_CHAIN))
         bridge = (x0, x1)
     elif level_type == TYPE_CASTLE and ground_runs:
         bridge, axe_column = apply_bridge(grid, ground_runs[-1])

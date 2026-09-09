@@ -693,6 +693,10 @@ void hazards_drop_bridge(void) BANKED {
     collapse_column = (int16_t)level->bridge_x1;
     collapse_timer = 0;
     hazard_clear_busy = 1;
+    // the chain from the deck's far end up to the axe goes with the axe, before the first cell
+    if (level->bridge_row > 0U) {
+        terrain_clear_cell((int16_t)level->bridge_x1, (int16_t)(level->bridge_row - 1U));
+    }
 }
 
 uint8_t hazards_spin_step(void) BANKED {

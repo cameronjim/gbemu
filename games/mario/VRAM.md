@@ -70,8 +70,10 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | 0x0a-0x0e | 1-3's tree canopy (`kTileTreeFirst`, 5 tiles, `gen/tree.c`) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | m26 re-cut these off `smbd_ch_1-3.png` and the re-cut cost **two ids less** than the hand art it replaced: the capture draws the canopy's right cap as the left one's exact mirror, so `kBlockTreeTopR` carries the left cap's four tiles with the columns swapped and `kCamAttrXFlip` in its palette byte (the trick `kBlockHillSlopeR` already rides) and the old `kTileTreeCapTr`/`kTileTreeCapBr` are gone. also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
 | 0x0f | 1-3's tree trunk (`kTileTrunk`, 1 tile, `gen/trunk.c`) | `assets_load_scenery_tiles` | level play (as above) | one tile is the whole column: the capture's stripe pair has an 8px period in *both* axes, so all four quadrants of a trunk cell are this id. it is the one tree tile on the brick slot's browns rather than the pipe slot's greens, which is why it is its own generated family and its own `set_bkg_data` call |
 | 0x10-0x11 | **FREE** (2 ids) | — | — | what m26's mirror gave back from the tree run |
-| 0x12-0x18 | castle masonry courses, axe, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `assets_load_scenery_tiles` | level play (castle type for the masonry/axe/bridge; any level type with a >1-deep lava pit for the lava fill) | |
-| 0x19-0x1f | **FREE** (7 ids) | — | — | called out unclaimed in mario.h |
+| 0x12-0x18 | castle masonry courses, the axe's blades, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `castle_art_load` (bank 6) | level play, castle type only | m27 re-cut every one of these off `smbd_ch_1-4.png` without moving an id (`gen/castle_brick.c`, `gen/axe.c`, `gen/bridge.c`, `gen/lava.c`). the masonry pair and the bridge pair came out pixel-identical to the hand art they replaced; the lava did not (the capture's wave sits at the top of the cell and the lower half is flat red, so 0x21 and 0x18 are now the same flat tile), and the axe grew a lower half |
+| 0x19-0x1a | the axe's haft (`kTileAxeBl`, `kTileAxeBr`, the second half of `gen/axe.c`) | `castle_art_load` | level play (castle) | the hand-drawn axe left the cell's lower half empty; the capture runs the haft down through it |
+| 0x1b-0x1c | the bridge chain (`kTileChainTr`, `kTileChainBl`, `gen/chain.c`) | `castle_art_load` | level play (castle) | `kBlockBridgeChain`'s two drawn quadrants, upper right and lower left; the other two are `kTileScenBlank` |
+| 0x1d-0x1f | **FREE** (3 ids) | — | — | what is left of the span mario.h used to call unclaimed |
 | 0x20-0x5d | scenery run: lava top, castle wall/window/door-frame, flag ball/cloth/pole-adjacent cells, clouds, hills, bushes, pole shaft, inner crenel, blank + ball-right (`kTileSceneryFirst`-`kTileSceneryLast`, exactly full) | `assets_load_scenery_tiles` | level play (whichever pieces a level's type/decor use), world map (loaded, unused) | m23 re-cut every tile in this run from the capture without moving one id. the one thing that did move inside it is the flag ball: its two halves sit at the run's two ends, `kTileFlagBallL` (0x30) and `kTileFlagBallR` (0x5d), so they are one generated family (`gen/flag_ball.c`) written into the two ids by two `set_bkg_data` calls, and `gen/flag_head.c` is now the four pennant tiles at 0x31-0x34 rather than five at 0x30. the ball is also the only flag piece off the sky palette slot — the capture draws it in the pipe's greens over black, which is what `kPaletteRom` pins `kBlockFlagBall` to |
 | 0x5e-0x5f | **FREE** (2 ids) | — | — | see correction below — mario.h's own comment near `kTileCastleBrickLower` is wrong about this range |
 | 0x72-0x7d | sideways pipe, 12 tiles (`kTilePipeSideMouth0L`-`kTilePipeSideBody3`, `gen/pipe_side.c`) | `assets_load_scenery_tiles` | level play (levels with a `pipe_side` terrain entry; currently 1-2, and 1-1's bonus room), world map (loaded, unused) | vram bank 0 had no ids left for this, per mario.h. **correction:** this row used to read 0x72-0x7a / 9 tiles, which was true of the hand-drawn art m23 replaced — the capture's mouth column does not share a middle pair between its two cells, so the family became twelve tiles (and `mario_vram_holds_the_generated_terrain_art` has pinned twelve at 0x72 since that pass). m26 corrected the ledger |
@@ -113,6 +115,22 @@ canopy's four being exactly `kCamPalPipe`'s and the trunk's two `kCamPalBrick`'s
 changed outside the art was three `decor` entries in `games/mario/data/level-1-3.json`, which the
 capture shows are clipped by terrain rather than absent.
 
+m27's 1-4 pass added four bg ids, 0x19-0x1c, and one kind, `kBlockBridgeChain` (`kBlockKindCount`
+55). it re-cut the whole castle off `games/mario/art/ref/smbd_ch_1-4.png`
+(`games/mario/tools/rip_tiles.py --level 1-4`): the masonry course pair and the bridge pair were
+already pixel-identical to the hand art and stay where they were; the lava's wave moved to the top
+of its cell with flat red under it; the axe became four tiles, its haft filling the lower half the
+hand art left empty; the chain from the bridge's far end up to the axe got a kind and two tiles,
+because the bible had no cell for it; and the castle's own solid block - a brown face in a grey
+border, nothing like the overworld's bevel - is written over `kTileHardTl`..`kTileHardBr` at a castle
+load (`gen/castle_hard.c`), the way the masonry is written over the ground family. the castle palette
+set was re-read off the same capture (`assets_load_bg_palettes_castle`), and the axe moved from the
+question slot to the pipe slot, which nothing else standing in a castle uses. all six families and
+the one call that loads them (`castle_art_load`, `games/mario/src/castle_art.c`) live in **bank 6**
+with 1-4's own grid: bank 4, where every other tile array is, was 130 bytes from full and the six
+spilled it into bank 5, which corrupted every pinned bank-0 tile load. so a castle is the one level
+type whose lava, bridge, axe and chain ids are loaded at all — no other type stands any of them.
+
 m25's 1-2 pass added the five ids at 0xe0-0xe4 and two kinds, `kBlockPipeJointT` and
 `kBlockPipeJointB` (`kBlockKindCount` 54): the shaft cell a sideways pipe's body runs into, in each
 of the mouth's two rows, which the compiler used to stamp as plain `kBlockPipeBodyL` and both smbd
@@ -124,11 +142,10 @@ tiles never use it below ground) and the question slot's colour 3 is the masonry
 | 0xec-0xfd | toad-room sign glyphs, one id per distinct character across the three sign lines (`kTileSignFirst`, 18 tiles) | `assets_load_toad_tiles` | toad room only (a castle whose bible names a `toad_x`, entered by touching the axe) | |
 | 0xfe-0xff | **FREE** (2 ids) | — | — | |
 
-correction: the comment directly above `kTileCastleBrickLower` in mario.h (around the "m20's
-castle run" block) says *"bank-1 bg 0x19-0x1f and 0x5c-0x5f are still unclaimed"*. that was true
-when it was written, but `kTileScenBlank` (0x5c) and `kTileFlagBallR` (0x5d) — both defined and
-loaded earlier in the same file, at the tail of the scenery run — claim 0x5c-0x5d. only 0x5e-0x5f
-are actually free. treat the table above, not that comment, as current.
+note: the comment directly above `kTileCastleBrickLower` in mario.h used to say *"bank-1 bg
+0x19-0x1f and 0x5c-0x5f are still unclaimed"*, which was wrong about 0x5c-0x5d (`kTileScenBlank` and
+`kTileFlagBallR` claim them). m27 rewrote it to 0x1d-0x1f and 0x5e-0x5f, which is what the table
+above says too.
 
 ## bank 1, sprite tile ids
 

@@ -72,138 +72,6 @@ static const uint8_t kThinTiles[32] = {
 };
 // clang-format on
 
-// 1-4's lava, painted over the death plane, off the nes rip: a white wave breaking along the top
-// of the pit and flat red under it, with one row of foam still coming apart below the crest. the
-// crest's peak sits at column 4 and its trough spans the tile's own last two columns and the next
-// tile's first two, so an 8px repeat reads as one continuous surf line and not as a stamped shape.
-// color 1 is the foam and color 2 the lava (see the castle set's kCamPalCoin)
-// clang-format off
-static const uint8_t kLavaTiles[32] = {
-    // lava crest: a white wave over the pit
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x00, 0x00, // ........
-    0x08, 0x00, // ....-...
-    0x14, 0x08, // ...-+-..
-    0x24, 0x18, // ..-++-..
-    0xC4, 0x38, // --+++-..
-    // lava fill: foam breaking, then flat red
-    0x03, 0xFC, // ++++++--
-    0x40, 0xBF, // +-++++++
-    0xA1, 0x5E, // -+-++++-
-    0x26, 0xD9, // ++-++--+
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
-// under a pit's surface cell. kLavaTiles' second tile still has the crest's foam breaking across
-// its top four rows, which is exactly right for the bottom half of the cell at the surface and
-// wrong for every cell below it, so those get this instead: the lava's own red, flat, all 64 px
-// clang-format off
-static const uint8_t kLavaDeepTile[16] = {
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-    0x00, 0xFF, // ++++++++
-};
-// clang-format on
-
-// the castle's masonry: a white highlight along the top and left of each brick, a light stone face,
-// a shadow down its right and along its bottom, and the black mortar the rip leaves in the joint
-// column and the row under every course.
-//
-// the rip lays it in running bond - bricks 8 px wide and 8 tall, each course stepped half a brick
-// against the one over it - so a 16 px cell is two courses and the joint falls at the same column
-// in both halves of either. that is two tiles: the upper course carries its joint four columns in
-// and the lower one carries it in the last column, and each stamps both halves of its own row
-// (kBlockCastleBrick's top pair and bottom pair, and the ground family a castle load overwrites)
-// clang-format off
-static const uint8_t kCastleBrickUpperTile[16] = {
-    // the cell's upper course, its joint four columns in
-    0xEF, 0x20, // --#.----
-    0x28, 0xE7, // ++#.-+++
-    0x28, 0xE7, // ++#.-+++
-    0x28, 0xE7, // ++#.-+++
-    0x28, 0xE7, // ++#.-+++
-    0x28, 0xE7, // ++#.-+++
-    0xEF, 0xEF, // ###.####
-    0x00, 0x00, // ........
-};
-// clang-format on
-// clang-format off
-static const uint8_t kCastleBrickLowerTile[16] = {
-    // and the course under it, stepped half a brick along
-    0xFE, 0x02, // ------#.
-    0x82, 0x7E, // -+++++#.
-    0x82, 0x7E, // -+++++#.
-    0x82, 0x7E, // -+++++#.
-    0x82, 0x7E, // -+++++#.
-    0x82, 0x7E, // -+++++#.
-    0xFE, 0xFE, // #######.
-    0x00, 0x00, // ........
-};
-// clang-format on
-
-// the bridge, a full 16px of it: the rip draws a rail of white chain links over a dark band with a
-// red link running down every fourth column, then the links carrying on out of the bottom. it
-// repeats every 4 px across, so the top tile stamps both upper quadrants of the block and the
-// lower one both of the others. color 1 is the links' white, 2 the band and 3 the red (the castle
-// set's kCamPalNeutral)
-// clang-format off
-static const uint8_t kBridgeTiles[32] = {
-    // bridge deck: the chain links and their rail
-    0x77, 0x00, // .---.---
-    0x77, 0x00, // .---.---
-    0x77, 0x00, // .---.---
-    0x77, 0x00, // .---.---
-    0x00, 0x77, // .+++.+++
-    0x88, 0xFF, // #+++#+++
-    0x88, 0xFF, // #+++#+++
-    0x88, 0xFF, // #+++#+++
-    // bridge underside: the links running out
-    0x88, 0xFF, // #+++#+++
-    0x88, 0xFF, // #+++#+++
-    0x88, 0xFF, // #+++#+++
-    0x00, 0x77, // .+++.+++
-    0x77, 0x77, // .###.###
-    0x77, 0x77, // .###.###
-    0x77, 0x77, // .###.###
-    0x77, 0x77, // .###.###
-};
-// clang-format on
-
-// and the axe: a symmetric double blade on a light shaft, 16 px across, which is why it needs two
-// tiles rather than one stamped twice - the old single tile drew two axes side by side. color 1 is
-// the blade's orange and 2 the shaft, so it wears kCamPalQuestion rather than the bridge's slot
-// clang-format off
-static const uint8_t kAxeTiles[32] = {
-    // axe, left blade
-    0x1E, 0x01, // ...----+
-    0x3E, 0x01, // ..-----+
-    0x7E, 0x01, // .------+
-    0x7E, 0x01, // .------+
-    0x7E, 0x01, // .------+
-    0x3E, 0x01, // ..-----+
-    0x1E, 0x01, // ...----+
-    0x00, 0x01, // .......+
-    // axe, right blade
-    0x78, 0x80, // +----...
-    0x7C, 0x80, // +-----..
-    0x7E, 0x80, // +------.
-    0x7E, 0x80, // +------.
-    0x7E, 0x80, // +------.
-    0x7C, 0x80, // +-----..
-    0x78, 0x80, // +----...
-    0x00, 0x80, // +.......
-};
 // m18's art pass gives most blocks four distinct quadrants instead of one tile stamped four times,
 // which is 99 background tiles where the old placeholder art was 21. bank 0's tile space cannot
 // hold that beside the sprites, so the art is split: everything a level's terrain needs stays in
@@ -237,31 +105,12 @@ void assets_load_bg_tiles_underground(void) BANKED {
     set_bkg_data(kTileBrickTl, kBrickUndergroundTileCount, kBrickUndergroundTiles);
 }
 
-// a castle's floors, ceilings and walls are the same grey masonry as its scenery, not the
-// overworld's tan/brown ground: rather than recompile every castle grid onto a second terrain
-// kind, the ground family's own tiles are overwritten with it at a castle load. the six ids are the
-// whole family - the surface block's two upper quadrants, its two lower ones, and the buried fill
-// block's upper pair - and the castle bg set colors kCamPalGround to match. each of them takes the
-// course kBlockCastleBrick puts in the same quadrant, so a ground cell tiles into the same running
-// bond a wall of masonry does. every other level type reloads the family from assets_load_bg_tiles
-// above, so nothing leaks out. the measured 1-4 has no ground cell left at all, but a castle grid
-// compiled off prose still can
-void assets_load_bg_tiles_castle(void) BANKED {
-    set_bkg_data(kTileGroundTopL, 1, kCastleBrickUpperTile);
-    set_bkg_data(kTileGroundTopR, 1, kCastleBrickUpperTile);
-    set_bkg_data(kTileGroundFillTl, 1, kCastleBrickUpperTile);
-    set_bkg_data(kTileGroundFillTr, 1, kCastleBrickUpperTile);
-    set_bkg_data(kTileGroundFillBl, 1, kCastleBrickLowerTile);
-    set_bkg_data(kTileGroundFillBr, 1, kCastleBrickLowerTile);
-}
-
 // the same call writes vram bank 1 with vbk pointing there, so the scenery lands beside the font
 // rather than on top of it. bcpd and vram are both mode-locked on real hardware and terrain_init
 // runs with the lcd off, which is where this is called from; vbk goes back before anything else
 // touches the map, because set_bkg_tiles would otherwise write tile numbers into the attribute map
 void assets_load_scenery_tiles(void) BANKED {
     VBK_REG = VBK_BANK_1;
-    set_bkg_data(kTileLavaTop, 2, kLavaTiles);
     set_bkg_data(kTileCastleWall, kCastleTileCount, kCastleTiles);
     set_bkg_data(kTileCastleCrenelInner, kCastleCrenelInnerTileCount, kCastleCrenelInnerTiles);
     // the ball's two halves sit at the two ends of the scenery run, 0x30 and 0x5d, so its one
@@ -293,11 +142,6 @@ void assets_load_scenery_tiles(void) BANKED {
     // m20's castle run right above it: the masonry's two courses, the axe's two blades and the
     // bridge's two halves. all three are terrain rather than scenery, but bank 0 is out of bg ids
     // and a kCamAttrVram1 attribute reads them back the same way
-    set_bkg_data(kTileCastleBrickLower, 1, kCastleBrickLowerTile);
-    set_bkg_data(kTileCastleBrickUpper, 1, kCastleBrickUpperTile);
-    set_bkg_data(kTileLavaDeep, 1, kLavaDeepTile);
-    set_bkg_data(kTileAxe, 2, kAxeTiles);
-    set_bkg_data(kTileBridge, 2, kBridgeTiles);
     VBK_REG = VBK_BANK_0;
 }
 
@@ -379,22 +223,26 @@ void assets_load_bg_palettes_castle(void) BANKED {
     // castle grid paints a world coin with, so the one warm ramp on screen is the pit
     // color 1 is the hud row's ink again, and a castle grid paints no cloud and no pennant either
     //
-    // m20 matched four of these to the nes rip. the ground slot is the masonry course's own four
-    // shades and its color 0 is the black mortar, not a stone - the course leaves a mortar line
-    // down its last column and along its last row, which is what makes a wall read as brickwork
-    // rather than as a slab. the brick slot goes warm: the rip's hard block (a firebar's pivot)
-    // and its breakable brick are both the same brown-orange inside a dark grey border, and that
-    // border is color 3 in kHardTiles. the lava's own foam is white, not gold - the hud coin used
-    // to borrow this slot's gold and now takes the question slot's instead (kHudCoinAttr) - and
-    // the neutral slot's unused color 3 becomes the bridge chain's red
-    palette_color_t sky[4] = {kCastleRgb, RGB(31, 31, 31), RGB(11, 11, 13), RGB(0, 0, 0)};
-    palette_color_t ground[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(23, 23, 23), RGB(14, 14, 14)};
-    palette_color_t brick[4] = {kCastleRgb, RGB(28, 12, 2), RGB(25, 9, 1), RGB(14, 14, 14)};
-    palette_color_t question[4] = {kCastleRgb, RGB(31, 20, 8), RGB(31, 31, 31), RGB(0, 0, 0)};
-    palette_color_t pipe[4] = {kCastleRgb, RGB(22, 22, 24), RGB(13, 13, 15), RGB(0, 0, 0)};
-    palette_color_t neutral[4] = {kCastleRgb, RGB(31, 31, 31), RGB(14, 14, 15), RGB(22, 4, 0)};
-    palette_color_t spent[4] = {kCastleRgb, RGB(9, 9, 10), RGB(6, 6, 7), RGB(0, 0, 0)};
-    palette_color_t lava[4] = {kCastleRgb, RGB(31, 31, 31), RGB(27, 5, 0), RGB(0, 0, 0)};
+    // m27 read every colour below off the smbd 1-4 capture as rgb555 (rip_tiles.py's CASTLE_SLOTS;
+    // the ripper wrote its greys unquantised, ffffff/bfbfbf/7f7f7f, which store as 31/23/15). the
+    // ground slot is the masonry's own four: black mortar, a white highlight, a light face and a
+    // dark shadow - the course leaves a mortar line down its last column and along its last row,
+    // which is what makes a wall read as brickwork rather than as a slab. the brick slot is the
+    // castle's own solid block, a brown face in a grey-green border with the backdrop showing
+    // through its corners; the question block and the used block are one teal-faced, grey-edged
+    // block on their two slots; the axe takes the pipe slot's two oranges and grey, nothing else on
+    // that slot standing in a castle; the bridge is white plank, grey rail and red links on the
+    // neutral slot; the lava is white foam over red. kCastleRgb stays one shade off the capture's
+    // flat black so a castle's sky still tells it apart from the underground, which the host tests
+    // lean on: the one deliberate deviation from the capture
+    palette_color_t sky[4] = {kCastleRgb, RGB(31, 31, 31), RGB(15, 15, 15), RGB(0, 0, 0)};
+    palette_color_t ground[4] = {RGB(0, 0, 0), RGB(31, 31, 31), RGB(23, 23, 23), RGB(15, 15, 15)};
+    palette_color_t brick[4] = {kCastleRgb, RGB(19, 9, 0), RGB(12, 13, 12), RGB(0, 0, 0)};
+    palette_color_t question[4] = {kCastleRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(15, 15, 15)};
+    palette_color_t pipe[4] = {kCastleRgb, RGB(31, 20, 8), RGB(28, 11, 2), RGB(15, 15, 15)};
+    palette_color_t neutral[4] = {kCastleRgb, RGB(31, 31, 31), RGB(15, 15, 15), RGB(31, 7, 0)};
+    palette_color_t spent[4] = {kCastleRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(15, 15, 15)};
+    palette_color_t lava[4] = {kCastleRgb, RGB(31, 31, 31), RGB(31, 7, 0), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);
     set_bkg_palette(kCamPalBrick, 1, brick);

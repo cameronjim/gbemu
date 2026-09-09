@@ -216,7 +216,13 @@
 // body's own tile is in bank 0. 1-2 stands two pairs, 1-1's bonus room one. solid like the shaft
 #define kBlockPipeJointT 52U
 #define kBlockPipeJointB 53U
-#define kBlockKindCount 54U
+// the chain from the bridge's far end up to the axe, one cell over the deck's last column. the smbd
+// castle capture draws it as a diagonal line of white over stone through the cell's upper right and
+// lower left quadrants (gen/chain.c), the other two empty; the bible had no cell for it. scenery on
+// the masonry's slot, and it goes with the axe: hazards_drop_bridge clears it the frame the bridge
+// starts to come apart
+#define kBlockBridgeChain 54U
+#define kBlockKindCount 55U
 // the decorative kinds - non-solid, and only ever stamped into a cell the compiled level left
 // empty - are the closed range [kBlockFirstDecor, kBlockLastDecor]. they were the tail of the
 // enum until the side pipe was appended past them, so anything testing for decor has to take the
@@ -440,17 +446,22 @@
 #define kTileTreeCount 5U
 #define kTileTrunk 0x0FU
 
-// --- m20's castle run, 0x12-0x17, in VRAM BANK 1 -----------------------------------------------
-// the six bg tiles the castle pass needed and bank 0 had no ids for. the bridge and the axe each
-// get two, because the rip's bridge is a full 16px of chain and its axe is a symmetric double
-// blade no single tile can be.
+// --- the castle run, 0x12-0x1c, in VRAM BANK 1 ---------------------------------------------------
+// the bg tiles the castle needs and bank 0 had no ids for. m27 cut every one of them off the smbd
+// 1-4 capture (games/mario/tools/rip_tiles.py --level 1-4): the masonry course pair, the bridge's
+// two halves, a 16px axe, the chain from the bridge to the axe, and the lava (0x20-0x21, in the
+// scenery run below).
 //
-// the masonry takes the other two: the rip lays its wall in running bond, 8px bricks whose courses
-// step half a brick every 8 rows, so a 16px cell is one course over another offset one. the joint
-// falls at the same place in both halves of a course, which is why two tiles cover it - the upper
-// one stamps kBlockCastleBrick's top pair and the lower one its bottom pair (and the same pairing
-// overwrites the ground family at a castle load, so a ground cell tiles into the bond too).
-// bank-1 bg 0x19-0x1f and 0x5c-0x5f are still unclaimed
+// the masonry: the capture lays its wall in running bond, 8px bricks whose courses step half a
+// brick every 8 rows, so a 16px cell is one course over another offset one. the joint falls at the
+// same place in both halves of a course, which is why two tiles cover it - the upper one stamps
+// kBlockCastleBrick's top pair and the lower one its bottom pair (and the same pairing overwrites
+// the ground family at a castle load, so a ground cell tiles into the bond too). the bridge is a
+// 4px repeat across, so one tile per 8px band stamps both quadrants of its row. the axe fills its
+// whole cell - two blades over a haft that runs down the lower half, which the hand-drawn axe left
+// empty - so it is four tiles, the top pair at 0x13-0x14 and the bottom pair at 0x19-0x1a. the
+// chain is two: the diagonal crosses the cell's upper right and lower left quadrants and the other
+// two are kTileScenBlank. bank-1 bg 0x1d-0x1f and 0x5e-0x5f are still unclaimed
 #define kTileCastleBrickLower 0x12U
 #define kTileAxe 0x13U
 #define kTileAxeRight 0x14U
@@ -458,11 +469,13 @@
 #define kTileBridgeLower 0x16U
 #define kTileCastleBrickUpper 0x17U
 #define kTileCastleRunCount 6U
-// and the seventh, which the lava pass needed: kTileLavaFill is the second half of the rip's
-// breaking crest, foam and all, so it is right under the pit's surface cell and wrong everywhere
-// below it. this is the flat red the rip paints the rest of a pit, stamped in all four quadrants
-// of kBlockLavaFill
+// the flat red the capture paints a pit below its surface cell, stamped in all four quadrants of
+// kBlockLavaFill and in the surface cell's lower pair (kTileLavaFill is the same tile again)
 #define kTileLavaDeep 0x18U
+#define kTileAxeBl 0x19U
+#define kTileAxeBr 0x1AU
+#define kTileChainTr 0x1BU
+#define kTileChainBl 0x1CU
 
 // the sideways pipe's twelve tiles, ripped off the smbd capture's own bonus room (gen/pipe_side.c,
 // anchors pipe_side_* in rip_tiles.py). the run is 32px tall - the mouth cell over its lower cell,

@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""rips the block and terrain art of 1-1 and 1-2 out of the reference screenshots into the indexed
-pngs the art pipeline (png2tiles.py --mode tiles) turns into banked c. run as:
+"""rips the block and terrain art of the levels that have a reference capture out of those
+captures and into the indexed pngs the art pipeline (png2tiles.py --mode tiles) turns into
+banked c. run as:
 
-    rip_tiles.py [--root REPO] [--generated DIR] [--check] [--report]
+    rip_tiles.py [--level 1-1|1-2|1-3|all] [--root REPO] [--generated DIR] [--check] [--report]
+                 [--proof DIR [--panorama FILE:SCY ...]]
+
+everything that is specific to one level - its capture, that capture's grid offsets and column
+stitch, the anchor cell of every family the level teaches, the kinds it stands, the sprites and
+captions drawn over it - lives in one entry of LEVELS below. the learning engine, the palette
+resolution, the png writing, the structural report, the position audit and the proof images are
+shared and know nothing about any particular level.
 
 provenance
 ----------
@@ -25,6 +33,15 @@ like 1-1's bonus room and turns out to be the same art under the same colours, w
 report and the 1-2 audit below prove - the one thing the run draws that no 1-1 cell holds is the
 joint where a sideways pipe's body runs into its shaft (pipe_joint_*, and 1-1's own room has it).
 
+games/mario/art/ref/smbd_ch_1-3.png is the same site's challenge-mode rip of 1-3: 2560x200, 16px
+cells with x offset 0 and y offset 8 - the same frame 1-2's upper band uses, and the same rip row
+r = level row r + 2, verified against the ground's top edge at y = 184 = 8 + 16 * 11. it is 160
+columns, exactly the json's length, and it needs no column correction at all: every one of the
+level's own columns stands where the json puts it (see the 1-3 AUDIT note). the level is 12 rows
+of capture, level rows 2-13; row 14's buried ground fill is again below the last scanline. the one
+family the capture teaches that no earlier one holds is 1-3's tree - a green canopy in a left cap,
+a middle and a right cap over a column of striped trunk.
+
 games/mario/art/ref/sheet_tileset.png is the spriters resource "Tileset" sheet for the same
 game (resource id 171364, ripped by Depressed Mario). the capture is challenge mode, which
 draws each question block's CONTENTS over it (a coin, a mushroom, a fire flower) instead of the
@@ -36,14 +53,15 @@ reference images are gitignored; the generated c under games/mario/src/gen is wh
 what it does
 ------------
 every tile below names a quadrant of one 16x16 cell of one of the references. the cells were
-found by position (see ANCHORS) and every one of them is checked, by --check, against every cell
-of the compiled level grids that says it holds that kind. the cell's colours are resolved against
-its family's cgb palette slot, as rgb555 (each channel >> 3), which is what the hardware stores;
-a colour that is not in the slot aborts the run rather than being snapped to something close.
+found by position (see each level's "anchors") and every one of them is checked, by --check,
+against every cell of the compiled level grids that says it holds that kind. the cell's colours
+are resolved against its family's cgb palette slot, as rgb555 (each channel >> 3), which is what
+the hardware stores; a colour that is not in the slot aborts the run rather than being snapped to
+something close.
 
 the 1-1 grid and its capture do not agree on where everything stands - the capture is missing a
-column (see COLUMN_SHIFT) - so --check reports per-kind agreement rather than demanding it. see
-the AUDIT notes below.
+column (see the 1-1 "columns" table) - so --check reports per-kind agreement rather than demanding
+it. see the AUDIT notes below.
 """
 
 import argparse
@@ -57,66 +75,28 @@ import gbpng
 
 CELL = 16
 
-# ---------------------------------------------------------------- the reference frames
-
-# the 1-1 capture's overworld frame: cell (col, row) is 16x16 at (16 * col, 2 + 16 * row), row
-# being a RIP row - level row 2 is rip row 0
-RIP_Y0 = 2
-# the bonus room hangs under the level on its own black background. its left edge is x 879 and
-# its ground row's top edge y 378, and from there its cells fall on the level's own 16px pitch,
-# so a room cell is addressed by the AREA grid's own (column, level row)
-BONUS_X0 = 879
-BONUS_GROUND_Y = 378
-BONUS_GROUND_ROW = 13
-
-# the 1-2 capture's upper band: cell (col, row) is at (16 * col, 8 + 16 * row), row a RIP row
-# again with level row 2 at rip row 0, so the roof is rip row 0 and the floor rip row 11. from
-# this column on the band is the above-ground ending, drawn on sky rather than black
-RIP12_Y0 = 8
-RIP12_ENDING_COLUMN = 192
-# the pipe coin room in the band under it, addressed by the AREA grid's (column, level row)
-ROOM12_X0 = 1632
-ROOM12_Y0 = 201
-ROOM12_TOP_ROW = 2
-ROOM12_COLUMNS = 16
-
-# the sheet lays its global blocks out on a 17px pitch from x 4, all on one row at y 197
-SHEET_BLOCK_Y = 197
-SHEET_QUESTION_X = 4  # frame 1, the bright "?" - the frame an unhit block rests on
-SHEET_SPENT_X = 55  # the used block, which no unhit level can show
-SHEET_COIN_X = 155  # the world coin's first spin frame
-
 SKY = "6888F8"
-
-# the sheet was ripped from a different dump than the capture and renders the same four block
-# colours a shade off. these are the only sheet colours the two blocks use, and each maps to the
-# capture's own value so a sheet-sourced tile lands in the same cgb palette entry as a rip one
-SHEET_TO_RIP = {
-    "FFB43C": "F8B840",  # the question block's gold
-    "A84400": "984800",  # the block body brown
-    "000000": "000000",
-    # the sheet's own backdrop, which shows through the two pixels smbd rounds off a block's top
-    # corners - the capture shows sky in exactly the same two pixels
-    "004B77": SKY,
-    "007CB6": SKY,
-}
+# below ground, and in every coin room, the backdrop is flat black
+UNDERGROUND = "000000"
 
 # ---------------------------------------------------------------- the palettes
 #
 # eight cgb bg palette slots, pinned per kind by kPaletteRom in assets.c. colour 0 is the
 # backdrop every partly-transparent cell shows through, and colour 1 of the sky slot is also the
 # hud row's ink (see kHudBarAttr), which is why it has to stay white. every colour is read
-# straight off the capture.
+# straight off the capture, and all three captures so far draw the same set: 1-3 adds no colour
+# and needs no slot of its own (its canopy is exactly the pipe slot's four and its trunk the
+# brick slot's browns)
 SLOTS = {
     # clouds and the flag's pennant. 30A0F8 is the scallop shading under a cloud
     "sky": [SKY, "F8F8F8", "30A0F8", "000000"],
     # the ground block is opaque across its whole cell, so its colour 0 never reaches a pixel
     "ground": [SKY, "F8C098", "984800", "000000"],
-    # the brick, the hard block and the whole castle are the same three browns
+    # the brick, the hard block, the whole castle and 1-3's tree trunk are the same three browns
     "brick": [SKY, "F8C098", "984800", "000000"],
     # the question block's gold, which the used block shares - see kCamPalSpent below
     "question": [SKY, "F8B840", "984800", "000000"],
-    # pipes, hills, bushes and the flagpole
+    # pipes, hills, bushes, the flagpole and 1-3's tree canopy
     "pipe": [SKY, "70F830", "108800", "000000"],
     # the used block wears the question block's own colours; the rip of the sheet's used block
     # only ever lights colours 2 and 3
@@ -131,7 +111,6 @@ SLOTS = {
 # hard block's bevel (1-2's stair-step blocks light it, 1-1's room has no hard block at all): the
 # brick's own tiles never use colour 1, because the underground load replaces the one pair that
 # did - the cell's top row - with the room's own, mortar joints showing
-UNDERGROUND = "000000"
 UNDERGROUND_SLOTS = {
     "sky": [UNDERGROUND, "F8F8F8", "30A0F8", "000000"],
     "ground": [UNDERGROUND, "B8F8F0", "008888", "000000"],
@@ -152,6 +131,19 @@ UNDERGROUND_SLOTS = {
 # onto the pipe slot - the only one that carries a green - would cost it its white, so the emblem
 # takes the slot's black instead and reads as a dark disc rather than a dark green one
 APPROXIMATIONS = {("sky", "008010"): "000000"}
+
+# the sheet was ripped from a different dump than the captures and renders the same four block
+# colours a shade off. these are the only sheet colours the two blocks use, and each maps to the
+# capture's own value so a sheet-sourced tile lands in the same cgb palette entry as a rip one
+SHEET_TO_RIP = {
+    "FFB43C": "F8B840",  # the question block's gold
+    "A84400": "984800",  # the block body brown
+    "000000": "000000",
+    # the sheet's own backdrop, which shows through the two pixels smbd rounds off a block's top
+    # corners - the capture shows sky in exactly the same two pixels
+    "004B77": SKY,
+    "007CB6": SKY,
+}
 
 # a tile cut from a black-backdrop frame has to land on the same 2bpp values as the overworld tile
 # it stands in for, because the room reaches vram through the same palette slot with the colours
@@ -180,13 +172,116 @@ BONUS_RECOLOUR = {
     "ug_coin12": BONUS_COIN_TO_SLOT,
 }
 
-# ---------------------------------------------------------------- the anchors
+# ---------------------------------------------------------------- the reference frames
 #
-# one clean, sprite-free instance of each family, by cell. "rip" cells are (column, RIP row) in
-# 1-1's overworld frame; "bonus" cells are (column, LEVEL row) in its room's frame; "rip12" cells
-# are (column, RIP row) in 1-2's upper band and "room12" cells (column, LEVEL row) in its coin
-# room; "sheet" cells are (x, y) pixel origins on the tileset sheet.
-ANCHORS = {
+# a frame is one addressing rule into one reference image. an anchor spec is (frame, a, b), where
+# a/b mean whatever that frame's origin() says they mean - a cell column and a RIP row for the
+# level bands, a cell column and a LEVEL row for the coin rooms, raw pixels for the sheet.
+
+IMAGES = {
+    "1-1": "smbd_ch_1-1.png",
+    "1-2": "smbd_ch_1-2.png",
+    "1-3": "smbd_ch_1-3.png",
+    "sheet": "sheet_tileset.png",
+}
+# the sheet is the one reference the tool runs without
+OPTIONAL_IMAGES = ("sheet",)
+
+# the 1-1 capture's overworld frame: cell (col, row) is 16x16 at (16 * col, 2 + 16 * row), row
+# being a RIP row - level row 2 is rip row 0
+RIP_Y0 = 2
+# the bonus room hangs under the level on its own black background. its left edge is x 879 and
+# its ground row's top edge y 378, and from there its cells fall on the level's own 16px pitch,
+# so a room cell is addressed by the AREA grid's own (column, level row)
+BONUS_X0 = 879
+BONUS_GROUND_Y = 378
+BONUS_GROUND_ROW = 13
+
+# the 1-2 capture's upper band: cell (col, row) is at (16 * col, 8 + 16 * row), row a RIP row
+# again with level row 2 at rip row 0, so the roof is rip row 0 and the floor rip row 11. from
+# this column on the band is the above-ground ending, drawn on sky rather than black
+RIP12_Y0 = 8
+RIP12_ENDING_COLUMN = 192
+# the pipe coin room in the band under it, addressed by the AREA grid's (column, level row)
+ROOM12_X0 = 1632
+ROOM12_Y0 = 201
+ROOM12_TOP_ROW = 2
+ROOM12_COLUMNS = 16
+
+# the 1-3 capture: 1-2's band offsets exactly, on open sky the whole way
+RIP13_Y0 = 8
+
+# the sheet lays its global blocks out on a 17px pitch from x 4, all on one row at y 197
+SHEET_BLOCK_Y = 197
+SHEET_QUESTION_X = 4  # frame 1, the bright "?" - the frame an unhit block rests on
+SHEET_SPENT_X = 55  # the used block, which no unhit level can show
+SHEET_COIN_X = 155  # the world coin's first spin frame
+
+
+class Frame:
+    """one addressing rule into one reference image.
+
+    origin(a, b) answers the top-left pixel of the cell, or None when the frame does not hold it.
+    dark(a, b) says whether that cell sits on a black backdrop rather than sky, which decides
+    which palette set reads it. remap is applied to every pixel (the sheet's own colour shift)."""
+
+    def __init__(self, image, origin, dark=False, remap=None, band=False):
+        self.image = image
+        self._origin = origin
+        self._dark = dark
+        self.remap = remap
+        # a "band" frame is a whole level laid out on the capture's own 16px grid, which is the
+        # only kind of frame the occurrence count can sweep
+        self.band = band
+
+    def origin(self, a, b):
+        return self._origin(a, b)
+
+    def dark(self, a, b):
+        return self._dark(a, b) if callable(self._dark) else self._dark
+
+
+FRAMES = {
+    "rip": Frame("1-1", lambda c, r: (c * CELL, RIP_Y0 + r * CELL), band=True),
+    "bonus": Frame("1-1",
+                   lambda c, r: (BONUS_X0 + c * CELL,
+                                 BONUS_GROUND_Y - CELL * (BONUS_GROUND_ROW - r)),
+                   dark=True),
+    "rip12": Frame("1-2", lambda c, r: (c * CELL, RIP12_Y0 + r * CELL),
+                   dark=lambda c, r: c < RIP12_ENDING_COLUMN, band=True),
+    # the band is sixteen columns wide and starts at level row 2: the room's own column 16, its
+    # shaft's right side, is past its edge, and its wall's rows 0-1 are above it, where the image
+    # holds the level's ending and the run's floor
+    "room12": Frame("1-2",
+                    lambda c, r: None if (c >= ROOM12_COLUMNS or r < ROOM12_TOP_ROW)
+                    else (ROOM12_X0 + c * CELL, ROOM12_Y0 + CELL * (r - ROOM12_TOP_ROW)),
+                    dark=True),
+    "rip13": Frame("1-3", lambda c, r: (c * CELL, RIP13_Y0 + r * CELL), band=True),
+    "sheet": Frame("sheet", lambda x, y: (x, y), remap=SHEET_TO_RIP),
+}
+
+
+def dark_frame(spec):
+    """whether a cell comes off a black backdrop: either coin room, or 1-2's underground run (its
+    ending, from RIP12_ENDING_COLUMN on, is open sky like 1-1)."""
+    return FRAMES[spec[0]].dark(spec[1], spec[2])
+
+
+def Q(anchor, qx, qy):
+    """one 8x8 quadrant of an anchor cell: qx/qy are 0 for the left/top half."""
+    return (anchor, qx, qy)
+
+
+def whole(anchor):
+    return [(anchor, 0, 0), (anchor, 1, 0), (anchor, 0, 1), (anchor, 1, 1)]
+
+
+# ---------------------------------------------------------------- 1-1
+#
+# anchors: one clean, sprite-free instance of each family, by cell. "rip" cells are (column, RIP
+# row) in 1-1's overworld frame; "bonus" cells are (column, LEVEL row) in its room's frame;
+# "sheet" cells are (x, y) pixel origins on the tileset sheet.
+ANCHORS_11 = {
     # the ground row is 179 identical cells out of 208; the rest carry a goomba or a pit
     "ground": ("rip", 5, 11),
     "brick": ("rip", 19, 7),  # the left end of the first brick run
@@ -257,46 +352,12 @@ ANCHORS = {
     # continue over the shaft's own left column, so it is neither a body cell nor a side one
     "bonus_joint_t": ("bonus", 15, 11),
     "bonus_joint_b": ("bonus", 15, 12),
-    # the 1-2 capture. the underground run's own cells, read by the report and the 1-2 audit, and
-    # every one of them 1-1's art under the underground colours: the floor is the ground block, the
-    # roof and the walls the room's brick, the stair-steps the hard block, the pipes the pipe
-    "ug_ground12": ("rip12", 5, 11),
-    "ug_brick12": ("rip12", 0, 0),
-    "ug_hard12": ("rip12", 23, 7),
-    "ug_pipe_lip_l12": ("rip12", 109, 7),
-    "ug_pipe_lip_r12": ("rip12", 110, 7),
-    "ug_pipe_body_l12": ("rip12", 168, 0),
-    "ug_pipe_body_r12": ("rip12", 169, 0),
-    "ug_coin12": ("rip12", 180, 2),
-    # its ending, on sky: the same ground block in the overworld's tan and brown, and the stair
-    "end_ground12": ("rip12", 197, 11),
-    "end_stair12": ("rip12", 203, 4),
-    # the one family cut from this capture: the joint at the underground exit's shaft (real column
-    # 168, the two rows of the mouth). the shaft's left cell there carries the sideways body's rim
-    # along its top (or bottom) and the joint's dark line down its own left column, then the plain
-    # body's right column past it. 1-2 stands two of these pairs and 1-1's room one
-    "pipe_joint_t": ("rip12", 168, 6),
-    "pipe_joint_b": ("rip12", 168, 7),
 }
 
-
-def dark_frame(spec):
-    """whether a cell comes off a black backdrop: either coin room, or 1-2's underground run (its
-    ending, from RIP12_ENDING_COLUMN on, is open sky like 1-1)."""
-    return spec[0] in ("bonus", "room12") or (spec[0] == "rip12" and spec[1] < RIP12_ENDING_COLUMN)
-
-
-def Q(anchor, qx, qy):
-    """one 8x8 quadrant of an anchor cell: qx/qy are 0 for the left/top half."""
-    return (anchor, qx, qy)
-
-
-# ---------------------------------------------------------------- the generated families
-#
 # (png stem, png2tiles --name, palette slot, [quadrant per tile]). each png is one column of 8x8
 # tiles so that png2tiles' reading order IS the order set_bkg_data wants, and each list below is
 # written in the rom's own tile-id order - read the loader in assets_data.c beside it.
-FAMILIES = [
+FAMILIES_11 = [
     # 0xa0-0xa3: the surface block's upper pair, then the fill block's, which is the same pair
     ("ground", "Ground", "ground", [
         Q("ground", 0, 0), Q("ground", 1, 0), Q("ground", 0, 0), Q("ground", 1, 0)]),
@@ -338,15 +399,6 @@ FAMILIES = [
         Q("pipe_side_mouth_b", 0, 1), Q("pipe_side_mouth_b", 1, 1),
         Q("pipe_side_body_t", 0, 0), Q("pipe_side_body_t", 0, 1),
         Q("pipe_side_body_b", 0, 0), Q("pipe_side_body_b", 0, 1)]),
-    # bank 1 0xe0-0xe4: the shaft joint, where that body runs into its vertical shaft. the shaft's
-    # left cell there wears the body's rim and joint down its own left column and the plain
-    # body's right column past it, so each of the two joint kinds needs two tiles of its own; the
-    # fifth is a bank-1 copy of kTilePipeBodyM for the right column, because a kind's attribute
-    # byte picks one vram bank for all four quadrants and the body's own tile lives in bank 0
-    ("pipe_joint", "PipeJoint", "pipe", [
-        Q("pipe_joint_t", 0, 0), Q("pipe_joint_t", 0, 1),
-        Q("pipe_joint_b", 0, 0), Q("pipe_joint_b", 0, 1),
-        Q("pipe_body_l", 1, 0)]),
     # bank 1 scenery. 0x35-0x44 is the cloud's left cap and middle, over two cells each
     ("cloud", "Cloud", "sky", [
         Q("cloud_cap_t", 0, 0), Q("cloud_cap_t", 1, 0),
@@ -410,9 +462,11 @@ FAMILIES = [
     ("scen_tail", "ScenTail", "sky", [None]),
 ]
 
-# the kinds whose art the captures teach: kind -> (label, anchor, palette slot). kind numbers
-# are kBlock* from mario.h and must not move; the slot is the one kPaletteRom pins the kind to
-KIND_CELLS = {
+# the kinds the level stands, as kind -> (label, anchor, palette slot[, mirrored]). kind numbers
+# are kBlock* from mario.h and must not move; the slot is the one kPaletteRom pins the kind to;
+# "mirrored" says the rom draws the kind as its anchor's twin under kCamAttrXFlip, so the audit
+# has to compare against the mirror of the anchor rather than the anchor
+KINDS_11 = {
     1: ("ground", "ground", "ground"),
     2: ("brick", "brick", "brick"),
     3: ("question", "question", "question"),
@@ -440,7 +494,7 @@ KIND_CELLS = {
     30: ("cloud bottom right", "cloud_capr_b", "sky"),
     31: ("hill peak", "hill_peak", "pipe"),
     32: ("hill slope left", "hill_slope", "pipe"),
-    33: ("hill slope right", "hill_slope_r", "pipe"),
+    33: ("hill slope right", "hill_slope", "pipe", True),
     34: ("hill fill", "hill_fill", "pipe"),
     51: ("hill core", "hill_core", "pipe"),
     35: ("bush left", "bush_cap", "pipe"),
@@ -459,209 +513,9 @@ KIND_CELLS = {
     47: ("flag pole + cloth", "flag_cloth_pole", None),
 }
 
-# AUDIT: the compiled 1-1 grid and its capture do not stand in the same columns everywhere, and
-# the defect is the CAPTURE's. it is a stitch of screen-sized grabs, and it lost one column at its
-# left edge and gained a duplicate one around its fifth screen: the level's own column 0 is not in
-# the image at all. so a level column reads one column LEFT of itself for the first third of the
-# level and level-for-level after the seam. the nes map and the 1-2 pass both agree with the
-# json's geometry, so the json is right and this table is the correction:
-COLUMN_SHIFT = ((0, 75, -1), (76, 207, 0))
-# the pins, in order along the level: the opening big hill, whose bottom row is
-# slope-fill-CORE-fill-slope and whose fill/core/fill cells sit at capture 0/1/2 - which puts the
-# missing column at level 0 and not level 1; the first bush, five wide at level 11 and capture 10;
-# the question block at level 16 (capture 15); the four pipes at level 28/38/46/57 (capture
-# 27/37/45/56); the first ground gap at level 69-70 (capture 68-69); the three-wide bush at level
-# 71-73 (capture 70-72); then, past the seam, the two lone bricks with a question block between
-# them at level 77/78/79 (capture 77/78/79), the second gap at level 86-88 (capture 86-88) and the
-# third at level 153-154 (capture 153-154). the duplicated column is pinned by the scenery the
-# seam runs through: the capture draws a SIX-cell cloud at capture 74-79 where every other cloud in
-# the level is three, four or five, and its 48-column neighbours at level 27, 123 and 171 are all
-# five. so capture 75 is the duplicate - one middle cell of that cloud, repeated - and the cloud is
-# level 75-79, five wide. that is the only feature in capture 73-76; everything else there is open
-# sky in every row
-#
-# the 1-2 capture stands level for level: the underground run's column c is level c + 24 (the
-# 24-column start segment is in no smbd rip) and the ending's is c + 25, because level 216 - the
-# right column of the coin room's exit shaft, which the bible carries up to row 0 to seal the seam
-# - is not in the image and capture column 192 is already the ending's first column of sky. its
-# one defect is at capture column 63, level 87, where the hanging wall's right column is drawn
-# eight pixels wide over black on rows 1-7: a stitch that lost half a cell, since nothing in the
-# game is drawn on an 8px grid and both the nes map and the rest of the capture keep the wall two
-# columns wide
-COLUMN_SHIFT12 = ((24, 215, -24), (217, 248, -25))
-
-
-def rip_column(level_column):
-    """the 1-1 capture column a level column stands in. level column 0 comes back as -1: the
-    capture does not hold it, and refs.cell() answers None for it."""
-    for lo, hi, shift in COLUMN_SHIFT:
-        if lo <= level_column <= hi:
-            return level_column + shift
-    return level_column
-
-
-def rip12_column(level_column):
-    """the 1-2 capture column a level column stands in, or None for the start segment and the
-    exit shaft's right column, which it does not hold."""
-    for lo, hi, shift in COLUMN_SHIFT12:
-        if lo <= level_column <= hi:
-            return level_column + shift
-    return None
-
-
-# ---------------------------------------------------------------- reading the references
-
-
-class Refs:
-    def __init__(self, ref_dir):
-        self.rip = gbpng.read_png(os.path.join(ref_dir, "smbd_ch_1-1.png"))
-        self.rip12 = gbpng.read_png(os.path.join(ref_dir, "smbd_ch_1-2.png"))
-        sheet = os.path.join(ref_dir, "sheet_tileset.png")
-        self.sheet = gbpng.read_png(sheet) if os.path.exists(sheet) else None
-        self.verify_frame()
-        self.verify_frame12()
-
-    def verify_frame(self):
-        """the y offset is only trustworthy if the ground's top edge really is at y 178, so the
-        cell above rip row 11 is open sky and rip row 11 itself has no sky left in it. column 5
-        is chosen because nothing stands on it and no sprite walks over it."""
-        above = {self._hex(self.rip, 5 * CELL + x, RIP_Y0 + 10 * CELL + y)
-                 for x in range(CELL) for y in range(CELL)}
-        if above != {SKY}:
-            raise SystemExit("the cell above the ground at column 5 is not sky; the y offset moved")
-        row = {self._hex(self.rip, 5 * CELL + x, RIP_Y0 + 11 * CELL + y)
-               for x in range(CELL) for y in range(CELL)}
-        if SKY in row or self._hex(self.rip, 5 * CELL, RIP_Y0 + 11 * CELL - 1) != SKY:
-            raise SystemExit("y=178 is not the ground's top edge; the capture's y offset moved")
-
-    def verify_frame12(self):
-        """the same check on the 1-2 capture: the floor's top edge at y 184 under a cell of black
-        in column 5 (inside the entry shaft, where nothing stands), the ending's first column of
-        open sky at 192, and the coin room's roof brick at the top left of the lower band."""
-        above = {self._hex(self.rip12, 5 * CELL + x, RIP12_Y0 + 10 * CELL + y)
-                 for x in range(CELL) for y in range(CELL)}
-        if above != {UNDERGROUND}:
-            raise SystemExit("the cell above 1-2's floor at column 5 is not black; the y offset moved")
-        edge = RIP12_Y0 + 11 * CELL
-        if (self._hex(self.rip12, 5 * CELL, edge - 1) != UNDERGROUND
-                or self._hex(self.rip12, 5 * CELL, edge) != "008888"
-                or self._hex(self.rip12, 5 * CELL + 1, edge) != "B8F8F0"):
-            raise SystemExit("y=184 is not 1-2's floor top edge; the capture's y offset moved")
-        ending = {self._hex(self.rip12, RIP12_ENDING_COLUMN * CELL + x, RIP12_Y0 + y)
-                  for x in range(CELL) for y in range(CELL)}
-        if ending != {SKY}:
-            raise SystemExit("1-2's column 192 is not the ending's sky; the capture's stitch moved")
-        roof = self.cell(("room12", 3, ROOM12_TOP_ROW))
-        if roof is None or {p for row in roof for p in row} != {UNDERGROUND, "008888"}:
-            raise SystemExit("1-2's coin room roof is not at x 1680, y 201; the band moved")
-
-    @staticmethod
-    def _hex(img, x, y):
-        r, g, b, _ = img.rgba(x, y)
-        return "%02X%02X%02X" % (r, g, b)
-
-    def cell(self, spec):
-        """a 16x16 cell as rows of RRGGBB, in whichever frame the anchor names."""
-        frame = spec[0]
-        if frame == "rip":
-            img, x0, y0 = self.rip, spec[1] * CELL, RIP_Y0 + spec[2] * CELL
-        elif frame == "bonus":
-            img = self.rip
-            x0 = BONUS_X0 + spec[1] * CELL
-            y0 = BONUS_GROUND_Y - CELL * (BONUS_GROUND_ROW - spec[2])
-        elif frame == "rip12":
-            img, x0, y0 = self.rip12, spec[1] * CELL, RIP12_Y0 + spec[2] * CELL
-        elif frame == "room12":
-            # the band is sixteen columns wide and starts at level row 2: the room's own column
-            # 16, its shaft's right side, is past its edge, and its wall's rows 0-1 are above it,
-            # where the image holds the level's ending and the run's floor
-            if spec[1] >= ROOM12_COLUMNS or spec[2] < ROOM12_TOP_ROW:
-                return None
-            img = self.rip12
-            x0 = ROOM12_X0 + spec[1] * CELL
-            y0 = ROOM12_Y0 + CELL * (spec[2] - ROOM12_TOP_ROW)
-        elif frame == "sheet":
-            if self.sheet is None:
-                return None
-            img, x0, y0 = self.sheet, spec[1], spec[2]
-        else:
-            raise SystemExit("unknown frame %r" % (frame,))
-        if x0 < 0 or y0 < 0 or x0 + CELL > img.width or y0 + CELL > img.height:
-            return None
-        rows = [[self._hex(img, x0 + x, y0 + y) for x in range(CELL)] for y in range(CELL)]
-        if frame == "sheet":
-            rows = [[SHEET_TO_RIP.get(p, p) for p in row] for row in rows]
-        return rows
-
-    def anchor(self, name, recolour=False):
-        rows = self.cell(ANCHORS[name])
-        if rows is None:
-            raise SystemExit("anchor %s falls outside its reference image" % name)
-        if recolour and dark_frame(ANCHORS[name]):
-            table = BONUS_RECOLOUR.get(name, BONUS_TO_SLOT)
-            rows = [[table.get(p, p) for p in row] for row in rows]
-        return rows
-
-    def has(self, name):
-        return ANCHORS[name][0] != "sheet" or self.sheet is not None
-
-
-def quadrant(rows, qx, qy):
-    return [row[qx * 8:qx * 8 + 8] for row in rows[qy * 8:qy * 8 + 8]]
-
-
-def mirror(tile):
-    return [list(reversed(row)) for row in tile]
-
-
-def indices(tile, slot, where):
-    """an 8x8 of RRGGBB as 2bpp values in its slot; an alien colour is fatal."""
-    palette = SLOTS[slot]
-    lookup = {}
-    for index, colour in enumerate(palette):
-        lookup.setdefault(colour, index)
-    out = []
-    for y, row in enumerate(tile):
-        line = []
-        for x, colour in enumerate(row):
-            colour = APPROXIMATIONS.get((slot, colour), colour)
-            if colour not in lookup:
-                raise SystemExit("%s pixel %d,%d is #%s, which is not in the %s palette (%s)"
-                                 % (where, x, y, colour, slot, ",".join(palette)))
-            line.append(lookup[colour])
-        out.append(line)
-    return out
-
-
-BLANK = [[0] * 8 for _ in range(8)]
-
-
-def build(refs):
-    """every family as (stem, Name, slot, [8x8 tiles of 2bpp values]), and the stems of the
-    families that could not be built because the sheet they are cut from is not there."""
-    built = []
-    skipped = []
-    for stem, name, slot, sources in FAMILIES:
-        if not all(source is None or refs.has(source[0]) for source in sources):
-            skipped.append(stem)
-            continue
-        tiles = []
-        for source in sources:
-            if source is None:
-                tiles.append([row[:] for row in BLANK])
-                continue
-            anchor, qx, qy = source
-            cell = refs.anchor(anchor, recolour=True)
-            tiles.append(indices(quadrant(cell, qx, qy), slot, "%s/%s" % (stem, anchor)))
-        built.append((stem, name, slot, tiles))
-    return built, skipped
-
-
-# ---------------------------------------------------------------- the structural report
-
 # relations the rom leans on: a quadrant two kinds share, or a kind the rom draws as its twin
 # mirrored (kCamAttrXFlip). each is checked against the capture and reported either way
-SHARING = [
+RELATIONS_11 = [
     ("hill slope right == mirror(hill slope left)", "hill_slope_r", "mirror", "hill_slope"),
     ("cloud cap right top == mirror(cap left top)", "cloud_capr_t", "mirror", "cloud_cap_t"),
     ("cloud cap right bottom == mirror(cap left bottom)", "cloud_capr_b", "mirror", "cloud_cap_b"),
@@ -672,12 +526,7 @@ SHARING = [
      "castle_window"),
 ]
 
-
-def whole(anchor):
-    return [(anchor, 0, 0), (anchor, 1, 0), (anchor, 0, 1), (anchor, 1, 1)]
-
-
-QUADRANT_SHARING = [
+QUADRANTS_11 = [
     ("pipe lip: left cell's right column == right cell's left column",
      [(("pipe_lip_l", 1, 0)), (("pipe_lip_l", 1, 1))],
      [(("pipe_lip_r", 0, 0)), (("pipe_lip_r", 0, 1))]),
@@ -761,6 +610,72 @@ QUADRANT_SHARING = [
     ("pipe side mouth: the two cells share their middle pair",
      [("pipe_side_mouth_t", 0, 1), ("pipe_side_mouth_t", 1, 1)],
      [("pipe_side_mouth_b", 0, 0), ("pipe_side_mouth_b", 1, 0)]),
+]
+
+# AUDIT: the compiled 1-1 grid and its capture do not stand in the same columns everywhere, and
+# the defect is the CAPTURE's. it is a stitch of screen-sized grabs, and it lost one column at its
+# left edge and gained a duplicate one around its fifth screen: the level's own column 0 is not in
+# the image at all. so a level column reads one column LEFT of itself for the first third of the
+# level and level-for-level after the seam. the nes map and the 1-2 pass both agree with the
+# json's geometry, so the json is right and this table is the correction:
+COLUMNS_11 = ((0, 75, -1), (76, 207, 0))
+# the pins, in order along the level: the opening big hill, whose bottom row is
+# slope-fill-CORE-fill-slope and whose fill/core/fill cells sit at capture 0/1/2 - which puts the
+# missing column at level 0 and not level 1; the first bush, five wide at level 11 and capture 10;
+# the question block at level 16 (capture 15); the four pipes at level 28/38/46/57 (capture
+# 27/37/45/56); the first ground gap at level 69-70 (capture 68-69); the three-wide bush at level
+# 71-73 (capture 70-72); then, past the seam, the two lone bricks with a question block between
+# them at level 77/78/79 (capture 77/78/79), the second gap at level 86-88 (capture 86-88) and the
+# third at level 153-154 (capture 153-154). the duplicated column is pinned by the scenery the
+# seam runs through: the capture draws a SIX-cell cloud at capture 74-79 where every other cloud in
+# the level is three, four or five, and its 48-column neighbours at level 27, 123 and 171 are all
+# five. so capture 75 is the duplicate - one middle cell of that cloud, repeated - and the cloud is
+# level 75-79, five wide. that is the only feature in capture 73-76; everything else there is open
+# sky in every row
+
+
+# ---------------------------------------------------------------- 1-2
+#
+# "rip12" cells are (column, RIP row) in 1-2's upper band and "room12" cells (column, LEVEL row)
+# in its coin room.
+ANCHORS_12 = {
+    # the underground run's own cells, read by the report and the 1-2 audit, and every one of them
+    # 1-1's art under the underground colours: the floor is the ground block, the roof and the
+    # walls the room's brick, the stair-steps the hard block, the pipes the pipe
+    "ug_ground12": ("rip12", 5, 11),
+    "ug_brick12": ("rip12", 0, 0),
+    "ug_hard12": ("rip12", 23, 7),
+    "ug_pipe_lip_l12": ("rip12", 109, 7),
+    "ug_pipe_lip_r12": ("rip12", 110, 7),
+    "ug_pipe_body_l12": ("rip12", 168, 0),
+    "ug_pipe_body_r12": ("rip12", 169, 0),
+    "ug_coin12": ("rip12", 180, 2),
+    # its ending, on sky: the same ground block in the overworld's tan and brown, and the stair
+    "end_ground12": ("rip12", 197, 11),
+    "end_stair12": ("rip12", 203, 4),
+    # the one family cut from this capture: the joint at the underground exit's shaft (real column
+    # 168, the two rows of the mouth). the shaft's left cell there carries the sideways body's rim
+    # along its top (or bottom) and the joint's dark line down its own left column, then the plain
+    # body's right column past it. 1-2 stands two of these pairs and 1-1's room one
+    "pipe_joint_t": ("rip12", 168, 6),
+    "pipe_joint_b": ("rip12", 168, 7),
+}
+
+FAMILIES_12 = [
+    # bank 1 0xe0-0xe4: the shaft joint, where that body runs into its vertical shaft. the shaft's
+    # left cell there wears the body's rim and joint down its own left column and the plain
+    # body's right column past it, so each of the two joint kinds needs two tiles of its own; the
+    # fifth is a bank-1 copy of kTilePipeBodyM for the right column, because a kind's attribute
+    # byte picks one vram bank for all four quadrants and the body's own tile lives in bank 0
+    ("pipe_joint", "PipeJoint", "pipe", [
+        Q("pipe_joint_t", 0, 0), Q("pipe_joint_t", 0, 1),
+        Q("pipe_joint_b", 0, 0), Q("pipe_joint_b", 0, 1),
+        Q("pipe_body_l", 1, 0)]),
+]
+
+RELATIONS_12 = []
+
+QUADRANTS_12 = [
     # the 1-2 capture against 1-1's, through the palette swap: every underground cell the run is
     # built of is 1-1's art, and the ending's ground and stair are 1-1's own cells exactly
     ("1-2 floor == 1-1 ground", whole("ug_ground12"), whole("ground"), "recolour"),
@@ -791,10 +706,393 @@ QUADRANT_SHARING = [
     ("1-1 bonus room shaft joint bottom == 1-2's", whole("bonus_joint_b"), whole("pipe_joint_b")),
 ]
 
+# AUDIT: the 1-2 capture stands level for level: the underground run's column c is level c + 24
+# (the 24-column start segment is in no smbd rip) and the ending's is c + 25, because level 216 -
+# the right column of the coin room's exit shaft, which the bible carries up to row 0 to seal the
+# seam - is not in the image and capture column 192 is already the ending's first column of sky.
+# its one defect is at capture column 63, level 87, where the hanging wall's right column is drawn
+# eight pixels wide over black on rows 1-7: a stitch that lost half a cell, since nothing in the
+# game is drawn on an 8px grid and both the nes map and the rest of the capture keep the wall two
+# columns wide
+COLUMNS_12 = ((24, 215, -24), (217, 248, -25))
 
-def structural_report(refs):
+
+# ---------------------------------------------------------------- 1-3
+#
+# "rip13" cells are (column, RIP row) in 1-3's band, which uses 1-2's offsets and 1-1's row rule.
+ANCHORS_13 = {
+    # the tree. the four-wide canopy at level columns 18-21 on level row 12, with its trunk under
+    # it: nothing walks there, no coin hangs over it and the nearest spawn is nine columns away, so
+    # all four cells are clean. the canopy is a black outline over a flat bright green with a
+    # scalloped underside whose notches have an 8px period; the trunk is the brick browns with a
+    # dark stripe pair whose period is 8px in BOTH axes, so one tile stamped four times is the
+    # whole column
+    "tree_cap": ("rip13", 18, 10),
+    "tree_mid": ("rip13", 19, 10),
+    "tree_cap_r": ("rip13", 21, 10),
+    "trunk": ("rip13", 19, 11),
+    # the cells 1-3 shares with 1-1, so the report can say so cell for cell rather than only
+    # kind by kind: the ground row, the flagpole's base block (kBlockHard, level 149 row 12), the
+    # big castle's wall and a cloud middle
+    "ground13": ("rip13", 5, 11),
+    "hard13": ("rip13", 149, 10),
+    "castle_wall13": ("rip13", 152, 6),
+    "cloud_mid_t13": ("rip13", 39, 4),
+}
+
+FAMILIES_13 = [
+    # bank 1 0x0a-0x0e: the canopy. five tiles is all it costs, because the shape repeats and the
+    # right cap is the left one's exact mirror (see the relations): the left cap's rounded corner
+    # pair, the plain top row that serves the cap's inner column and both of the middle's, the
+    # cap's outer scalloped bottom, the plain scalloped bottom, and the middle's own bottom - the
+    # only tile with the dark-green notch accent in it. kBlockTreeTopR draws these four with the
+    # columns swapped and kCamAttrXFlip, which is why the right cap needs no tile of its own
+    ("tree", "Tree", "pipe", [
+        Q("tree_cap", 0, 0), Q("tree_cap", 1, 0),
+        Q("tree_cap", 0, 1), Q("tree_cap", 1, 1),
+        Q("tree_mid", 0, 1)]),
+    # bank 1 0x0f: the trunk, one tile for the whole column, on the brick slot's browns
+    ("trunk", "Trunk", "brick", [Q("trunk", 0, 0)]),
+]
+
+# 1-3 stands 1-1's kinds - every one of them reads pixel for pixel identical in this capture -
+# and adds the four the tree costs. kBlockTreeTopR is drawn as the left cap under kCamAttrXFlip,
+# which is what the "mirrored" flag says
+KINDS_13 = dict(KINDS_11)
+KINDS_13.update({
+    43: ("tree canopy left", "tree_cap", "pipe"),
+    44: ("tree canopy mid", "tree_mid", "pipe"),
+    45: ("tree canopy right", "tree_cap", "pipe", True),
+    46: ("tree trunk", "trunk", "brick"),
+})
+
+RELATIONS_13 = [
+    # 1-1 taught us a right cap usually is NOT its left twin mirrored (the cloud's is 28 px out,
+    # the bush's 13). the tree's is, to the pixel, which is why kBlockTreeTopR carries
+    # kCamAttrXFlip instead of tiles of its own
+    ("tree canopy right == mirror(canopy left)", "tree_cap_r", "mirror", "tree_cap"),
+]
+
+QUADRANTS_13 = [
+    ("tree canopy middle: its two top tiles are the same",
+     [("tree_mid", 0, 0)], [("tree_mid", 1, 0)]),
+    ("tree canopy middle: its two bottom tiles are the same",
+     [("tree_mid", 0, 1)], [("tree_mid", 1, 1)]),
+    ("tree canopy: the left cap's inner top is the middle's plain top",
+     [("tree_cap", 1, 0)], [("tree_mid", 0, 0)]),
+    ("tree canopy: the left cap's inner bottom is NOT the middle's (the notch stops at a cap)",
+     [("tree_cap", 1, 1)], [("tree_mid", 0, 1)]),
+    ("tree trunk: one 8x8 tile fills the whole cell",
+     [("trunk", 1, 0), ("trunk", 0, 1), ("trunk", 1, 1)],
+     [("trunk", 0, 0), ("trunk", 0, 0), ("trunk", 0, 0)]),
+    # and 1-3 against 1-1: every block and terrain family but the tree is 1-1's own art, which is
+    # why this pass adds two families and no palette
+    ("1-3 ground == 1-1 ground", whole("ground13"), whole("ground")),
+    ("1-3 flagpole base block == 1-1 hard block", whole("hard13"), whole("hard")),
+    ("1-3 castle wall == 1-1 castle wall", whole("castle_wall13"), whole("castle_wall")),
+    ("1-3 cloud middle top == 1-1's", whole("cloud_mid_t13"), whole("cloud_mid_t")),
+]
+
+# AUDIT: the 1-3 capture needs no column correction. it is 160 columns wide, exactly the json's
+# compiled length, and every feature stands where the json puts it: the opening castle at 0-4, the
+# first tree at 18-21, the lift pits, the flagpole at 149 and the big castle at 152-160 all line up
+# column for column, and the per-kind agreement below is 100% on every kind once the challenge
+# mode's sprites are taken out. the only cells the capture and the json disagreed about were
+# scenery the compiler had dropped rather than terrain: three clouds whose lower row the capture
+# draws behind a canopy or the castle, which the bible now marks "clip" (see level-1-3.json)
+COLUMNS_13 = None
+
+# the challenge mode's own overlays, cell by cell, with the reason each one is not tile truth.
+# every one of these was found by scanning the capture for a cell the grid calls empty that is not
+# pure sky, and then identified against the level's spawn/object lists and the smbd block of the
+# bible; the enemies themselves come out of the compiled spawn list instead (see load_enemies)
+OVERLAYS_13 = [
+    ("the ripper's credit, drawn over the sky at the top left",
+     [(column, 2) for column in range(10)]),
+    # challenge mode reddens one coin of a run and adds loose ones; the bible's smbd.red_coins
+    # names all five, two of them over a bg coin cell the grid does hold
+    ("challenge mode's red coin", [(28, 4), (56, 13), (88, 5), (112, 12), (134, 12)]),
+    ("the challenge mode's yoshi egg", [(97, 7)]),
+    # the three lifts are sprites in the rom (kTileLiftDeck); the capture caught each deck part way
+    # along its track, so the cells it drew them in are not the cells the object list spawns them
+    # at (47/82/89)
+    ("a lift deck, a sprite in the rom",
+     [(55, 6), (56, 6), (57, 6), (86, 8), (87, 8), (88, 8), (92, 9), (93, 9), (94, 9)]),
+    # the one question block in the level. challenge mode draws a block's CONTENTS over its face
+    # instead of the "?", which is why the question family is cut from the tileset sheet
+    ("challenge mode draws the block's contents over its face", [(59, 10)]),
+]
+
+
+# ---------------------------------------------------------------- the per-level table
+
+LEVELS = {
+    "1-1": {
+        "image": "1-1",
+        "frame": "rip",
+        "area_frame": "bonus",
+        "grid": ("level_1_1", "kLevel11Grid"),
+        "columns": COLUMNS_11,
+        "anchors": ANCHORS_11,
+        "families": FAMILIES_11,
+        "kinds": KINDS_11,
+        "relations": RELATIONS_11,
+        "quadrants": QUADRANTS_11,
+        # the room's brick is the one family whose ART differs down there, not just its colours:
+        # rip_tiles generates the room's own upper pair and the rom loads it over the overworld's,
+        # so a dark cell of that kind is audited against the room's own anchor
+        "room_anchors": {2: "ug_brick"},
+        "overlays": [],
+    },
+    "1-2": {
+        "image": "1-2",
+        "frame": "rip12",
+        "area_frame": "room12",
+        "grid": ("level_1_2", "kLevel12Grid"),
+        "columns": COLUMNS_12,
+        "anchors": ANCHORS_12,
+        "families": FAMILIES_12,
+        # 1-2 stands 1-1's kinds and adds none of its own
+        "kinds": KINDS_11,
+        "relations": RELATIONS_12,
+        "quadrants": QUADRANTS_12,
+        "room_anchors": {2: "ug_brick"},
+        "overlays": [],
+    },
+    "1-3": {
+        "image": "1-3",
+        "frame": "rip13",
+        "area_frame": None,
+        "grid": ("level_1_3", "kLevel13Grid"),
+        "columns": COLUMNS_13,
+        "anchors": ANCHORS_13,
+        "families": FAMILIES_13,
+        # 1-1's kinds plus the tree, whose right cap the rom mirrors off the left one
+        "kinds": KINDS_13,
+        "relations": RELATIONS_13,
+        "quadrants": QUADRANTS_13,
+        "room_anchors": {},
+        "overlays": OVERLAYS_13,
+        # how many cells tall a spawn's sprite is, per kEnemy* kind (default 1). a red koopa is
+        # 16x24 and a red paratroopa slides a cell up and down around its spawn row, so both of
+        # them cover rows the one-cell default does not. 1-1's and 1-2's tables leave this empty on
+        # purpose: their passes measured their agreement with the one-cell mask and the numbers
+        # they reported are the numbers this table still reproduces
+        "enemy_rows": {2: 2, 4: 3},
+    },
+}
+
+LEVEL_ORDER = ["1-1", "1-2", "1-3"]
+
+# every anchor of every level in one namespace: the relations deliberately reach across levels
+# (1-2's whole audit is "this is 1-1's art under other colours", and 1-3's says the same), and a
+# family's quadrant list names anchors by name alone. the frame in each spec says which capture the
+# cell was cut from, so nothing here is ambiguous
+ANCHORS = {}
+for _level in LEVEL_ORDER:
+    for _name, _spec in LEVELS[_level]["anchors"].items():
+        if _name in ANCHORS:
+            raise SystemExit("anchor %s is declared by two levels" % _name)
+        ANCHORS[_name] = _spec
+
+# and every family, in level order. one png per family, so the order only affects the report
+FAMILIES = [family for level in LEVEL_ORDER for family in LEVELS[level]["families"]]
+
+
+def level_column(level, column):
+    """the capture column a level column stands in, or None for a column the capture does not
+    hold. a level with no "columns" table stands column for column."""
+    table = LEVELS[level]["columns"]
+    if table is None:
+        return column
+    for lo, hi, shift in table:
+        if lo <= column <= hi:
+            return column + shift
+    # 1-1 answers the level column itself outside its table (its own column 0 comes back as -1 and
+    # falls off the image); 1-2 answers None, because the columns outside its table are the start
+    # segment and the exit shaft, neither of which is in the image at all
+    return column if level == "1-1" else None
+
+
+# ---------------------------------------------------------------- reading the references
+
+
+class Refs:
+    def __init__(self, ref_dir, levels):
+        self.images = {}
+        wanted = {"sheet"} | {LEVELS[level]["image"] for level in levels}
+        for key, name in IMAGES.items():
+            if key not in wanted:
+                continue
+            path = os.path.join(ref_dir, name)
+            if os.path.exists(path):
+                self.images[key] = gbpng.read_png(path)
+            elif key not in OPTIONAL_IMAGES:
+                raise SystemExit("no reference image at %s (they are gitignored; copy it in)" % path)
+        for level in levels:
+            VERIFY[level](self)
+
+    @property
+    def sheet(self):
+        return self.images.get("sheet")
+
+    @staticmethod
+    def _hex(img, x, y):
+        r, g, b, _ = img.rgba(x, y)
+        return "%02X%02X%02X" % (r, g, b)
+
+    def pixel(self, frame_name, x, y):
+        return self._hex(self.images[FRAMES[frame_name].image], x, y)
+
+    def cell(self, spec):
+        """a 16x16 cell as rows of RRGGBB, in whichever frame the anchor names."""
+        frame = FRAMES.get(spec[0])
+        if frame is None:
+            raise SystemExit("unknown frame %r" % (spec[0],))
+        img = self.images.get(frame.image)
+        if img is None:
+            return None
+        where = frame.origin(spec[1], spec[2])
+        if where is None:
+            return None
+        x0, y0 = where
+        if x0 < 0 or y0 < 0 or x0 + CELL > img.width or y0 + CELL > img.height:
+            return None
+        rows = [[self._hex(img, x0 + x, y0 + y) for x in range(CELL)] for y in range(CELL)]
+        if frame.remap:
+            rows = [[frame.remap.get(p, p) for p in row] for row in rows]
+        return rows
+
+    def anchor(self, name, recolour=False):
+        rows = self.cell(ANCHORS[name])
+        if rows is None:
+            raise SystemExit("anchor %s falls outside its reference image" % name)
+        if recolour and dark_frame(ANCHORS[name]):
+            table = BONUS_RECOLOUR.get(name, BONUS_TO_SLOT)
+            rows = [[table.get(p, p) for p in row] for row in rows]
+        return rows
+
+    def has(self, name):
+        return self.images.get(FRAMES[ANCHORS[name][0]].image) is not None
+
+
+def verify_11(refs):
+    """the y offset is only trustworthy if the ground's top edge really is at y 178, so the
+    cell above rip row 11 is open sky and rip row 11 itself has no sky left in it. column 5
+    is chosen because nothing stands on it and no sprite walks over it."""
+    above = {refs.pixel("rip", 5 * CELL + x, RIP_Y0 + 10 * CELL + y)
+             for x in range(CELL) for y in range(CELL)}
+    if above != {SKY}:
+        raise SystemExit("the cell above the ground at column 5 is not sky; the y offset moved")
+    row = {refs.pixel("rip", 5 * CELL + x, RIP_Y0 + 11 * CELL + y)
+           for x in range(CELL) for y in range(CELL)}
+    if SKY in row or refs.pixel("rip", 5 * CELL, RIP_Y0 + 11 * CELL - 1) != SKY:
+        raise SystemExit("y=178 is not the ground's top edge; the capture's y offset moved")
+
+
+def verify_12(refs):
+    """the same check on the 1-2 capture: the floor's top edge at y 184 under a cell of black
+    in column 5 (inside the entry shaft, where nothing stands), the ending's first column of
+    open sky at 192, and the coin room's roof brick at the top left of the lower band."""
+    above = {refs.pixel("rip12", 5 * CELL + x, RIP12_Y0 + 10 * CELL + y)
+             for x in range(CELL) for y in range(CELL)}
+    if above != {UNDERGROUND}:
+        raise SystemExit("the cell above 1-2's floor at column 5 is not black; the y offset moved")
+    edge = RIP12_Y0 + 11 * CELL
+    if (refs.pixel("rip12", 5 * CELL, edge - 1) != UNDERGROUND
+            or refs.pixel("rip12", 5 * CELL, edge) != "008888"
+            or refs.pixel("rip12", 5 * CELL + 1, edge) != "B8F8F0"):
+        raise SystemExit("y=184 is not 1-2's floor top edge; the capture's y offset moved")
+    ending = {refs.pixel("rip12", RIP12_ENDING_COLUMN * CELL + x, RIP12_Y0 + y)
+              for x in range(CELL) for y in range(CELL)}
+    if ending != {SKY}:
+        raise SystemExit("1-2's column 192 is not the ending's sky; the capture's stitch moved")
+    roof = refs.cell(("room12", 3, ROOM12_TOP_ROW))
+    if roof is None or {p for row in roof for p in row} != {UNDERGROUND, "008888"}:
+        raise SystemExit("1-2's coin room roof is not at x 1680, y 201; the band moved")
+
+
+def verify_13(refs):
+    """1-3's frame, derived the same way and checked the same way: the ground's top edge at
+    y 184 = 8 + 16 * 11 with a clear cell of sky over it in column 5, which is open ground
+    nothing stands on. the capture is exactly 160 columns and 12 rows of cell, so its last
+    scanline IS the ground row's last - level row 14 is not in it."""
+    above = {refs.pixel("rip13", 5 * CELL + x, RIP13_Y0 + 10 * CELL + y)
+             for x in range(CELL) for y in range(CELL)}
+    if above != {SKY}:
+        raise SystemExit("the cell above 1-3's ground at column 5 is not sky; the y offset moved")
+    edge = RIP13_Y0 + 11 * CELL
+    if refs.pixel("rip13", 5 * CELL, edge - 1) != SKY:
+        raise SystemExit("y=184 is not 1-3's ground top edge; the capture's y offset moved")
+    row = {refs.pixel("rip13", 5 * CELL + x, edge + y) for x in range(CELL) for y in range(CELL)}
+    if SKY in row:
+        raise SystemExit("1-3's ground row at column 5 still has sky in it; the y offset moved")
+    img = refs.images["1-3"]
+    if img.width != 160 * CELL or img.height != RIP13_Y0 + 12 * CELL:
+        raise SystemExit("1-3's capture is %dx%d, not the 2560x200 the frame assumes"
+                         % (img.width, img.height))
+
+
+VERIFY = {"1-1": verify_11, "1-2": verify_12, "1-3": verify_13}
+
+
+def quadrant(rows, qx, qy):
+    return [row[qx * 8:qx * 8 + 8] for row in rows[qy * 8:qy * 8 + 8]]
+
+
+def mirror(tile):
+    return [list(reversed(row)) for row in tile]
+
+
+def indices(tile, slot, where):
+    """an 8x8 of RRGGBB as 2bpp values in its slot; an alien colour is fatal."""
+    palette = SLOTS[slot]
+    lookup = {}
+    for index, colour in enumerate(palette):
+        lookup.setdefault(colour, index)
+    out = []
+    for y, row in enumerate(tile):
+        line = []
+        for x, colour in enumerate(row):
+            colour = APPROXIMATIONS.get((slot, colour), colour)
+            if colour not in lookup:
+                raise SystemExit("%s pixel %d,%d is #%s, which is not in the %s palette (%s)"
+                                 % (where, x, y, colour, slot, ",".join(palette)))
+            line.append(lookup[colour])
+        out.append(line)
+    return out
+
+
+BLANK = [[0] * 8 for _ in range(8)]
+
+
+def build(refs, families):
+    """every family as (stem, Name, slot, [8x8 tiles of 2bpp values]), and the stems of the
+    families that could not be built because the sheet they are cut from is not there."""
+    built = []
+    skipped = []
+    for stem, name, slot, sources in families:
+        if not all(source is None or refs.has(source[0]) for source in sources):
+            skipped.append(stem)
+            continue
+        tiles = []
+        for source in sources:
+            if source is None:
+                tiles.append([row[:] for row in BLANK])
+                continue
+            anchor, qx, qy = source
+            cell = refs.anchor(anchor, recolour=True)
+            tiles.append(indices(quadrant(cell, qx, qy), slot, "%s/%s" % (stem, anchor)))
+        built.append((stem, name, slot, tiles))
+    return built, skipped
+
+
+# ---------------------------------------------------------------- the structural report
+
+
+def structural_report(refs, relations, quadrants):
     lines = []
-    for label, left, relation, right in SHARING:
+    for label, left, relation, right in relations:
         a = refs.cell(left) if isinstance(left, tuple) else refs.anchor(left)
         b = refs.anchor(right)
         if relation == "mirror":
@@ -802,7 +1100,7 @@ def structural_report(refs):
         differ = sum(1 for ra, rb in zip(a, b) for x, y in zip(ra, rb) if x != y)
         lines.append((label, differ))
     quads = []
-    for entry in QUADRANT_SHARING:
+    for entry in quadrants:
         label, left, right = entry[0], entry[1], entry[2]
         mode = entry[3] if len(entry) > 3 else "exact"
         names = [a for a, _, _ in left] + [a for a, _, _ in (right or [])]
@@ -825,13 +1123,10 @@ def structural_report(refs):
 
 # ---------------------------------------------------------------- the position audit
 
-# the compiled grids: level -> (its slug in the generated c, its main grid's array name)
-LEVEL_GRIDS = {"1-1": ("level_1_1", "kLevel11Grid"), "1-2": ("level_1_2", "kLevel12Grid")}
-
 
 def load_grid(generated, level):
     """the level's grid out of the compiled header, plus its first sub-area's own grid."""
-    slug, array = LEVEL_GRIDS[level]
+    slug, array = LEVELS[level]["grid"]
     path = os.path.join(generated, slug + "_grid.h")
     if not os.path.exists(path):
         return None, None
@@ -845,7 +1140,7 @@ def load_grid(generated, level):
 
     area = None
     apath = os.path.join(generated, slug + "_areas.c")
-    if os.path.exists(apath):
+    if LEVELS[level]["area_frame"] and os.path.exists(apath):
         with open(apath, "r", encoding="utf-8") as f:
             atext = f.read()
         amatch = re.search(slug + r"_area0_blocks\[[^\]]*\]\[[^\]]*\] = \{(.*?)\n\};",
@@ -861,8 +1156,10 @@ def load_grid(generated, level):
 def load_enemies(generated, level):
     """the level's spawn list, so a ground cell a goomba stands on is not read as tile truth.
     the goomba's browns are the ground family's own, so nothing but the list can tell them
-    apart. row is the surface row the enemy stands on top of."""
-    slug = LEVEL_GRIDS[level][0]
+    apart. row is the surface row the enemy stands on top of, and the level's "enemy_rows" says
+    how many cells above it a given kind's sprite reaches."""
+    slug = LEVELS[level]["grid"][0]
+    heights = LEVELS[level].get("enemy_rows", {})
     path = os.path.join(generated, slug + "_objects.c")
     if not os.path.exists(path):
         return set()
@@ -875,15 +1172,26 @@ def load_enemies(generated, level):
             return []
         return [int(v, 0) for v in match.group(1).replace("\n", "").split(",") if v.strip()]
 
-    columns, rows = array("column"), array("row")
+    columns, rows, kinds = array("column"), array("row"), array("kind")
     covered = set()
-    for column, row in zip(columns, rows):
+    for index, (column, row) in enumerate(zip(columns, rows)):
+        kind = kinds[index] if index < len(kinds) else 0
+        tall = heights.get(kind, 1)
         # an enemy is up to two cells wide, walks between cells, and its feet overhang the cell it
         # stands on, so the three columns around its spawn are all suspect
         for dx in (-1, 0, 1):
-            for dy in (-1, 0):
+            for dy in range(-tall, 1):
                 covered.add((column + dx, row + dy))
     return covered
+
+
+def load_overlays(level):
+    """the level's declared sprite/caption cells as cell -> reason."""
+    out = {}
+    for reason, cells in LEVELS[level].get("overlays", []):
+        for cell in cells:
+            out.setdefault(cell, reason)
+    return out
 
 
 def collapse(cell, slot, palette):
@@ -934,9 +1242,11 @@ LAST_RIP_ROW = 11
 SHEET_FAMILIES = {"question": "Question", "spent": "Spent", "coin": "Coin"}
 
 
-def sources_for(level, grid, area, enemies):
-    """every grid cell as (capture spec, overlaid) in the level's own frames, or None for a cell
-    the captures do not hold."""
+def sources_for(level, grid, area, enemies, overlays):
+    """every grid cell as (kind, capture spec, overlaid) in the level's own frames, with a None
+    spec for a cell the captures do not hold."""
+    frame = LEVELS[level]["frame"]
+    area_frame = LEVELS[level]["area_frame"]
     out = []
     if grid:
         for column, strip in enumerate(grid):
@@ -944,58 +1254,67 @@ def sources_for(level, grid, area, enemies):
                 if level_row - 2 > LAST_RIP_ROW or level_row < 2:
                     out.append((cell_kind, None, False))
                     continue
-                if level == "1-1":
-                    spec = ("rip", rip_column(column), level_row - 2)
-                else:
-                    rip_col = rip12_column(column)
-                    spec = None if rip_col is None else ("rip12", rip_col, level_row - 2)
-                out.append((cell_kind, spec, (column, level_row) in enemies))
-    if area:
-        frame = "bonus" if level == "1-1" else "room12"
+                rip_col = level_column(level, column)
+                spec = None if rip_col is None else (frame, rip_col, level_row - 2)
+                covered = (column, level_row) in enemies or (column, level_row) in overlays
+                out.append((cell_kind, spec, covered))
+    if area and area_frame:
         for column, strip in enumerate(area):
             for level_row, cell_kind in enumerate(strip):
-                out.append((cell_kind, (frame, column, level_row), False))
+                out.append((cell_kind, (area_frame, column, level_row), False))
     return out
 
 
-def audit(refs, gen_dir, level, grid, area, enemies):
+def wanted_cell(refs, level, kind, gen_dir):
+    """what a kind's cell should look like above ground and in a dark frame, as 2bpp values, or
+    (None, None) when neither the capture nor the committed c can say."""
+    entry = LEVELS[level]["kinds"][kind]
+    label, anchor_name, slot = entry[0], entry[1], entry[2]
+    mirrored = len(entry) > 3 and entry[3]
+    if slot is None:
+        return None, None
+    if refs.has(anchor_name):
+        # an anchor cut from a black-backdrop frame is stored in that frame's own colours, so it
+        # has to be lifted into its slot before either comparison can read it
+        want = refs.anchor(anchor_name, recolour=True)
+        if mirrored:
+            want = mirror(want)
+        room_anchor = LEVELS[level].get("room_anchors", {}).get(kind)
+        want_room = refs.anchor(room_anchor, recolour=True) if room_anchor else want
+        want_over = collapse(want, slot, SLOTS[slot])
+        want_room = collapse(want_room, slot, SLOTS[slot])
+    else:
+        want_over = want_room = gen_cell(gen_dir, SHEET_FAMILIES[anchor_name])
+        if want_over is None:
+            return None, None
+    # an underground slot can name one colour twice, so the anchor's own 2bpp values are folded
+    # the way the slot folds them before comparing
+    under = UNDERGROUND_SLOTS[slot]
+    fold = [min(j for j in range(4) if under[j] == under[i]) for i in range(4)]
+    return want_over, [[fold[v] for v in row] for row in want_room]
+
+
+def audit(refs, gen_dir, level, grid, area, enemies, overlays):
     """every grid cell that names a kind the captures teach, against that kind's anchor.
 
     a cell lands in one of four buckets: `same`, `overlay` (the capture draws a sprite, a red
-    coin, a challenge marker or a caption over it, so it is not tile truth), `differ` (the
+    coin, a challenge marker or a caption over the cell AND the cell no longer reads as this
+    kind's art, so it is not tile truth), `differ` (the
     capture holds different art there - for 1-1 almost always the json standing in a different
-    cell than smb does, see COLUMN_SHIFT; for 1-2 the question blocks, whose faces the challenge
-    rip covers with their contents in the slot's own colours) and `off frame`."""
-    sources = sources_for(level, grid, area, enemies)
+    cell than smb does, see the level's "columns" table; for 1-2 the question blocks, whose faces
+    the challenge rip covers with their contents in the slot's own colours) and `off frame`."""
+    sources = sources_for(level, grid, area, enemies, overlays)
+    kinds = LEVELS[level]["kinds"]
     rows = []
-    for kind in sorted(KIND_CELLS):
-        label, anchor_name, slot = KIND_CELLS[kind]
+    for kind in sorted(kinds):
+        label, slot = kinds[kind][0], kinds[kind][2]
         if slot is None:
             rows.append((kind, label, 0, 0, 0, 0, 0, []))
             continue
-        want = want_room = None
-        if refs.has(anchor_name):
-            # an anchor cut from a black-backdrop frame is stored in that frame's own colours, so
-            # it has to be lifted into its slot before either comparison can read it
-            want = refs.anchor(anchor_name, recolour=True)
-            if kind == 33:  # the right hill slope is the left one mirrored, as the rom draws it
-                want = mirror(refs.anchor("hill_slope"))
-            # the room's brick is the one family whose ART differs down there, not just its
-            # colours: rip_tiles generates the room's own upper pair and the rom loads it over the
-            # overworld's, so the audit has to compare a dark cell against the room's own anchor
-            want_room = refs.anchor("ug_brick", recolour=True) if kind == 2 else want
-            want_over = collapse(want, slot, SLOTS[slot])
-            want_room = collapse(want_room, slot, SLOTS[slot])
-        else:
-            want_over = want_room = gen_cell(gen_dir, SHEET_FAMILIES[anchor_name])
-            if want_over is None:
-                rows.append((kind, label, 0, 0, 0, 0, 0, ["no sheet and no generated c"]))
-                continue
-        # an underground slot can name one colour twice, so the anchor's own 2bpp values are
-        # folded the way the slot folds them before comparing
-        under = UNDERGROUND_SLOTS[slot]
-        fold = [min(j for j in range(4) if under[j] == under[i]) for i in range(4)]
-        want_under = [[fold[v] for v in row] for row in want_room]
+        want_over, want_under = wanted_cell(refs, level, kind, gen_dir)
+        if want_over is None:
+            rows.append((kind, label, 0, 0, 0, 0, 0, ["no sheet and no generated c"]))
+            continue
         same = overlay = differ = off = 0
         misses = []
         for cell_kind, spec, covered in sources:
@@ -1009,10 +1328,16 @@ def audit(refs, gen_dir, level, grid, area, enemies):
             palette = UNDERGROUND_SLOTS[slot] if dark else SLOTS[slot]
             expect = want_under if dark else want_over
             values = collapse(got, slot, palette)
-            if values is None or covered:
+            # a cell whose colours the slot cannot even hold is a sprite for certain. otherwise a
+            # covered cell EXCUSES a mismatch, it does not discard a match: if the capture's cell
+            # still is this kind's art pixel for pixel, the sprite drawn over it did not touch the
+            # part that matters and the cell is evidence like any other
+            if values is None:
                 overlay += 1
             elif values == expect:
                 same += 1
+            elif covered:
+                overlay += 1
             else:
                 differ += 1
                 if len(misses) < 4:
@@ -1020,6 +1345,210 @@ def audit(refs, gen_dir, level, grid, area, enemies):
         rows.append((kind, label, same + overlay + differ + off, same, overlay, differ, off,
                      misses))
     return rows
+
+
+# ---------------------------------------------------------------- the proof images
+#
+# a panorama is what the panorama tool (scratch, drives the title's debug camera and stitches
+# framebuffer_color) writes: a P6 ppm of the whole level at one vertical scroll. the camera pans
+# 144 px of a 240 px level, so one sweep cannot hold every row and the proof takes a list of
+# (file, scy) - a level row is read from whichever sweep frames it.
+
+CLASS_COLOURS = {
+    "green": (32, 176, 64),  # the rom's cell is the capture's, pixel for pixel
+    "yellow": (240, 208, 32),  # the capture drew a sprite or a caption here: not tile truth
+    "blue": (48, 112, 240),  # the capture draws art the grid has none of
+    "red": (216, 32, 32),  # a real mismatch
+    "grey": (56, 56, 56),  # sky in both, or a row/column no reference holds
+}
+CLASS_ORDER = ["green", "yellow", "blue", "red", "grey"]
+
+
+def quantise(rgb):
+    """an 8-bit triple on the cgb's own 5-bit lattice, the way gbpng.rgb555 quantises."""
+    return tuple((c >> 3) << 3 for c in rgb)
+
+
+def read_ppm(path):
+    """a P6 ppm as (width, height, rows of (r, g, b))."""
+    with open(path, "rb") as f:
+        data = f.read()
+    fields, i = [], 0
+    while len(fields) < 4:
+        while i < len(data) and data[i:i + 1].isspace():
+            i += 1
+        if data[i:i + 1] == b"#":
+            while i < len(data) and data[i:i + 1] != b"\n":
+                i += 1
+            continue
+        j = i
+        while j < len(data) and not data[j:j + 1].isspace():
+            j += 1
+        fields.append(data[i:j])
+        i = j
+    if fields[0] != b"P6" or fields[3] != b"255":
+        raise SystemExit("%s is not an 8-bit P6 ppm" % path)
+    i += 1
+    width, height = int(fields[1]), int(fields[2])
+    rows = []
+    for y in range(height):
+        base = i + y * width * 3
+        rows.append([(data[base + x * 3], data[base + x * 3 + 1], data[base + x * 3 + 2])
+                     for x in range(width)])
+    return width, height, rows
+
+
+class Panorama:
+    """the rom's own rendering of a level, addressed by level row.
+
+    the panorama tool writes each rgb555 channel back out as (c5 << 3) | (c5 >> 2), which puts a
+    full channel at 255 where the captures - which are real gbc grabs quantised the way gbpng's
+    rgb555 helper does it - put it at 248. so every pixel read here is snapped back onto the
+    captures' own 5-bit lattice (c5 << 3) before anything compares it, which is exactly the
+    quantisation the hardware itself applies."""
+
+    SCREEN_H = 144
+
+    def __init__(self, sweeps):
+        self.sweeps = []
+        for path, scy in sweeps:
+            width, height, rows = read_ppm(path)
+            if height != self.SCREEN_H:
+                raise SystemExit("%s is %d rows, not the screen's %d" % (path, height, self.SCREEN_H))
+            self.sweeps.append((scy, width, rows))
+
+    def width(self):
+        return min(width for _scy, width, _rows in self.sweeps)
+
+    def cell(self, column, level_row):
+        """the 16x16 cell as rows of RRGGBB, from whichever sweep frames that level row."""
+        top = level_row * CELL
+        for scy, width, rows in self.sweeps:
+            y0 = top - scy
+            x0 = column * CELL
+            if y0 < 0 or y0 + CELL > self.SCREEN_H or x0 + CELL > width:
+                continue
+            return [["%02X%02X%02X" % quantise(rows[y0 + y][x0 + x]) for x in range(CELL)]
+                    for y in range(CELL)]
+        return None
+
+
+# the colours no slot can hold, which the generator resolves onto a colour the slot does have
+# (see APPROXIMATIONS). the proof has to resolve the capture's cell the same way before comparing
+# it, or a documented approximation reads as a mismatch - and it says which cells it did that to
+APPROXIMATED = {colour: onto for (_slot, colour), onto in APPROXIMATIONS.items()}
+
+
+def classify(refs, level, grid, enemies, overlays, pano):
+    """one class per (column, level row) of the main grid: what the diff heatmap paints, plus the
+    cells where a capture colour had to go through APPROXIMATIONS to be comparable at all."""
+    frame = LEVELS[level]["frame"]
+    out = {}
+    approximated = []
+    for column, strip in enumerate(grid):
+        for level_row, kind in enumerate(strip):
+            rip_col = level_column(level, column)
+            got = None
+            if rip_col is not None and 2 <= level_row <= LAST_RIP_ROW + 2:
+                got = refs.cell((frame, rip_col, level_row - 2))
+            if got is None:
+                out[(column, level_row)] = ("grey", "no reference for this cell")
+                continue
+            backdrop = UNDERGROUND if dark_frame((frame, rip_col, level_row - 2)) else SKY
+            covered = (column, level_row) in enemies or (column, level_row) in overlays
+            reason = overlays.get((column, level_row), "a sprite the spawn list places here")
+            if kind == 0:
+                if {p for row in got for p in row} == {backdrop}:
+                    out[(column, level_row)] = ("grey", "backdrop in both")
+                elif covered:
+                    out[(column, level_row)] = ("yellow", reason)
+                else:
+                    out[(column, level_row)] = ("blue", "the capture draws art the grid has none of")
+                continue
+            if covered:
+                out[(column, level_row)] = ("yellow", reason)
+                continue
+            if any(p in APPROXIMATED for row in got for p in row):
+                approximated.append((column, level_row,
+                                     sorted({p for row in got for p in row if p in APPROXIMATED})))
+                got = [[APPROXIMATED.get(p, p) for p in row] for row in got]
+            mine = pano.cell(column, level_row) if pano else None
+            if mine is None:
+                out[(column, level_row)] = ("grey", "no panorama sweep frames this row")
+            elif mine == got:
+                out[(column, level_row)] = ("green", "identical")
+            else:
+                differ = sum(1 for ra, rb in zip(mine, got) for a, b in zip(ra, rb) if a != b)
+                out[(column, level_row)] = ("red", "%d px differ from the capture" % differ)
+    return out, approximated
+
+
+def write_diff(classes, columns, out_path, scale=6):
+    """the per-cell heatmap: one `scale`-px block per grid cell, gridded so a cell is countable."""
+    rows_out = []
+    height = max(row for _c, row in classes) + 1
+    for row in range(height):
+        line = []
+        for column in range(columns):
+            colour = CLASS_COLOURS[classes.get((column, row), ("grey", ""))[0]]
+            line.extend([colour] * (scale - 1))
+            line.append((16, 16, 16))
+        for _ in range(scale - 1):
+            rows_out.append(line[:])
+        rows_out.append([(16, 16, 16)] * (columns * scale))
+    gbpng.write_png(out_path, columns * scale, height * scale, rows_out, mode="RGB")
+    return columns * scale, height * scale
+
+
+def write_side_by_side(refs, level, pano, out_dir, chunks=4, scale=2):
+    """the level in `chunks` slices, the capture's strip over the rom's, at `scale`x. only the
+    rows both hold are drawn - the capture's 12 (level rows 2-13), which is also the band the
+    diff compares; the hud row and level row 14 are in neither."""
+    frame = LEVELS[level]["frame"]
+    image = refs.images[LEVELS[level]["image"]]
+    top_row, bottom_row = 2, LAST_RIP_ROW + 2
+    band = (bottom_row - top_row + 1) * CELL
+    columns = pano.width() // CELL
+    per = (columns + chunks - 1) // chunks
+    made = []
+    for index in range(chunks):
+        first = index * per
+        last = min(columns, first + per)
+        if first >= last:
+            continue
+        width = (last - first) * CELL
+        rows_out = []
+        for source in ("rip", "rom"):
+            for y in range(band):
+                line = []
+                for x in range(width):
+                    column = first + x // CELL
+                    if source == "rip":
+                        rip_col = level_column(level, column)
+                        px = (255, 0, 255)
+                        if rip_col is not None:
+                            where = FRAMES[frame].origin(rip_col, top_row - 2)
+                            sx, sy = where[0] + x % CELL, where[1] + y
+                            if 0 <= sx < image.width and 0 <= sy < image.height:
+                                r, g, b, _ = image.rgba(sx, sy)
+                                px = (r, g, b)
+                    else:
+                        cell = pano.cell(column, top_row + y // CELL)
+                        if cell is None:
+                            px = (255, 0, 255)
+                        else:
+                            hexed = cell[y % CELL][x % CELL]
+                            px = tuple(int(hexed[i:i + 2], 16) for i in (0, 2, 4))
+                    line.extend([px] * scale)
+                for _ in range(scale):
+                    rows_out.append(line[:])
+            if source == "rip":
+                for _ in range(2 * scale):
+                    rows_out.append([(255, 255, 255)] * (width * scale))
+        target = os.path.join(out_dir, "side_by_side_%d.png" % index)
+        gbpng.write_png(target, width * scale, len(rows_out), rows_out, mode="RGB")
+        made.append((target, first, last - 1))
+    return made
 
 
 # ---------------------------------------------------------------- output
@@ -1077,12 +1606,12 @@ def check_generated(built, gen_dir):
 
 
 def occurrences(refs, name):
-    """how many cells of the anchor's own upper band are pixel for pixel this anchor. an anchor
-    that is really a family's art turns up once per instance of that family in the level, which
-    is evidence the json's own placement cannot give."""
+    """how many cells of the anchor's own band are pixel for pixel this anchor. an anchor that is
+    really a family's art turns up once per instance of that family in the level, which is
+    evidence the json's own placement cannot give."""
     want = refs.anchor(name)
     frame = ANCHORS[name][0]
-    img = refs.rip if frame == "rip" else refs.rip12
+    img = refs.images[FRAMES[frame].image]
     count = 0
     for column in range(img.width // CELL):
         for row in range(LAST_RIP_ROW + 1):
@@ -1101,17 +1630,51 @@ def round_trip(built):
     return bad
 
 
+def report_level(refs, gen_dir, generated, level):
+    print("structural relations for %s (0 = the capture agrees with what the rom assumes)" % level)
+    flips, quads = structural_report(refs, LEVELS[level]["relations"], LEVELS[level]["quadrants"])
+    for label, differ in flips + quads:
+        verdict = "no sheet" if differ is None else ("yes" if differ == 0 else "no (%d px)" % differ)
+        print("  %-72s %s" % (label, verdict))
+    print("how often each %s anchor's exact cell occurs in its capture" % level)
+    for name in sorted(LEVELS[level]["anchors"]):
+        if not FRAMES[ANCHORS[name][0]].band:
+            continue
+        print("  %-22s %3d cells" % (name, occurrences(refs, name)))
+    grid, area = load_grid(generated, level)
+    if not grid:
+        print("no compiled %s grid at %s - skipping its position audit" % (level, generated))
+        return None, None
+    enemies = load_enemies(generated, level)
+    overlays = load_overlays(level)
+    print("per-kind agreement of %s against the compiled grid" % level)
+    print("  %-22s %5s %6s %8s %7s %6s" % ("kind", "cells", "same", "overlay", "differ", "off"))
+    for kind, label, total, same, over, differ, off, misses in audit(
+            refs, gen_dir, level, grid, area, enemies, overlays):
+        note = "" if not misses else "  first %s" % (misses[0],)
+        print("  %-22s %5d %6d %8d %7d %6d%s"
+              % (label, total, same, over, differ, off, note))
+    return grid, (enemies, overlays)
+
+
 def main():
     here = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
-    parser = argparse.ArgumentParser(description="rip mario's 1-1 and 1-2 terrain art")
+    parser = argparse.ArgumentParser(description="rip mario's terrain art out of the smbd captures")
+    parser.add_argument("--level", default="all", choices=LEVEL_ORDER + ["all"],
+                        help="which level's table to work with (default: all of them)")
     parser.add_argument("--root", default=here, help="repo root (default: this file's repo)")
     parser.add_argument("--generated", default=None,
                         help="the compiled levels (default: ROOT/build-mario/generated)")
     parser.add_argument("--check", action="store_true",
                         help="verify only: diff the generated c and audit the grids")
     parser.add_argument("--report", action="store_true", help="print the structural report")
+    parser.add_argument("--proof", default=None,
+                        help="write the proof images (diff.png, side_by_side_*.png) into this dir")
+    parser.add_argument("--panorama", action="append", default=[], metavar="FILE:SCY",
+                        help="a panorama ppm of the level and the scy it was swept at; repeatable")
     args = parser.parse_args()
 
+    levels = LEVEL_ORDER if args.level == "all" else [args.level]
     ref_dir = os.path.join(args.root, "games", "mario", "art", "ref")
     out_dir = os.path.join(args.root, "games", "mario", "art", "tiles")
     gen_dir = os.path.join(args.root, "games", "mario", "src", "gen")
@@ -1119,36 +1682,58 @@ def main():
     if not os.path.isdir(ref_dir):
         raise SystemExit("no reference images at %s (they are gitignored; copy them in)" % ref_dir)
 
-    refs = Refs(ref_dir)
-    built, skipped = build(refs)
+    # the relations reach across levels, so every capture a requested level's anchors name has to
+    # be loaded - which, given 1-2's and 1-3's audits are "this is 1-1's art", is all of them
+    refs = Refs(ref_dir, LEVEL_ORDER)
+    families = [family for level in levels for family in LEVELS[level]["families"]]
+    built, skipped = build(refs, families)
     if skipped:
         print("no tileset sheet: %s keep their committed c" % ", ".join(skipped))
 
+    if args.proof:
+        if len(levels) != 1:
+            raise SystemExit("--proof needs one --level")
+        level = levels[0]
+        sweeps = []
+        for entry in args.panorama:
+            path, _, scy = entry.rpartition(":")
+            if not path:
+                raise SystemExit("--panorama wants FILE:SCY, got %r" % entry)
+            sweeps.append((path, int(scy)))
+        if not sweeps:
+            raise SystemExit("--proof needs at least one --panorama FILE:SCY")
+        grid, _area = load_grid(generated, level)
+        if not grid:
+            raise SystemExit("no compiled %s grid at %s" % (level, generated))
+        pano = Panorama(sweeps)
+        os.makedirs(args.proof, exist_ok=True)
+        classes, approximated = classify(refs, level, grid, load_enemies(generated, level),
+                                         load_overlays(level), pano)
+        counts = {name: 0 for name in CLASS_ORDER}
+        for name, _reason in classes.values():
+            counts[name] += 1
+        width, height = write_diff(classes, len(grid), os.path.join(args.proof, "diff.png"))
+        print("diff.png %dx%d  %s" % (width, height,
+                                      "  ".join("%s %d" % (n, counts[n]) for n in CLASS_ORDER)))
+        for name in ("red", "blue"):
+            for cell, (klass, reason) in sorted(classes.items()):
+                if klass == name:
+                    print("  %-6s column %3d row %2d  %s" % (name, cell[0], cell[1], reason))
+        for cell, (klass, reason) in sorted(classes.items()):
+            if klass == "yellow":
+                print("  yellow column %3d row %2d  %s" % (cell[0], cell[1], reason))
+        for column, row, colours in approximated:
+            print("  approx column %3d row %2d  the capture paints #%s here, which the kind's "
+                  "palette slot cannot hold: resolved to #%s (APPROXIMATIONS)"
+                  % (column, row, ",#".join(colours),
+                     ",#".join(APPROXIMATED[c] for c in colours)))
+        for target, first, last in write_side_by_side(refs, level, pano, args.proof):
+            print("%s  columns %d-%d" % (target, first, last))
+        return 0
+
     if args.report or args.check:
-        print("structural relations (0 = the capture agrees with what the rom assumes)")
-        flips, quads = structural_report(refs)
-        for label, differ in flips + quads:
-            verdict = "no sheet" if differ is None else ("yes" if differ == 0 else "no (%d px)" % differ)
-            print("  %-64s %s" % (label, verdict))
-        print("how often each anchor's exact cell occurs in its capture")
-        for name in sorted(ANCHORS):
-            if ANCHORS[name][0] not in ("rip", "rip12"):
-                continue
-            print("  %-22s %3d cells" % (name, occurrences(refs, name)))
-        for level in sorted(LEVEL_GRIDS):
-            grid, area = load_grid(generated, level)
-            if not grid:
-                print("no compiled %s grid at %s - skipping its position audit" % (level, generated))
-                continue
-            enemies = load_enemies(generated, level)
-            print("per-kind agreement of %s against the compiled grid" % level)
-            print("  %-22s %5s %6s %8s %7s %6s"
-                  % ("kind", "cells", "same", "overlay", "differ", "off"))
-            for kind, label, total, same, over, differ, off, misses in audit(
-                    refs, gen_dir, level, grid, area, enemies):
-                note = "" if not misses else "  first %s" % (misses[0],)
-                print("  %-22s %5d %6d %8d %7d %6d%s"
-                      % (label, total, same, over, differ, off, note))
+        for level in levels:
+            report_level(refs, gen_dir, generated, level)
 
     if args.check:
         print("check")

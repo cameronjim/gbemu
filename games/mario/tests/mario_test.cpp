@@ -243,6 +243,13 @@ constexpr uint8_t kBlockTreeTopL = 43;
 constexpr uint8_t kBlockTreeTopM = 44;
 constexpr uint8_t kBlockTreeTopR = 45;
 constexpr uint8_t kBlockTrunk = 46;
+// and m26's vram ids for that art, mirroring mario.h: the canopy's five tiles in vram bank 1 at
+// 0x0a-0x0e and the trunk's single tile right after them. the right cap costs none of its own -
+// the smbd capture draws it as the left cap's exact mirror, so kBlockTreeTopR carries the left
+// cap's tiles with the columns swapped and kCamAttrXFlip in its palette byte
+constexpr uint8_t kTileTreeFirst = 0x0A;
+constexpr uint8_t kTileTreeBotM = 0x0E;
+constexpr uint8_t kTileTrunk = 0x0F;
 // the pole cell the pennant hangs at. the shaft stands in the middle of its block, so the flag
 // reaches 8 px into the pole's own cell to touch it: that half of the cell is the pennant's white
 // and the other half the shaft's greens, which is why it is a kind of its own
@@ -468,12 +475,15 @@ bool tile_in_kind_family(uint8_t tile, uint8_t kind) {
         return tile >= 0xD8 && tile <= 0xD9;
     case kBlockBushM:
         return tile >= 0x55 && tile <= 0x56;
+    // m26 re-cut the canopy off the smbd 1-3 capture and it came out two tiles SMALLER: the
+    // capture's right cap is the left one's exact mirror, so kBlockTreeTopR carries the left
+    // cap's own tiles under kCamAttrXFlip and the canopy is 0x0a-0x0e with the trunk at 0x0f
     case kBlockTreeTopL:
     case kBlockTreeTopM:
     case kBlockTreeTopR:
-        return tile >= 0x0A && tile <= 0x0F;
+        return tile >= kTileTreeFirst && tile <= kTileTreeBotM;
     case kBlockTrunk:
-        return tile == 0x11;
+        return tile == kTileTrunk;
     // m25's shaft joint, five bank-1 tiles at 0xe0-0xe4: each kind's top-left tile is its own
     case kBlockPipeJointT:
         return tile == 0xE0;
@@ -8719,8 +8729,9 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     // coin room's exit shaft both run to the top of the grid
     for (uint8_t row = 0; row <= 12; ++row) {
         REQUIRE(kLevel12Grid[24][row] == kBlockBrick);
-        REQUIRE(kLevel12Grid[215][row] == (row < 11 ? kBlockPipeBodyL
-                                                    : row == 11 ? kBlockPipeJointT : kBlockPipeJointB));
+        REQUIRE(kLevel12Grid[215][row] == (row < 11    ? kBlockPipeBodyL
+                                           : row == 11 ? kBlockPipeJointT
+                                                       : kBlockPipeJointB));
         REQUIRE(kLevel12Grid[216][row] == kBlockPipeBodyR);
     }
 
@@ -8733,8 +8744,9 @@ TEST_CASE("mario_1_2_pipes_pits_and_ceiling_match_the_measured_map") {
     REQUIRE(kLevel12Grid[191][9] == kBlockPipeSideBodyB);
     // the shaft's left cell in the mouth's own two rows is the joint pair, plain body above it
     for (uint8_t row = 2; row <= 9; ++row) {
-        REQUIRE(kLevel12Grid[192][row] == (row < 8 ? kBlockPipeBodyL
-                                                   : row == 8 ? kBlockPipeJointT : kBlockPipeJointB));
+        REQUIRE(kLevel12Grid[192][row] == (row < 8    ? kBlockPipeBodyL
+                                           : row == 8 ? kBlockPipeJointT
+                                                      : kBlockPipeJointB));
         REQUIRE(kLevel12Grid[193][row] == kBlockPipeBodyR);
     }
     for (uint16_t column = 184; column <= 200; ++column) {
@@ -9352,9 +9364,12 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
     }
 
     // the scenery is clouds and nothing else: over open air there is no ground for a hill or a bush
-    // to stand on, and neither rip draws one. eighteen of the twenty the rips draw land - the two
-    // at 35,7 and 96,10 have their lower row behind a canopy in both rips, and the compiler's
-    // whole-shape rule drops a cloud it cannot place entire
+    // to stand on, and neither rip draws one. all twenty the rips draw land now. three of them are
+    // "clip" entries in the bible, because the smbd capture really does draw part of each of them
+    // behind terrain: the two at 35,7 and 96,10 have their lower row behind a tree canopy, and the
+    // one at 150,7 has its right cap behind the big castle's battlement (m26 measured all three
+    // cell by cell off the capture - before that pass the first two were skipped whole by the
+    // compiler's all-or-nothing rule and the third was entered two columns wide)
     std::vector<std::pair<int, int>> cloud_caps;
     int hills = 0;
     for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; ++column) {
@@ -9368,26 +9383,18 @@ TEST_CASE("mario_1_3_coins_blocks_and_enemies_match_the_measured_map") {
         }
     }
     REQUIRE(hills == 0);
-    REQUIRE(cloud_caps == std::vector<std::pair<int, int>>{{3, 6},
-                                                           {9, 7},
-                                                           {20, 3},
-                                                           {38, 6},
-                                                           {46, 7},
-                                                           {51, 3},
-                                                           {57, 7},
-                                                           {66, 4},
-                                                           {83, 7},
-                                                           {86, 6},
-                                                           {92, 10},
-                                                           {97, 3},
-                                                           {112, 2},
-                                                           {123, 10},
-                                                           {129, 6},
-                                                           {132, 5},
-                                                           {144, 3},
-                                                           {150, 7}});
-    REQUIRE(kLevel13Grid[35][7] == kBlockEmpty);
-    REQUIRE(kLevel13Grid[96][10] == kBlockEmpty);
+    REQUIRE(cloud_caps == std::vector<std::pair<int, int>>{
+                              {3, 6},   {9, 7},    {20, 3},  {35, 7},  {38, 6},  {46, 7},  {51, 3},
+                              {57, 7},  {66, 4},   {83, 7},  {86, 6},  {92, 10}, {96, 10}, {97, 3},
+                              {112, 2}, {123, 10}, {129, 6}, {132, 5}, {144, 3}, {150, 7}});
+    // and a clipped cloud takes only the cells the terrain left open: the canopy keeps the row
+    // under each of the first two, and the castle keeps the third one's right cap column, so
+    // 151 carries a cloud MIDDLE cell rather than the right cap a two-wide entry used to put there
+    REQUIRE(kLevel13Grid[35][8] == kBlockTreeTopL);
+    REQUIRE(kLevel13Grid[96][11] == kBlockTreeTopL);
+    REQUIRE(kLevel13Grid[151][7] == kBlockCloudT);
+    REQUIRE(kLevel13Grid[151][8] == kBlockCloudB);
+    REQUIRE(kLevel13Grid[152][7] == kBlockCastleCrenel);
 }
 
 // 1-4 is transcribed cell by cell from the nes and smbd 1-4 map rips (see level-1-4.json's
@@ -10142,15 +10149,16 @@ TEST_CASE("mario_1_2_scenery_stands_where_the_captures_draw_it") {
 // below ground: the floor and the hard block in near-white over teal, the brick in teal with its
 // mortar black, the question block's gold face with a brown left edge and a TEAL right and bottom
 // one (colour 3, black above ground), and the coin's ring shaded teal (the pipe slot is read in the
-// bonus room's own pin, whose pipes wear the same underground colours). the debug camera keeps whatever palette set the level opened with, and 1-2 opens above ground, so
-// this one is read in play: down the entrance pipe and along the run to the piranha pipes
+// bonus room's own pin, whose pipes wear the same underground colours). the debug camera keeps whatever
+// palette set the level opened with, and 1-2 opens above ground, so this one is read in play: down the
+// entrance pipe and along the run to the piranha pipes
 TEST_CASE("mario_underground_palettes_are_the_capture_s_colours") {
     // games/mario/art/ref/smbd_ch_1-2.png's underground run, as rgb555
-    constexpr int kRoomBack = 0;                          // #000000
-    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);     // #008888
-    constexpr int kPale = 23 | (31 << 5) | (30 << 10);    // #b8f8f0
-    constexpr int kGold = 31 | (23 << 5) | (8 << 10);     // #f8b840
-    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);     // #984800
+    constexpr int kRoomBack = 0;                       // #000000
+    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);  // #008888
+    constexpr int kPale = 23 | (31 << 5) | (30 << 10); // #b8f8f0
+    constexpr int kGold = 31 | (23 << 5) | (8 << 10);  // #f8b840
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);  // #984800
 
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -10377,15 +10385,100 @@ TEST_CASE("mario_tree_kinds_are_consistent") {
 
     // the canopy's three kinds share one bank-1 tile run and the trunk sits past it, so a cell's
     // top-left tile alone still says which kind painted it. both runs are inside the range this
-    // suite already accepts as terrain art
-    REQUIRE(is_known_terrain_family(0x0A));
-    REQUIRE(is_known_terrain_family(0x11));
+    // suite already accepts as terrain art. m26's re-cut shortened the canopy from eight ids to
+    // five and moved the trunk from 0x11 down onto 0x0f: the smbd capture draws the right cap as
+    // the left one's exact mirror, so kBlockTreeTopR carries the left cap's own tiles under
+    // kCamAttrXFlip and the two ids the hand-drawn right cap spent are free again
+    REQUIRE(kTileTreeFirst == 0x0A);
+    REQUIRE(kTileTreeBotM == 0x0E);
+    REQUIRE(kTileTrunk == 0x0F);
+    REQUIRE(is_known_terrain_family(kTileTreeFirst));
+    REQUIRE(is_known_terrain_family(kTileTrunk));
     REQUIRE(tile_in_kind_family(0x0A, kBlockTreeTopL));
     REQUIRE(tile_in_kind_family(0x0B, kBlockTreeTopM));
+    // the right cap's own top-left tile is the plain top row, the same one the middle wears: it is
+    // the mirror of the LEFT cap's inner column, which is what the flip makes of it
     REQUIRE(tile_in_kind_family(0x0B, kBlockTreeTopR));
-    REQUIRE(tile_in_kind_family(0x11, kBlockTrunk));
-    REQUIRE(!tile_in_kind_family(0x11, kBlockTreeTopM));
+    REQUIRE(tile_in_kind_family(kTileTrunk, kBlockTrunk));
+    REQUIRE(!tile_in_kind_family(kTileTrunk, kBlockTreeTopM));
     REQUIRE(!tile_in_kind_family(0x0B, kBlockTrunk));
+}
+
+// the other half of m26's 1-3 pin: the palette slots its art wears, and the mirror it leans on.
+//
+// every colour in the smbd 1-3 capture is already in the eight overworld slots - the pass added no
+// palette and re-slotted no kind - and the two the tree needs are the pipe slot's four (the
+// canopy's sky, bright green, dark green and black, in exactly that index order, which is why the
+// canopy can share the slot the hills and bushes already have) and the brick slot's browns (the
+// trunk lights colours 2 and 3 and nothing else). a generated tile is nothing but four palette
+// INDICES, so without this the canopy could come out grey or gold and still pass every
+// byte-for-byte check going.
+//
+// and the mirror: the capture draws the canopy's right cap as the left one's EXACT mirror, which
+// is why kBlockTreeTopR has no tiles of its own and carries the left cap's under kCamAttrXFlip.
+// that only holds if the rendered cells really are each other's reflection, which is what the
+// second half of this reads off the framebuffer - the check that would have caught 1-1's cloud and
+// bush caps, whose right halves are NOT their twin mirrored
+TEST_CASE("mario_1_3_tree_wears_the_pipe_and_brick_slots") {
+    constexpr int kBlack = 0;                            // #000000
+    constexpr int kSky = 13 | (17 << 5) | (31 << 10);    // #6888f8
+    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);    // #70f830
+    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10); // #108800
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);    // #984800
+
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_camera(gameboy, kLevel13);
+
+    // the level is trees the whole way, so a sweep in ten-column steps at the canopy rows and the
+    // trunk rows below them puts every piece of both families on screen
+    std::set<int> canopy;
+    std::set<int> trunk;
+    Camera camera;
+    for (uint16_t column = 0; column < LEVEL_1_3_LENGTH_COLUMNS; column = column + 10) {
+        for (uint8_t row : {static_cast<uint8_t>(6), static_cast<uint8_t>(12)}) {
+            camera.goto_xy(gameboy, scx_for_column(column), scy_for_row(row));
+            run(gameboy, 2);
+            collect_family_colors(gameboy, kTileTreeFirst, kTileTreeBotM, &canopy);
+            collect_family_colors(gameboy, kTileTrunk, kTileTrunk, &trunk);
+        }
+    }
+    CHECK(canopy == std::set<int>{kSky, kLeaf, kDarkLeaf, kBlack});
+    // a trunk cell is opaque across its whole 16x16, so the brick slot's colour 0 and its tan
+    // highlight never reach a pixel of one
+    CHECK(trunk == std::set<int>{kBrown, kBlack});
+
+    // the four-wide canopy at columns 18-21 on row 12, the same cells rip_tiles.py anchors the
+    // family on. all four fit one 160px screen, so the caps can be read against each other
+    REQUIRE(kLevel13Grid[18][12] == kBlockTreeTopL);
+    REQUIRE(kLevel13Grid[21][12] == kBlockTreeTopR);
+    camera.goto_xy(gameboy, scx_for_column(17), scy_for_row(12));
+    run(gameboy, 2);
+    const std::span<const uint16_t> colors = gameboy.framebuffer_color();
+    const int cap_x = static_cast<int>(18U * kBlockPx) - static_cast<int>(camera.x);
+    const int capr_x = static_cast<int>(21U * kBlockPx) - static_cast<int>(camera.x);
+    const int cap_y = static_cast<int>(12U * kBlockPx) - static_cast<int>(camera.y);
+    REQUIRE(cap_y >= 0);
+    REQUIRE(capr_x + kBlockPx <= static_cast<int>(gb::kLcdWidth));
+    int mirrored = 0;
+    for (int y = 0; y < static_cast<int>(kBlockPx); ++y) {
+        for (int x = 0; x < static_cast<int>(kBlockPx); ++x) {
+            const size_t left =
+                static_cast<size_t>(cap_y + y) * gb::kLcdWidth + static_cast<size_t>(cap_x + x);
+            const size_t right = static_cast<size_t>(cap_y + y) * gb::kLcdWidth +
+                                 static_cast<size_t>(capr_x + (static_cast<int>(kBlockPx) - 1 - x));
+            CAPTURE(x, y);
+            REQUIRE(colors[left] == colors[right]);
+            mirrored += 1;
+        }
+    }
+    REQUIRE(mirrored == static_cast<int>(kBlockPx) * static_cast<int>(kBlockPx));
+
+    // and the middle cell between them is not a cap at all: its own two halves are the same tile,
+    // so it reads the same under a flip and could hide a wrong flip bit if it were read instead
+    REQUIRE(kLevel13Grid[19][12] == kBlockTreeTopM);
+    REQUIRE(kLevel13Grid[20][12] == kBlockTreeTopM);
 }
 
 // the row assets.c appends after those, and the one kind m24's scenery pass added: a big hill's
@@ -14252,6 +14345,11 @@ TEST_CASE("mario_vram_holds_the_generated_terrain_art") {
     // and the shaft joint m25 cut off the 1-2 capture, five tiles at 0xe0-0xe4: 1-2's two sideways
     // pipes and 1-1's bonus room exit all run their body into the shaft through it
     CHECK(vram_bg_art_matches(gameboy, 1, 0xE0, terrain_art::kPipeJointTiles, 5));
+    // and m26's 1-3 tree, in the bank-1 ids under the map screen's own castle: the canopy's five
+    // tiles at 0x0a-0x0e and the trunk's one at 0x0f. both are loaded on every level type by
+    // assets_load_scenery_tiles, so they are resident here in 1-1 as well as in 1-3
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x0A, terrain_art::kTreeTiles, 5));
+    CHECK(vram_bg_art_matches(gameboy, 1, 0x0F, terrain_art::kTrunkTiles, 1));
 
     // and the id plan's own runs, so a family that moved shows up here rather than as an overlap
     static_assert(kTilePipeBodyRr - kTilePipeLipL + 1 == 12, "the pipe is twelve pinned tiles");
@@ -14265,6 +14363,10 @@ TEST_CASE("mario_vram_holds_the_generated_terrain_art") {
     static_assert(sizeof(terrain_art::kPipeSideTiles) == 12 * 16, "and twelve generated ones");
     static_assert(kTilePipeJointBody - kTilePipeJointT0 + 1 == 5, "the shaft joint is five pinned tiles");
     static_assert(sizeof(terrain_art::kPipeJointTiles) == 5 * 16, "and five generated ones");
+    static_assert(kTileTreeBotM - kTileTreeFirst + 1 == 5, "the tree canopy is five pinned tiles");
+    static_assert(sizeof(terrain_art::kTreeTiles) == 5 * 16, "and five generated ones");
+    static_assert(kTileTrunk == kTileTreeBotM + 1, "the trunk butts onto the canopy's last id");
+    static_assert(sizeof(terrain_art::kTrunkTiles) == 1 * 16, "and it is one generated tile");
 }
 
 // the bonus room is the overworld's own art under the underground colours, with one exception the
@@ -14398,14 +14500,14 @@ TEST_CASE("mario_overworld_palettes_are_the_capture_s_colours") {
 // black is the room's backdrop, so a black rim would leave the pipes with no edge at all
 TEST_CASE("mario_bonus_room_palettes_are_the_capture_s_colours") {
     // games/mario/art/ref/smbd_ch_1-1.png's bonus room (x 879-1134), as rgb555
-    constexpr int kRoomBack = 0;                          // #000000
-    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);     // #008888
-    constexpr int kPale = 23 | (31 << 5) | (30 << 10);    // #b8f8f0
-    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);     // #70f830
-    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10);  // #108800
-    constexpr int kRim = 0 | (9 << 5) | (0 << 10);        // #004800
-    constexpr int kGold = 31 | (23 << 5) | (8 << 10);     // #f8b840
-    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);     // #984800
+    constexpr int kRoomBack = 0;                         // #000000
+    constexpr int kTeal = 0 | (17 << 5) | (17 << 10);    // #008888
+    constexpr int kPale = 23 | (31 << 5) | (30 << 10);   // #b8f8f0
+    constexpr int kLeaf = 14 | (31 << 5) | (6 << 10);    // #70f830
+    constexpr int kDarkLeaf = 2 | (17 << 5) | (0 << 10); // #108800
+    constexpr int kRim = 0 | (9 << 5) | (0 << 10);       // #004800
+    constexpr int kGold = 31 | (23 << 5) | (8 << 10);    // #f8b840
+    constexpr int kBrown = 19 | (9 << 5) | (0 << 10);    // #984800
 
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -14602,4 +14704,3 @@ TEST_CASE("mario_poses_light_the_ripped_bounds") {
     REQUIRE(walked.count(kFrameWalk1) == 1);
     REQUIRE(walked.count(kFrameWalk2) == 1);
 }
-

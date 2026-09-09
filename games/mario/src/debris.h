@@ -22,4 +22,8 @@ void debris_poof(uint16_t px, int16_t py) BANKED;
 // one frame of both: steps them, writes their sprites, and parks the slots as they go
 void debris_frame(uint16_t cam_x, uint8_t cam_y) BANKED;
 
+// drops whatever is flying and parks every slot it holds, now rather than on the next frame: the
+// clear borrows the first two of them for the pennant the moment the pole has him
+void debris_clear(void) BANKED;
+
 #endif

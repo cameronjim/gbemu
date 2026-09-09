@@ -73,13 +73,17 @@ uint8_t flow_begin_run(uint8_t selected);
 // pays the flagpole band his feet touched at; call once, before the slide moves him
 void flow_score_flag(int16_t feet) BANKED;
 
-// the pennant coming down the pole beside mario during the clear. it is repainted bg cells rather
-// than a sprite because oam is full (40/40), so it moves one 16 px cell at a time down the column
-// left of the shaft - where apply_flag_head stamped it. flow_flag_arm parks it at the top, and
-// flow_flag_step runs one frame of the descent and answers 1 once it has reached the pole's base.
-// both live here rather than in player.c because bank 0 has no room left for them
+// the pennant coming down the pole beside mario during the clear. for the descent it is two
+// sprites in the brick debris's first two oam slots (kSpritePennantL/R) moving kClearSlidePx a
+// frame, the rate he slides at; at rest it is painted back into the map at the shaft's last cell,
+// where apply_flag_head's own stamp of it started at the top. flow_flag_arm lifts it off the top
+// cells, flow_flag_step runs one frame of the descent and answers 1 once it has reached the base,
+// and flow_flag_draw places the sprites off the camera as it stands - after the clear state's
+// camera_update, so the pennant and mario are drawn against the same view. all of it lives here
+// rather than in player.c because bank 0 has no room left for it
 void flow_flag_arm(void) BANKED;
 uint8_t flow_flag_step(void) BANKED;
+void flow_flag_draw(void) BANKED;
 
 // the death beat is over: takes a life off the run and answers with what comes next. a game over
 // paints its own card, which flow_game_over_frame then holds up

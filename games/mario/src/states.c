@@ -186,8 +186,10 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
             state = kStateClearCard;
             return state;
         }
-        // the sequence owns mario, so the camera tracks him as a supported-but-moving actor
+        // the sequence owns mario, so the camera tracks him as a supported-but-moving actor, and
+        // the pennant is placed off the same view he is about to be drawn against
         camera_update(player_x(), player_feet(), 1, 0, 0);
+        flow_flag_draw();
         main_present();
         return state;
     }

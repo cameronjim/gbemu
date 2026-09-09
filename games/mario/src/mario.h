@@ -592,6 +592,11 @@
 // big grip is pose 7 of the set above and needs no id of its own at all
 #define kTileClimbSmall 0x74U
 
+// the pennant as it comes down the pole: the flag head's four bg tiles (bank 1, kTileFlagClothT..)
+// written again as two 8x16 sprites in bank 0's 0x78-0x7b, the run big mario's old block gave back.
+// the family is already stored column by column, so one call lays both pairs
+#define kTilePennant 0x78U // 0x78-0x7b
+
 // the fire flower, the one item outside the 0xd0 family
 #define kTileFlowerFirst 0x80U // 0x80-0x83; gen/flower.h's kFlowerTileCount is the count
 
@@ -661,7 +666,9 @@
 //   0-3    mario. small parks the lower row; big is two rows of two, every pose (see player_draw)
 //   4-8    the throwaway animations: four brick fragments then the fireball's puff (debris.c).
 //          the world map borrows 4-11 for its four node markers and the toad room 4-7 for the
-//          retainer, both on screens that have no debris, no items and no enemies
+//          retainer, both on screens that have no debris, no items and no enemies; the clear
+//          borrows 4-5 for the pennant coming down the pole (flow.c), dropping any break still in
+//          the air - nothing can break a brick once the pole has him
 //   9-10   the loose item a block paid out       11  the coin pop      12-13  the two fireballs
 //   14-33  THE ENEMY POOL, allocated fresh every frame: the live slots are walked in pool order
 //          and each takes two oam slots if its art is 16x16 (goomba, squashed goomba, either
@@ -681,6 +688,8 @@
 #define kSpriteMarioLowR 3U
 #define kSpriteFreeFirst 4U
 #define kSpriteFreeCount 5U
+#define kSpritePennantL 4U
+#define kSpritePennantR 5U
 // the world map's own claim on the same run: two sprites per node, four nodes, slots 4-11. it is a
 // card screen - no debris, no items, no enemies - so it owns all forty and hands these back the
 // moment a level loads
@@ -817,9 +826,12 @@
 // scy on the level's flat opening ground, which is where the default band lands there
 #define kPlayScy kScyMax
 
-// the level-clear sequence, all our own cadence (smbd's exact frame counts are unsourced). smb's
-// beat: grab the pole, slide down it with the flag coming down alongside, flip to the pole's far
-// side and wait there while the flag finishes, hop off, walk to the castle and step into the door
+// the level-clear sequence, our own cadence but for the slide (smbd's exact frame counts are
+// unsourced). smb's beat: grab the pole, slide down it with the flag coming down alongside, flip to
+// the pole's far side and wait there while the flag finishes, hop off, walk to the castle and step
+// into the door. the slide is smb's own 2 px a frame, his and the pennant's alike: smbdis
+// FlagpoleRoutine (6590) moves the flag 1 px plus the carry of a 0xff adder every frame, and
+// AutoControlPlayer climbs him down at the same rate
 #define kClearSlidePx 2
 // the shaft's lit column is px 8 of its block - the middle of it (kFlagPoleTiles in assets_data.c)
 // - so his box sits this far left of that block while he climbs: it lands the last lit column of
@@ -831,9 +843,6 @@
 // the pause on that side. in smb it lasts as long as the flag needs, so this is a floor and the
 // flag's own descent can hold the phase open past it
 #define kClearFlipFrames 48U
-// the pennant comes down one 16 px cell per this many frames. cell-granular because oam is full
-// (40/40) and the flag has to be repainted bg cells rather than a sprite
-#define kClearFlagStepFrames 6U
 #define kClearHopFrames 12
 #define kClearHopPx 2
 #define kClearWalkPx 1

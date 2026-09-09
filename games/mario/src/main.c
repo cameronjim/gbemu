@@ -175,8 +175,7 @@ void main(void) {
                         continue;
                     }
                 }
-            } else if ((keys & J_RIGHT) != 0U && player_standing() != 0U &&
-                       flow_into_exit_mouth() != 0U) {
+            } else if ((keys & J_RIGHT) != 0U && player_standing() != 0U && flow_into_exit_mouth() != 0U) {
                 // a room whose way out is a sideways mouth (1-1's coin room, as the capture draws
                 // it) is left by walking into it, exactly the way the main grid's own sideways
                 // pipes are entered. the same pipe-down state runs it; only the animation differs.

@@ -159,7 +159,8 @@ CASTLE_SLOTS = {
     "question": [CASTLE, "008888", "008888", "7F7F7F"],
     "pipe": [CASTLE, "FFA347", "E75F13", "7F7F7F"],
     "neutral": [CASTLE, "FFFFFF", "7F7F7F", "F83800"],
-    "spent": [CASTLE, "008888", "008888", "7F7F7F"],
+    # no used block is in the capture; the slot keeps the coin's gold and brown for the hud icon
+    "spent": [CASTLE, "F8B840", "984800", "7F7F7F"],
     "coin": [CASTLE, "FFFFFF", "F83800", "000000"],
 }
 

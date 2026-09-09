@@ -241,7 +241,10 @@ void assets_load_bg_palettes_castle(void) BANKED {
     palette_color_t question[4] = {kCastleRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(15, 15, 15)};
     palette_color_t pipe[4] = {kCastleRgb, RGB(31, 20, 8), RGB(28, 11, 2), RGB(15, 15, 15)};
     palette_color_t neutral[4] = {kCastleRgb, RGB(31, 31, 31), RGB(15, 15, 15), RGB(31, 7, 0)};
-    palette_color_t spent[4] = {kCastleRgb, RGB(0, 17, 17), RGB(0, 17, 17), RGB(15, 15, 15)};
+    // the used block is not in the capture (nothing has hit its one ? block), so this slot keeps
+    // the coin's gold and brown, which is what the hud's coin icon reads through kHudCoinAttr; a
+    // used block would draw its brown face inside a grey edge
+    palette_color_t spent[4] = {kCastleRgb, RGB(31, 23, 8), RGB(19, 9, 0), RGB(15, 15, 15)};
     palette_color_t lava[4] = {kCastleRgb, RGB(31, 31, 31), RGB(31, 7, 0), RGB(0, 0, 0)};
     set_bkg_palette(kCamPalSky, 1, sky);
     set_bkg_palette(kCamPalGround, 1, ground);

@@ -1359,10 +1359,12 @@
 #define kTileHudLetterFirst 0x8CU // 0x8c, just the x
 #define kHudGlyphChars "x"
 #define kHudBarAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
-// the coin icon takes the question block's slot rather than the coin one: color 0 is the level's
-// own sky in all three sets there too, colors 1 and 2 are a gold body and a white slot in all
-// three, and it leaves the castle set's coin slot free to be the lava's white-and-red ramp
-#define kHudCoinAttr ((uint8_t)(kCamPalQuestion | kCamAttrVram1))
+// the coin icon takes the used block's slot rather than the coin one or the question block's:
+// color 0 is the level's own sky in all three sets there, colors 1 and 2 are the coin's gold and
+// brown in all three (the castle set's question slot went teal with the capture's own ? block, and
+// its coin slot is the lava's white-and-red ramp), and no castle stands a used block until its one
+// ? block is hit
+#define kHudCoinAttr ((uint8_t)(kCamPalSpent | kCamAttrVram1))
 
 // the countdown. the bible pins one tick every 24 frames, but that reads as a broken clock, so
 // ours ticks once per real second (60 frames), from the level json's timer field. hurrying up is

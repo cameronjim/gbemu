@@ -3,7 +3,7 @@
 captures and into the indexed pngs the art pipeline (png2tiles.py --mode tiles) turns into
 banked c. run as:
 
-    rip_tiles.py [--level 1-1|1-2|1-3|all] [--root REPO] [--generated DIR] [--check] [--report]
+    rip_tiles.py [--level 1-1|1-2|1-3|1-4|all] [--root REPO] [--generated DIR] [--check] [--report]
                  [--proof DIR [--panorama FILE:SCY ...]]
 
 everything that is specific to one level - its capture, that capture's grid offsets and column
@@ -41,6 +41,22 @@ level's own columns stands where the json puts it (see the 1-3 AUDIT note). the 
 of capture, level rows 2-13; row 14's buried ground fill is again below the last scanline. the one
 family the capture teaches that no earlier one holds is 1-3's tree - a green canopy in a left cap,
 a middle and a right cap over a column of striped trunk.
+
+games/mario/art/ref/smbd_ch_1-4.png is the same site's challenge-mode rip of 1-4, the castle:
+2247x223, 16px cells on a grid with NO offset in either axis (the seven spare columns of pixels and
+fifteen spare rows are a trailing margin). it is 140 columns and 13 rows: its column c is level
+column c + 16 (the opening platform, its steps and the first lava pit, level columns 0-15, are in no
+smbd rip) and its row r is level row r + 1, so the roof is rip row 1 and the floor rip row 12; level
+row 14 is below its last scanline as in every other capture. it is drawn on flat black under the
+castle palette set, whose colours this ripper wrote unquantised (FFFFFF, BFBFBF, 7F7F7F where a gbc
+grab reads F8F8F8, B8B8B8, 787878) - CASTLE_SLOTS lists the capture's own values and the rom stores
+each channel >> 3. six families come off it: the masonry course pair, the castle's own solid block
+(a brown face in a grey border, nothing like the overworld's bevelled hard block), the lava's wave,
+the bridge, a 16px axe whose handle fills the cell's lower half, and the chain that runs from the
+bridge's far end up to the axe, which the bible had no cell for. its stitch is not clean at the end:
+the wall past the axe (level 143) is drawn two pixels short in the rows around the bridge, and the
+twelve columns past it hold the smbd ending room, which the bible does not follow (it carries the
+nes rip's room, see level-1-4.json); both are declared overlays rather than tile truth.
 
 games/mario/art/ref/sheet_tileset.png is the spriters resource "Tileset" sheet for the same
 game (resource id 171364, ripped by Depressed Mario). the capture is challenge mode, which
@@ -125,6 +141,31 @@ UNDERGROUND_SLOTS = {
     "coin": [UNDERGROUND, "F8B840", "984800", "008888"],
 }
 
+# the castle set, read off the 1-4 capture. the masonry is the ground slot - black mortar, a white
+# highlight, a light face and a dark shadow - and every other castle piece borrows a slot nothing
+# else in a castle uses: the castle's own solid block wears the brick slot (brown face, grey-green
+# border, backdrop corners), the question block and the used block are the same teal-faced,
+# grey-edged block on their two slots (the challenge rip covers the one face with its mushroom, so
+# only the edges are read here), the axe takes the pipe slot's two oranges and grey (nothing else on
+# that slot stands in a castle), the bridge the neutral slot's white, grey and red, and the lava the
+# coin slot's white foam over red. colour 0 of every slot is the backdrop; kCastleRgb keeps it one
+# shade off black on purpose so the host tests can still tell a castle from the underground by its
+# sky alone, which is the one deliberate deviation from the capture's flat black
+CASTLE = "000000"
+CASTLE_SLOTS = {
+    "sky": [CASTLE, "FFFFFF", "7F7F7F", "000000"],
+    "ground": [CASTLE, "FFFFFF", "BFBFBF", "7F7F7F"],
+    "brick": [CASTLE, "984800", "606860", "000000"],
+    "question": [CASTLE, "008888", "008888", "7F7F7F"],
+    "pipe": [CASTLE, "FFA347", "E75F13", "7F7F7F"],
+    "neutral": [CASTLE, "FFFFFF", "7F7F7F", "F83800"],
+    "spent": [CASTLE, "008888", "008888", "7F7F7F"],
+    "coin": [CASTLE, "FFFFFF", "F83800", "000000"],
+}
+
+# the three palette sets by name, which is how a frame says which one reads its cells
+SLOT_SETS = {"overworld": SLOTS, "underground": UNDERGROUND_SLOTS, "castle": CASTLE_SLOTS}
+
 # the one colour in 1-1 that no slot can hold. the pennant's emblem is drawn in the koopa green
 # 008010, and the cell it sits in is pinned to the sky slot, whose four colours are the backdrop,
 # the white the hud row also needs, the clouds' scallop blue and black. re-slotting the pennant
@@ -182,6 +223,7 @@ IMAGES = {
     "1-1": "smbd_ch_1-1.png",
     "1-2": "smbd_ch_1-2.png",
     "1-3": "smbd_ch_1-3.png",
+    "1-4": "smbd_ch_1-4.png",
     "sheet": "sheet_tileset.png",
 }
 # the sheet is the one reference the tool runs without
@@ -211,6 +253,10 @@ ROOM12_COLUMNS = 16
 # the 1-3 capture: 1-2's band offsets exactly, on open sky the whole way
 RIP13_Y0 = 8
 
+# the 1-4 capture: no offset at all, 140 columns and 13 rows, rip row 0 being level row 1
+RIP14_COLUMNS = 140
+RIP14_ROWS = 13
+
 # the sheet lays its global blocks out on a 17px pitch from x 4, all on one row at y 197
 SHEET_BLOCK_Y = 197
 SHEET_QUESTION_X = 4  # frame 1, the bright "?" - the frame an unhit block rests on
@@ -225,11 +271,14 @@ class Frame:
     dark(a, b) says whether that cell sits on a black backdrop rather than sky, which decides
     which palette set reads it. remap is applied to every pixel (the sheet's own colour shift)."""
 
-    def __init__(self, image, origin, dark=False, remap=None, band=False):
+    def __init__(self, image, origin, dark=False, remap=None, band=False, palette=None):
         self.image = image
         self._origin = origin
         self._dark = dark
         self.remap = remap
+        # the palette set that reads this frame's cells; a dark frame is the underground's unless
+        # it says otherwise (the castle is drawn on black too, under a set of its own)
+        self._palette = palette
         # a "band" frame is a whole level laid out on the capture's own 16px grid, which is the
         # only kind of frame the occurrence count can sweep
         self.band = band
@@ -239,6 +288,11 @@ class Frame:
 
     def dark(self, a, b):
         return self._dark(a, b) if callable(self._dark) else self._dark
+
+    def palette(self, a, b):
+        if self._palette is not None:
+            return self._palette
+        return "underground" if self.dark(a, b) else "overworld"
 
 
 FRAMES = {
@@ -257,14 +311,30 @@ FRAMES = {
                     else (ROOM12_X0 + c * CELL, ROOM12_Y0 + CELL * (r - ROOM12_TOP_ROW)),
                     dark=True),
     "rip13": Frame("1-3", lambda c, r: (c * CELL, RIP13_Y0 + r * CELL), band=True),
+    "rip14": Frame("1-4",
+                   lambda c, r: None if (c >= RIP14_COLUMNS or r >= RIP14_ROWS) else (c * CELL, r * CELL),
+                   dark=True, band=True, palette="castle"),
     "sheet": Frame("sheet", lambda x, y: (x, y), remap=SHEET_TO_RIP),
 }
 
 
 def dark_frame(spec):
-    """whether a cell comes off a black backdrop: either coin room, or 1-2's underground run (its
-    ending, from RIP12_ENDING_COLUMN on, is open sky like 1-1)."""
+    """whether a cell comes off a black backdrop: either coin room, 1-2's underground run (its
+    ending, from RIP12_ENDING_COLUMN on, is open sky like 1-1), or the castle."""
     return FRAMES[spec[0]].dark(spec[1], spec[2])
+
+
+def palette_of(spec):
+    """the name of the palette set that reads a cell: overworld, underground or castle."""
+    return FRAMES[spec[0]].palette(spec[1], spec[2])
+
+
+def slot_set(slot):
+    """a family's slot may name its set, "castle:ground"; a bare slot is the overworld's."""
+    if ":" in slot:
+        set_name, slot = slot.split(":", 1)
+        return SLOT_SETS[set_name], slot
+    return SLOTS, slot
 
 
 def Q(anchor, qx, qy):
@@ -824,6 +894,134 @@ OVERLAYS_13 = [
 ]
 
 
+# ---------------------------------------------------------------- 1-4
+#
+# "rip14" cells are (column, RIP row) in the castle capture, rip row r being level row r + 1 and
+# capture column c level column c + 16.
+ANCHORS_14 = {
+    # the masonry: a running bond of 8px bricks, white along each brick's top and left, light stone
+    # face, dark shadow down its right and along its bottom, black mortar. an 8px period across, so
+    # the cell is two tiles - an upper course and a lower one stepped half a brick. this cell is in
+    # the roof, where nothing is ever drawn over it
+    "masonry": ("rip14", 20, 1),
+    # the castle's own solid block, the lone one over the corridor's mouth (level 23, row 6): the
+    # seven that carry a firebar have the flame's top rows drawn into them, this one and the other
+    # three lone blocks are clean. a brown face inside a grey-green border with a dot in each
+    # corner and the backdrop showing through the corners: not the overworld's bevelled hard block
+    # at all, though the rom draws it with that block's kind. a castle load writes these four over
+    # kTileHardTl..Br the way it writes the masonry over the ground family
+    "castle_hard": ("rip14", 7, 5),
+    # the lava, at the second pit's left column (level 26, row 13): a white wave breaking along the
+    # cell's top eight rows and flat red below, with an 8px period across
+    "lava": ("rip14", 10, 12),
+    # the bridge (level 128, row 10): four rows of white plank over a grey rail, red chain links
+    # down every fourth column, and the links running out below. a 4px period across
+    "bridge": ("rip14", 112, 9),
+    # the axe (level 141, row 8): a double blade in two oranges over a grey haft, 16 px across and
+    # its handle running down through the cell's lower half - four tiles, where the hand-drawn axe
+    # was two blades over an empty lower half
+    "axe": ("rip14", 125, 7),
+    # the chain, from the bridge's far end (level 140, row 9) up to the axe: one diagonal line of
+    # white over light stone through the cell's upper right and lower left quadrants, the other two
+    # empty. the bible had no cell for it at all
+    "chain": ("rip14", 124, 8),
+}
+
+FAMILIES_14 = [
+    # bank 1 0x17 and 0x12: the upper course and the lower, in that order; the castle load writes
+    # the same pair over the ground family's six ids. cut in the castle set's ground slot
+    ("castle_brick", "CastleBrick", "castle:ground", [Q("masonry", 0, 0), Q("masonry", 0, 1)]),
+    # bank 0 0xfa-0xfd at a castle load: the castle's own solid block, four quadrants
+    ("castle_hard", "CastleHard", "castle:brick", [
+        Q("castle_hard", 0, 0), Q("castle_hard", 1, 0),
+        Q("castle_hard", 0, 1), Q("castle_hard", 1, 1)]),
+    # bank 1 0x20-0x21: the wave and the flat red under it; kTileLavaDeep is the flat tile again
+    ("lava", "Lava", "castle:coin", [Q("lava", 0, 0), Q("lava", 0, 1)]),
+    # bank 1 0x15-0x16: the deck's upper and lower halves, each stamped across both quadrants
+    ("bridge", "Bridge", "castle:neutral", [Q("bridge", 0, 0), Q("bridge", 0, 1)]),
+    # bank 1 0x13-0x14 and 0x19-0x1a: the axe's four quadrants, blades over haft
+    ("axe", "Axe", "castle:pipe", [
+        Q("axe", 0, 0), Q("axe", 1, 0), Q("axe", 0, 1), Q("axe", 1, 1)]),
+    # bank 1 0x1b-0x1c: the chain's two drawn quadrants, upper right then lower left
+    ("chain", "Chain", "castle:ground", [Q("chain", 1, 0), Q("chain", 0, 1)]),
+]
+
+# the kinds a castle stands, every one of them read against this capture in the castle set. the
+# question block's face is under its mushroom in the challenge rip, so it is an overlay below and
+# not a kind here
+KINDS_14 = {
+    4: ("castle block", "castle_hard", "brick"),
+    15: ("lava", "lava", "coin"),
+    16: ("bridge", "bridge", "neutral"),
+    17: ("axe", "axe", "pipe"),
+    48: ("masonry", "masonry", "ground"),
+    54: ("bridge chain", "chain", "ground"),
+}
+
+RELATIONS_14 = [
+    # the castle's block is symmetric both ways, so its right half is its left half mirrored
+    ("castle block right half == mirror(left half)", ("rip14", 7, 5), "mirror", "castle_hard"),
+]
+
+QUADRANTS_14 = [
+    ("masonry: each course is one 8px tile stamped twice",
+     [("masonry", 1, 0), ("masonry", 1, 1)], [("masonry", 0, 0), ("masonry", 0, 1)]),
+    ("lava: the wave repeats every 8px",
+     [("lava", 1, 0), ("lava", 1, 1)], [("lava", 0, 0), ("lava", 0, 1)]),
+    ("lava: its lower half is flat red",
+     [("lava", 0, 1)], [("lava", 0, 1)]),
+    ("bridge: the deck repeats every 8px (and every 4 inside that)",
+     [("bridge", 1, 0), ("bridge", 1, 1)], [("bridge", 0, 0), ("bridge", 0, 1)]),
+    ("chain: its upper left and lower right quadrants are empty",
+     [("chain", 0, 0), ("chain", 1, 1)], None),
+    # expected "no": the hand-drawn axe this replaces left the lower half empty, and the capture
+    # draws the haft there
+    ("axe: its lower half is empty",
+     [("axe", 0, 1), ("axe", 1, 1)], None),
+    ("castle block: its lower half is its upper half upside down",
+     [("castle_hard", 0, 1), ("castle_hard", 1, 1)],
+     [("castle_hard", 0, 0), ("castle_hard", 1, 0)], "vflip"),
+]
+
+# AUDIT: the 1-4 capture stands column for column at +16 from its own left edge: its 140 columns
+# are level 16-155, the opening platform and steps (level 0-15) come off the nes rip alone, and
+# level 156-159 are past its right edge. every pivot, pit, stub, the bridge and the axe land where
+# the bible puts them; what does not read as tile truth is declared below
+COLUMNS_14 = ((16, 155, -16),)
+
+# the pivots the seven firebars hang from, each with its chain of flame drawn straight down through
+# the three cells under it; the pivot cells themselves are clean
+FIREBAR_PIVOTS_14 = [(30, 10), (49, 6), (60, 6), (67, 6), (76, 9), (84, 9), (88, 4)]
+
+OVERLAYS_14 = [
+    ("the ripper's credit, drawn over the backdrop at the top left",
+     [(column, 1) for column in range(16, 26)] + [(17, 2), (19, 2), (23, 2)]),
+    ("a firebar's flame, drawn hanging straight down from its pivot",
+     [(x, y + dy) for x, y in FIREBAR_PIVOTS_14 for dy in (1, 2, 3)]),
+    ("challenge mode's red coin", [(30, 3), (50, 6), (86, 6), (77, 9), (136, 5)]),
+    ("the challenge mode's yoshi egg", [(110, 5)]),
+    ("the ripper's marker for a hidden block: a coin in a dotted outline",
+     [(106, 9), (109, 9), (112, 9), (107, 5), (113, 5)]),
+    ("challenge mode draws the block's contents over its face", [(30, 6)]),
+    ("bowser, a sprite in the rom, and the deck cell under his feet",
+     [(135, 8), (136, 8), (135, 9), (136, 9), (136, 10)]),
+    ("a bowser fireball in flight", [(104, 10), (105, 10)]),
+    ("the lift deck, a sprite in the rom, caught part way along its track", [(138, 6), (139, 6)]),
+    # the stitch. around level 79-80 rows 3-4 the capture is a pixel out - the block at 80/4 and
+    # the roof cell over it read one column left of the grid - and past the axe its last screen is
+    # drawn two pixels short: the wall at 143 loses its last two columns of pixels in every row
+    ("a stitch seam one pixel out", [(79, 3), (79, 4), (80, 3), (80, 4)]),
+    ("the capture's last screen is drawn two pixels short of the wall at 143",
+     [(143, row) for row in range(2, 14)] + [(141, 12), (142, 12), (141, 13), (142, 13)]),
+    # and the room past it, which the smbd rip draws with no roof, a lower floor and its own
+    # furniture where the nes rip - the one the bible follows, see level-1-4.json - draws the toad
+    # room's masonry out to column 159
+    ("the smbd ending room, which the bible does not follow",
+     [(column, 2) for column in range(144, 156)] + [(column, 13) for column in range(144, 156)]
+     + [(column, row) for column in range(146, 152) for row in (10, 11, 12)]),
+]
+
+
 # ---------------------------------------------------------------- the per-level table
 
 LEVELS = {
@@ -880,9 +1078,26 @@ LEVELS = {
         # they reported are the numbers this table still reproduces
         "enemy_rows": {2: 2, 4: 3},
     },
+    "1-4": {
+        "image": "1-4",
+        "frame": "rip14",
+        "area_frame": None,
+        "grid": ("level_1_4", "kLevel14Grid"),
+        "columns": COLUMNS_14,
+        "anchors": ANCHORS_14,
+        "families": FAMILIES_14,
+        "kinds": KINDS_14,
+        "relations": RELATIONS_14,
+        "quadrants": QUADRANTS_14,
+        "room_anchors": {},
+        "overlays": OVERLAYS_14,
+        # the castle capture holds level rows 1-13 in its thirteen rows, one more than the others
+        "row0": 1,
+        "rows": RIP14_ROWS,
+    },
 }
 
-LEVEL_ORDER = ["1-1", "1-2", "1-3"]
+LEVEL_ORDER = ["1-1", "1-2", "1-3", "1-4"]
 
 # every anchor of every level in one namespace: the relations deliberately reach across levels
 # (1-2's whole audit is "this is 1-1's art under other colours", and 1-3's says the same), and a
@@ -912,6 +1127,12 @@ def level_column(level, column):
     # falls off the image); 1-2 answers None, because the columns outside its table are the start
     # segment and the exit shaft, neither of which is in the image at all
     return column if level == "1-1" else None
+
+
+def level_rows(level):
+    """(the level row the capture's rip row 0 stands at, how many rip rows it holds)."""
+    entry = LEVELS[level]
+    return entry.get("row0", 2), entry.get("rows", LAST_RIP_ROW + 1)
 
 
 # ---------------------------------------------------------------- reading the references
@@ -1033,7 +1254,24 @@ def verify_13(refs):
                          % (img.width, img.height))
 
 
-VERIFY = {"1-1": verify_11, "1-2": verify_12, "1-3": verify_13}
+def verify_14(refs):
+    """1-4's frame has no offset, so the check is the cells themselves: the roof at rip row 1 and
+    the floor at rip row 12 are masonry in column 20 (level 36, deep in the corridor), the second
+    lava pit's left column (level 26) reads red along its top, and the image is 140 columns and
+    13 rows plus a margin."""
+    img = refs.images["1-4"]
+    if img.width < RIP14_COLUMNS * CELL or img.height < RIP14_ROWS * CELL:
+        raise SystemExit("1-4's capture is %dx%d, too small for %d columns and %d rows"
+                         % (img.width, img.height, RIP14_COLUMNS, RIP14_ROWS))
+    for row in (1, 12):
+        cell = refs.cell(("rip14", 20, row))
+        if {p for line in cell for p in line} != {CASTLE, "FFFFFF", "BFBFBF", "7F7F7F"}:
+            raise SystemExit("1-4's rip row %d at column 20 is not masonry; the frame moved" % row)
+    if refs.pixel("rip14", 10 * CELL, 12 * CELL + 4) != "F83800":
+        raise SystemExit("1-4's lava pit at column 10 does not read red at row 12; the frame moved")
+
+
+VERIFY = {"1-1": verify_11, "1-2": verify_12, "1-3": verify_13, "1-4": verify_14}
 
 
 def quadrant(rows, qx, qy):
@@ -1045,8 +1283,10 @@ def mirror(tile):
 
 
 def indices(tile, slot, where):
-    """an 8x8 of RRGGBB as 2bpp values in its slot; an alien colour is fatal."""
-    palette = SLOTS[slot]
+    """an 8x8 of RRGGBB as 2bpp values in its slot (a "set:slot" name picks the palette set, the
+    bare slot the overworld's); an alien colour is fatal."""
+    slots, slot = slot_set(slot)
+    palette = slots[slot]
     lookup = {}
     for index, colour in enumerate(palette):
         lookup.setdefault(colour, index)
@@ -1112,9 +1352,13 @@ def structural_report(refs, relations, quadrants):
         lift = mode == "recolour"
         lefts = [quadrant(refs.anchor(a, recolour=lift), qx, qy) for a, qx, qy in left]
         if right is None:
-            differ = sum(1 for t in lefts for row in t for p in row if p != SKY)
+            # "drawn" cells count pixels that are not their own frame's backdrop
+            backdrop = UNDERGROUND if dark_frame(ANCHORS[left[0][0]]) else SKY
+            differ = sum(1 for t in lefts for row in t for p in row if p != backdrop)
         else:
             rights = [quadrant(refs.anchor(a, recolour=lift), qx, qy) for a, qx, qy in right]
+            if mode == "vflip":
+                rights = [list(reversed(t)) for t in rights]
             differ = sum(1 for ta, tb in zip(lefts, rights)
                          for ra, rb in zip(ta, tb) for x, y in zip(ra, rb) if x != y)
         quads.append((label, differ))
@@ -1247,15 +1491,16 @@ def sources_for(level, grid, area, enemies, overlays):
     spec for a cell the captures do not hold."""
     frame = LEVELS[level]["frame"]
     area_frame = LEVELS[level]["area_frame"]
+    row0, rows = level_rows(level)
     out = []
     if grid:
         for column, strip in enumerate(grid):
             for level_row, cell_kind in enumerate(strip):
-                if level_row - 2 > LAST_RIP_ROW or level_row < 2:
+                if level_row - row0 >= rows or level_row < row0:
                     out.append((cell_kind, None, False))
                     continue
                 rip_col = level_column(level, column)
-                spec = None if rip_col is None else (frame, rip_col, level_row - 2)
+                spec = None if rip_col is None else (frame, rip_col, level_row - row0)
                 covered = (column, level_row) in enemies or (column, level_row) in overlays
                 out.append((cell_kind, spec, covered))
     if area and area_frame:
@@ -1266,13 +1511,20 @@ def sources_for(level, grid, area, enemies, overlays):
 
 
 def wanted_cell(refs, level, kind, gen_dir):
-    """what a kind's cell should look like above ground and in a dark frame, as 2bpp values, or
-    (None, None) when neither the capture nor the committed c can say."""
+    """what a kind's cell should look like under each palette set, as {set name: 2bpp values}, or
+    None when neither the capture nor the committed c can say. an anchor cut from the castle is
+    only ever wanted in the castle set; every other anchor is wanted above ground and, folded the
+    way the underground slots fold, below it."""
     entry = LEVELS[level]["kinds"][kind]
     label, anchor_name, slot = entry[0], entry[1], entry[2]
     mirrored = len(entry) > 3 and entry[3]
     if slot is None:
-        return None, None
+        return None
+    if refs.has(anchor_name) and palette_of(ANCHORS[anchor_name]) == "castle":
+        want = refs.anchor(anchor_name)
+        if mirrored:
+            want = mirror(want)
+        return {"castle": collapse(want, slot, CASTLE_SLOTS[slot])}
     if refs.has(anchor_name):
         # an anchor cut from a black-backdrop frame is stored in that frame's own colours, so it
         # has to be lifted into its slot before either comparison can read it
@@ -1286,12 +1538,12 @@ def wanted_cell(refs, level, kind, gen_dir):
     else:
         want_over = want_room = gen_cell(gen_dir, SHEET_FAMILIES[anchor_name])
         if want_over is None:
-            return None, None
+            return None
     # an underground slot can name one colour twice, so the anchor's own 2bpp values are folded
     # the way the slot folds them before comparing
     under = UNDERGROUND_SLOTS[slot]
     fold = [min(j for j in range(4) if under[j] == under[i]) for i in range(4)]
-    return want_over, [[fold[v] for v in row] for row in want_room]
+    return {"overworld": want_over, "underground": [[fold[v] for v in row] for row in want_room]}
 
 
 def audit(refs, gen_dir, level, grid, area, enemies, overlays):
@@ -1311,8 +1563,8 @@ def audit(refs, gen_dir, level, grid, area, enemies, overlays):
         if slot is None:
             rows.append((kind, label, 0, 0, 0, 0, 0, []))
             continue
-        want_over, want_under = wanted_cell(refs, level, kind, gen_dir)
-        if want_over is None:
+        wanted = wanted_cell(refs, level, kind, gen_dir)
+        if wanted is None:
             rows.append((kind, label, 0, 0, 0, 0, 0, ["no sheet and no generated c"]))
             continue
         same = overlay = differ = off = 0
@@ -1324,10 +1576,15 @@ def audit(refs, gen_dir, level, grid, area, enemies, overlays):
             if got is None:
                 off += 1
                 continue
-            dark = dark_frame(spec)
-            palette = UNDERGROUND_SLOTS[slot] if dark else SLOTS[slot]
-            expect = want_under if dark else want_over
+            set_name = palette_of(spec)
+            palette = SLOT_SETS[set_name][slot]
+            expect = wanted.get(set_name)
             values = collapse(got, slot, palette)
+            if expect is None:
+                # a castle anchor audited off a sky or underground cell, or the reverse: no
+                # comparison is meaningful, so the cell is neither same nor differ
+                off += 1
+                continue
             # a cell whose colours the slot cannot even hold is a sprite for certain. otherwise a
             # covered cell EXCUSES a mismatch, it does not discard a match: if the capture's cell
             # still is this kind's art pixel for pixel, the sprite drawn over it did not touch the
@@ -1443,18 +1700,19 @@ def classify(refs, level, grid, enemies, overlays, pano):
     """one class per (column, level row) of the main grid: what the diff heatmap paints, plus the
     cells where a capture colour had to go through APPROXIMATIONS to be comparable at all."""
     frame = LEVELS[level]["frame"]
+    row0, rows = level_rows(level)
     out = {}
     approximated = []
     for column, strip in enumerate(grid):
         for level_row, kind in enumerate(strip):
             rip_col = level_column(level, column)
             got = None
-            if rip_col is not None and 2 <= level_row <= LAST_RIP_ROW + 2:
-                got = refs.cell((frame, rip_col, level_row - 2))
+            if rip_col is not None and row0 <= level_row < row0 + rows:
+                got = refs.cell((frame, rip_col, level_row - row0))
             if got is None:
                 out[(column, level_row)] = ("grey", "no reference for this cell")
                 continue
-            backdrop = UNDERGROUND if dark_frame((frame, rip_col, level_row - 2)) else SKY
+            backdrop = UNDERGROUND if dark_frame((frame, rip_col, level_row - row0)) else SKY
             covered = (column, level_row) in enemies or (column, level_row) in overlays
             reason = overlays.get((column, level_row), "a sprite the spawn list places here")
             if kind == 0:
@@ -1506,7 +1764,8 @@ def write_side_by_side(refs, level, pano, out_dir, chunks=4, scale=2):
     diff compares; the hud row and level row 14 are in neither."""
     frame = LEVELS[level]["frame"]
     image = refs.images[LEVELS[level]["image"]]
-    top_row, bottom_row = 2, LAST_RIP_ROW + 2
+    row0, rows = level_rows(level)
+    top_row, bottom_row = row0, row0 + rows - 1
     band = (bottom_row - top_row + 1) * CELL
     columns = pano.width() // CELL
     per = (columns + chunks - 1) // chunks
@@ -1527,7 +1786,7 @@ def write_side_by_side(refs, level, pano, out_dir, chunks=4, scale=2):
                         rip_col = level_column(level, column)
                         px = (255, 0, 255)
                         if rip_col is not None:
-                            where = FRAMES[frame].origin(rip_col, top_row - 2)
+                            where = FRAMES[frame].origin(rip_col, 0)
                             sx, sy = where[0] + x % CELL, where[1] + y
                             if 0 <= sx < image.width and 0 <= sy < image.height:
                                 r, g, b, _ = image.rgba(sx, sy)
@@ -1558,7 +1817,8 @@ def png_rows(tiles, slot):
     out = []
     for tile in tiles:
         out.extend([row[:] for row in tile])
-    palette = [tuple(int(SLOTS[slot][i][j:j + 2], 16) for j in (0, 2, 4)) for i in range(4)]
+    slots, slot = slot_set(slot)
+    palette = [tuple(int(slots[slot][i][j:j + 2], 16) for j in (0, 2, 4)) for i in range(4)]
     return out, palette
 
 
@@ -1612,9 +1872,10 @@ def occurrences(refs, name):
     want = refs.anchor(name)
     frame = ANCHORS[name][0]
     img = refs.images[FRAMES[frame].image]
+    rows = RIP14_ROWS if frame == "rip14" else LAST_RIP_ROW + 1
     count = 0
     for column in range(img.width // CELL):
-        for row in range(LAST_RIP_ROW + 1):
+        for row in range(rows):
             if refs.cell((frame, column, row)) == want:
                 count += 1
     return count

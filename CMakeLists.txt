@@ -332,6 +332,14 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/tiles/pipe_side.png PipeSide tiles 4)
         # milestone 25: the one family 1-2's capture holds that 1-1's does not, the shaft joint
         mario_png_asset(games/mario/art/tiles/pipe_joint.png PipeJoint tiles 4)
+        # milestone 27: the castle's art off the smbd 1-4 capture, in bank 6 with castle_art.c -
+        # bank 4 was 130 bytes from full and these six spill it
+        mario_png_asset(games/mario/art/tiles/castle_brick.png CastleBrick tiles 6)
+        mario_png_asset(games/mario/art/tiles/castle_hard.png CastleHard tiles 6)
+        mario_png_asset(games/mario/art/tiles/lava.png Lava tiles 6)
+        mario_png_asset(games/mario/art/tiles/bridge.png Bridge tiles 6)
+        mario_png_asset(games/mario/art/tiles/axe.png Axe tiles 6)
+        mario_png_asset(games/mario/art/tiles/chain.png Chain tiles 6)
         mario_png_asset(games/mario/art/tiles/coin.png Coin tiles 4)
         mario_png_asset(games/mario/art/tiles/cloud.png Cloud tiles 4)
         mario_png_asset(games/mario/art/tiles/cloud_right.png CloudRight tiles 4)
@@ -399,6 +407,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/castle_art.c
                     ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
@@ -425,6 +434,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     games/mario/src/assets_data.c
+                    games/mario/src/castle_art.c games/mario/src/castle_art.h
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}

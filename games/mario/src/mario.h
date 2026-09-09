@@ -772,8 +772,14 @@
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible
 #define kPlayerHitInsetPx 2
 #define kPlayerHitWidthPx (kPlayerWidthPx - 2 * kPlayerHitInsetPx) // 12
-// our own cadence, not the bible's: the walk cycle advances once this many subpixels have passed
-#define kWalkAnimStepSubpx 48U
+// smbdis PlayerAnimTmrData (6192) via GetPlayerAnimSpeed (6195): a walk pose holds 2 frames at
+// 0x1c subpx a frame or faster, 4 at 0x0e or faster, and 7 below that. the same 1/16 px unit as
+// our speeds, so the two thresholds are the disassembly's bytes
+#define kWalkAnimRunSubpx 0x1CU
+#define kWalkAnimWalkSubpx 0x0EU
+#define kWalkAnimRunFrames 2U
+#define kWalkAnimWalkFrames 4U
+#define kWalkAnimSlowFrames 7U
 
 // the play camera (games/mario/src/camera.c). horizontal: mario is held at kCamFollowX and holding
 // select slides that anchor toward kCamLookAheadX to show more of what is ahead; both directions
@@ -831,7 +837,8 @@
 #define kClearHopFrames 12
 #define kClearHopPx 2
 #define kClearWalkPx 1
-#define kClearWalkAnimFrames 8U
+// 1 px a frame is 16 subpx, the middle of PlayerAnimTmrData's three: a pose every 4 frames
+#define kClearWalkAnimFrames kWalkAnimWalkFrames
 // the walk ends at the castle's door column when the level has a castle. a level whose compiler
 // placed none falls back to this many blocks along the closing ground
 #define kClearWalkBlocks 5
@@ -849,7 +856,10 @@
 // cell's 2x2 face is redrawn one tile row higher for kBumpFrames and then put back, which costs two
 // 2x3 vram writes on the bump frame and two on the restore frame - a fraction of one streamed column
 #define kBumpRisePx 8U
-#define kBumpFrames 8U
+// smbdis BumpBlock (7307) sends the block up at 2 px a frame under ImposeGravityBlock's 0x50/256
+// gravity (7660) and kills it when its y comes back within 5 px (7480): a 14-frame arc that sits
+// 4 px or higher, i.e. rounds to the raised tile row, for 11 of them
+#define kBumpFrames 11U
 // level-1-1.json: the ten-coin brick. the bible gives no per-hit timeout, only the total
 #define kMulticoinBudget 10U
 
@@ -865,10 +875,12 @@
 // the star's own gravity: smb1's star hops about two blocks, not the mushroom's much longer arc, so
 // it falls back to earth faster than kItemGravitySubpx would let it (apex ~32px, ~16 frames up)
 #define kStarGravitySubpx 64U
-// the coin a block pays out pops straight up and falls back over kCoinPopFrames; smb's own arc
-// length is unsourced in the bible, so this cadence is ours
-#define kCoinPopFrames 30U
-#define kCoinPopRisePx 2
+// smbdis JCoinC (6989) and JCoinRun (7046): the coin a block pays out leaves at -5 px a frame under
+// 0x50/256 gravity, in smb's 8.8 fixed point, and is over the moment it is falling at 5 - 32 frames,
+// 43 px up at frame 15. blocks_draw.c steps it, because bank 0 has no room for the arithmetic
+#define kCoinPopLaunchDy -5
+#define kCoinPopGravity 0x50U
+#define kCoinPopEndDy 5
 // an item that walks this far off either side of the camera is despawned
 #define kItemDespawnMarginPx 32
 

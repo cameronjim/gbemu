@@ -444,14 +444,21 @@ static void step_anim(void) {
     if (speed_abs == 0U) {
         anim_frame = kFrameIdle;
         anim_accum = 0;
-        walk_step = 0;
+        // parked on the last pose so the first step of a walk wraps onto walk0
+        walk_step = (uint8_t)(kWalkFrameCount - 1U);
         return;
     }
-    anim_accum = (uint8_t)(anim_accum + speed_abs);
-    if (anim_accum >= kWalkAnimStepSubpx) {
-        anim_accum = (uint8_t)(anim_accum - kWalkAnimStepSubpx);
-        walk_step = (uint8_t)((walk_step + 1U) % kWalkFrameCount);
+    // smb's pose timer: reload it by speed each time it runs out, and step the cycle then
+    if (anim_accum == 0U) {
+        anim_accum = speed_abs >= (uint8_t)kWalkAnimRunSubpx    ? (uint8_t)kWalkAnimRunFrames
+                     : speed_abs >= (uint8_t)kWalkAnimWalkSubpx ? (uint8_t)kWalkAnimWalkFrames
+                                                                 : (uint8_t)kWalkAnimSlowFrames;
+        ++walk_step;
+        if (walk_step >= (uint8_t)kWalkFrameCount) {
+            walk_step = 0;
+        }
     }
+    --anim_accum;
     anim_frame = (uint8_t)(kFrameWalk0 + walk_step);
 }
 
@@ -804,7 +811,10 @@ uint8_t player_clear_update(void) {
         ++clear_timer;
         if (clear_timer >= (uint8_t)kClearWalkAnimFrames) {
             clear_timer = 0;
-            walk_step = (uint8_t)((walk_step + 1U) % kWalkFrameCount);
+            ++walk_step;
+            if (walk_step >= (uint8_t)kWalkFrameCount) {
+                walk_step = 0;
+            }
         }
         if (x_pos >= clear_walk_x()) {
             anim_frame = kFrameIdle;

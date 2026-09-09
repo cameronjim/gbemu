@@ -31,9 +31,10 @@ BLOCK_THIN = 14
 BLOCK_LAVA = 15
 BLOCK_BRIDGE = 16
 BLOCK_AXE = 17
-# milestone 18's background pass. a surface ground block wears two rows of grass, so the rows
-# under it are their own kind; the castle became five kinds instead of one slab; the flag grew a
-# ball and a pennant; and the last twelve are scenery, stamped only where the level left sky
+# milestone 18's background pass. a surface ground block and the rows buried under it are drawn
+# from the same 16x16 unit but are their own kinds, because only the surface one is ever the top
+# of a floor; the castle became several kinds instead of one slab; the flag grew a ball and a
+# pennant; and the last twelve are scenery, stamped only where the level left sky
 BLOCK_GROUND_FILL = 18
 BLOCK_CASTLE_CRENEL = 19
 BLOCK_CASTLE_WINDOW = 20
@@ -90,6 +91,27 @@ BLOCK_CASTLE_BRICK = 48
 # stack of separate pools - so settle_lava keeps it on the topmost cell of every run and drops this
 # flat-red kind into the rest. scenery like the lava itself: a pit kills through the death plane
 BLOCK_LAVA_FILL = 49
+# the castle window's mirror twin, and the contract with mario.h's kBlockCastleWindowRight. the
+# smbd capture's window is one 8px tile, not a whole cell: a tower carries an opening either side
+# of its middle column and each opening hugs the middle, so the left cell reads [masonry, opening]
+# and the right one [opening, masonry]. the rom cannot draw the second as the first x flipped -
+# that moves the mortar joint down the masonry tile's other edge - so the two cells are two kinds
+BLOCK_CASTLE_WINDOW_RIGHT = 50
+# a big hill's flat belly, and the contract with mario.h's kBlockHillCore. smb shades a hill's
+# interior with a two-pixel mark in each cell's upper right, and the smbd capture of 1-1 carries
+# one in every interior cell except the bottom row's centre, which is flat green across. so the
+# five-wide dome's belly cell is its own kind; the three-wide small hill has no such cell
+BLOCK_HILL_CORE = 51
+# where a sideways pipe's body runs into its shaft, the shaft's left cell in each of the mouth's
+# two rows carries the body's rim and its joint over its own left column, so it is neither a plain
+# body cell nor a side-pipe one. the contract with mario.h's kBlockPipeJointT/B: both smbd captures
+# draw the pair cell for cell, at 1-2's two sideways pipes and at 1-1's bonus room exit
+BLOCK_PIPE_JOINT_T = 52
+BLOCK_PIPE_JOINT_B = 53
+# the chain from a bridge's far end up to its axe, one cell over the deck's last column: the smbd
+# castle capture draws it and the nes one too. scenery on the masonry's slot, and the contract with
+# mario.h's kBlockBridgeChain; the engine clears it the frame the axe is taken
+BLOCK_BRIDGE_CHAIN = 54
 
 KIND_NAMES = {
     BLOCK_EMPTY: "EMPTY",
@@ -142,6 +164,11 @@ KIND_NAMES = {
     BLOCK_FLAG_POLE_CLOTH: "FLAG_POLE_CLOTH",
     BLOCK_CASTLE_BRICK: "CASTLE_BRICK",
     BLOCK_LAVA_FILL: "LAVA_FILL",
+    BLOCK_CASTLE_WINDOW_RIGHT: "CASTLE_WINDOW_RIGHT",
+    BLOCK_HILL_CORE: "HILL_CORE",
+    BLOCK_PIPE_JOINT_T: "PIPE_JOINT_T",
+    BLOCK_PIPE_JOINT_B: "PIPE_JOINT_B",
+    BLOCK_BRIDGE_CHAIN: "BRIDGE_CHAIN",
 }
 
 # every kind a body walks straight through, which is what surface_row has to skip past and what
@@ -150,7 +177,8 @@ WALK_THROUGH = frozenset(
     [BLOCK_EMPTY, BLOCK_FLAG_POLE, BLOCK_FLAG_POLE_CLOTH, BLOCK_FLAG_BALL, BLOCK_FLAG_CLOTH,
      BLOCK_COIN, BLOCK_AXE,
      BLOCK_CASTLE, BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_WINDOW, BLOCK_CASTLE_DOOR_TOP,
-     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_TRUNK]
+     BLOCK_CASTLE_DOOR, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE_WINDOW_RIGHT, BLOCK_TRUNK,
+     BLOCK_HILL_CORE, BLOCK_BRIDGE_CHAIN]
     + list(range(BLOCK_CLOUD_TL, BLOCK_BUSH_R + 1))
 )
 
@@ -600,13 +628,54 @@ def stamp_castle(grid, x0, rows):
     return placed
 
 
+def apply_pipe_side(grid, t, probes):
+    """the sideways pipe smb draws as an L: the mouth's rim column and top row, the horizontal body
+    out to the shaft, and the shaft itself rising from shaft_top to the mouth's bottom row. no cap
+    on the shaft - both the 1-2 map and 1-1's bonus room draw it running straight up out of frame -
+    and the rim column is what a walk-in trigger is placed on. the shaft's left cell in the two
+    rows the body meets it is the joint pair, not plain body: both captures draw the body's rim and
+    joint line across it. returns (rim column, top row)."""
+    length_columns = len(grid)
+    rim_x, top = t["x"], t["y"]
+    shaft_x, shaft_top = t["shaft_x"], t.get("shaft_top", CEILING_ROW)
+    if 0 <= rim_x < length_columns:
+        grid[rim_x][top] = BLOCK_PIPE_SIDE_TL
+        grid[rim_x][top + 1] = BLOCK_PIPE_SIDE_BL
+    for column in range(rim_x + 1, shaft_x):
+        if 0 <= column < length_columns:
+            grid[column][top] = BLOCK_PIPE_SIDE_BODY_T
+            grid[column][top + 1] = BLOCK_PIPE_SIDE_BODY_B
+    for row in range(shaft_top, top + 2):
+        if 0 <= shaft_x < length_columns:
+            if row == top:
+                grid[shaft_x][row] = BLOCK_PIPE_JOINT_T
+            elif row == top + 1:
+                grid[shaft_x][row] = BLOCK_PIPE_JOINT_B
+            else:
+                grid[shaft_x][row] = BLOCK_PIPE_BODY_L
+        if 0 <= shaft_x + 1 < length_columns:
+            grid[shaft_x + 1][row] = BLOCK_PIPE_BODY_R
+    probes.append((rim_x, top, BLOCK_PIPE_SIDE_TL))
+    probes.append((rim_x, top + 1, BLOCK_PIPE_SIDE_BL))
+    probes.append((shaft_x, top, BLOCK_PIPE_JOINT_T))
+    if shaft_top < top:
+        probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
+    return rim_x, top
+
+
 def apply_castle(grid, x0):
-    # smb's small castle: a three-wide tower over a five-wide keep
-    C, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    # smb's small castle: a three-wide tower over a five-wide keep. the keep's crenel row obeys the
+    # same rule apply_castle_big's tiers do - CRENEL where sky stands above the merlon, CRENEL_INNER
+    # where the next tier up does - and the two ends of that row have sky above them, not tower. the
+    # smbd capture agrees to the pixel: its cells at level 200 and 204 are byte-identical to the
+    # CRENEL cell the tower wears one row higher (see rip_tiles.py's per-kind report), notch open to
+    # the sky rather than backed by masonry, and identical to each other rather than mirrored
+    C, I, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
+    R = BLOCK_CASTLE_WINDOW_RIGHT
     return stamp_castle(grid, x0, [
         [None, C, C, C, None],
-        [None, W, K, W, None],
-        [BLOCK_CASTLE_CRENEL_INNER] * 5,
+        [None, W, K, R, None],
+        [C, I, I, I, C],
         [K, K, BLOCK_CASTLE_DOOR_TOP, K, K],
         [K, K, BLOCK_CASTLE_DOOR, K, K],
     ])
@@ -620,9 +689,10 @@ def apply_castle_big(grid, x0):
     # sky sits above the merlon and CRENEL_INNER where the next tier up does
     C, I, K, W = BLOCK_CASTLE_CRENEL, BLOCK_CASTLE_CRENEL_INNER, BLOCK_CASTLE, BLOCK_CASTLE_WINDOW
     T, D = BLOCK_CASTLE_DOOR_TOP, BLOCK_CASTLE_DOOR
+    R = BLOCK_CASTLE_WINDOW_RIGHT
     return stamp_castle(grid, x0, [
         [None, None, None, C, C, C, None, None, None],
-        [None, None, None, W, K, W, None, None, None],
+        [None, None, None, W, K, R, None, None, None],
         [None, None, C, I, I, I, C, None, None],
         [None, None, K, K, T, K, K, None, None],
         [None, None, K, K, D, K, K, None, None],
@@ -713,7 +783,10 @@ def decor_cells(item):
     if x is None:
         return []
     if kind == "big_hill":
-        # peak / slope-fill-slope / slope-fill-fill-fill-slope, five wide and three tall
+        # peak / slope-fill-slope / slope-fill-core-fill-slope, five wide and three tall. the
+        # belly cell in the middle of the bottom row is BLOCK_HILL_CORE and not another fill:
+        # the smbd capture shades every other interior cell with a mark in its upper right and
+        # leaves that one flat (see the anchors in rip_tiles.py)
         return [
             (x + 2, DECOR_BASE_ROW - 2, BLOCK_HILL_PEAK),
             (x + 1, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_L),
@@ -721,7 +794,7 @@ def decor_cells(item):
             (x + 3, DECOR_BASE_ROW - 1, BLOCK_HILL_SLOPE_R),
             (x + 0, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_L),
             (x + 1, DECOR_BASE_ROW, BLOCK_HILL_FILL),
-            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_FILL),
+            (x + 2, DECOR_BASE_ROW, BLOCK_HILL_CORE),
             (x + 3, DECOR_BASE_ROW, BLOCK_HILL_FILL),
             (x + 4, DECOR_BASE_ROW, BLOCK_HILL_SLOPE_R),
         ]
@@ -765,12 +838,27 @@ def reserved_cells(bible):
     return out
 
 
+def decor_free(grid, reserved, cell):
+    # a cell scenery may stamp: inside the compiled level, still open sky, and not one the
+    # reaction list has claimed for a hidden block
+    column, row, _kind = cell
+    return (0 <= column < len(grid) and 0 <= row < LEVEL_ROWS
+            and grid[column][row] == BLOCK_EMPTY and (column, row) not in reserved)
+
+
 def apply_decor(grid, bible):
-    # scenery never displaces anything, and it is placed whole or not at all. a hill is a dome over
-    # a pair of slopes and a bush is two caps around a run of middles: drop one cell of either and
-    # what is left is not a smaller hill, it is a broken one. so a shape whose every cell is not
-    # open sky - inside the compiled level, not already terrain, not a cell the reaction list has
-    # claimed for a hidden block - is skipped entirely and the bible's column is the thing to move.
+    # scenery never displaces anything, and by default it is placed whole or not at all. a hill is
+    # a dome over a pair of slopes and a bush is two caps around a run of middles: drop one cell of
+    # either and what is left is not a smaller hill, it is a broken one. so a shape that cannot
+    # have every cell is skipped entirely and the bible's column is the thing to move.
+    #
+    # "clip": true on an entry says the opposite, and says it for a measured reason: smb really
+    # does stand this shape here and really does draw terrain over part of it - 1-1's capture has a
+    # big hill whose right slope is behind a staircase, another whose right slope is behind the
+    # flag's base block, and two bushes with a cap buried in masonry. those cells are the level's,
+    # the rest of the shape is still smb's, and a clipped entry stamps exactly the cells that are
+    # free. it is opt-in per shape so that a bible column that is simply WRONG still shows up as a
+    # shape that vanished rather than as a broken one.
     #
     # returns one probe per decor kind that actually landed, which is what pins the rendered
     # families in the host test without making the golden set walk the camera past every cloud
@@ -779,10 +867,9 @@ def apply_decor(grid, bible):
     seen = set()
     for item in bible.get("decor", []):
         cells = decor_cells(item)
-        fits = all(0 <= column < len(grid) and 0 <= row < LEVEL_ROWS
-                   and grid[column][row] == BLOCK_EMPTY and (column, row) not in reserved
-                   for column, row, kind in cells)
-        if not fits:
+        if item.get("clip"):
+            cells = [cell for cell in cells if decor_free(grid, reserved, cell)]
+        elif not all(decor_free(grid, reserved, cell) for cell in cells):
             continue
         for column, row, kind in cells:
             grid[column][row] = kind
@@ -953,26 +1040,7 @@ def compile_grid(bible, level_type):
             probes.append((t["x0"], t["y"], BLOCK_TREE_TOP_L))
             probes.append((t["x1"], t["y"], BLOCK_TREE_TOP_R))
         elif t["kind"] == "pipe_side":
-            # the mouth's rim column and top row, the horizontal body out to the shaft, and the
-            # shaft itself rising from shaft_top to the mouth's bottom row (no cap: the map draws
-            # 1-2's shafts running straight up through the ceiling). the rim is the walk-in trigger
-            rim_x, top = t["x"], t["y"]
-            shaft_x, shaft_top = t["shaft_x"], t.get("shaft_top", CEILING_ROW)
-            if 0 <= rim_x < length_columns:
-                grid[rim_x][top] = BLOCK_PIPE_SIDE_TL
-                grid[rim_x][top + 1] = BLOCK_PIPE_SIDE_BL
-            for column in range(rim_x + 1, shaft_x):
-                if 0 <= column < length_columns:
-                    grid[column][top] = BLOCK_PIPE_SIDE_BODY_T
-                    grid[column][top + 1] = BLOCK_PIPE_SIDE_BODY_B
-            for row in range(shaft_top, top + 2):
-                if 0 <= shaft_x < length_columns:
-                    grid[shaft_x][row] = BLOCK_PIPE_BODY_L
-                if 0 <= shaft_x + 1 < length_columns:
-                    grid[shaft_x + 1][row] = BLOCK_PIPE_BODY_R
-            probes.append((rim_x, top, BLOCK_PIPE_SIDE_TL))
-            probes.append((rim_x, top + 1, BLOCK_PIPE_SIDE_BL))
-            probes.append((shaft_x, shaft_top, BLOCK_PIPE_BODY_L))
+            rim_x, top = apply_pipe_side(grid, t, probes)
             if t.get("jump_to") is not None:
                 objects.append((rim_x, top, OBJ_PIPE_SIDE, len(jumps)))
                 jumps.append((t["jump_to"], t.get("jump_to_row")))
@@ -1045,6 +1113,11 @@ def compile_grid(bible, level_type):
         for column in range(x0, x1 + 1):
             grid[column][bridge_row] = BLOCK_BRIDGE
         grid[axe_column][axe_row] = BLOCK_AXE
+        # the chain over the deck's last column, running up to the axe. only into open air: a
+        # measured bridge whose far end meets a wall has nothing to hang a chain in
+        if bridge_row > 0 and grid[x1][bridge_row - 1] == BLOCK_EMPTY:
+            grid[x1][bridge_row - 1] = BLOCK_BRIDGE_CHAIN
+            probes.append((x1, bridge_row - 1, BLOCK_BRIDGE_CHAIN))
         bridge = (x0, x1)
     elif level_type == TYPE_CASTLE and ground_runs:
         bridge, axe_column = apply_bridge(grid, ground_runs[-1])
@@ -1311,6 +1384,15 @@ def compile_measured_area(area, kind):
             if t.get("dest") == "overworld":
                 exit_column = t["x"]
                 exit_top_row = top_row
+        elif t["kind"] == "pipe_side":
+            # a room whose way out is a sideways mouth (1-1's coin room, and the shape 1-2's own
+            # coin room wears in its main grid). the exit cell it names is the mouth's rim rather
+            # than a cap, and that cell's KIND is what tells the engine which of the two exits it
+            # is - flow.c's flow_over_exit_pipe reads it, so the area format needs no new field
+            rim_x, top = apply_pipe_side(grid, t, probes)
+            if t.get("dest") == "overworld":
+                exit_column = rim_x
+                exit_top_row = top
 
     for b in area.get("blocks", []):
         if b.get("x") is None or b.get("y") is None:

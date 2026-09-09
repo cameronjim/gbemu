@@ -417,6 +417,29 @@ uint8_t flow_warp_under_player(void) BANKED {
     return 0xFF;
 }
 
+// a sub-area's way out is one cell, and its KIND says which of the two exits it is: a pipe cap is
+// stood on and taken down (or up), a sideways mouth is walked into from the left. the same trick
+// pipe_jump uses for its landings, so the compiled area format needed no new field
+uint8_t flow_exit_is_sideways(void) BANKED {
+    return (level_sub != 0 && terrain_kind_at((int16_t)level_sub->exit_column,
+                                              (int16_t)level_sub->exit_top_row) == (uint8_t)kBlockPipeSideTl)
+               ? 1U
+               : 0U;
+}
+
 uint8_t flow_over_exit_pipe(void) BANKED {
-    return (level_sub != 0) ? player_over_pipe(level_sub->exit_column, level_sub->exit_top_row) : 0U;
+    if (level_sub == 0 || flow_exit_is_sideways() != 0U) {
+        return 0U;
+    }
+    return player_over_pipe(level_sub->exit_column, level_sub->exit_top_row);
+}
+
+// the sideways twin: his right shoulder against the mouth's rim, the same contact test the main
+// grid's kObjPipeSide objects answer. the caller has already checked he is grounded and holding
+// right
+uint8_t flow_into_exit_mouth(void) BANKED {
+    if (level_sub == 0 || flow_exit_is_sideways() == 0U) {
+        return 0U;
+    }
+    return at_side_mouth(level_sub->exit_column, level_sub->exit_top_row);
 }

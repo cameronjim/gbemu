@@ -34,79 +34,106 @@ uint8_t kBlockPalette[kBlockKindCount];
 // the one offset half a brick under it, which is the running bond the rip lays its wall in; then
 // kBlockLavaFill, kTileLavaDeep in all four quadrants, which is a pit's rows under the surface one
 //
-// the four mirrored kinds - the right cloud caps, the right hill slope, the right bush cap - carry
-// the same tiles as their left twin with the two columns swapped, and set kCamAttrXFlip in their
-// palette byte so the hardware does the mirroring, which halves what the scenery costs
+// kBlockCastleWindowRight closes every table: kBlockCastleWindow's own four tiles with the two
+// columns swapped, which is the window the capture draws on the far side of the tower's middle
+// column. it cannot be an x flip of the left cell (that moves the masonry's mortar joint), and
+// swapping ids costs no vram
+//
+// kBlockHillCore closes every table after that: a big hill's flat belly cell, kTileHillFillTl in
+// all four quadrants. the fill cell carries smb's shading mark in its upper right and the bottom
+// row's centre carries none, so the two cannot be the same kind - but they can and do share the
+// one flat tile, which is why the kind costs no vram
+//
+// kBlockBridgeChain closes every table: the cell over the bridge's last column, where the smbd
+// castle capture draws the chain running up to the axe through the upper right and lower left
+// quadrants (gen/chain.c) and nothing in the other two, which are kTileScenBlank
+//
+// kBlockPipeJointT and kBlockPipeJointB come before it: the shaft cell a
+// sideways pipe's body runs into, in the mouth's top row and its bottom one. each wears its own
+// left column (gen/pipe_joint.c, off the 1-2 capture) and the plain body's right column, which is
+// kTilePipeBodyM copied into bank 1 because the cell's attribute byte picks one bank for all four
+//
+// kBlockHillSlopeR and kBlockTreeTopR are the two kinds the hardware mirrors: each carries its
+// left twin's own tiles with the two columns swapped and kCamAttrXFlip in its palette byte, which
+// the captures agree with to the pixel (the 1-3 capture's tree cap mirrors its twin exactly, which
+// is what let m26's re-cut drop the two tiles the hand-drawn right cap used to spend). the right
+// cloud caps and the right bush cap used to ride the same trick and no longer can - the capture
+// draws each of them differently from its left twin (28, 26 and 13 px, see rip_tiles.py's
+// relations report), so they carry tiles of their own
 // clang-format off
 static const uint8_t kTileTlRom[kBlockKindCount] = {
     kTileSky,            kTileGroundTopL,      kTileBrickTl,       kTileQuestionTl,
-    kTileHardTl,         kTilePipeLipL,        kTilePipeLipM,      kTilePipeBodyL,
-    kTilePipeBodyM,      kTileHardTl,          kTileFlagPoleL,     kTileCastleWall,
+    kTileHardTl,         kTilePipeLipL,        kTilePipeLipR,      kTilePipeBodyL,
+    kTilePipeBodyR,      kTileHardTl,          kTileFlagPoleL,     kTileCastleWall,
     kTileSpentTl,        kTileCoinTl,          kTileThin,          kTileLavaTop,
     kTileBridge,         kTileAxe,             kTileGroundFillTl,  kTileCastleCrenel,
-    kTileCastleWindowTl, kTileCastleDoorTopTl, kTileCastleDoorTl,  kTileFlagBallL,
-    kTileScenBlank,      kTileCloudCapTl,      kTileCloudMidTl,    kTileCloudCapTr,
-    kTileCloudCapBl,     kTileCloudMidBl,      kTileCloudCapBr,    kTileHillPeakTl,
+    kTileCastleWindowTl, kTileCastleDoorTopTl, kTileCastleDoorTl,  kTileScenBlank,
+    kTileScenBlank,      kTileCloudCapTl,      kTileCloudMidTl,    kTileCloudCapRtl,
+    kTileCloudCapBl,     kTileCloudMidBl,      kTileCloudCapRbl,   kTileHillPeakTl,
     kTileHillSlopeTl,    kTileHillSlopeTr,     kTileHillFillTl,    kTileBushCapTl,
-    kTileBushMidTl,      kTileBushCapTr,
-    kTilePipeSideTl,     kTilePipeSideMl,      kTilePipeSideBodyT, kTilePipeSideBodyM,
+    kTileBushMidTl,      kTileBushCapRtl,
+    kTilePipeSideMouth0L, kTilePipeSideMouth2L, kTilePipeSideBody0, kTilePipeSideBody2,
     kTileCastleCrenelInner,
     kTileTreeCapTl,      kTileTreeTop,         kTileTreeTop,       kTileTrunk,
-    kTileFlagClothPoleT, kTileCastleBrickUpper, kTileLavaDeep,
+    kTileFlagClothPoleT, kTileCastleBrickUpper, kTileLavaDeep,   kTileCastleWindowTr,
+    kTileHillFillTl,     kTilePipeJointT0,      kTilePipeJointB0,     kTileScenBlank,
 };
 // clang-format on
 // clang-format off
 static const uint8_t kTileTrRom[kBlockKindCount] = {
     kTileSky,            kTileGroundTopR,      kTileBrickTr,       kTileQuestionTr,
-    kTileHardTr,         kTilePipeLipM,        kTilePipeLipR,      kTilePipeBodyM,
-    kTilePipeBodyR,      kTileHardTr,          kTileFlagPoleR,     kTileCastleWall,
+    kTileHardTr,         kTilePipeLipM,        kTilePipeLipRr,     kTilePipeBodyM,
+    kTilePipeBodyRr,     kTileHardTr,          kTileFlagPoleR,     kTileCastleWall,
     kTileSpentTr,        kTileCoinTr,          kTileThin,          kTileLavaTop,
-    kTileBridge,         kTileAxeRight,        kTileGroundFillTr,  kTileCastleCrenel,
-    kTileCastleWindowTr, kTileCastleDoorTopTr, kTileCastleDoorTr,  kTileFlagBallR,
-    kTileFlagClothT,     kTileCloudCapTr,      kTileCloudMidTr,    kTileCloudCapTl,
-    kTileCloudCapBr,     kTileCloudMidBr,      kTileCloudCapBl,    kTileHillPeakTr,
+    kTileBridge,         kTileAxeRight,        kTileGroundFillTr,  kTileCastleCrenelRight,
+    kTileCastleWindowTr, kTileCastleDoorTopTr, kTileCastleDoorTr,  kTileScenBlank,
+    kTileFlagClothT,     kTileCloudCapTr,      kTileCloudMidTr,    kTileCloudCapRtr,
+    kTileCloudCapBr,     kTileCloudMidBr,      kTileCloudCapRbr,   kTileHillPeakTr,
     kTileHillSlopeTr,    kTileHillSlopeTl,     kTileHillFillTr,    kTileBushCapTr,
-    kTileBushMidTr,      kTileBushCapTl,
-    kTilePipeSideTr,     kTilePipeSideMr,      kTilePipeSideBodyT, kTilePipeSideBodyM,
-    kTileCastleCrenelInner,
-    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTr,     kTileTrunk,
-    kTileFlagPoleR,      kTileCastleBrickUpper, kTileLavaDeep,
+    kTileBushMidTr,      kTileBushCapRtr,
+    kTilePipeSideMouth0R, kTilePipeSideMouth2R, kTilePipeSideBody0, kTilePipeSideBody2,
+    kTileCastleCrenelInnerRight,
+    kTileTreeTop,        kTileTreeTop,         kTileTreeCapTl,     kTileTrunk,
+    kTileFlagPoleR,      kTileCastleBrickUpper, kTileLavaDeep,   kTileCastleWindowTl,
+    kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,   kTileChainTr,
 };
 // clang-format on
 // clang-format off
 static const uint8_t kTileBlRom[kBlockKindCount] = {
     kTileSky,            kTileGroundFillBl,    kTileBrickBl,       kTileQuestionBl,
-    kTileHardBl,         kTilePipeLipLb,       kTilePipeLipMb,     kTilePipeBodyL,
-    kTilePipeBodyM,      kTileHardBl,          kTileFlagPoleL,     kTileCastleWall,
+    kTileHardBl,         kTilePipeLipLb,       kTilePipeLipRb,     kTilePipeBodyL,
+    kTilePipeBodyR,      kTileHardBl,          kTileFlagPoleL,     kTileCastleWall,
     kTileSpentBl,        kTileCoinBl,          kTileThinUnder,     kTileLavaFill,
-    kTileBridgeLower,    kTileSky,             kTileGroundFillBl,  kTileCastleWall,
-    kTileCastleWindowBl, kTileCastleDoorTopBl, kTileCastleDoorBl,  kTileFlagPoleL,
-    kTileScenBlank,      kTileCloudCapMl,      kTileCloudMidMl,    kTileCloudCapMr,
-    kTileCloudCapFl,     kTileCloudMidFl,      kTileCloudCapFr,    kTileHillPeakBl,
+    kTileBridgeLower,    kTileAxeBl,           kTileGroundFillBl,  kTileCastleWall,
+    kTileCastleWindowBl, kTileCastleDoorTopBl, kTileCastleDoorBl,  kTileFlagBallL,
+    kTileScenBlank,      kTileCloudCapMl,      kTileCloudMidMl,    kTileCloudCapRml,
+    kTileCloudCapFl,     kTileCloudMidFl,      kTileCloudCapRfl,   kTileHillPeakBl,
     kTileHillSlopeBl,    kTileHillSlopeBr,     kTileHillFillBl,    kTileBushCapBl,
-    kTileBushMidBl,      kTileBushCapBr,
-    kTilePipeSideMl,     kTilePipeSideBl,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileBushMidBl,      kTileBushCapRbl,
+    kTilePipeSideMouth1L, kTilePipeSideMouth3L, kTilePipeSideBody1, kTilePipeSideBody3,
     kTileCastleWall,
     kTileTreeCapBl,      kTileTreeBotM,        kTileTreeBot,       kTileTrunk,
-    kTileFlagClothPoleB, kTileCastleBrickLower, kTileLavaDeep,
+    kTileFlagClothPoleB, kTileCastleBrickLower, kTileLavaDeep,   kTileCastleWindowBr,
+    kTileHillFillTl,     kTilePipeJointT1,      kTilePipeJointB1,     kTileChainBl,
 };
 // clang-format on
 // clang-format off
 static const uint8_t kTileBrRom[kBlockKindCount] = {
     kTileSky,            kTileGroundFillBr,    kTileBrickBr,       kTileQuestionBr,
-    kTileHardBr,         kTilePipeLipMb,       kTilePipeLipRb,     kTilePipeBodyM,
-    kTilePipeBodyR,      kTileHardBr,          kTileFlagPoleR,     kTileCastleWall,
+    kTileHardBr,         kTilePipeLipMb,       kTilePipeLipRbr,    kTilePipeBodyM,
+    kTilePipeBodyRr,     kTileHardBr,          kTileFlagPoleR,     kTileCastleWall,
     kTileSpentBr,        kTileCoinBr,          kTileThinUnder,     kTileLavaFill,
-    kTileBridgeLower,    kTileSky,             kTileGroundFillBr,  kTileCastleWall,
-    kTileCastleWindowBr, kTileCastleDoorTopBr, kTileCastleDoorBr,  kTileFlagPoleR,
-    kTileFlagClothB,     kTileCloudCapMr,      kTileCloudMidMr,    kTileCloudCapMl,
-    kTileCloudCapFr,     kTileCloudMidFr,      kTileCloudCapFl,    kTileHillPeakBr,
+    kTileBridgeLower,    kTileAxeBr,           kTileGroundFillBr,  kTileCastleWall,
+    kTileCastleWindowBr, kTileCastleDoorTopBr, kTileCastleDoorBr,  kTileFlagBallR,
+    kTileFlagClothB,     kTileCloudCapMr,      kTileCloudMidMr,    kTileCloudCapRmr,
+    kTileCloudCapFr,     kTileCloudMidFr,      kTileCloudCapRfr,   kTileHillPeakBr,
     kTileHillSlopeBr,    kTileHillSlopeBl,     kTileHillFillBr,    kTileBushCapBr,
-    kTileBushMidBr,      kTileBushCapBl,
-    kTilePipeSideMr,     kTilePipeSideBr,      kTilePipeSideBodyM, kTilePipeSideBodyB,
+    kTileBushMidBr,      kTileBushCapRbr,
+    kTilePipeSideMouth1R, kTilePipeSideMouth3R, kTilePipeSideBody1, kTilePipeSideBody3,
     kTileCastleWall,
-    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBr,     kTileTrunk,
-    kTileFlagPoleR,      kTileCastleBrickLower, kTileLavaDeep,
+    kTileTreeBot,        kTileTreeBotM,        kTileTreeCapBl,     kTileTrunk,
+    kTileFlagPoleR,      kTileCastleBrickLower, kTileLavaDeep,   kTileCastleWindowBl,
+    kTileHillFillTl,     kTilePipeJointBody,    kTilePipeJointBody,   kTileScenBlank,
 };
 // clang-format on
 // sky, the flag's four cells, a world coin, the axe, lava and every scenery kind are all
@@ -124,12 +151,15 @@ static const uint8_t kFloorRom[kBlockKindCount] = {
     kFloorSolid, kFloorSolid, kFloorSolid, kFloorSolid,
     0,
     kFloorSolid, kFloorSolid, kFloorSolid, 0,
-    0, kFloorSolid, 0,
+    0, kFloorSolid, 0, 0,
+    0, kFloorSolid, kFloorSolid, 0,
 };
 // clang-format on
 // lava borrows the coin slot, which no castle grid ever paints a world coin with; the bridge takes
 // the neutral one (whose unused color 3 the castle set turns into its chain's red), the axe the
-// question block's gold and the thin platform the neutral one too. the hills, the bushes and the flag
+// pipe slot (nothing else on that slot stands in a castle, and the castle set turns its greens into
+// the blades' two oranges), the chain the masonry's ground slot, and the thin platform the neutral
+// one too. the hills, the bushes and the flag
 // share the pipe's greens, the castle shares the brick's browns, and the clouds and the pennant
 // share the sky's whites - and the sideways pipe is the vertical one rotated, so it shares those
 // greens too, and so does 1-3's tree canopy, whose four rip colors are exactly the pipe slot's
@@ -159,16 +189,17 @@ static const uint8_t kPaletteRom[kBlockKindCount] = {
     kCamPalBrick,   kCamPalPipe,    kCamPalPipe,    kCamPalPipe,
     kCamPalPipe,    kCamPalBrick,   kScenPipe,      kScenBrick,
     kCamPalSpent,   kCamPalCoin,    kCamPalNeutral, kCamPalCoin | kCamAttrVram1,
-    kScenNeutral,   kScenQuestion,  kCamPalGround,  kScenBrick,
+    kScenNeutral,   kScenPipe,      kCamPalGround,  kScenBrick,
     kScenBrick,     kScenBrick,     kScenBrick,     kScenPipe,
-    kScenSky,       kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
-    kScenSky,       kScenSky,       kScenSky | kCamAttrXFlip,
+    kScenSky,       kScenSky,       kScenSky,       kScenSky,
+    kScenSky,       kScenSky,       kScenSky,
     kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
-    kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenPipe,      kScenPipe,      kScenPipe,      kScenPipe,
     kScenBrick,
-    kScenPipe,      kScenPipe,      kScenPipe,      kScenBrick,
-    kScenSky,       kScenGround,   kCamPalCoin | kCamAttrVram1,
+    kScenPipe,      kScenPipe,      kScenPipe | kCamAttrXFlip, kScenBrick,
+    kScenSky,       kScenGround,   kCamPalCoin | kCamAttrVram1, kScenBrick,
+    kScenPipe,      kScenPipe,      kScenPipe,      kScenGround,
 };
 // clang-format on
 

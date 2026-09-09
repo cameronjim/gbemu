@@ -21,14 +21,14 @@
       "x1": 216,
       "type": "underground",
       "confidence": "measured",
-      "notes": "the smbd map's underground run, real cols 0-192, shifted +24 to sit behind the start segment. col 192 is the right column of the coin room's exit shaft, which the rip leaves undrawn"
+      "notes": "the smbd map's underground run, real cols 0-191, shifted +24 to sit behind the start segment, plus level column 216: the right column of the coin room's exit shaft, which the capture does not hold at all - its column 192 is already the ending's first column of sky"
     },
     {
       "x0": 217,
       "x1": 248,
       "type": "overworld",
       "confidence": "measured",
-      "notes": "the above-ground ending: smbd map cols 193-223 shifted +25 (pipe, staircase, flag, castle), plus one empty sky column at 217 between the exit shaft and the map's first drawn ending column"
+      "notes": "the above-ground ending: smbd map cols 192-223 shifted +25 (an empty sky column over ground, then the pipe, staircase, flag and castle). every cell of it was checked against the capture by rip_tiles.py's 1-2 audit"
     }
   ],
   "terrain": [
@@ -40,14 +40,6 @@
     },
     {
       "kind": "pipe",
-      "x": 10,
-      "height": 2,
-      "dest": null,
-      "confidence": "measured",
-      "notes": "the short decorative pipe left of the entrance, nes map band 0 rows 11-12"
-    },
-    {
-      "kind": "pipe",
       "x": 12,
       "height": 4,
       "dest": null,
@@ -55,6 +47,15 @@
       "jump_to_row": 2,
       "confidence": "measured",
       "notes": "the entrance pipe mario takes down. jump_to lands him at the top of the underground entry shaft (real col 3, ceiling row 2) and he falls the eleven rows to the floor exactly as the real game drops him in; the wall at column 24 and the closed roof either side of cols 25-29 keep him in the shaft"
+    },
+    {
+      "kind": "pipe_side",
+      "x": 10,
+      "y": 11,
+      "shaft_x": 12,
+      "shaft_top": 11,
+      "confidence": "measured",
+      "notes": "the sideways pipe that runs into the entrance pipe's side: a left-facing mouth at column 10 on rows 11-12, its body at 11 and the tall pipe itself as its shaft, which is why it comes after the pipe entry - the joint pair lands on the tall pipe's left cells in those two rows and its cap and upper body stay. the first pass read it off the nes map as a second vertical pipe two blocks tall, and drew two pipes standing side by side where the map (and the smbd start) draws one running into the other. no jump_to: nothing comes out of it"
     },
     {
       "kind": "ceiling_gap",
@@ -159,7 +160,7 @@
       "jump_to": 220,
       "jump_to_row": 11,
       "confidence": "measured",
-      "notes": "the underground's exit: the sideways pipe at the end of the brick platform (real mouth col 166, rows 8-9), its shaft rising through the ceiling at real cols 168-169. walking right into the mouth takes him up out of the ending's pipe"
+      "notes": "the underground's exit: the sideways pipe at the end of the brick platform (real mouth col 166, rows 8-9), its shaft rising through the ceiling at real cols 168-169. walking right into the mouth takes him up out of the ending's pipe. the shaft's left cell in the mouth's two rows is the joint pair (kBlockPipeJointT/B), which the compiler stamps for every pipe_side: the capture draws the body's rim and joint line across the shaft there, not plain body"
     },
     {
       "kind": "pipe_side",
@@ -928,11 +929,11 @@
       "confidence": "measured"
     },
     {
-      "x": 169,
+      "x": 170,
       "y": 13,
       "kind": "koopa_red",
       "confidence": "measured",
-      "notes": "the red koopa on the ledge between the pits; it turns at the edges"
+      "notes": "the red koopa on the ledge between the pits; it turns at the edges. the capture draws all sixteen pixels of it inside real column 146, so it stands at 170 and not the 169 the first pass gave it"
     },
     {
       "x": 127,
@@ -974,7 +975,7 @@
         "x": 1,
         "y": 2
       },
-      "exit": "the short pipe at the right, which brings mario up out of the third piranha pipe",
+      "exit": "the sideways pipe at the right, walked into from the left; it brings mario up out of the third piranha pipe",
       "terrain": [
         {
           "kind": "bricks",
@@ -1006,34 +1007,25 @@
         {
           "kind": "bricks",
           "x0": 3,
-          "x1": 11,
+          "x1": 12,
           "y0": 9,
           "y1": 9,
           "confidence": "measured",
-          "notes": "the one-row platform the upper coins sit on"
+          "notes": "the one-row platform the upper coins sit on, ten bricks wide. the first pass ended it at 11 and put a loose coin at 12, where the smbd capture draws its challenge-mode red coin over a brick and the nes map draws a coin icon over a brick: the platform's last cell is a brick that holds a coin, which is what the red coin took over. an area has no reaction list, so the brick stands as plain masonry here and its coin is noted rather than built"
         },
         {
-          "kind": "pipe",
+          "kind": "pipe_side",
           "x": 13,
-          "height": 2,
+          "y": 11,
+          "shaft_x": 15,
+          "shaft_top": 2,
           "dest": "overworld",
           "confidence": "measured",
-          "notes": "the exit pipe"
-        },
-        {
-          "kind": "pipe",
-          "x": 15,
-          "height": 11,
-          "confidence": "measured",
-          "notes": "the shaft rising out of the room beside the exit pipe"
+          "notes": "the way out, re-measured cell by cell off the smbd capture's own room: a SIDEWAYS pipe, mouth facing left at columns 13-14 on rows 11-12, its body running right into the shaft at columns 15-16, exactly the shape 1-1's bonus room exit turned out to be. the shaft carries no cap: plain body from the room's own top row 2 down to the joint cells at the mouth's rows. the first pass read the nes map's vertical exit pipe here; the capture's cells are horizontally striped with the rim flared on the left edge"
         }
       ],
       "blocks": [],
       "coins": [
-        {
-          "x": 3,
-          "y": 8
-        },
         {
           "x": 4,
           "y": 8
@@ -1063,8 +1055,8 @@
           "y": 8
         },
         {
-          "x": 12,
-          "y": 9
+          "x": 11,
+          "y": 8
         },
         {
           "x": 3,
@@ -1104,22 +1096,29 @@
         }
       ],
       "confidence": "measured",
-      "notes": "18 coins total: eight over the platform, one at the platform's right end where the map's challenge-mode red coin stands, nine along the floor. transcribed cell by cell from the smbd map's lower band (cols 102-118) cross-checked against the nes map's band 2 (cols 100-116), which agree exactly"
+      "notes": "17 loose coins: eight over the platform at columns 4-11 (the first pass had them one column left, at 3-10) and nine along the floor at 3-11. transcribed cell by cell from the smbd map's lower band (x 1632-1887, its rows the level's own from row 2 at y 201) and cross-checked against the nes map's band 2 (cols 100-116), which agree on every cell; rip_tiles.py's 1-2 audit checks each of them against the capture's pixels. the room's right wall's shaft column 16 is past the band's edge in both rips, like 1-1's"
     }
   ],
   "decor": [
     {
       "kind": "cloud",
       "x": 3,
-      "y": 7,
+      "y": 3,
       "width": 4,
       "confidence": "measured",
-      "notes": "start segment clouds from the nes map, moved four rows down like 1-1's so they fall inside the nine-row window"
+      "notes": "the start segment's clouds, read cell by cell off the nes map's band 0 (the only rip that draws the start) at their own rows: the nes map holds all fifteen rows of this grid, so its row is the level's. the first pass moved them four rows down for a camera that has since learned to show the sky rows, and missed the three-wide one at 9"
+    },
+    {
+      "kind": "cloud",
+      "x": 9,
+      "y": 7,
+      "width": 3,
+      "confidence": "measured"
     },
     {
       "kind": "cloud",
       "x": 18,
-      "y": 6,
+      "y": 2,
       "width": 4,
       "confidence": "measured"
     },
@@ -1147,15 +1146,18 @@
     },
     {
       "kind": "big_hill",
-      "x": 232,
+      "x": 233,
+      "clip": true,
       "confidence": "measured",
-      "notes": "the map stands it one column further right with its right slope hidden behind the flag's base block; our scenery is placed whole or not at all, so it steps one column left of the pole"
+      "notes": "where the capture stands it: peak at 235, slopes at 234 and 236, and the bottom row's right slope at 237 behind the flag's base block, so it is clipped there the way 1-1's hill at 192 is. the first pass stepped it a column left to keep it whole"
     },
     {
       "kind": "bush",
       "x": 239,
-      "width": 2,
-      "confidence": "measured"
+      "width": 3,
+      "clip": true,
+      "confidence": "measured",
+      "notes": "the bush between the flag and the castle. the capture draws its left cap at 239 and a middle at 240 - a full hump, not a right cap - with the castle's masonry at 241, so it is three wide with its right cap clipped, the same shape as 1-1's bush at 198. the first pass read it as a two-cap bush"
     }
   ],
   "flag": {
@@ -1188,9 +1190,9 @@
         "y": 3
       },
       {
-        "x": 138,
+        "x": 12,
         "y": 9,
-        "notes": "in the coin room, at the platform's right end"
+        "notes": "in the pipe coin room, in area coordinates: the brick at the platform's right end, which holds a coin in the original and the red coin in challenge mode"
       }
     ],
     "yoshi_egg": {
@@ -1206,5 +1208,5 @@
     "https://www.mariouniverse.com/wp-content/img/maps/gbc/smbd/ch/1-2.png",
     "https://www.mariouniverse.com/wp-content/img/maps/nes/smb/1-2.png"
   ],
-  "confidence_notes": "every cell of this file was read off the smbd challenge-mode map rip by hashing each 16x16 cell of the image and labelling the distinct tiles, then cross-checked cell by cell against the nes map rip, which agrees on the whole underground run. the start segment (castle, pipes, ground 0-23) comes from the nes map, which is the only rip that draws it. enemies are placed at the column the smbd rip draws them; a sprite the rip straddles across two columns is put on one of them. piranha plants are not drawn in the smbd rip but stand on the same pipes in the gbc game, so they are taken from the nes rip. the two vertical lifts are ours in size and speed (a two-block deck bouncing at one pixel a frame, one deck per pit, the engine having two lift slots); their pits, the open roof above them and the roof walk they lead to are measured. challenge-mode-only content (red coins, the yoshi egg) is recorded under smbd and not built."
+  "confidence_notes": "every cell of this file was read off the smbd challenge-mode map rip by hashing each 16x16 cell of the image and labelling the distinct tiles, then cross-checked cell by cell against the nes map rip, which agrees on the whole underground run. a second pass (games/mario/tools/rip_tiles.py --check, its 1-2 audit) then compared every compiled cell's pixels with the capture's, main grid and pipe coin room alike, with the capture's cells found on a grid with y offset 8 and its columns mapped as the segments' notes say. that pass moved five things: the pipe coin room's exit, which is a sideways mouth and not the nes map's vertical pipe; the room's upper coin row, one column right, and the loose coin at the platform's end, which is a brick with a coin in it; the ending's hill, one column right and clipped by the flag's base block; the ending's bush, a clipped three-wide rather than two caps; the red koopa, from 169 to 170; and the start's clouds, back to the nes map's own rows with the one the first pass missed. what it found already right it left: every pit, every roof gap, every brick and stair-step, every pipe, every loose coin and enemy of the run, the staircase, the flag and the castle. the underground's art is 1-1's under the underground palette, checked pixel for pixel (the floor is the ground block, the roof and walls the room's brick, the stair-steps the hard block, the pipes and sideways pipes the same), except the shaft joint where a sideways pipe's body meets its shaft, which the pass cut from this capture (gen/pipe_joint.c) and which the compiler now stamps for every pipe_side. two things in the capture are not tile truth and are left alone: at real column 63 (level 87, rows 3-9) the hanging wall's right column is drawn eight pixels wide over black, a stitch that lost half a cell (nothing in the game sits on an 8px grid and the nes map keeps the wall two wide), and the flag's pennant is pasted in colours no gbc can show. the start segment (castle, pipes, ground 0-23, three clouds) comes from the nes map, which is the only rip that draws it. enemies are placed at the column the smbd rip draws them; a sprite the rip straddles across two columns is put on one of them. piranha plants are not drawn in the smbd rip but stand on the same pipes in the gbc game, so they are taken from the nes rip. the two vertical lifts are ours in size and speed (a two-block deck bouncing at one pixel a frame, one deck per pit, the engine having two lift slots); their pits, the open roof above them and the roof walk they lead to are measured. challenge-mode-only content (red coins, the yoshi egg) is recorded under smbd and not built."
 }

@@ -3,14 +3,15 @@
 data files: `level-1-1.json`, `level-1-2.json`, `level-1-3.json`, `level-1-4.json`.
 
 **all four levels are measured.** 1-1's terrain, blocks, enemies, decor, flagpole, castle and
-bonus room, 1-2's terrain skeleton (floor pits, ceiling, pipes, warp zone, staircase, flagpole,
-castle), the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
+bonus room, the whole of 1-2 (its underground run, its coin rooms, its ending and, off the nes map
+that alone draws it, its above-ground start), the whole of 1-3 (every tree, its coins, its one block, its roster, its clouds, both
 lift rows, the staircase, the pole and the castle) and the whole of 1-4 (every wall run, all four
 lava pits, its eleven blocks, all seven firebars, the bridge, the axe and bowser) were extracted
 pixel by pixel from the official nes and smbd map images and carry `"confidence": "measured"`; see
-"measured levels" below. everything written about sequence-derived positions applies to 1-2's finer
-detail (coins/blocks/enemies, `"approx"`), to 1-3's start column and lift travel, and to 1-4's
-start column and its firebars' rotation speed/direction, which no still frame can show.
+"measured levels" below. everything written about sequence-derived positions applies to 1-2's two
+lifts (a rip catches a moving deck at one instant, `"approx"`), to 1-3's start column and lift
+travel, and to 1-4's start column and its firebars' rotation speed/direction, which no still frame
+can show.
 
 this is a research/transcription pass, not a rom dump. positions were reconstructed from
 text descriptions and image maps (see "how positions were derived" below), not measured
@@ -39,19 +40,35 @@ clouds that give an overworld its depth. it is optional — a level that omits t
 scenery, which is what 1-2 and 1-4 do, and a sub-area never gets any. 1-1 has hills, bushes and
 clouds; 1-3, which is trees over open air, has clouds only.
 
-- scenery never displaces anything. the compiler stamps it last and skips any cell that is
-  already terrain, an object, or a hidden block's reserved cell, and clips anything past the
-  compiled level length. so a placement that collides with a staircase simply loses the cells
-  it collided with, and the rest of the shape still lands.
+- scenery never displaces anything: the compiler stamps it last and never writes over a cell
+  that is already terrain, an object, or a hidden block's reserved cell.
+- and by default a shape is placed **whole or not at all**. a hill is a dome over a pair of
+  slopes and a bush is two caps around a run of middles; drop one cell of either and what is
+  left is not a smaller hill, it is a broken one. so a shape that cannot have every one of its
+  cells is skipped entirely, and a shape that vanished means the `x` is wrong.
+- `"clip": true` on an entry says the opposite, for a measured reason: smb really does stand
+  this shape here and really does draw terrain over part of it. a clipped entry stamps exactly
+  the cells that are free and lets the terrain keep the rest. 1-1 uses it four times — two big
+  hills whose right slope stands behind a staircase and behind the flag's base block, and two
+  bushes with a cap buried in a staircase and in the castle's masonry. it is opt-in per shape
+  so that a plainly wrong `x` still shows up as a shape that disappeared.
 - `x` is the left column of the shape and uses the same grid every other coordinate does.
 - a `big_hill` is 5 columns wide and 3 rows tall, a `small_hill` 3 wide and 2 tall; both stand
   on row 12, the row the ground's grass grows out of, and their rows are derived, never given.
-- a `bush` is `width` columns on row 12: a left cap, `width - 2` middles, a right cap. a width
-  of 1 still spends two columns, because smb's narrowest bush is its two caps back to back.
+  the big hill's interior is two kinds, not one: smb shades every interior cell with a mark in
+  its upper right except the middle of the bottom row, which is flat, so that one cell compiles
+  to `kBlockHillCore` and the rest to `kBlockHillFill`. a small hill has no flat cell at all.
+- a `bush` is `width` columns on row 12: a left cap, `width - 2` middles, a right cap, and each
+  middle carries one of smb's rounded humps. the compiler's floor is 2 — two caps back to back —
+  but nothing measured is narrower than 3; 1-1's are 3, 4 and 5.
 - a `cloud` is the only kind that carries a row. `y` is its **top** row on this same grid and
-  the cloud occupies `y` and `y + 1`; `width` counts the top row's blocks including both caps.
-  a source map measured against the 13-row visible strip is 2 rows short of this grid, so add
-  2 when transcribing one.
+  the cloud occupies `y` and `y + 1`; `width` counts the top row's blocks including both caps,
+  and the `width - 2` middles are one repeating pair of cells. the floor is 2 here too and,
+  again, nothing measured is narrower than 3; 1-1's are 3, 4 and 5. a source map measured
+  against the 13-row visible strip is 2 rows short of this grid, so add 2 when transcribing one
+  — and add it **once**: the smbd captures drop the same two rows, so a cloud read off a capture
+  is already on this grid after that one correction (1-1's list was two rows low for a pass
+  because it was applied twice).
 
 ## how positions were derived (read before trusting a coordinate)
 
@@ -173,7 +190,11 @@ clouds; 1-3, which is trees over open air, has clouds only.
   level's `TOAD_COLUMN`, and the floor row he stands on (scanned from below the pedestal, because
   a castle's roof is solid over every column) to `TOAD_ROW`; `HAS_TOAD` is 0 on a bridge entry
   that names none, and there the clear walk ends the old way, a fixed run along the pedestal.
-- `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`
+  the compiler also stamps `kBlockBridgeChain` in the cell over the deck's last column when it is
+  open air: the chain both castle rips draw running up to the axe, scenery the engine clears the
+  frame the axe is taken. it takes no bible field.
+- `decor.kind`: `big_hill`, `small_hill`, `bush`, `cloud`; every kind also takes the optional
+  `clip` flag described in the decor section above
 - `blocks.kind`: `question`, `brick`, `hidden`, `hard`
 - `blocks.contents`: `coin`, `mushroom_fire`, `star`, `oneup`, `multicoin`, `vine`, `nothing`
 - `enemies.kind`: `goomba`, `koopa_green`, `koopa_red`, `koopa_para_green`, `koopa_para_red`,
@@ -217,11 +238,11 @@ compiles to nothing and never gets a pipe.
 none of the four levels is sequence-derived any more. every terrain run, block, enemy, decor shape, the
 flagpole and the castle were extracted from the official nes map images by classifying each 16x16
 cell against a tile sheet cut from the same image, and carry `"confidence": "measured"` wherever
-the extraction is solid (1-2's skeleton: floor pits, ceiling runs, pipe columns, the warp zone's
-order and destinations, the closing staircase, the flagpole and the castle). 1-2's finer detail -
-individual coin/block/enemy placement inside the underground run and its bonus room - remains
-`"approx"`: the tile classifier that produced the measurement is reliable on the skeleton and
-rough on small objects (see `confidence_notes` in `level-1-2.json`). 1-3 was transcribed the same
+the extraction is solid. 1-2 was first read cell by cell off the smbd map by hashing its cells,
+then audited a second time against that capture with `rip_tiles.py --check`, which compares every
+compiled cell's pixels with the capture's (see `confidence_notes` in `level-1-2.json` for what the
+second pass moved: the coin room's exit and coin row, the ending's hill and bush, one koopa, the
+start's clouds). 1-3 was transcribed the same
 way from both rips at once - the nes one and the smbd challenge one, classified separately and
 diffed column by column - and the smbd geometry is what got built wherever they differ (see that
 file's `smbd_deltas`); what stays `approx` there is its start column, which no rip draws, and each
@@ -264,9 +285,14 @@ from a coin count in its prose. such an entry uses:
 - `terrain[].kind = "bricks"`: a solid rectangle of brick from (`x0`,`y0`) to (`x1`,`y1`).
 - `terrain[].kind = "pipe"`: as in a level. the one carrying `"dest": "overworld"` is the
   room's exit, and its column and cap row become the area's `EXIT_COLUMN`/`EXIT_TOP_ROW`.
+- `terrain[].kind = "pipe_side"`: a room whose way out is a sideways mouth walked into from the
+  left, with the same fields as a level's entry; `"dest": "overworld"` on it makes its rim the
+  area's `EXIT_COLUMN`/`EXIT_TOP_ROW`, and the cell's kind is how the engine tells the two exits
+  apart. both measured rooms leave this way: the smbd captures draw the same mouth, body, shaft
+  and shaft joint in 1-1's bonus room and in 1-2's.
 - `coins`: every collectible coin, one `{"x":..,"y":..}` per coin. an area without this key
   falls back to the old behaviour, where the count is read out of the room's `notes` prose and
-  a flat row of coins is invented for it (which is what 1-2's bonus room still does).
+  a flat row of coins is invented for it (which no measured room does any more).
 
 ## 1-2's own primitives
 
@@ -293,6 +319,16 @@ a handful of things the real level does needed bible fields nothing else uses:
 - the seam between two segments is sealed by the bible's own terrain (1-2 uses the brick wall at
   column 24 and the coin room's exit shaft at 215-216, both carried up to row 0 so the roof walk
   cannot leak across), not by a compiler-invented wall.
+- a `pipe_side` needs no field for its shaft joint: the compiler stamps the shaft's left cell in
+  the mouth's two rows as `kBlockPipeJointT`/`kBlockPipeJointB` (the body's rim and joint line drawn
+  over the shaft, as both smbd captures have it) and plain body above them. this is what the 1-2
+  pass added to the engine, and 1-1's bonus room exit gets the same pair.
+- the 1-2 capture (`games/mario/art/ref/smbd_ch_1-2.png`) stands level for level: its column c is
+  level c + 24 through the underground run (the 24-column above-ground start is in no smbd rip and
+  comes off the nes map) and c + 25 through the ending, because level 216 - the exit shaft's right
+  column - is not in the image and its column 192 is already the ending's first column of sky. its
+  cells sit on a grid with y offset 8, six pixels lower than 1-1's; `rip_tiles.py` holds both frames
+  and audits every 1-2 cell, the coin room included, against the compiled grid.
 
 ## 1-3's own primitives
 
@@ -321,7 +357,16 @@ a handful of things the real level does needed bible fields nothing else uses:
   wants both).
 - 1-3's decor is clouds and nothing else. over open air there is no ground for a hill or a bush to
   stand on, and neither rip draws one. two of its clouds have their lower row behind a canopy in
-  both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire.
+  both rips, and `apply_decor`'s whole-shape rule drops a cloud it cannot place entire. they could
+  carry `clip` instead, but neither rip shows how much of either cloud is behind its canopy, so
+  they stay dropped until something measures them.
+- 1-1's decor was re-measured cell by cell from the smbd challenge-mode capture rather than from
+  the nes map: nineteen clouds of widths 3/4/5, eleven hills (five big, six small) and eleven
+  bushes of widths 3/4/5. it does **not** repeat on the clean 48-column period the earlier
+  nes-derived list assumed - two of the small hills are 47 apart and one bush sits a column off
+  the band - and four of its shapes carry `clip`. `games/mario/tools/rip_tiles.py` holds the
+  capture-to-level column mapping (the capture is missing the level's own column 0 and repeats one
+  column at a stitch seam) and its `--report` re-derives every relation quoted here.
 
 ## smbd-specific notes (apply to all 4 files)
 

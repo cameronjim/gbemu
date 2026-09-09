@@ -2,6 +2,7 @@
 
 #include "assets.h"
 #include "blocks.h"
+#include "castle_art.h"
 #include "flow.h"
 #include "level.h"
 #include "mario.h"
@@ -240,10 +241,18 @@ void terrain_init(uint8_t next_area) {
     // terrain rather than tracked
     assets_load_scenery_tiles();
     // a castle's masonry replaces the ground family's grass in place, so a castle grid's floors,
-    // ceilings and walls all read as the rip's brickwork without a second terrain kind. it has to
-    // land after the plain loader above, which is also what restores the grass for every other type
+    // ceilings and walls all read as the rip's brickwork without a second terrain kind, and the
+    // castle block replaces the hard block's bevel the same way. it has to land after the plain
+    // loaders above, which are also what restore the grass and the bevel for every other type
     if (level->type == (uint8_t)kLevelTypeCastle) {
-        assets_load_bg_tiles_castle();
+        castle_art_load();
+    } else if (level_sub != 0 || level->type == (uint8_t)kLevelTypeUnderground) {
+        // and the same trick for a room below ground, where the capture's brick keeps the two
+        // mortar joints along its top row that the overworld's paints a highlight over. only the
+        // brick's upper pair differs, and only a level (or sub-area) that STARTS underground gets
+        // it: a mid-level segment change syncs palettes with the lcd on and cannot rewrite vram,
+        // which is why 1-2's above-ground ends keep the room's pair rather than the other way round
+        assets_load_bg_tiles_underground();
     }
 
     world_x = 0;

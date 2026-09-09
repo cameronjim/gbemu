@@ -14,12 +14,16 @@
 // ids past mario's last sprite frame
 void assets_load_bg_tiles(void) BANKED;
 
-// and the castle's own override of that: 1-4's floors, ceilings and walls are the grey masonry of
-// kCastleBrickUpperTile/kCastleBrickLowerTile, not the overworld's grass-capped ground, so a castle
-// load redraws the six ids of the ground family with whichever course belongs in each quadrant.
-// call it after assets_load_bg_tiles, and only for a castle - the plain loader above puts the grass
-// back
-void assets_load_bg_tiles_castle(void) BANKED;
+// the castle's own override of that - the masonry over the ground family, the castle block over the
+// hard block, and the lava, bridge, axe and chain - is castle_art_load in castle_art.h: it lives in
+// bank 6 with its art, because this file's bank has no room left for six more families
+
+// and the underground's own, much smaller override: the smbd capture's bonus room draws the brick
+// with the two mortar joints of its top row still showing where the overworld paints a solid tan
+// highlight across them, which is two tiles of the brick family. everything else about the room is
+// the same art under assets_load_bg_palettes_underground's colours. call it after
+// assets_load_bg_tiles, and only for a level or sub-area that starts below ground
+void assets_load_bg_tiles_underground(void) BANKED;
 
 // and the scenery - the castle, the flag's ball and pennant, the clouds, hills and bushes - into
 // vram BANK 1 at 0x20-0x5d. those ids are the font's own glyphs in bank 0 and collide with nothing:

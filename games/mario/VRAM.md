@@ -35,7 +35,7 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 |---|---|---|---|---|
 | 0x00-0x5f | gbdk ibm font, ascii 0x20-0x7f (`kFontFirstTile`-`kFontLastTile`) | `font_init()`/`font_load(font_ibm)`, `main()` | every screen | loaded exactly once at boot, never reloaded; `kTileSky` (0x00) is the font's own space glyph, reused as "blank" everywhere |
 | 0x60-0x9f | — | — | — | unclaimed as bg; would share bytes with bank-0 sprite ids in the same sub-range (the green koopa, small mario's death and climb poses, the flower, the hazards, the debris — see the sprite table below), so nothing loads bg data here |
-| 0xa0-0xbf | pinned terrain block: ground/brick/question/spent/pipe/coin quadrants (`kTileGroundTopL`..`kTileCoinBr`) | `assets_load_bg_tiles` | level play (all three types), world map | exactly full per mario.h; a castle load overwrites the ground family's 4 upper ids (0xa0-0xa3) in place via `assets_load_bg_tiles_castle` — no new ids, just different pixels under the same 4 ids |
+| 0xa0-0xbf | pinned terrain block: ground/brick/question/spent/pipe/coin quadrants (`kTileGroundTopL`..`kTileCoinBr`) | `assets_load_bg_tiles` | level play (all three types), world map | exactly full per mario.h, and now genuinely full: m23's rip pass took the pipe from 9 tiles to 12 (`kTilePipeLipRr`, `kTilePipeLipRbr`, `kTilePipeBodyRr` at 0xb9-0xbb, which were this block's last free ids), because the smbd capture's pipe is neither left-right mirrored nor shares a tile column between its two cells. a castle load overwrites the ground family's 4 upper ids (0xa0-0xa3) in place via `assets_load_bg_tiles_castle`, and an underground load overwrites the brick's upper pair (0xa4-0xa5) via `assets_load_bg_tiles_underground` — no new ids either way, just different pixels under the same ids |
 | 0xc0-0xf7 | — | — | — | unclaimed as bg; shares bytes with bank-0 sprite families (enemy 0xc0-0xc7, item 0xd0-0xdf, small mario 0xe0-0xf7) |
 | 0xf8-0xff | ground fill (lower half) + hard block + thin platform (`kTileGroundFillBl`..`kTileThinUnder`) | `assets_load_bg_tiles` | level play, world map | butts directly against the mario sprite family ending at 0xf7 — no gap, no overlap |
 
@@ -67,23 +67,85 @@ real background art, not a spare copy — see `assets_load_scenery_tiles` and `m
 | id range | owner | loader | screen(s) | notes |
 |---|---|---|---|---|
 | 0x00-0x5d | the whole 20x18 world map frame plus its runtime tile run (see the world map section below) | `map_art_load` | world map only | the title's and the file select's own frames reuse the same low ids while they are up; each screen reloads what it draws |
-| 0x0a-0x11 | 1-3's tree canopy + trunk (`kTileTreeFirst`, 8 tiles) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
-| 0x12-0x18 | castle masonry courses, axe, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `assets_load_scenery_tiles` | level play (castle type for the masonry/axe/bridge; any level type with a >1-deep lava pit for the lava fill) | |
-| 0x19-0x1f | **FREE** (7 ids) | — | — | called out unclaimed in mario.h |
-| 0x20-0x5d | scenery run: lava top, castle wall/window/door-frame, flag ball/cloth/pole-adjacent cells, clouds, hills, bushes, pole shaft, inner crenel, blank + ball-right (`kTileSceneryFirst`-`kTileSceneryLast`, exactly full) | `assets_load_scenery_tiles` | level play (whichever pieces a level's type/decor use), world map (loaded, unused) | |
+| 0x0a-0x0e | 1-3's tree canopy (`kTileTreeFirst`, 5 tiles, `gen/tree.c`) | `assets_load_scenery_tiles` | level play (only levels with a `tree` terrain run use it; currently 1-3) | m26 re-cut these off `smbd_ch_1-3.png` and the re-cut cost **two ids less** than the hand art it replaced: the capture draws the canopy's right cap as the left one's exact mirror, so `kBlockTreeTopR` carries the left cap's four tiles with the columns swapped and `kCamAttrXFlip` in its palette byte (the trick `kBlockHillSlopeR` already rides) and the old `kTileTreeCapTr`/`kTileTreeCapBr` are gone. also resident (but unused) on the world map — that screen calls `assets_load_scenery_tiles` too, see per-screen summary |
+| 0x0f | 1-3's tree trunk (`kTileTrunk`, 1 tile, `gen/trunk.c`) | `assets_load_scenery_tiles` | level play (as above) | one tile is the whole column: the capture's stripe pair has an 8px period in *both* axes, so all four quadrants of a trunk cell are this id. it is the one tree tile on the brick slot's browns rather than the pipe slot's greens, which is why it is its own generated family and its own `set_bkg_data` call |
+| 0x10-0x11 | **FREE** (2 ids) | — | — | what m26's mirror gave back from the tree run |
+| 0x12-0x18 | castle masonry courses, the axe's blades, bridge, deep-lava fill (`kTileCastleBrickLower`..`kTileLavaDeep`, 7 tiles) | `castle_art_load` (bank 6) | level play, castle type only | m27 re-cut every one of these off `smbd_ch_1-4.png` without moving an id (`gen/castle_brick.c`, `gen/axe.c`, `gen/bridge.c`, `gen/lava.c`). the masonry pair and the bridge pair came out pixel-identical to the hand art they replaced; the lava did not (the capture's wave sits at the top of the cell and the lower half is flat red, so 0x21 and 0x18 are now the same flat tile), and the axe grew a lower half |
+| 0x19-0x1a | the axe's haft (`kTileAxeBl`, `kTileAxeBr`, the second half of `gen/axe.c`) | `castle_art_load` | level play (castle) | the hand-drawn axe left the cell's lower half empty; the capture runs the haft down through it |
+| 0x1b-0x1c | the bridge chain (`kTileChainTr`, `kTileChainBl`, `gen/chain.c`) | `castle_art_load` | level play (castle) | `kBlockBridgeChain`'s two drawn quadrants, upper right and lower left; the other two are `kTileScenBlank` |
+| 0x1d-0x1f | **FREE** (3 ids) | — | — | what is left of the span mario.h used to call unclaimed |
+| 0x20-0x5d | scenery run: lava top, castle wall/window/door-frame, flag ball/cloth/pole-adjacent cells, clouds, hills, bushes, pole shaft, inner crenel, blank + ball-right (`kTileSceneryFirst`-`kTileSceneryLast`, exactly full) | `assets_load_scenery_tiles` | level play (whichever pieces a level's type/decor use), world map (loaded, unused) | m23 re-cut every tile in this run from the capture without moving one id. the one thing that did move inside it is the flag ball: its two halves sit at the run's two ends, `kTileFlagBallL` (0x30) and `kTileFlagBallR` (0x5d), so they are one generated family (`gen/flag_ball.c`) written into the two ids by two `set_bkg_data` calls, and `gen/flag_head.c` is now the four pennant tiles at 0x31-0x34 rather than five at 0x30. the ball is also the only flag piece off the sky palette slot — the capture draws it in the pipe's greens over black, which is what `kPaletteRom` pins `kBlockFlagBall` to |
 | 0x5e-0x5f | **FREE** (2 ids) | — | — | see correction below — mario.h's own comment near `kTileCastleBrickLower` is wrong about this range |
-| 0x72-0x7a | sideways pipe, 9 tiles (`kTilePipeSideTl`-`kTilePipeSideBodyB`) | `assets_load_scenery_tiles` | level play (levels with a `pipe_side` terrain entry; currently 1-2), world map (loaded, unused) | vram bank 0 had no ids left for this, per mario.h |
-| 0x7b-0x7f | **FREE** (5 ids) | — | — | between the side-pipe run and the hud font |
+| 0x72-0x7d | sideways pipe, 12 tiles (`kTilePipeSideMouth0L`-`kTilePipeSideBody3`, `gen/pipe_side.c`) | `assets_load_scenery_tiles` | level play (levels with a `pipe_side` terrain entry; currently 1-2, and 1-1's bonus room), world map (loaded, unused) | vram bank 0 had no ids left for this, per mario.h. **correction:** this row used to read 0x72-0x7a / 9 tiles, which was true of the hand-drawn art m23 replaced — the capture's mouth column does not share a middle pair between its two cells, so the family became twelve tiles (and `mario_vram_holds_the_generated_terrain_art` has pinned twelve at 0x72 since that pass). m26 corrected the ledger |
+| 0x7e-0x7f | **FREE** (2 ids) | — | — | between the side-pipe run and the hud font |
 | 0x80-0x8c | hud row glyphs: 10 digits, blank, coin icon, the letter x (`kTileHudDigitFirst`-`kTileHudLetterFirst`, 13 tiles) | `assets_load_hud_font` | level play only (the window-layer hud row is drawn only during play) | shares bytes with bank-1 **sprite** ids 0x80-0x8c — see the sprite table |
-| 0x8d-0xeb | **FREE** (95 ids) | — | — | mario.h reserves headroom up to 0x94 for the hud run (see note below) but nothing loads past 0x8c; the rest of this span is genuinely empty |
+| 0x8d-0xcf | **FREE** (67 ids) | — | — | mario.h reserves headroom up to 0x94 for the hud run (see note below) but nothing loads past 0x8c; the rest of this span is empty. note that 0x96-0xbd is bowser on the **sprite** side of this bank, and a bank-1 bg id at or above 0x80 shares its bytes with the sprite id of the same number — which is why m23's run below starts at 0xd0 rather than at 0x8d |
+| 0xd0-0xdd | m23's rip run: the right cloud cap (8 tiles, `kTileCloudCapRtl`..`kTileCloudCapRfr`), the right bush cap (4, `kTileBushCapRtl`..`kTileBushCapRbr`) and the right half of each castle crenel (`kTileCastleCrenelRight`, `kTileCastleCrenelInnerRight`) | `assets_load_scenery_tiles` | level play (whichever pieces a level's decor uses), world map (loaded, unused) | the scenery run at 0x20-0x5d assumed three of smb's pieces were their left twin drawn with `kCamAttrXFlip`; the smbd capture says only the right hill slope actually is. these fourteen are the ones that are not — the right cloud cap is 28 px from the left one mirrored, the right bush cap 13 px, the two crenel halves 56 px and 23 px apart |
+| 0xde-0xdf | **FREE** (2 ids) | — | — | shares bytes with the fireball's bank-1 **sprite** frame at the same ids (see the sprite table), so no bg data can live here during play |
+| 0xe0-0xe4 | m25's 1-2 pass: the sideways pipe's shaft joint (`kTilePipeJointT0`..`kTilePipeJointBody`, 5 tiles) | `assets_load_scenery_tiles` | level play (1-2's two sideways pipes and 1-1's bonus room exit), world map (loaded, unused) | where a sideways pipe's body runs into its shaft, both smbd captures draw the shaft's left cell with the body's rim across it and the joint's line down its own left column: two tiles per row of the mouth, plus one bank-1 copy of `kTilePipeBodyM` (0xb7) for the cell's right column, because a kind's attribute byte picks one bank for all four quadrants |
+| 0xe5-0xeb | **FREE** (7 ids) | — | — | what is left between the joint and the toad sign glyphs |
+
+m23 added no bg id beyond the fourteen at 0xd0-0xdd. `kBlockCastleWindowRight`, the kind it appended
+to the block tables (mario.h), needs none: it is `kBlockCastleWindow`'s own four
+tiles with the two columns swapped, because the capture puts the tower's two window openings either
+side of its middle column and an `kCamAttrXFlip` of the left cell would move the masonry's mortar
+joint.
+
+m24's scenery pass added **no bg id at all**, and 0x8d-0xcf / 0xde-0xeb are still free. it re-cut
+the cloud, hill and bush art inside the existing 0x20-0x5d run and at 0xd0-0xdd without moving one
+id — the anchors an earlier pass read the cloud family from were one column off and gave all six
+cloud kinds the middle cell's art, and the hill peak's anchor was the fill cell under the dome —
+and it appended one kind, `kBlockHillCore` (mario.h, `kBlockKindCount` 52 at the time). that kind needs no id
+either: smb shades a hill's interior with two dark pixels in each cell's upper right and leaves the
+middle of the five-wide dome's bottom row flat, so the flat cell is `kTileHillFillTl` (0x4d) in all
+four quadrants and only the *kind* is new. a side effect of the re-cut is that several ids in the
+cloud and hill runs now hold blank (all-backdrop) or duplicated bytes — smb draws a cloud offset
+half a cell, so a cap cell is drawn in one quadrant and sky in the other three, and the hill's
+flat tile repeats across the fill and slope cells. the ids stay allocated per family so that the
+`kTile*Rom` tables and every test that pins an id keep working.
+
+m26's 1-3 pass added **no bg id at all** and gave two back: `0x10-0x11`. it re-cut the tree canopy
+and the trunk off `games/mario/art/ref/smbd_ch_1-3.png`
+(`games/mario/tools/rip_tiles.py --level 1-3`, `gen/tree.c` and `gen/trunk.c`) and the capture said
+the canopy's right cap is its left twin mirrored to the pixel — the first right cap in this game
+that is — so `kBlockTreeTopR` lost its two dedicated tiles and took `kCamAttrXFlip` instead, and
+`kTileTrunk` moved down from 0x11 onto 0x0f to keep the run contiguous. it added no kind and no
+palette either: every colour the 1-3 capture paints is already in the eight overworld slots, the
+canopy's four being exactly `kCamPalPipe`'s and the trunk's two `kCamPalBrick`'s. the only thing it
+changed outside the art was three `decor` entries in `games/mario/data/level-1-3.json`, which the
+capture shows are clipped by terrain rather than absent.
+
+m27's 1-4 pass added four bg ids, 0x19-0x1c, and one kind, `kBlockBridgeChain` (`kBlockKindCount`
+55). it re-cut the whole castle off `games/mario/art/ref/smbd_ch_1-4.png`
+(`games/mario/tools/rip_tiles.py --level 1-4`): the masonry course pair and the bridge pair were
+already pixel-identical to the hand art and stay where they were; the lava's wave moved to the top
+of its cell with flat red under it; the axe became four tiles, its haft filling the lower half the
+hand art left empty; the chain from the bridge's far end up to the axe got a kind and two tiles,
+because the bible had no cell for it; and the castle's own solid block - a brown face in a grey
+border, nothing like the overworld's bevel - is written over `kTileHardTl`..`kTileHardBr` at a castle
+load (`gen/castle_hard.c`), the way the masonry is written over the ground family. the castle palette
+set was re-read off the same capture (`assets_load_bg_palettes_castle`), and the axe moved from the
+question slot to the pipe slot, which nothing else standing in a castle uses. all six families and
+the one call that loads them (`castle_art_load`, `games/mario/src/castle_art.c`) live in **bank 6**
+with 1-4's own grid: bank 4, where every other tile array is, was 130 bytes from full and the six
+spilled it into bank 5, which corrupted every pinned bank-0 tile load. so a castle is the one level
+type whose lava, bridge, axe and chain ids are loaded at all — no other type stands any of them.
+
+m25's 1-2 pass added the five ids at 0xe0-0xe4 and two kinds, `kBlockPipeJointT` and
+`kBlockPipeJointB` (`kBlockKindCount` 54): the shaft cell a sideways pipe's body runs into, in each
+of the mouth's two rows, which the compiler used to stamp as plain `kBlockPipeBodyL` and both smbd
+captures draw with the body's rim and joint over the shaft's own left column. everything else 1-2's
+underground paints - floor, roof, walls, stair-steps, pipes, coins, the sideways pipes - is 1-1's
+own art under the underground palette set, which the pass re-read off the 1-2 capture: the brick
+slot now carries the near-white highlight in colour 1 (for the hard block's bevel; the brick's own
+tiles never use it below ground) and the question slot's colour 3 is the masonry's teal.
 | 0xec-0xfd | toad-room sign glyphs, one id per distinct character across the three sign lines (`kTileSignFirst`, 18 tiles) | `assets_load_toad_tiles` | toad room only (a castle whose bible names a `toad_x`, entered by touching the axe) | |
 | 0xfe-0xff | **FREE** (2 ids) | — | — | |
 
-correction: the comment directly above `kTileCastleBrickLower` in mario.h (around the "m20's
-castle run" block) says *"bank-1 bg 0x19-0x1f and 0x5c-0x5f are still unclaimed"*. that was true
-when it was written, but `kTileScenBlank` (0x5c) and `kTileFlagBallR` (0x5d) — both defined and
-loaded earlier in the same file, at the tail of the scenery run — claim 0x5c-0x5d. only 0x5e-0x5f
-are actually free. treat the table above, not that comment, as current.
+note: the comment directly above `kTileCastleBrickLower` in mario.h used to say *"bank-1 bg
+0x19-0x1f and 0x5c-0x5f are still unclaimed"*, which was wrong about 0x5c-0x5d (`kTileScenBlank` and
+`kTileFlagBallR` claim them). m27 rewrote it to 0x1d-0x1f and 0x5e-0x5f, which is what the table
+above says too.
 
 ## bank 1, sprite tile ids
 
@@ -102,9 +164,10 @@ are actually free. treat the table above, not that comment, as current.
 | 0xbe-0xbf | **FREE** (2 ids) | — | — | the gap between the jaw tile and the toad run; not called out anywhere in code, found by inspection |
 | 0xc0-0xc7 | **FREE** (8 ids) | — | — | held the paratroopa while each fly frame was four tiles; freed when m22's 16x24 art moved the pair to 0x40 |
 | 0xc8-0xcf | toad-room retainer sprite, 8 tiles (`kTileToadFirst`) | `assets_load_toad_tiles` | toad room only | |
-| 0xd0-0xdd | **FREE** (14 ids) | — | — | |
+| 0xd0-0xdd | **RESERVED, not loaded as sprite data** — shares bytes with bank-1 **bg** ids 0xd0-0xdd, m23's rip run (see the bg table) | — | level play | a sprite must never use these ids while a level's scenery is resident, i.e. ever during play |
 | 0xde-0xdf | fireball's second spin frame (`kTileFireball`, reusing the id bank 0's item family already owns) | `assets_load_item_tiles` | level play (fire mario) | drawn with `S_BANK` set to alternate with bank 0's frame A at the same id — a deliberate dual-bank reuse, not a collision |
-| 0xe0-0xeb | **FREE** (12 ids) | — | — | held small mario's climb grip (0xe0-0xe3, now at 0x74) and big mario's own (0xe4-0xeb, now just pose 7 of the 0x00 set) |
+| 0xe0-0xe4 | **RESERVED, not loaded as sprite data** — shares bytes with bank-1 **bg** ids 0xe0-0xe4, m25's shaft joint (see the bg table) | — | level play | the same rule as 0xd0-0xdd |
+| 0xe5-0xeb | **FREE** (7 ids) | — | — | held small mario's climb grip (0xe0-0xe3, now at 0x74) and big mario's own (0xe4-0xeb, now just pose 7 of the 0x00 set) |
 | 0xec-0xff | **FREE** (20 ids) | — | — | the toad sign glyphs at the same numeric ids are bg, not sprite (see bg table) |
 
 correction (m22): the bank-1 sprite table above is where every id big mario, the red paratroopa,

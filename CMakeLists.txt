@@ -53,6 +53,12 @@ else()
             target_link_libraries(gbemu-sdl PRIVATE SDL2::SDL2main)
         endif()
         target_link_libraries(gbemu-sdl PRIVATE gbcore SDL2::SDL2)
+        # a mingw exe otherwise needs libstdc++-6.dll, libgcc_s_seh-1.dll and libwinpthread-1.dll
+        # from the compiler's own bin folder, which the dist does not ship and a user's shell need
+        # not have on PATH. sdl2 still comes from its dll: the import library is what SDL2::SDL2 names
+        if(MINGW)
+            target_link_options(gbemu-sdl PRIVATE -static -static-libgcc -static-libstdc++)
+        endif()
     else()
         message(WARNING "sdl2 not found; skipping gbemu-sdl target")
     endif()
@@ -311,6 +317,46 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         mario_png_asset(games/mario/art/sprites/items.png Items sprites16 4)
         mario_png_asset(games/mario/art/sprites/flower.png Flower sprites16 4)
         mario_png_asset(games/mario/art/sprites/fireball.png Fireball sprites16 4)
+        # milestone 23: 1-1's block and terrain art, ripped off the smbd challenge-mode capture
+        # (and, for the two blocks it cannot show, off the tileset sheet) by
+        # games/mario/tools/rip_tiles.py. indexed again, so the png's index IS the entry of the
+        # cgb bg palette slot kPaletteRom pins that family to and none of them needs a --palette
+        mario_png_asset(games/mario/art/tiles/ground.png Ground tiles 4)
+        mario_png_asset(games/mario/art/tiles/ground_lower.png GroundLower tiles 4)
+        mario_png_asset(games/mario/art/tiles/brick.png Brick tiles 4)
+        mario_png_asset(games/mario/art/tiles/brick_underground.png BrickUnderground tiles 4)
+        mario_png_asset(games/mario/art/tiles/question.png Question tiles 4)
+        mario_png_asset(games/mario/art/tiles/spent.png Spent tiles 4)
+        mario_png_asset(games/mario/art/tiles/hard.png Hard tiles 4)
+        mario_png_asset(games/mario/art/tiles/pipe.png Pipe tiles 4)
+        mario_png_asset(games/mario/art/tiles/pipe_side.png PipeSide tiles 4)
+        # milestone 25: the one family 1-2's capture holds that 1-1's does not, the shaft joint
+        mario_png_asset(games/mario/art/tiles/pipe_joint.png PipeJoint tiles 4)
+        # milestone 27: the castle's art off the smbd 1-4 capture, in bank 6 with castle_art.c -
+        # bank 4 was 130 bytes from full and these six spill it
+        mario_png_asset(games/mario/art/tiles/castle_brick.png CastleBrick tiles 6)
+        mario_png_asset(games/mario/art/tiles/castle_hard.png CastleHard tiles 6)
+        mario_png_asset(games/mario/art/tiles/lava.png Lava tiles 6)
+        mario_png_asset(games/mario/art/tiles/bridge.png Bridge tiles 6)
+        mario_png_asset(games/mario/art/tiles/axe.png Axe tiles 6)
+        mario_png_asset(games/mario/art/tiles/chain.png Chain tiles 6)
+        mario_png_asset(games/mario/art/tiles/coin.png Coin tiles 4)
+        mario_png_asset(games/mario/art/tiles/cloud.png Cloud tiles 4)
+        mario_png_asset(games/mario/art/tiles/cloud_right.png CloudRight tiles 4)
+        mario_png_asset(games/mario/art/tiles/hill.png Hill tiles 4)
+        mario_png_asset(games/mario/art/tiles/bush.png Bush tiles 4)
+        mario_png_asset(games/mario/art/tiles/bush_right.png BushRight tiles 4)
+        mario_png_asset(games/mario/art/tiles/castle.png Castle tiles 4)
+        mario_png_asset(games/mario/art/tiles/castle_crenel_inner.png CastleCrenelInner tiles 4)
+        mario_png_asset(games/mario/art/tiles/castle_crenel_right.png CastleCrenelRight tiles 4)
+        mario_png_asset(games/mario/art/tiles/flag_pole.png FlagPole tiles 4)
+        mario_png_asset(games/mario/art/tiles/flag_ball.png FlagBall tiles 4)
+        mario_png_asset(games/mario/art/tiles/flag_head.png FlagHead tiles 4)
+        mario_png_asset(games/mario/art/tiles/scen_tail.png ScenTail tiles 4)
+        # m26's 1-3 pass: the tree canopy's five tiles and the trunk's one, cut off the smbd
+        # 1-3 capture by rip_tiles.py --level 1-3
+        mario_png_asset(games/mario/art/tiles/tree.png Tree tiles 4)
+        mario_png_asset(games/mario/art/tiles/trunk.png Trunk tiles 4)
         mario_png_asset(games/mario/art/title/title_screen.png TitleScreen screen 7 --vram-bank 1)
         mario_png_asset(games/mario/art/title/title_deluxe_sheet.png TitleDeluxe sprites16 7
                         --palette 000000,F8E800,A89000,584010)
@@ -361,6 +407,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/enemies.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/castle_art.c
                     ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
@@ -387,6 +434,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/enemies.c games/mario/src/enemies.h
                     games/mario/src/assets.c games/mario/src/assets.h
                     games/mario/src/assets_data.c
+                    games/mario/src/castle_art.c games/mario/src/castle_art.h
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}

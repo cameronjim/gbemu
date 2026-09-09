@@ -300,6 +300,11 @@ constexpr uint8_t kTileCoinPopHi = 0xDD;
 // the pennant's sprite form during the clear, mario.h kTilePennant
 constexpr uint8_t kTilePennantLo = 0x78;
 constexpr uint8_t kTilePennantHi = 0x7B;
+// the score popup's digit columns (bank 1, mario.h kTilePopupFirst): the 1-UP pair past them shares
+// its numbers with the bank-0 koopa, so it is left out of the range a test reads
+constexpr uint8_t kTilePopupLo = 0x52;
+constexpr uint8_t kTilePopupHi = 0x5F;
+constexpr int kPopupFrames = 48;
 
 constexpr uint16_t kBlockPx = 16;
 constexpr uint16_t kScreenWidthPx = 160;
@@ -6741,6 +6746,7 @@ void walk_room(gb::Gameboy& gameboy, int frames) {
 // off the screen only means anything read twice from the same vantage, and the room is wider than
 // the screen; the counter is the one reading that does not care where the camera stands
 int hud_coins(const gb::Gameboy& gameboy);
+int hud_score_shown(const gb::Gameboy& gameboy);
 
 // crosses the room and leaves through its sideways mouth, retrying the last stretch from a standing
 // start if the walk got hung up on the platform. returns whether he is out
@@ -7315,6 +7321,65 @@ TEST_CASE("mario_stomp_squashes") {
     // and the flat goomba is gone a squash timer later, with nothing walking in its place
     run(gameboy, kSquashFrames + 8);
     REQUIRE(!sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi).found);
+}
+
+// the floating score: a stomp raises smb's floatey number over the goomba - two sprites out of the
+// popup strip - which rises a pixel a frame and is gone kPopupFrames later, and the hud has moved
+// by exactly what the label said
+TEST_CASE("mario_stomp_raises_a_score_popup") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    const int before = hud_score_shown(gameboy);
+    REQUIRE(before >= 0);
+    REQUIRE(!sprite_box(gameboy, kTilePopupLo, kTilePopupHi).found);
+    replay(gameboy, stomp.script, 0, stomp.frame + 1);
+
+    // the label is up within a frame or two of the landing, over the pancake
+    SpriteBox popup;
+    int shown_at = -1;
+    for (int i = 0; i < 4 && shown_at < 0; ++i) {
+        gameboy.run_frame();
+        popup = sprite_box(gameboy, kTilePopupLo, kTilePopupHi);
+        if (popup.found) {
+            shown_at = i;
+        }
+    }
+    REQUIRE(shown_at >= 0);
+    const SpriteBox flat = sprite_box(gameboy, kTileGoombaSquashLo, kTileGoombaSquashHi);
+    REQUIRE(flat.found);
+    REQUIRE(std::abs(popup.left - flat.left) <= kBlockPx);
+    REQUIRE(popup.top < flat.top);
+
+    // it rises, a pixel a frame, and is gone once its frames are spent
+    int top = popup.top;
+    int rose = 0;
+    int gone_at = -1;
+    for (int i = 0; i < kPopupFrames + 8 && gone_at < 0; ++i) {
+        gameboy.run_frame();
+        const SpriteBox now = sprite_box(gameboy, kTilePopupLo, kTilePopupHi);
+        if (!now.found) {
+            gone_at = i;
+            break;
+        }
+        REQUIRE(now.top <= top);
+        rose += (now.top < top) ? 1 : 0;
+        top = now.top;
+    }
+    REQUIRE(gone_at >= 0);
+    REQUIRE(gone_at <= kPopupFrames);
+    REQUIRE(rose >= kPopupFrames / 2);
+
+    // and the hud moved by the chain's opening step, which is what the label showed
+    REQUIRE(hud_score_shown(gameboy) - before == kStompChainTable[0]);
 }
 
 // m22 stores only the LEFT half of every left-right symmetric frame - the pancake, either shell,

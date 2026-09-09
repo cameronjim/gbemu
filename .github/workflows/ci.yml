@@ -14,7 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install sdl2
-        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+        # the runner image ships a google chrome apt source that intermittently fails its hash
+        # check and takes apt-get update down with it; nothing here needs it
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y libsdl2-dev
       - name: configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       - name: build
@@ -100,7 +104,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y clang
       - name: configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DGB_BUILD_FUZZERS=ON -DCMAKE_CXX_COMPILER=clang++
       - name: build fuzzers

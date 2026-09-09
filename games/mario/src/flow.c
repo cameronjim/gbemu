@@ -421,9 +421,8 @@ uint8_t flow_warp_under_player(void) BANKED {
 // stood on and taken down (or up), a sideways mouth is walked into from the left. the same trick
 // pipe_jump uses for its landings, so the compiled area format needed no new field
 uint8_t flow_exit_is_sideways(void) BANKED {
-    return (level_sub != 0 &&
-            terrain_kind_at((int16_t)level_sub->exit_column, (int16_t)level_sub->exit_top_row) ==
-                (uint8_t)kBlockPipeSideTl)
+    return (level_sub != 0 && terrain_kind_at((int16_t)level_sub->exit_column,
+                                              (int16_t)level_sub->exit_top_row) == (uint8_t)kBlockPipeSideTl)
                ? 1U
                : 0U;
 }

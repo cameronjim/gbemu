@@ -215,6 +215,8 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         # array, bank 5 the powerup chain and the between-levels code, bank 6 the draw passes and
         # the toad room, bank 7 every sub-area grid, and each level's own grid shares a bank
         set(GB_MARIO_LEVELS 1-1 1-2 1-3 1-4)
+        # #17 moved level.c to bank 5 and each level's lists into the level's own bank; level.c copies
+        # the played entry and its lists into a wram arena, see games/mario/BUDGET.md
         set(GB_MARIO_LEVEL_BANKS 1 2 3 6)
         set(GB_MARIO_AREA_BANK 7)
         set(GB_MARIO_LEVEL_C "")

@@ -108,6 +108,33 @@
   },
 
   "interactions": {
+    "vertical_integrator": {
+      "confidence": "documented",
+      "source": "smbdis.asm:7704-7735 (ImposeGravity), 7586-7595 (MovePlayerVertically)",
+      "note": "per frame: position += speed + carry(dummy += move_force); move_force += gravity; speed += carry. the dummy fraction (SprObject_YMF_Dummy) is never cleared. at the max speed the force is zeroed once it passes 0x80, so terminal fall is exactly 4 px/frame. the rom's player.c/step_vertical follows this order; before 2026-09-09 it dropped the dummy carry and rose ~10 px higher on a running jump than smb does"
+    },
+    "air_friction": {
+      "confidence": "documented",
+      "source": "smbdis.asm:5946-5950 (LRAir)",
+      "note": "airborne, ImposeFriction runs only while left or right is held; with the pad released the horizontal speed is kept"
+    },
+    "landing_grace": {
+      "confidence": "documented",
+      "source": "smbdis.asm:11975-12005 (DoFootCheck, cpy #$05 / LandPlyr / ImpedePlayerMove)",
+      "grace_px_max": 4,
+      "note": "the feet are tested before the sides; a foot point that has sunk under 5 px into a solid block's top while not rising lands on the block (y snapped to the row) instead of impeding. this is what keeps a running stair jump's speed when it clips a step's edge"
+    },
+    "pipe_entry_window": {
+      "confidence": "documented",
+      "source": "smbdis.asm:12270-12280 (HandlePipeEntry), 13030 (BlockBuffer_X_Adder entries 8-9)",
+      "foot_points_px": [3, 12],
+      "note": "down is honoured only when the left foot point (x+3) reads the cap's left metatile ($10) and the right foot point (x+12) the right one ($11): the 16 px box must sit within 4 px of centred over the two-cell cap. a sideways pipe is entered from the lower mouth metatile ($6c) in the normal state only (ChkPBtm, 12077)"
+    },
+    "flagpole_ball_grabs": {
+      "confidence": "documented",
+      "source": "smbdis.asm:12163-12166 (ChkForFlagpole)",
+      "note": "the ball's metatile ($24) starts the flagpole collision just as the shaft's ($25) does, so a jump that reaches the ball's row grabs the pole there"
+    },
     "stomp_bounce": {
       "confidence": "documented",
       "source": "smbdis.asm:11439-11513",

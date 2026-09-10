@@ -393,10 +393,10 @@ static uint8_t at_side_mouth(uint16_t column, uint8_t row) {
     if ((uint16_t)(left + kPlayerHitWidthPx) < rim || left >= rim) {
         return 0;
     }
-    return ((int16_t)(player_box_top() >> 4) <= (int16_t)((int16_t)row + 1) &&
-            (int16_t)((feet - 1) >> 4) >= (int16_t)row)
-               ? 1U
-               : 0U;
+    // smbdis ChkPBtm (12077): the side point that takes him in is the one meeting the mouth's LOWER
+    // metatile ($6c), and only from the normal state - so his feet have to be on the mouth's own
+    // floor row, not a cell higher on whatever he might be standing on
+    return ((int16_t)((feet - 1) >> 4) == (int16_t)((int16_t)row + 1)) ? 1U : 0U;
 }
 
 uint8_t flow_pipe_target(uint8_t down_held) BANKED {

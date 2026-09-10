@@ -584,6 +584,13 @@
 #define kFrameCrouch 6U
 #define kFrameClimbBig 7U
 
+// player_pose's byte: the frame index in the low nibble, and the four flags the sprite pass wants
+#define kPoseFrameMask 0x0FU
+#define kPoseClimbing 0x10U
+#define kPoseGone 0x20U
+#define kPoseBehindBg 0x40U
+#define kPoseBig 0x80U
+
 // small mario's own flagpole grip, one 16x16 pose in VRAM BANK 1. it used to ride at the id his
 // standing set holds in bank 0, which meant a host test reading framebuffer tile numbers - they
 // carry the tile and a sprite bit but not the bank - could not tell the grip from his idle pose and
@@ -783,6 +790,16 @@
 // tuned to make 1-1's pit lips and pipe faces feel right, not read off the bible
 #define kPlayerHitInsetPx 2
 #define kPlayerHitWidthPx (kPlayerWidthPx - 2 * kPlayerHitInsetPx) // 12
+// smbdis DoFootCheck (11975-12005): the feet are tested before the sides, and a foot sunk less than
+// 5 px into a block's top (cpy #$05) lands on it rather than being stopped by it. that is what lets
+// a running jump clip the edge of a stair and keep its speed
+#define kLandGracePx 4
+// smbdis HandlePipeEntry (12270): down is taken only when the LEFT foot point stands on the cap's
+// left half and the RIGHT foot point on its right half. the two points are BlockBuffer_X_Adder's
+// (13030) entries for a small or crouching player, 3 and 12 px into his box, so his box has to sit
+// within 4 px of centred over the two-cell cap
+#define kPipeFootLeftPx 3U
+#define kPipeFootRightPx 12U
 // smbdis PlayerAnimTmrData (6192) via GetPlayerAnimSpeed (6195): a walk pose holds 2 frames at
 // 0x1c subpx a frame or faster, 4 at 0x0e or faster, and 7 below that. the same 1/16 px unit as
 // our speeds, so the two thresholds are the disassembly's bytes

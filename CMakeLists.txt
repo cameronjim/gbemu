@@ -412,6 +412,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/castle_art.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/popup.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/player_draw.c
                     ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
@@ -440,6 +441,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/assets_data.c
                     games/mario/src/castle_art.c games/mario/src/castle_art.h
                     games/mario/src/popup.c games/mario/src/popup.h
+                    games/mario/src/player_draw.c
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}

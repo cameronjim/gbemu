@@ -1,6 +1,7 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
+#include <gb/gb.h>
 #include <stdint.h>
 
 // what one frame of physics ended in; anything but kPlayerAlive is the caller's cue to change state
@@ -73,8 +74,13 @@ uint8_t player_clear_update(void);
 void player_set_big(uint8_t big);
 
 // writes mario's sprites for this frame (two 8x16 small, four big) under the given cgb palette, or
-// parks them when he is out of view or the injury blink hides him
-void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette);
+// parks them when he is out of view or the injury blink hides him. bank 6 (player_draw.c): the
+// pass reads the physics through the accessors below and player_pose
+void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) BANKED;
+// forgets which tiles the four slots carry, so the next draw writes all of them; a level load
+void player_draw_reset(void) BANKED;
+// the pose byte the pass reads: anim frame in the low nibble, mario.h's kPose* flags over it
+uint8_t player_pose(void);
 
 // the sprite box's left edge in world px; the camera follows this
 uint16_t player_x(void);

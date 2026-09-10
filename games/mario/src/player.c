@@ -30,6 +30,10 @@ static uint16_t x_pos;
 // vertical: whole-px speed plus the 1/256-px accumulator gravity adds to
 static int8_t y_speed;
 static uint8_t y_accum;
+// smbdis ImposeGravity (7704): the 1/256 px force gravity feeds is also added, every frame, into a
+// second fraction whose carry is one more pixel of travel - so his true vertical speed is
+// speed + force/256, not the whole pixels alone. this is that second fraction (SprObject_YMF_Dummy)
+static uint8_t y_frac;
 static int16_t y_pos;
 static int16_t jump_origin_y;
 
@@ -64,11 +68,6 @@ static uint8_t clear_flag_done;
 static int16_t prev_y;
 // the lift deck he is standing on, or 0xff
 static uint8_t riding;
-
-// the tile and palette each of mario's four slots last carried; a walk frame lasts eight frames and
-// his palette changes twice a level, so most frames owe nothing but the two moves
-static uint8_t drawn_mario_tile[4];
-static uint8_t drawn_mario_prop[4];
 
 // the death beat: how far into the hold he is, and whether he still has a leap to make
 static uint8_t death_timer;
@@ -180,6 +179,11 @@ static void step_speed(uint8_t keys) {
         x_accum = 0;
         return;
     }
+    // smbdis LRAir (5946): in the air ImposeFriction runs only while left or right is held, so a
+    // jump with the pad let go keeps every subpixel of its takeoff speed
+    if (want_dir == 0 && on_ground == 0U) {
+        return;
+    }
 
     // below the threshold a reversal snaps the speed to zero instead of skidding
     if (skidding != 0U && speed_abs < kMarioSkidStopSubpx) {
@@ -282,18 +286,38 @@ static uint8_t head_room(void) {
                : 1U;
 }
 
+// smbdis DoFootCheck: a column solid at his feet alone, while he is not rising and the feet would
+// end this frame no deeper than kLandGracePx into that cell's top, is a step to land on and not a
+// wall - collide_y stands him on it and his run carries on. the sink is measured with this frame's
+// fall still to come, which is when smb measures it
+static uint8_t step_up_at(int16_t col) {
+    const int16_t feet = (int16_t)(y_pos + foot_h());
+    const int16_t top = head_y();
+    int16_t sink;
+
+    if (y_speed < 0 || terrain_solid_at(col, row_of(top)) != 0U) {
+        return 0;
+    }
+    if (big != 0U && crouched == 0U &&
+        terrain_solid_at(col, row_of((int16_t)(top + kPlayerHeightPx))) != 0U) {
+        return 0;
+    }
+    sink = (int16_t)((int16_t)(feet - (int16_t)(row_of((int16_t)(feet - 1)) << 4)) + y_speed);
+    return sink <= (int16_t)kLandGracePx ? 1U : 0U;
+}
+
 static void collide_x(void) {
     int16_t col;
 
     if (x_speed > 0) {
         col = col_of(hit_right());
-        if (blocked_at(col) != 0U) {
+        if (blocked_at(col) != 0U && step_up_at(col) == 0U) {
             x_pos = (uint16_t)((uint16_t)((uint16_t)col << 4) - kPlayerHitInsetPx - kPlayerHitWidthPx);
             stop_x();
         }
     } else if (x_speed < 0) {
         col = col_of(hit_left());
-        if (blocked_at(col) != 0U) {
+        if (blocked_at(col) != 0U && step_up_at(col) == 0U) {
             x_pos = (uint16_t)(((uint16_t)(col + 1) << 4) - kPlayerHitInsetPx);
             stop_x();
         }
@@ -324,25 +348,38 @@ static uint8_t gravity_now(uint8_t a_held) {
 
 static void step_vertical(uint8_t keys) {
     const uint8_t a_held = (keys & J_A) != 0U ? 1U : 0U;
+    uint8_t gravity;
     uint16_t sum;
 
     if (on_ground != 0U && a_held != 0U && a_prev == 0U) {
         jump_tier = tier_for(abs_speed());
         y_speed = kJumpSpeed[jump_tier];
         y_accum = 0;
+        // smb never clears the fraction, but smb runs no gravity on the ground and we do: cleared
+        // here, the phase he stood in cannot decide his jump's pixel
+        y_frac = 0;
         jump_origin_y = y_pos;
         on_ground = 0;
     }
 
-    sum = (uint16_t)((uint16_t)y_accum + (uint16_t)gravity_now(a_held));
+    // JumpSwimSub picks the frame's gravity off where he is BEFORE the move (the first pixel of a
+    // rise is exempt from the release cut), then ImposeGravity's order: move by the speed plus the
+    // fraction's carry, then feed that gravity into the force and its carry into the speed. the cap
+    // is smb's own too: at the terminal speed the force is zeroed once it passes half, so he falls
+    // at exactly kMarioMaxFallPx and no fraction more
+    gravity = gravity_now(a_held);
+    sum = (uint16_t)((uint16_t)y_frac + (uint16_t)y_accum);
+    y_frac = (uint8_t)sum;
+    y_pos = (int16_t)(y_pos + y_speed + (int16_t)(sum >> 8));
+    sum = (uint16_t)((uint16_t)y_accum + (uint16_t)gravity);
     y_accum = (uint8_t)sum;
     if (sum > 0xFFU) {
         y_speed = (int8_t)(y_speed + 1);
-        if (y_speed > kMarioMaxFallPx) {
-            y_speed = kMarioMaxFallPx;
-        }
     }
-    y_pos = (int16_t)(y_pos + y_speed);
+    if (y_speed >= kMarioMaxFallPx && y_accum >= 0x80U) {
+        y_speed = kMarioMaxFallPx;
+        y_accum = 0;
+    }
 }
 
 static void collide_y(void) {
@@ -368,6 +405,7 @@ static void collide_y(void) {
             y_pos = (int16_t)(((row + 1) << 4) - (crouched != 0U ? kCrouchInsetPx : 0));
             y_speed = 0;
             y_accum = 0;
+            y_frac = 0;
         }
         return;
     }
@@ -383,6 +421,7 @@ static void collide_y(void) {
         y_pos = (int16_t)(((int16_t)(row << 4)) - height);
         y_speed = 0;
         y_accum = 0;
+        y_frac = 0;
         on_ground = 1;
         return;
     }
@@ -391,6 +430,7 @@ static void collide_y(void) {
                               terrain_floor_at(right_col, (int16_t)(row + 1)) != 0U)) {
         y_speed = 0;
         y_accum = 0;
+        y_frac = 0;
         on_ground = 1;
     }
 }
@@ -420,6 +460,7 @@ static void collide_lifts(void) {
         y_pos = (int16_t)(deck - height);
         y_speed = 0;
         y_accum = 0;
+        y_frac = 0;
         on_ground = 1;
         riding = i;
         return;
@@ -477,8 +518,11 @@ static uint8_t touching_flag(void) {
         col_of((uint16_t)(x_pos + kPlayerWidthPx - 1U)) < (int16_t)level->flag_column) {
         return 0;
     }
+    // smbdis ChkForFlagpole (12163): the ball's metatile ($24) grabs the pole as the shaft's does,
+    // so the row over the shaft's top counts - that is where a running jump off the stairs lands
+    // the top band from
     return (row_of(head_y()) <= (int16_t)(level->flag_base_row + 1U) &&
-            row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)level->flag_top_row)
+            row_of((int16_t)(y_pos + foot_h() - 1)) >= (int16_t)((int16_t)level->flag_top_row - 1))
                ? 1U
                : 0U;
 }
@@ -491,6 +535,7 @@ void player_place(uint16_t column, uint8_t surface_row) {
     y_pos = (int16_t)((int16_t)((int16_t)surface_row << 4) - (int16_t)foot_h());
     y_speed = 0;
     y_accum = 0;
+    y_frac = 0;
     prev_y = y_pos;
     riding = 0xFF;
     clear_axe = 0;
@@ -511,13 +556,7 @@ void player_place(uint16_t column, uint8_t surface_row) {
 }
 
 void player_init(void) {
-    uint8_t i;
-
-    for (i = 0; i < 4U; ++i) {
-        // never a real tile or property, so the first draw of a fresh level writes all four
-        drawn_mario_tile[i] = 0xFF;
-        drawn_mario_prop[i] = 0xFF;
-    }
+    player_draw_reset();
     assets_load_sprite_tiles();
     assets_load_sprite_palettes();
     assets_load_item_tiles();
@@ -555,9 +594,13 @@ uint8_t player_over_pipe(uint16_t column, uint8_t top_row) {
     if (row_of((int16_t)(y_pos + foot_h())) != (int16_t)top_row) {
         return 0;
     }
-    // his feet only have to be on the cap: nothing else stands at that row beside a pipe, so an
-    // overlap with its two columns already means he is on top of it and nowhere else
-    return (col_of(hit_left()) <= (int16_t)(column + 1U) && col_of(hit_right()) >= (int16_t)column) ? 1U : 0U;
+    // smb's rule (mario.h kPipeFoot*): one foot point on each half of the cap, which only a box
+    // within 4 px of centred over it manages. a stance on the rim's outer columns is refused, so
+    // the sink never plays with him half over the cap and half behind it
+    return (col_of((uint16_t)(x_pos + kPipeFootLeftPx)) == (int16_t)column &&
+            col_of((uint16_t)(x_pos + kPipeFootRightPx)) == (int16_t)(column + 1U))
+               ? 1U
+               : 0U;
 }
 
 void player_begin_pipe_down(void) {
@@ -850,79 +893,6 @@ uint8_t player_clear_update(void) {
     return 0;
 }
 
-// oam y 0 parks a sprite entirely above the screen
-static void player_hide(void) {
-    move_sprite(kSpriteMarioL, 0, 0);
-    move_sprite(kSpriteMarioR, 0, 0);
-    move_sprite(kSpriteMarioLowL, 0, 0);
-    move_sprite(kSpriteMarioLowR, 0, 0);
-}
-
-// one 16 px sprite row: flipping mirrors each 8x16 half, so the halves also swap sides
-static void draw_row(uint8_t slot, uint8_t tile, uint8_t prop, int16_t sx, int16_t sy) {
-    const uint8_t left_tile = facing_left != 0U ? (uint8_t)(tile + 2U) : tile;
-    const uint8_t right_tile = facing_left != 0U ? tile : (uint8_t)(tile + 2U);
-
-    if (drawn_mario_tile[slot] != left_tile || drawn_mario_prop[slot] != prop) {
-        drawn_mario_tile[slot] = left_tile;
-        drawn_mario_prop[slot] = prop;
-        set_sprite_tile(slot, left_tile);
-        set_sprite_tile((uint8_t)(slot + 1U), right_tile);
-        set_sprite_prop(slot, prop);
-        set_sprite_prop((uint8_t)(slot + 1U), prop);
-    }
-    move_sprite(slot, (uint8_t)(sx + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-    move_sprite((uint8_t)(slot + 1U), (uint8_t)(sx + 8 + kOamXOffset), (uint8_t)(sy + kOamYOffset));
-}
-
-void player_draw(uint16_t cam_x, uint8_t cam_y, uint8_t palette) {
-    const int16_t sx = (int16_t)((int16_t)x_pos - (int16_t)cam_x);
-    const int16_t sy = (int16_t)(y_pos - (int16_t)cam_y);
-    const uint8_t prop = (uint8_t)(palette | (facing_left != 0U ? (uint8_t)S_FLIPX : 0U) |
-                                   (behind_bg != 0U ? (uint8_t)S_PRIORITY : 0U));
-
-    if (palette == (uint8_t)kSpriteHidden || clear_gone != 0U || sy <= -(int16_t)foot_h() ||
-        sy >= (int16_t)kScreenHeightPx || sx <= -(int16_t)kPlayerWidthPx || sx >= (int16_t)kScreenWidthPx) {
-        player_hide();
-        return;
-    }
-    // the whole of big mario and small mario's climb grip live in vram bank 1, so their rows carry
-    // S_BANK in the prop. the slot cache compares (tile, prop) and the prop is what tells the two
-    // banks apart, so a pose that shares an id with a bank-0 one still reads as a change
-    if (big == 0U) {
-        // the small poses are the pinned 0xe0 family in bank 0, except the climb grip and the death
-        // pose: the grip rides at the same id in bank 1, and the death pose took four of the ids
-        // super mario's old bank-0 block gave back
-        uint8_t tile;
-        uint8_t small_prop = prop;
-
-        if (climbing != 0U) {
-            tile = (uint8_t)kTileClimbSmall;
-            small_prop = (uint8_t)(prop | (uint8_t)S_BANK);
-        } else if (anim_frame == (uint8_t)kFrameDeath) {
-            tile = (uint8_t)kTileMarioDeath;
-        } else {
-            tile = (uint8_t)(kTileMarioFirst + (uint8_t)(anim_frame * kMarioTilesPerFrame));
-        }
-        draw_row(kSpriteMarioL, tile, small_prop, sx, sy);
-        move_sprite(kSpriteMarioLowL, 0, 0);
-        move_sprite(kSpriteMarioLowR, 0, 0);
-        return;
-    }
-    // every big pose is its own 16x32 box of eight tiles in vram bank 1, so all four slots draw the
-    // same way whatever he is doing: the upper row at the box's top, the lower one 16 px under it.
-    // the crouch is pose 6 and the flagpole grip pose 7 - the fold's 22-tall art is bottom-aligned
-    // inside the same box, so it needs no row parking and no origin of its own, only the art
-    {
-        const uint8_t pose = climbing != 0U ? (uint8_t)kFrameClimbBig : anim_frame;
-        const uint8_t base = (uint8_t)(kTileSuperFirst + (uint8_t)(pose * kSuperTilesPerFrame));
-        const uint8_t big_prop = (uint8_t)(prop | (uint8_t)S_BANK);
-
-        draw_row(kSpriteMarioL, base, big_prop, sx, sy);
-        draw_row(kSpriteMarioLowL, (uint8_t)(base + 4U), big_prop, sx, (int16_t)(sy + kPlayerHeightPx));
-    }
-}
-
 uint16_t player_x(void) {
     return x_pos;
 }
@@ -940,6 +910,7 @@ int8_t player_y_speed(void) {
 void player_stomp_bounce(int8_t speed) {
     y_speed = speed;
     y_accum = 0;
+    y_frac = 0;
     jump_origin_y = y_pos;
     jump_tier = tier_for(abs_speed());
     on_ground = 0;
@@ -955,6 +926,14 @@ uint8_t player_standing(void) {
 
 uint8_t player_facing_left(void) {
     return facing_left;
+}
+
+// everything the sprite pass in bank 6 needs to know about his pose, in one byte: the frame in the
+// low nibble and four flags over it (mario.h kPose*). one plain call from the pass instead of five
+uint8_t player_pose(void) {
+    return (uint8_t)(anim_frame | (climbing != 0U ? (uint8_t)kPoseClimbing : 0U) |
+                     (clear_gone != 0U ? (uint8_t)kPoseGone : 0U) |
+                     (behind_bg != 0U ? (uint8_t)kPoseBehindBg : 0U) | (big != 0U ? (uint8_t)kPoseBig : 0U));
 }
 
 int16_t player_box_top(void) {

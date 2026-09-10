@@ -56,6 +56,10 @@ public:
     std::span<const uint8_t> debug_vram(int bank) const {
         return ppu_.vram(bank);
     }
+    // side-effect free read of the cpu's view of memory, for host tests probing a rom's ram
+    uint8_t peek8(uint16_t addr) {
+        return bus_.peek8(addr);
+    }
     // debug accessor for the mooneye fibonacci protocol
     const CpuRegs& debug_regs() const {
         return cpu_.regs();

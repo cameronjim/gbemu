@@ -28,6 +28,8 @@ extern uint8_t pending_warp;
 extern uint8_t pipe_reentry_lock;
 extern uint8_t hazard_active;
 extern uint8_t hazard_near;
+// counts main loop passes; two pictures with one count between them is a dropped frame
+extern uint8_t frame_tick;
 
 // one frame's draw pass, owned by main.c (bank 0) so the play frame pays no trampoline for it
 void main_present(void);

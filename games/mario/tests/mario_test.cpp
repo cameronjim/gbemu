@@ -58,6 +58,28 @@ std::vector<uint8_t> read_mario_rom() {
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
+// the address sdld gave a rom global, off the noi symbol file lcc wrote beside the rom
+uint16_t noi_address(const char* symbol) {
+    std::ifstream in(MARIO_NOI_PATH);
+    REQUIRE(in.good());
+    const std::string want = std::string("DEF ") + symbol + " ";
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.compare(0, want.size(), want) == 0) {
+            return static_cast<uint16_t>(std::stoul(line.substr(want.size()), nullptr, 16));
+        }
+    }
+    FAIL("symbol not in the noi file: " << symbol);
+    return 0;
+}
+
+// main.c counts one per pass round its loop; a picture that shows no new count is a frame the rom
+// did not finish in time and scanned out again
+uint8_t rom_frame_tick(gb::Gameboy& gameboy) {
+    static const uint16_t address = noi_address("_frame_tick");
+    return gameboy.peek8(address);
+}
+
 constexpr uint32_t kBootFrames = 120;
 
 // the rows main.c tints and prints to, per games/mario/src/mario.h
@@ -4085,6 +4107,27 @@ void replay(gb::Gameboy& gameboy, const std::vector<uint8_t>& script, size_t fro
     gameboy.set_button(gb::Button::Left, false);
     gameboy.set_button(gb::Button::B, false);
     gameboy.set_button(gb::Button::A, false);
+}
+
+// replays like replay(), and returns how many pictures went by without the rom's loop coming round.
+// only pictures with mario drawn on both sides count: a card's lcd-off rebuild is meant to outrun a
+// frame, and the counter itself is what says whether a play frame did
+int replay_counting_misses(gb::Gameboy& gameboy, const std::vector<uint8_t>& script, size_t from, size_t to) {
+    int missed = 0;
+    bool was_found = mario_at(gameboy).found;
+    uint8_t tick = rom_frame_tick(gameboy);
+
+    for (size_t i = from; i < to && i < script.size(); ++i) {
+        replay(gameboy, script, i, i + 1);
+        const bool found = mario_at(gameboy).found;
+        const uint8_t now = rom_frame_tick(gameboy);
+        if (was_found && found && now == tick) {
+            ++missed;
+        }
+        was_found = found;
+        tick = now;
+    }
+    return missed;
 }
 
 // the smallest screen y carrying a bg tile in [lo, hi], or -1; the pan tests read the level's own
@@ -8666,6 +8709,9 @@ struct Match {
     // sat near 100% of the frame since m6 and m8a's firebar corridor is its heaviest stretch yet,
     // so the busiest levels give one or two back. m8b's budget pass is where these go
     int drops = 0;
+    // the same, read off the rom's own loop counter rather than inferred from the scanout: exact,
+    // and counted only while mario is drawn (see replay_counting_misses)
+    int ticks_missed = 0;
 };
 
 // replays the route a frame at a time. the rom scans a frame out one or two frames after it
@@ -8681,11 +8727,19 @@ Match replay_matched(gb::Gameboy& gameboy, const Route& route, int level) {
     int hits = 0;
 
     saw.reserve(route.script.size());
+    bool was_found = mario_at(gameboy).found;
+    uint8_t tick = rom_frame_tick(gameboy);
     for (size_t i = 0; i < route.script.size(); ++i) {
         replay(gameboy, route.script, i, i + 1);
         out.saw_map = out.saw_map || sky_color(gameboy) == kSkyMap;
         const Mario m = mario_at(gameboy);
         saw.emplace_back(m.found ? m.box_left() : -1000, m.found ? m.box_top() : -1000);
+        const uint8_t now = rom_frame_tick(gameboy);
+        if (was_found && m.found && now == tick) {
+            ++out.ticks_missed;
+        }
+        was_found = m.found;
+        tick = now;
     }
     for (size_t i = 0; i < saw.size(); ++i) {
         if (static_cast<int>(i) < lag) {
@@ -10308,6 +10362,49 @@ TEST_CASE("mario_1_2_the_one_block_crawl_is_the_only_way_past") {
 // route planner cannot search this stretch (it treats the pillar as a wall and looks for a jump),
 // so the approach is planned to the arches and the walk past it driven straight, with his world
 // position read back off the rom's own scroll
+// the frame budget, read off the rom itself: every play frame of world one comes round before the
+// next picture. cgb double speed bought this margin when the merged play frame first dropped
+// frames on heavy jumps; a drop desyncs every scripted test here, so this is where it shows first
+TEST_CASE("mario_world_one_play_frames_never_drop") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    SECTION("1-1") {
+        const Route route = plan_route(0, true, 4000);
+        REQUIRE(route.reached);
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_level(gameboy, kLevel11);
+        const Match match = replay_matched(gameboy, route, kLevel11);
+        CAPTURE(match.broke_at, match.hits, match.drops);
+        REQUIRE(match.broke_at == -1);
+        REQUIRE(match.ticks_missed == 0);
+    }
+    SECTION("1-2 underground") {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_level(gameboy, kLevel12);
+        std::vector<uint8_t> fall;
+        PlayerSim sim = stand_on_the_1_2_floor(gameboy, fall);
+        REQUIRE(replay_counting_misses(gameboy, fall, 0, fall.size()) == 0);
+        const Route run = plan_level(kLevel12, 4000, static_cast<uint16_t>(70U * kBlockPx), &sim);
+        REQUIRE(run.reached);
+        REQUIRE(replay_counting_misses(gameboy, run.script, 0, run.script.size()) == 0);
+    }
+    for (int level : {kLevel13, kLevel14}) {
+        DYNAMIC_SECTION("level " << level) {
+            const Route route = plan_level(level, 6000);
+            REQUIRE(route.reached);
+            gb::Gameboy gameboy;
+            REQUIRE(gameboy.load_rom(rom));
+            enter_level(gameboy, level);
+            const Match match = replay_matched(gameboy, route, level);
+            CAPTURE(match.broke_at, match.hits, match.drops);
+            REQUIRE(match.broke_at == -1);
+            REQUIRE(match.ticks_missed == 0);
+        }
+    }
+}
+
 TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
     const std::vector<uint8_t> rom = read_mario_rom();
 

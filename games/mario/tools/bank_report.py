@@ -95,9 +95,8 @@ def main():
         print(f"{bank:4d}  {ends[bank]:5d}  beyond --banks")
         failed = True
 
-    heap = areas.get("_HEAP")
-    if heap is not None:
-        print(f"wram  {heap['addr'] - RAM_FLOOR:5d}  {WRAM_END - heap['addr']:5d}")
+    wram_end = max([a["addr"] + a["size"] for a in areas.values() if RAM_FLOOR <= a["addr"] < WRAM_END] + [RAM_FLOOR])
+    print(f"wram  {wram_end - RAM_FLOOR:5d}  {WRAM_END - wram_end:5d}")
     for name in truncated:
         print(f"area {name} is longer than a bank; the linker dropped its tail")
         failed = True

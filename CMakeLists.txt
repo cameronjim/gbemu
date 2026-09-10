@@ -389,6 +389,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/level.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/romcopy.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/terrain.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/camera.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player.c
@@ -421,6 +422,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_BINARY_DIR}/mario.map --banks 16
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
                     games/mario/src/level.c games/mario/src/level.h
+                    games/mario/src/romcopy.c games/mario/src/romcopy.h
                     games/mario/src/terrain.c games/mario/src/terrain.h
                     games/mario/src/camera.c games/mario/src/camera.h
                     games/mario/src/player.c games/mario/src/player.h

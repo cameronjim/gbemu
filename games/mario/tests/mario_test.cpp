@@ -869,6 +869,7 @@ struct JumpSim {
     int y = kStandTop;
     int8_t speed = 0;
     uint8_t accum = 0;
+    uint8_t frac = 0;
     int origin = kStandTop;
     bool grounded = true;
     bool a_prev = false;
@@ -877,6 +878,7 @@ struct JumpSim {
         if (grounded && a && !a_prev) {
             speed = kJumpSpeed[0];
             accum = 0;
+            frac = 0;
             origin = y;
             grounded = false;
         }
@@ -884,19 +886,25 @@ struct JumpSim {
         if (speed < 0 && ((a && a_prev) || (origin - y) < kMarioMinRisePx)) {
             force = kGravityRise[0];
         }
+        // player.c's ImposeGravity: the force's carry is a pixel of travel, then gravity feeds the
+        // force, and the terminal speed zeroes the force once it passes half
+        const unsigned carry = static_cast<unsigned>(frac) + accum;
+        frac = static_cast<uint8_t>(carry);
+        y += speed + static_cast<int>(carry >> 8);
         const unsigned sum = static_cast<unsigned>(accum) + force;
         accum = static_cast<uint8_t>(sum);
         if (sum > 0xFFu) {
             speed = static_cast<int8_t>(speed + 1);
-            if (speed > kMarioMaxFallPx) {
-                speed = kMarioMaxFallPx;
-            }
         }
-        y += speed;
+        if (speed >= kMarioMaxFallPx && accum >= 0x80u) {
+            speed = kMarioMaxFallPx;
+            accum = 0;
+        }
         // the start cell's floor is flat, so landing is one clamp back onto the standing row
         if (speed >= 0 && y >= kStandTop) {
             y = kStandTop;
             speed = 0;
+            frac = 0;
             accum = 0;
             grounded = true;
         }
@@ -1084,6 +1092,10 @@ constexpr int kToadSignRow[kToadSignLines] = {15, 19, 21};
 constexpr const char* kSignGlyphChars = "THANKYOUMRI!BPCESL";
 constexpr int kHitInsetPx = 2;
 constexpr int kHitWidthPx = kPlayerBoxPx - 2 * kHitInsetPx;
+// mario.h's smb landing grace and pipe foot points
+constexpr int kLandGracePx = 4;
+constexpr int kPipeFootLeftPx = 3;
+constexpr int kPipeFootRightPx = 12;
 constexpr int kLevelHeightPx = 240;
 
 // the planner's own button bits; replay maps them onto gb::Button
@@ -1414,6 +1426,7 @@ struct PlayerSim {
     uint16_t x_pos = static_cast<uint16_t>(kHostLevels[kLevel11].start_column * kBlockPx);
     int8_t y_speed = 0;
     uint8_t y_accum = 0;
+    uint8_t y_frac = 0;
     int16_t y_pos = static_cast<int16_t>(kHostLevels[kLevel11].start_row * kBlockPx - kPlayerBoxPx);
     int16_t jump_origin_y = y_pos;
     uint8_t on_ground = 1;
@@ -1654,9 +1667,14 @@ struct PlayerSim {
         return max_world_x(*lv);
     }
 
+    // 1 in the enemy lab, where blocks.c pays a mushroom_fire out of the hidden block in place of
+    // its 1-up (see lab_dispenser); the twin's dispenser follows
+    bool lab = false;
+
     void use_lab() {
         roster = kLabEnemies;
         roster_count = kLabEnemyCount;
+        lab = true;
     }
 
     // marks the whole roster spent, so nothing spawns and nothing comes back: the tests that hang
@@ -2119,16 +2137,22 @@ struct PlayerSim {
     // item rises a whole block before it is loose in the world
     void dispense() {
         for (int b = 0; b < lv->block_count && b < 32; ++b) {
-            const uint8_t content = lv->blocks[b].content;
+            uint8_t content = lv->blocks[b].content;
 
             if (lv->blocks[b].column != bumped_column || lv->blocks[b].row != bumped_row) {
                 continue;
+            }
+            if (lab && lv->blocks[b].kind == kBlockListHidden) {
+                content = kContentMushroom;
             }
             if ((spent & (1u << b)) != 0u || content < 2 || content > 4) {
                 return; // already opened, or it pays coins and a sprite that only pops
             }
             spent |= 1u << b;
-            item_kind = content; // 2 mushroom, 3 star, 4 one-up: the twin only needs them apart
+            // 2 mushroom, 3 star, 4 one-up: the twin only needs them apart - and blocks.c's rule
+            // that a mushroom block opened by a grown mario pays the flower, kind 5 here, which
+            // sits where it rose rather than walking off (item_walk/item_fall skip it)
+            item_kind = (content == 2 && big != 0) ? uint8_t{5} : content;
             item_phase = 0;
             item_timer = 0;
             item_dir = 1;
@@ -2153,7 +2177,7 @@ struct PlayerSim {
             if (item_timer >= kItemRisePx * kItemRiseFramesPerPx) {
                 item_phase = 1;
             }
-        } else {
+        } else if (item_kind != 5) {
             const int16_t next_x = static_cast<int16_t>(item_x + item_dir * kItemWalkPx);
             const int16_t top = row_of(item_y);
             const int16_t bottom = row_of(static_cast<int16_t>(item_y + kPlayerBoxPx - 1));
@@ -2221,6 +2245,7 @@ struct PlayerSim {
     void stomp_bounce(int8_t speed) {
         y_speed = speed;
         y_accum = 0;
+        y_frac = 0;
         jump_origin_y = y_pos;
         jump_tier = tier_for(abs_speed());
         on_ground = 0;
@@ -2417,8 +2442,10 @@ struct PlayerSim {
             col_of(static_cast<uint16_t>(x_pos + kPlayerBoxPx - 1)) < static_cast<int16_t>(lv->flag_column)) {
             return false;
         }
+        // and the ball over the shaft grabs too (player.c touching_flag)
         return row_of(y_pos) <= static_cast<int16_t>(lv->flag_base_row + 1) &&
-               row_of(static_cast<int16_t>(y_pos + foot_h() - 1)) >= static_cast<int16_t>(lv->flag_top_row);
+               row_of(static_cast<int16_t>(y_pos + foot_h() - 1)) >=
+                   static_cast<int16_t>(lv->flag_top_row - 1);
     }
 
     // the run is over the moment the level's own end is reached, whichever end that is
@@ -2498,6 +2525,10 @@ struct PlayerSim {
             x_accum = 0;
             return;
         }
+        // player.c: no friction in the air without a direction held
+        if (want_dir == 0 && on_ground == 0) {
+            return;
+        }
         if (skidding && speed_abs < kMarioSkidStopSubpx) {
             stop_x();
             return;
@@ -2558,16 +2589,30 @@ struct PlayerSim {
         return big != 0 && solid(col, row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx)));
     }
 
+    // player.c's step_up_at: a column solid at the feet alone, met while not rising with the feet
+    // ending this frame within kLandGracePx of its top, is a step collide_y lands on
+    bool step_up_at(int16_t col) const {
+        if (y_speed < 0 || solid(col, row_of(y_pos))) {
+            return false;
+        }
+        if (big != 0 && solid(col, row_of(static_cast<int16_t>(y_pos + kPlayerBoxPx)))) {
+            return false;
+        }
+        const int feet = y_pos + foot_h();
+        const int sink = feet - (row_of(static_cast<int16_t>(feet - 1)) << 4) + y_speed;
+        return sink <= kLandGracePx;
+    }
+
     void collide_x() {
         if (x_speed > 0) {
             const int16_t col = col_of(hit_right());
-            if (blocked_at(col)) {
+            if (blocked_at(col) && !step_up_at(col)) {
                 x_pos = static_cast<uint16_t>((col << 4) - kHitInsetPx - kHitWidthPx);
                 stop_x();
             }
         } else if (x_speed < 0) {
             const int16_t col = col_of(hit_left());
-            if (blocked_at(col)) {
+            if (blocked_at(col) && !step_up_at(col)) {
                 x_pos = static_cast<uint16_t>(((col + 1) << 4) - kHitInsetPx);
                 stop_x();
             }
@@ -2599,18 +2644,24 @@ struct PlayerSim {
             jump_tier = tier_for(abs_speed());
             y_speed = kJumpSpeed[jump_tier];
             y_accum = 0;
+            y_frac = 0;
             jump_origin_y = y_pos;
             on_ground = 0;
         }
-        const unsigned sum = static_cast<unsigned>(y_accum) + gravity_now(a_held);
+        // player.c's order, see JumpSim: the gravity is picked before the move
+        const uint8_t gravity = gravity_now(a_held);
+        const unsigned carry = static_cast<unsigned>(y_frac) + y_accum;
+        y_frac = static_cast<uint8_t>(carry);
+        y_pos = static_cast<int16_t>(y_pos + y_speed + static_cast<int16_t>(carry >> 8));
+        const unsigned sum = static_cast<unsigned>(y_accum) + gravity;
         y_accum = static_cast<uint8_t>(sum);
         if (sum > 0xFFu) {
             y_speed = static_cast<int8_t>(y_speed + 1);
-            if (y_speed > kMarioMaxFallPx) {
-                y_speed = kMarioMaxFallPx;
-            }
         }
-        y_pos = static_cast<int16_t>(y_pos + y_speed);
+        if (y_speed >= kMarioMaxFallPx && y_accum >= 0x80u) {
+            y_speed = kMarioMaxFallPx;
+            y_accum = 0;
+        }
     }
 
     void collide_y() {
@@ -2642,6 +2693,7 @@ struct PlayerSim {
                 y_pos = static_cast<int16_t>((row + 1) << 4);
                 y_speed = 0;
                 y_accum = 0;
+                y_frac = 0;
             }
             return;
         }
@@ -2656,6 +2708,7 @@ struct PlayerSim {
             y_pos = static_cast<int16_t>((row << 4) - foot_h());
             y_speed = 0;
             y_accum = 0;
+            y_frac = 0;
             on_ground = 1;
             return;
         }
@@ -2663,6 +2716,7 @@ struct PlayerSim {
                                   floor(right_col, static_cast<int16_t>(row + 1)) != 0)) {
             y_speed = 0;
             y_accum = 0;
+            y_frac = 0;
             on_ground = 1;
         }
     }
@@ -2690,6 +2744,7 @@ struct PlayerSim {
             y_pos = static_cast<int16_t>(f.y - height);
             y_speed = 0;
             y_accum = 0;
+            y_frac = 0;
             on_ground = 1;
             riding = i;
             return;
@@ -3190,6 +3245,21 @@ struct Route {
     bool reached = false;
 };
 
+// 1 when running on with no jump at all reaches the goal x standing, inside the horizon: a pit past
+// the goal is the caller's problem, not a reason to leave the ground before the goal
+bool walk_reaches(PlayerSim sim, uint16_t goal) {
+    for (int i = 0; i < kPlanHorizon; ++i) {
+        sim.step(static_cast<uint8_t>(kInRight | kInB));
+        if (sim.dead()) {
+            return false;
+        }
+        if (sim.x_pos >= goal && sim.on_ground != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // from a standing start, which held-jump length meets the flagpole highest up its shaft. the run
 // after the takeoff is a plain hold-right, so the whole move is one number and the search over it
 // is what puts the contact where it lands rather than any hand-placed frame
@@ -3203,6 +3273,12 @@ void flag_takeoff(const PlayerSim& from, int& best_hold, int& best_top) {
             }
         }
         if (probe.dead() || !probe.at_flag() || probe.y_pos >= best_top) {
+            continue;
+        }
+        // the ball grabs too (player.c touching_flag), but a route is planned onto the shaft: the
+        // clear tests read the slide against the shaft's lit column, and the top band starts a
+        // cell under the ball anyway
+        if (probe.y_pos + probe.foot_h() - 1 < static_cast<int16_t>(probe.lv->flag_top_row << 4)) {
             continue;
         }
         best_top = probe.y_pos;
@@ -3222,6 +3298,10 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
 
     for (int frame = 0; frame < frame_cap; ++frame) {
         uint8_t in = kInRight | kInB;
+        bool near_flag = false;
+        // 1 when the pole search put off a takeoff that already reaches well up the shaft: the
+        // frame is spent running on, not on a stair hop that would throw the run away
+        bool wait_for_pole = false;
         // the measured 1-1 ends with nine clear columns between the staircase and the pole, so a
         // run that never takes off touches the shaft at its base and scores nothing. once the pole
         // is inside a takeoff's reach the search picks the hold whose contact lands highest; it is
@@ -3233,6 +3313,7 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
             if (ahead > 0 && ahead <= kFlagTakeoffColumns) {
                 int best_hold = 0;
                 int best_top = 0x7FFF;
+                near_flag = true;
                 flag_takeoff(sim, best_hold, best_top);
                 // and taking off a frame later arrives a frame further up the arc, so the search
                 // only commits once waiting stops paying: the same one-step deferral the whole
@@ -3245,6 +3326,8 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
                         int later_top = 0x7FFF;
                         flag_takeoff(next, later_hold, later_top);
                         if (later_hold > 0 && later_top < best_top) {
+                            wait_for_pole =
+                                best_top < static_cast<int>((sim.lv->flag_base_row << 4) - 2 * kBlockPx);
                             best_hold = 0;
                         }
                     }
@@ -3255,7 +3338,8 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
         if (jump_left > 0) {
             in |= kInA;
             --jump_left;
-        } else if (sim.on_ground != 0 && sim.a_prev == 0) {
+        } else if (sim.on_ground != 0 && sim.a_prev == 0 && !wait_for_pole &&
+                   (to_flag || !walk_reaches(sim, goal))) {
             const Lookahead plain = look_ahead(sim, 0);
             if (plain.dies_now() || (plain.died_at < 0 && plain.tail < kPlanTailPx)) {
                 int best_hold = 0;
@@ -3276,6 +3360,14 @@ Route plan_route(uint16_t goal, bool to_flag, int frame_cap, PlayerSim start = P
                     }
                     if (tried.dies_now() || tried.total <= best_total + kPlanGainPx) {
                         continue;
+                    }
+                    // inside the pole's window a stall is a stair, and the flag search above has
+                    // already decided the big jump is not yet worth taking: the shortest hop that
+                    // clears the step keeps the run for it, where the longest would fly past the
+                    // top step and meet the pole at its foot
+                    if (near_flag && !plain.dies_now() && tried.died_at < 0) {
+                        best_hold = hold;
+                        break;
                     }
                     best_total = tried.total;
                     best_hold = hold;
@@ -3531,8 +3623,11 @@ Route plan_level(int level, int frame_cap, uint16_t goal = 0, const PlayerSim* s
         sim.load_level(level);
     }
     for (int frame = 0; frame < frame_cap; ++frame) {
-        // a goal short of the level's own end is a place to stand, so the run brakes into it
-        if (goal != 0 && sim.x_pos >= goal) {
+        // a goal short of the level's own end is a place to stand, so the run brakes into it -
+        // from far enough out to halt at it: a skid from the run cap takes some thirty px, from a
+        // walk ten, so the lead is the square of the speed over a constant fitted to those two
+        const int lead = sim.x_speed > 0 ? (sim.x_speed * sim.x_speed) / 56 : 0;
+        if (goal != 0 && sim.on_ground != 0 && static_cast<int>(sim.x_pos) + lead >= static_cast<int>(goal)) {
             const uint8_t in = sim.x_speed > 0 ? uint8_t{kInLeft} : uint8_t{0};
 
             route.script.push_back(in);
@@ -3546,7 +3641,14 @@ Route plan_level(int level, int frame_cap, uint16_t goal = 0, const PlayerSim* s
             }
             continue;
         }
-        if (left <= 0 && sim.on_ground != 0 && sim.a_prev == 0 && sim.grounded_for >= 2) {
+        if (left <= 0 && sim.on_ground != 0 && sim.a_prev == 0 && sim.grounded_for >= 2 && goal != 0 &&
+            walk_reaches(sim, goal)) {
+            // the goal is a place to stand and the run reaches it on its feet: nothing past it is
+            // worth a jump that would land him on top of what he came to stand under
+            running = options[0];
+            frame_in = 0;
+            left = 1;
+        } else if (left <= 0 && sim.on_ground != 0 && sim.a_prev == 0 && sim.grounded_for >= 2) {
             const Probe plain = probe_option(sim, options[0], climbs);
             size_t best = 0;
 
@@ -4457,6 +4559,15 @@ BumpPlan plan_bump(uint16_t column, uint8_t row, PlayerSim start = PlayerSim{}) 
     return {};
 }
 
+// on the cap at all: the loose overlap a halt is judged by before the taps walk him to the centre
+bool over_cap(const PlayerSim& sim, uint16_t column, uint8_t top_row) {
+    if (sim.on_ground == 0 || PlayerSim::row_of(static_cast<int16_t>(sim.y_pos + sim.foot_h())) != top_row) {
+        return false;
+    }
+    return PlayerSim::col_of(sim.hit_left()) <= static_cast<int16_t>(column + 1) &&
+           PlayerSim::col_of(sim.hit_right()) >= static_cast<int16_t>(column);
+}
+
 bool standing_on_pipe(const PlayerSim& sim, uint16_t column, uint8_t top_row) {
     if (sim.on_ground == 0) {
         return false;
@@ -4464,8 +4575,11 @@ bool standing_on_pipe(const PlayerSim& sim, uint16_t column, uint8_t top_row) {
     if (PlayerSim::row_of(static_cast<int16_t>(sim.y_pos + kPlayerBoxPx)) != static_cast<int16_t>(top_row)) {
         return false;
     }
-    return PlayerSim::col_of(sim.hit_left()) <= static_cast<int16_t>(column + 1) &&
-           PlayerSim::col_of(sim.hit_right()) >= static_cast<int16_t>(column);
+    // player.c player_over_pipe: smb's one-foot-on-each-half rule
+    return PlayerSim::col_of(static_cast<uint16_t>(sim.x_pos + kPipeFootLeftPx)) ==
+               static_cast<int16_t>(column) &&
+           PlayerSim::col_of(static_cast<uint16_t>(sim.x_pos + kPipeFootRightPx)) ==
+               static_cast<int16_t>(column + 1);
 }
 
 // searches a way to end up standing still on a pipe's cap: the rom only takes a pipe press from
@@ -4491,6 +4605,27 @@ Route plan_stand_on_pipe(const PlayerSim& start, uint16_t column, uint8_t top_ro
             for (int i = 0; i < 240 && held.x_speed != 0; ++i) {
                 stopping.push_back(0);
                 held.step(0);
+            }
+            if (held.dead() || held.x_speed != 0 || !over_cap(held, column, top_row)) {
+                continue;
+            }
+            // smb takes down only from the middle of the cap (player_over_pipe), so a halt on its
+            // rim is walked to the centre in taps: a few frames of the pad, then the halt, which
+            // moves him a pixel or so a time through the subpixel carry
+            const int centre = static_cast<int>(column) * kBlockPx + kBlockPx / 2;
+            for (int nudge = 0; nudge < 160 && !standing_on_pipe(held, column, top_row); ++nudge) {
+                const uint8_t dir = static_cast<int>(held.x_pos) < centre ? kInRight : kInLeft;
+                for (int i = 0; i < 4; ++i) {
+                    stopping.push_back(dir);
+                    held.step(dir);
+                }
+                for (int i = 0; i < 60 && held.x_speed != 0; ++i) {
+                    stopping.push_back(0);
+                    held.step(0);
+                }
+                if (held.dead() || held.on_ground == 0) {
+                    break;
+                }
             }
             if (held.dead() || held.x_speed != 0 || !standing_on_pipe(held, column, top_row)) {
                 continue;
@@ -4666,6 +4801,22 @@ bool append_walk(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t target) 
 // hand: append_bump reports which cell was actually struck
 bool append_bump_at(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t column, uint8_t row) {
     const uint16_t target = static_cast<uint16_t>(column * kBlockPx);
+    // a run that arrives at speed coasts most of a hundred px, past the cell and into whatever lies
+    // beyond it, so the search starts from a skid to a halt rather than from the coast
+    std::vector<uint8_t> brake;
+    for (int i = 0; i < 240 && sim.x_speed != 0 && sim.on_ground != 0; ++i) {
+        const uint8_t in = sim.x_speed > 0 ? static_cast<uint8_t>(kInLeft) : static_cast<uint8_t>(kInRight);
+        brake.push_back(in);
+        sim.step(in);
+    }
+    for (int i = 0; i < 300 && (sim.x_speed != 0 || sim.on_ground == 0); ++i) {
+        brake.push_back(0);
+        sim.step(0);
+    }
+    if (sim.dead()) {
+        return false;
+    }
+    script.insert(script.end(), brake.begin(), brake.end());
     const uint8_t dir = sim.x_pos < target ? static_cast<uint8_t>(kInRight) : static_cast<uint8_t>(kInLeft);
 
     for (int hold = 0; hold < 400; ++hold) {
@@ -4705,31 +4856,35 @@ bool touches_item(const PlayerSim& p, uint16_t item_x, int16_t item_y) {
 bool append_touch(PlayerSim& sim, std::vector<uint8_t>& script, uint16_t item_x, int16_t item_y) {
     static constexpr uint8_t kDirs[] = {static_cast<uint8_t>(kInRight), static_cast<uint8_t>(kInLeft)};
 
-    for (int hold : kPlanHolds) {
-        for (int nudge = 0; nudge <= 60; nudge += 2) {
-            for (uint8_t dir : kDirs) {
-                PlayerSim probe = sim;
-                std::vector<uint8_t> tail;
-                for (int i = 0; i < 200; ++i) {
-                    uint8_t in = 0;
-                    if (i < hold) {
-                        in |= kInA;
-                    }
-                    if (i < nudge) {
-                        in |= dir;
-                    }
-                    tail.push_back(in);
-                    probe.step(in);
-                    if (probe.dead()) {
-                        break;
-                    }
-                    if (touches_item(probe, item_x, item_y)) {
-                        sim = probe;
-                        script.insert(script.end(), tail.begin(), tail.end());
-                        return true;
-                    }
-                    if (i > hold && i > nudge && probe.on_ground != 0) {
-                        break;
+    // the jump may wait for the walk-up: a flower sits on its block, and from a stance a few cells
+    // off a jump taken at the first frame lands again before the walk has carried him alongside
+    for (int wait = 0; wait <= 60; wait += 4) {
+        for (int hold : kPlanHolds) {
+            for (int nudge = 0; nudge <= 60; nudge += 2) {
+                for (uint8_t dir : kDirs) {
+                    PlayerSim probe = sim;
+                    std::vector<uint8_t> tail;
+                    for (int i = 0; i < 200 + wait; ++i) {
+                        uint8_t in = 0;
+                        if (i >= wait && i < wait + hold) {
+                            in |= kInA;
+                        }
+                        if (i < wait + nudge) {
+                            in |= dir;
+                        }
+                        tail.push_back(in);
+                        probe.step(in);
+                        if (probe.dead()) {
+                            break;
+                        }
+                        if (touches_item(probe, item_x, item_y)) {
+                            sim = probe;
+                            script.insert(script.end(), tail.begin(), tail.end());
+                            return true;
+                        }
+                        if (i > wait + hold && i > wait + nudge && probe.on_ground != 0) {
+                            break;
+                        }
                     }
                 }
             }
@@ -4904,14 +5059,14 @@ void require_no_garbage(const gb::Gameboy& gameboy) {
 // the topmost and bottommost screen rows carrying a pennant pixel, or {-1,-1}. at rest the pennant
 // is bg cells (0x31-0x34, read out of the tile map like terrain); coming down the pole it is the
 // same four tiles as two sprites at bank-0 0x78-0x7b (mario.h kTilePennant), and both count
-std::pair<int, int> cloth_rows(const gb::Gameboy& gameboy) {
+std::pair<int, int> cloth_rows(const gb::Gameboy& gameboy, bool sprite_only = false) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     int top = -1;
     int bottom = -1;
     for (size_t i = 0; i < ids.size(); ++i) {
         const bool sprite = (ids[i] & 0x100u) != 0;
         const uint8_t tile = static_cast<uint8_t>(ids[i]);
-        if (sprite ? (tile < 0x78 || tile > 0x7B) : (tile < 0x31 || tile > 0x34)) {
+        if (sprite ? (tile < 0x78 || tile > 0x7B) : (sprite_only || tile < 0x31 || tile > 0x34)) {
             continue;
         }
         const int y = static_cast<int>(i / gb::kLcdWidth);
@@ -6307,12 +6462,17 @@ TEST_CASE("mario_clear_lowers_the_flag_and_walks_him_into_the_castle") {
     REQUIRE(route.reached);
     replay(gameboy, route.script, 0, route.script.size());
 
-    // the pennant starts up at the top of the shaft, well above where he caught it
+    // the pennant starts up at the top of the shaft. it is read a frame after the grab: the arm
+    // frame's picture has the bg cloth cleared and the sprite pennant not yet in (an oam write
+    // lands a picture after a vram one). a running jump can meet the shaft at its very top or at
+    // the ball, level with the pennant or above it, so its whole cell is pinned rather than its
+    // place against him
+    gameboy.run_frame();
     const std::pair<int, int> cloth0 = cloth_rows(gameboy);
     const Mario grabbed = mario_at(gameboy);
     REQUIRE(grabbed.found);
     REQUIRE(cloth0.first >= 0);
-    REQUIRE(cloth0.second < grabbed.box_top());
+    REQUIRE(cloth0.second - cloth0.first == kBlockPx - 1);
 
     // then it comes down with him. the sequence is watched to the frame he steps out of sight, and
     // what is kept is the closest the pennant's bottom ever came to his feet and the bg cell he was
@@ -6383,13 +6543,21 @@ TEST_CASE("mario_pennant_comes_down_the_pole_with_him") {
     for (int i = 0; i < 200 && settled_at < 0; ++i) {
         gameboy.run_frame();
         const Mario m = mario_at(gameboy);
-        cloth = cloth_rows(gameboy);
+        // the sprites alone while it flies: the top cell's bg cloth can outlive the arm by a
+        // repaint frame, and a grab at the shaft's top would read that cell as the pennant
+        cloth = cloth_rows(gameboy, true);
         REQUIRE(m.found);
-        REQUIRE(cloth.first >= 0);
+        if (cloth.first < 0) {
+            // parked: back in the map, the slide is over
+            cloth = cloth_rows(gameboy);
+            settled_at = i;
+            break;
+        }
         const int gap = m.bottom - cloth.second;
+        // a pixel of slack either way: the grab swaps his pose and the lit bottom row moves with it
         if (prev_gap < 1000) {
-            REQUIRE(gap <= prev_gap);
-            REQUIRE(prev_gap - gap <= kClearSlidePx);
+            REQUIRE(gap <= prev_gap + 1);
+            REQUIRE(prev_gap - gap <= kClearSlidePx + 1);
         }
         prev_gap = gap;
         // the sprites are parked the frame it goes back into the map, and that is the slide over.
@@ -9135,6 +9303,54 @@ TEST_CASE("mario_1_2_opening_pipes_draw_as_whole_pipes") {
 
 // only the tall pipe is a way underground. the sideways pipe beside it is grid cells and nothing
 // else - no object stands on its mouth - so down on top of it is not a second entrance
+// smb takes down only with one foot point on each half of the cap (mario.h kPipeFoot*): a stance on
+// the cap's rim, feet together on its outer column, is refused, and the same press from the middle
+// is taken. the sink never plays with him half over the rim and half behind it (issue #24)
+TEST_CASE("mario_pipe_takes_down_only_from_the_cap_s_middle") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    const Route approach = plan_route(static_cast<uint16_t>((kPipeColumn - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, kPipeColumn, kPipeTopRow, 400);
+    REQUIRE(climb.reached);
+
+    // off the middle: taps of left until the foot points no longer straddle the cap's seam, still
+    // standing on the cap. the twin says when, so no tap count is placed by hand
+    PlayerSim sim = climb.end;
+    std::vector<uint8_t> rim;
+    for (int taps = 0; taps < 80 && standing_on_pipe(sim, kPipeColumn, kPipeTopRow); ++taps) {
+        for (int i = 0; i < 4; ++i) {
+            rim.push_back(kInLeft);
+            sim.step(kInLeft);
+        }
+        for (int i = 0; i < 60 && sim.x_speed != 0; ++i) {
+            rim.push_back(0);
+            sim.step(0);
+        }
+    }
+    REQUIRE(!standing_on_pipe(sim, kPipeColumn, kPipeTopRow));
+    REQUIRE(over_cap(sim, kPipeColumn, kPipeTopRow));
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
+    replay(gameboy, rim, 0, rim.size());
+    const int overworld = sky_color(gameboy);
+    press(gameboy, gb::Button::Down, 30);
+    run(gameboy, 30);
+    REQUIRE(sky_color(gameboy) == overworld);
+    REQUIRE(mario_at(gameboy).found);
+
+    // back to the middle, and the same press is taken
+    const Route centre = plan_stand_on_pipe(sim, kPipeColumn, kPipeTopRow, 400);
+    REQUIRE(centre.reached);
+    replay(gameboy, centre.script, 0, centre.script.size());
+    press(gameboy, gb::Button::Down, 4);
+    REQUIRE(wait_for_sky(gameboy, kSkyUnderground, 240) >= 0);
+}
+
 TEST_CASE("mario_1_2_short_pipe_is_not_a_way_underground") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const HostLevel& lv = kHostLevels[kLevel12];
@@ -10106,25 +10322,61 @@ TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {
     replay(gameboy, approach.script, 0, approach.script.size());
     sim = approach.end;
     REQUIRE(!mario_at(gameboy).big);
+    // the route ends on the frame he lands, with the camera still easing down onto him; the fold
+    // count below reads his screen top, so the view is given time to come to rest first
+    for (int i = 0; i < 40; ++i) {
+        sim.step(0);
+        gameboy.run_frame();
+    }
 
-    // one block of mario, so his box never leaves row 12 - the crawl's own row
-    const int start_top = mario_at(gameboy).box_top();
-    int covered = 0;
-    int folded = 0;
-    gameboy.set_button(gb::Button::Right, true);
-    for (int i = 0;
-         i < 300 && covered < static_cast<int>((kCrawlColumn + 3U) * kBlockPx) - static_cast<int>(sim.x_pos);
-         ++i) {
-        covered += world_travel(gameboy, 1);
+    // the koopa from column 83 walks into the crawl from the far side as he reaches it, and a
+    // passage one block high has no room for a jump: he steps back to the headroom before the
+    // pillar and takes it there, the stomp searched rather than timed by hand
+    std::vector<uint8_t> back;
+    for (int i = 0; i < 30; ++i) {
+        back.push_back(kInLeft);
+        sim.step(kInLeft);
+    }
+    for (int i = 0; i < 90 && (sim.x_speed != 0 || sim.on_ground == 0); ++i) {
+        back.push_back(0);
+        sim.step(0);
+    }
+    replay(gameboy, back, 0, back.size());
+    const StompPlan koopa = plan_stomp(sim);
+    REQUIRE(koopa.found);
+    replay(gameboy, koopa.script, 0, koopa.script.size());
+    sim = koopa.end;
+    for (int i = 0; i < 240 && (sim.x_speed != 0 || sim.on_ground == 0 || sim.a_prev != 0); ++i) {
+        sim.step(0);
+        gameboy.run_frame();
+    }
+
+    // one block of mario, so his box never leaves row 12 - the crawl's own row. the walk through
+    // is planned rather than a held right: 1-2's goombas wander under the arch, and a blind hold
+    // walked into one once the faithful physics moved the route's timing. every frame his box
+    // overlaps the crawl's two columns has him on its floor, in the rom and in the twin alike
+    const Route through =
+        plan_level(kLevel12, 4000, static_cast<uint16_t>((kCrawlColumn + 3U) * kBlockPx), &sim);
+    REQUIRE(through.reached);
+    // his box fills the crawl's own row while he is in it
+    const int floor_top = static_cast<int>(kCrawlRow) * kBlockPx;
+    int inside = 0;
+    for (size_t i = 0; i < through.script.size(); ++i) {
+        replay(gameboy, through.script, i, i + 1);
+        sim.step(through.script[i]);
         const Mario m = mario_at(gameboy);
         REQUIRE(!m.big);
-        folded += m.box_top() == start_top ? 1 : 0;
+        if (static_cast<int>(sim.x_pos) + kPlayerBoxPx > static_cast<int>(kCrawlColumn) * kBlockPx &&
+            static_cast<int>(sim.x_pos) < static_cast<int>(kCrawlColumn + 2U) * kBlockPx) {
+            ++inside;
+            REQUIRE(sim.y_pos == floor_top);
+            REQUIRE(sim.on_ground != 0);
+            REQUIRE(m.found);
+        }
     }
-    gameboy.set_button(gb::Button::Right, false);
     // he is past both of the pillar's columns, and never left the floor to get there
-    REQUIRE(static_cast<int>(sim.x_pos) + covered >=
-            static_cast<int>((kCrawlColumn + 2U) * kBlockPx) + kHitWidthPx);
-    REQUIRE(folded > 100);
+    REQUIRE(inside > 10);
+    REQUIRE(static_cast<int>(sim.x_pos) >= static_cast<int>((kCrawlColumn + 2U) * kBlockPx) + kHitWidthPx);
 }
 
 // the coin room under the first piranha pipe, as the smbd map's lower band draws it: a wall down
@@ -10718,16 +10970,25 @@ TEST_CASE("mario_paratroopa_flies_in_place") {
     PlayerSim sim = PlayerSim{};
     sim.load_level(kLevel13);
     int slot = -1;
-    for (size_t i = 0; i < route.script.size() && slot < 0; ++i) {
+    EnemySlot spawned{};
+    // the route is followed until the flyer is in the pool AND he is back on his feet: it spawns
+    // while a jump is still carrying him over a gap, and a jump keeps its speed with the pad let
+    // go, so standing still there would be standing on air. the frame it came in is kept
+    for (size_t i = 0; i < route.script.size() && (slot < 0 || sim.on_ground == 0); ++i) {
         sim.step(route.script[i]);
-        slot = para_slot(sim);
+        const int now = para_slot(sim);
+        if (now >= 0 && slot < 0) {
+            spawned = sim.pool[now];
+        }
+        slot = now;
     }
     REQUIRE(slot >= 0);
+    REQUIRE(sim.on_ground != 0);
     // it came in on its own column, off the ground, already a pixel into its climb
-    REQUIRE(sim.pool[slot].pos_x == held_x);
-    REQUIRE(sim.pool[slot].grounded == 0);
-    REQUIRE(sim.pool[slot].dy == -1);
-    REQUIRE(sim.pool[slot].pos_y == static_cast<int16_t>(band_y - 1));
+    REQUIRE(spawned.pos_x == held_x);
+    REQUIRE(spawned.grounded == 0);
+    REQUIRE(spawned.dy == -1);
+    REQUIRE(spawned.pos_y == static_cast<int16_t>(band_y - 1));
 
     // a round trip is 4 * kParaBandPx frames, so this window crosses the band both ways twice
     int16_t low = band_y;
@@ -11428,6 +11689,9 @@ TEST_CASE("mario_bowser_breathes_fire_left") {
     }
     gameboy.set_button(gb::Button::Left, false);
     REQUIRE(!sprite_rect(gameboy, kTileBowserLo, kTileBowserHi).found);
+    // and stand: the dart's edge is read off the screen, so the view has to have stopped easing
+    // after him before a flight is watched
+    run(gameboy, 60);
 
     std::vector<int> lefts;
     int widest = 0;
@@ -13326,6 +13590,9 @@ TEST_CASE("mario_flag_scoring") {
     }
     REQUIRE(band > 0);
     REQUIRE(jumped - before_contact(high) == kFlagBandPoints[band]);
+    // and the top band is reachable at all: the planner's own running jump off the closing stairs
+    // meets the shaft in it, which the taller-than-smb arc and the uncounted ball had made impossible
+    REQUIRE(band == 4);
 }
 
 // --- m19: three save slots, the SELECT FILE screen and world one's map -------------------------
@@ -14591,9 +14858,12 @@ TEST_CASE("mario_bonus_room_swaps_only_the_bricks_top_pair") {
     enter_play(gameboy);
     REQUIRE(vram_bg_art_matches(gameboy, 0, 0xA4, terrain_art::kBrickTiles, 4));
 
-    const Route route = plan_level(kLevel11, 4000, static_cast<uint16_t>(kPipeColumn * kBlockPx));
-    REQUIRE(route.reached);
-    replay(gameboy, route.script, 0, route.script.size());
+    const Route approach = plan_route(static_cast<uint16_t>((kPipeColumn - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+    const Route climb = plan_stand_on_pipe(approach.end, kPipeColumn, kPipeTopRow, 400);
+    REQUIRE(climb.reached);
+    replay(gameboy, approach.script, 0, approach.script.size());
+    replay(gameboy, climb.script, 0, climb.script.size());
     press(gameboy, gb::Button::Down, 4);
     REQUIRE(wait_for_sky(gameboy, kSkyUnderground, 240) >= 0);
     run(gameboy, 20);

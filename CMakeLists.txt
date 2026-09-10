@@ -201,7 +201,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
     add_dependencies(tetris_tests tetris)
     catch_discover_tests(tetris_tests)
 
-    # milestone 18: first cgb rom, cgb-only mbc5+ram+battery, 8 banks (128kb), 8kb sram
+    # milestone 18: first cgb rom, cgb-only mbc5+ram+battery, 16 banks (256kb), 8kb sram
     # sub-milestone 2: the level bible compiles to banked c data ahead of the gbdk build
     if(NOT Python3_FOUND)
         message(WARNING "python3 not found; skipping mario rom target (needs the level compiler)")
@@ -384,7 +384,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
         set(GB_MARIO_ROM ${CMAKE_BINARY_DIR}/mario.gbc)
         add_custom_command(
             OUTPUT ${GB_MARIO_ROM}
-            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo8
+            COMMAND ${GB_LCC} -Wm-yC -Wm-yt0x1B -Wm-ya1 -Wm-ynMARIO -Wm-yo16 -Wl-m -Wl-w -Wl-j
                     -Wf--max-allocs-per-node50000 -I${GB_MARIO_GEN_DIR}
                     -o ${GB_MARIO_ROM}
                     ${CMAKE_SOURCE_DIR}/games/mario/src/main.c
@@ -416,6 +416,9 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${GB_MARIO_ASSET_C}
                     ${GB_MARIO_LEVELS_C}
                     ${GB_MARIO_LEVEL_C}
+            # lcc only warns when a bank overflows and links the truncated rom anyway; this fails
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/games/mario/tools/bank_report.py
+                    ${CMAKE_BINARY_DIR}/mario.map --banks 16
             DEPENDS games/mario/src/main.c games/mario/src/mario.h
                     games/mario/src/level.c games/mario/src/level.h
                     games/mario/src/terrain.c games/mario/src/terrain.h
@@ -445,6 +448,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}
                     ${GB_MARIO_LEVEL_DEPS} ${GB_MARIO_LEVELS_C} ${GB_MARIO_LEVELS_H}
                     ${GB_MARIO_LEVELS_HOST_H} ${GB_MARIO_PHYSICS_H}
+                    games/mario/tools/bank_report.py
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "building mario.gbc with gbdk lcc"
             VERBATIM)
@@ -453,7 +457,9 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
 
         add_executable(mario_tests games/mario/tests/mario_test.cpp)
         target_compile_options(mario_tests PRIVATE ${GB_WARNING_FLAGS})
-        target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}")
+        # the noi symbol file is how the frame-budget probe finds the rom's tick counter in wram
+        target_compile_definitions(mario_tests PRIVATE MARIO_ROM_PATH="${GB_MARIO_ROM}"
+                                                       MARIO_NOI_PATH="${CMAKE_BINARY_DIR}/mario.noi")
         # games/mario/src and the gbdk stand-in let the test compile the committed title art itself;
         # see games/mario/tests/title_art_host.hpp
         target_include_directories(mario_tests PRIVATE ${GB_MARIO_GEN_DIR} games/mario/src

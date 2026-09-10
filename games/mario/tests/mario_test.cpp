@@ -5090,7 +5090,7 @@ uint8_t bg_tile_at(const gb::Gameboy& gameboy, int x, int y) {
 
 TEST_CASE("mario_rom_declares_a_cgb_mbc5_cart") {
     const std::vector<uint8_t> rom = read_mario_rom();
-    REQUIRE(rom.size() == 131072u);
+    REQUIRE(rom.size() == 262144u);
 
     std::string why;
     auto cart = gb::Cartridge::parse(rom, &why);

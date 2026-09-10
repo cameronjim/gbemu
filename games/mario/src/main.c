@@ -52,6 +52,9 @@ void main_present(void) {
     terrain_stream_window();
 }
 
+// one per pass round the loop; a host test reads it to catch a dropped frame (see states.h)
+uint8_t frame_tick;
+
 void main(void) {
     uint8_t state = kStateFront;
     uint8_t keys = 0;
@@ -79,6 +82,7 @@ void main(void) {
 
     while (1) {
         vsync();
+        ++frame_tick;
         prev = keys;
         keys = joypad();
         // edge triggered so holding a button cannot re-enter a state every frame

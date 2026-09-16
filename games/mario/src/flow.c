@@ -18,6 +18,7 @@
 #include "popup.h"
 #include "powerup.h"
 #include "save.h"
+#include "sound.h"
 #include "terrain.h"
 #include "title.h"
 
@@ -305,7 +306,10 @@ static uint8_t level_palette_set(uint16_t column) {
 }
 
 void terrain_sync_palette(void) BANKED {
-    load_palette_set(level_palette_set(terrain_camera_x() >> 4));
+    const uint8_t type = level_palette_set(terrain_camera_x() >> 4);
+
+    load_palette_set(type);
+    music_level(type);
 }
 
 // a same-grid segment jump (1-2's entrance/exit pipes): current_area never changes and level_grid

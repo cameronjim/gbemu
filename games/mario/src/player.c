@@ -7,6 +7,7 @@
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "sound.h"
 #include "terrain.h"
 #include "toad.h"
 
@@ -354,6 +355,7 @@ static void step_vertical(uint8_t keys) {
     if (on_ground != 0U && a_held != 0U && a_prev == 0U) {
         jump_tier = tier_for(abs_speed());
         y_speed = kJumpSpeed[jump_tier];
+        sfx_square1(big != 0U ? (uint8_t)kSfxBigJump : (uint8_t)kSfxSmallJump);
         y_accum = 0;
         // smb never clears the fraction, but smb runs no gravity on the ground and we do: cleared
         // here, the phase he stood in cannot decide his jump's pixel
@@ -705,6 +707,7 @@ void player_begin_death(uint8_t from) {
     anim_frame = big != 0U ? (uint8_t)kFrameJump : (uint8_t)kFrameDeath;
     death_timer = 0;
     death_leaps = (from == (uint8_t)kDeathFromPit) ? 0U : 1U;
+    music_event(kMusicDeath);
 }
 
 uint8_t player_death_update(void) {
@@ -795,6 +798,7 @@ uint8_t player_clear_update(void) {
             x_pos = (uint16_t)(x_pos + kClearFlipPx);
             facing_left = 1;
             clear_phase = kClearFlip;
+            music_event(kMusicEndOfLevel);
             clear_timer = 0;
         }
         break;

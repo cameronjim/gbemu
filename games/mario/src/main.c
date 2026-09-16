@@ -12,6 +12,7 @@
 #include "player.h"
 #include "powerup.h"
 #include "save.h"
+#include "sound.h"
 #include "states.h"
 #include "terrain.h"
 #include "title.h"
@@ -77,12 +78,15 @@ void main(void) {
     terrain_install_isrs();
     powerup_init();
     save_init();
+    sound_init();
     level_number = 0;
     front_title();
 
     while (1) {
         vsync();
         ++frame_tick;
+        // smb runs its sound engine in the nmi: what the last frame queued plays now
+        sound_frame();
         prev = keys;
         keys = joypad();
         // edge triggered so holding a button cannot re-enter a state every frame
@@ -113,6 +117,7 @@ void main(void) {
                 continue;
             }
             if ((pressed & J_START) != 0U) {
+                sound_pause(1);
                 card_pause(level_number);
                 state = kStatePause;
                 continue;
@@ -146,6 +151,7 @@ void main(void) {
                 continue;
             }
             if (status == kPlayerFlag) {
+                sfx_square1(kSfxFlagpole);
                 flow_score_flag(player_feet());
                 player_begin_clear(kClearFromFlag);
                 state = kStateClear;
@@ -169,6 +175,7 @@ void main(void) {
                     if (target != 0xFF) {
                         pending_area = target;
                         pending_warp = 0xFF;
+                        sfx_square1(kSfxPipeDownInjury);
                         if (flow_pipe_side_armed != 0U) {
                             player_begin_pipe_side();
                         } else {
@@ -187,6 +194,7 @@ void main(void) {
                 // can walk out - flow_into_exit_mouth answers 0 in a room whose exit is a cap, so
                 // the two kinds of exit never contend
                 pending_warp = 0xFF;
+                sfx_square1(kSfxPipeDownInjury);
                 player_begin_pipe_side();
                 state = kStatePipeDown;
                 main_present();
@@ -195,6 +203,7 @@ void main(void) {
                 target = flow_warp_under_player();
                 if (target != 0xFF) {
                     pending_warp = target;
+                    sfx_square1(kSfxPipeDownInjury);
                     player_begin_pipe_down();
                     state = kStatePipeDown;
                     main_present();
@@ -203,6 +212,7 @@ void main(void) {
                 // every other pipe in the game takes down, so the bonus room's own exit should too
                 if (flow_over_exit_pipe() != 0U) {
                     pending_warp = 0xFF;
+                    sfx_square1(kSfxPipeDownInjury);
                     player_begin_pipe_down();
                     state = kStatePipeDown;
                     main_present();
@@ -210,6 +220,7 @@ void main(void) {
                 }
             } else if ((pressed & J_UP) != 0U && flow_over_exit_pipe() != 0U) {
                 pending_warp = 0xFF;
+                sfx_square1(kSfxPipeDownInjury);
                 player_begin_pipe_down();
                 state = kStatePipeDown;
                 main_present();
@@ -240,6 +251,8 @@ void main(void) {
                                     (uint8_t)((flags & (kEnemyFlagStar | kEnemyFlagImmune)) != 0U ? 1U : 0U));
 
                 if (hazard == kHazardAxe) {
+                    sfx_square2(kSfxBowserFall);
+                    music_event(kMusicEndOfCastle);
                     hazards_drop_bridge();
                     player_begin_clear(kClearFromAxe);
                     state = kStateClear;

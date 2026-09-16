@@ -60,6 +60,10 @@ public:
     uint8_t peek8(uint16_t addr) {
         return bus_.peek8(addr);
     }
+    // the apu's channel state, for host tests of a rom's sound
+    const Apu& debug_apu() const {
+        return apu_;
+    }
     // debug accessor for the mooneye fibonacci protocol
     const CpuRegs& debug_regs() const {
         return cpu_.regs();

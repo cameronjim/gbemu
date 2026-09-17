@@ -13285,17 +13285,23 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
 // of its loop, so a press after one has to wait for the burst to drain
 constexpr int kCardSettleFrames = 60;
 
-// the pause overlay (pause.c): window rows under the hud strip, over the frozen level. the band's
-// glyphs are the hud font's second run, so a tile id names a letter: W opens the WORLD line
-constexpr int kPauseInfoY = 8 + 8 * 2;
-constexpr int kPauseMenuY = 8 + 8 * 4;
+// smbd's pause card (pause.c): black, PAUSE on row 1, WORLD 1-x on row 3, mario's sprite as bg
+// cells on rows 6-7 with x and his lives beside it, CONTINUE / SAVE / END every other row from row
+// 8. the glyphs are the hud font's runs, so a tile id names a letter: P opens PAUSE
+constexpr int kPauseTitleX = 7 * 8;
+constexpr int kPauseTitleY = 1 * 8;
+constexpr int kPauseWorldY = 3 * 8;
+constexpr int kPauseLivesY = 6 * 8;
+constexpr int kPauseLivesX = 11 * 8;
+constexpr int kPauseMenuY = 8 * 8;
+constexpr int kPauseMenuStepY = 16;
 constexpr int kPauseMenuX = 6 * 8;
-// the band's last line plus the row the lyc handler's latency leaks under it, as the hud strip does
-constexpr int kPauseBandBottomY = 8 + 8 * 9;
-constexpr uint8_t kGlyphW = 0x8D;
 constexpr uint8_t kGlyphD = 0x91;
-constexpr uint8_t kGlyphQ = 0xC1;
 constexpr uint8_t kGlyphCursor = 0xC4;
+constexpr uint8_t kGlyphC = 0xC5;
+constexpr uint8_t kGlyphN = 0xC6;
+constexpr uint8_t kGlyphP = 0xC7;
+constexpr uint8_t kTileMarioIdle = 0xE0;
 
 // the bg tile id under a pixel, or -1 where a sprite covers it
 int pause_tile_at(const gb::Gameboy& gameboy, int x, int y) {
@@ -13305,32 +13311,44 @@ int pause_tile_at(const gb::Gameboy& gameboy, int x, int y) {
 }
 
 bool on_pause(const gb::Gameboy& gameboy) {
-    return pause_tile_at(gameboy, 3, kPauseInfoY + 3) == kGlyphW;
+    return pause_tile_at(gameboy, kPauseTitleX + 3, kPauseTitleY + 3) == kGlyphP;
 }
 
 // the menu row the cursor sits on, or -1
 int pause_cursor_row(const gb::Gameboy& gameboy) {
     for (int i = 0; i < 3; ++i) {
-        if (pause_tile_at(gameboy, kPauseMenuX + 3, kPauseMenuY + i * 8 + 3) == kGlyphCursor) {
+        if (pause_tile_at(gameboy, kPauseMenuX + 3, kPauseMenuY + i * kPauseMenuStepY + 3) == kGlyphCursor) {
             return i;
         }
     }
     return -1;
 }
 
+// the card's lcd-off paint outruns a host frame, so the press waits for it to be up
 void open_pause(gb::Gameboy& gameboy) {
     press(gameboy, gb::Button::Start, 2);
     for (int i = 0; i < 120 && !on_pause(gameboy); ++i) {
         gameboy.run_frame();
     }
     REQUIRE(on_pause(gameboy));
+    run(gameboy, 4);
 }
 
-// bg cells of a tile family on screen, optionally only the rows under the pause band
-int count_family(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi, int from_y = 0) {
+// start continues; the card's rebuild of the level outruns a host frame too
+void close_pause(gb::Gameboy& gameboy) {
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 120 && on_pause(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(!on_pause(gameboy));
+    run(gameboy, 8);
+}
+
+// bg cells of a tile family on screen
+int count_family(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
     const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
     int n = 0;
-    for (size_t i = static_cast<size_t>(from_y) * gb::kLcdWidth; i < ids.size(); ++i) {
+    for (size_t i = 0; i < ids.size(); ++i) {
         if ((ids[i] & 0x100u) != 0) {
             continue;
         }
@@ -13350,12 +13368,16 @@ int paused_lives(gb::Gameboy& gameboy) {
     for (int i = 0; i < 120 && value < 0; ++i) {
         gameboy.run_frame();
         if (on_pause(gameboy)) {
-            value = hud_number(gameboy, 18 * 8, kPauseInfoY, 2);
+            // one digit under ten lives, two from ten up
+            value = hud_number(gameboy, kPauseLivesX, kPauseLivesY, 1);
+            if (hud_number(gameboy, kPauseLivesX + 8, kPauseLivesY, 1) >= 0) {
+                value = value * 10 + hud_number(gameboy, kPauseLivesX + 8, kPauseLivesY, 1);
+            }
         }
     }
     run(gameboy, 4);
     press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 60 && on_pause(gameboy); ++i) {
+    for (int i = 0; i < 120 && on_pause(gameboy); ++i) {
         gameboy.run_frame();
     }
     run(gameboy, 8);
@@ -13687,38 +13709,29 @@ TEST_CASE("mario_pause_freezes") {
     REQUIRE(before.found);
     REQUIRE(time_before > 0);
     open_pause(gameboy);
-    // the band carries the lives and the level the in-level hud has no room for
-    REQUIRE(hud_number(gameboy, 6 * 8, kPauseInfoY, 1) == 1);
-    REQUIRE(hud_number(gameboy, 8 * 8, kPauseInfoY, 1) == 1);
-    REQUIRE(hud_number(gameboy, 18 * 8, kPauseInfoY, 2) == kStartLives);
+    // the card carries the level and the lives the in-level hud has no room for, and his sprite
+    REQUIRE(hud_number(gameboy, 12 * 8, kPauseWorldY, 1) == 1);
+    REQUIRE(hud_number(gameboy, 14 * 8, kPauseWorldY, 1) == 1);
+    REQUIRE(hud_number(gameboy, kPauseLivesX, kPauseLivesY, 1) == kStartLives);
+    REQUIRE(pause_tile_at(gameboy, 7 * 8 + 3, kPauseLivesY - 8 + 3) == kTileMarioIdle);
     REQUIRE(pause_cursor_row(gameboy) == 0);
-    // the level is still there under it, not a card: mario stands frozen where he was, and right
-    // does nothing at all for as long as the menu is up
-    REQUIRE(sky_color(gameboy) != kSkyCard);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 3) == kGlyphC);
+    // the world is frozen: right does nothing at all for as long as the card is up
     gameboy.set_button(gb::Button::Right, true);
     run(gameboy, 120);
     gameboy.set_button(gb::Button::Right, false);
-    const Mario held = mario_at(gameboy);
-    REQUIRE(held.found);
-    REQUIRE(held.box_left() == before.box_left());
-    REQUIRE(held.box_top() == before.box_top());
-    REQUIRE(hud_time(gameboy) == time_before);
-    // start resumes whatever the cursor is on
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 60 && on_pause(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(!on_pause(gameboy));
-    run(gameboy, 4);
+    REQUIRE(on_pause(gameboy));
+    close_pause(gameboy);
     const Mario after = mario_at(gameboy);
     REQUIRE(after.found);
     REQUIRE(after.box_left() == before.box_left());
     REQUIRE(after.box_top() == before.box_top());
+    // and the countdown stood still while it was up
     REQUIRE(hud_time(gameboy) == time_before);
 }
 
-// the overlay leaves the level's cells in place: the scenery under the band is unchanged while the
-// menu is up, and resuming repaints nothing, so every cloud and hill is exactly where it was
+// the card wipes the map and paints its own; coming back, terrain_init reloads the scenery tiles
+// into vram bank 1 and refills the ring, so the same cloud and the same hill are painted as before
 TEST_CASE("mario_pause_restores_the_scenery") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -13727,24 +13740,20 @@ TEST_CASE("mario_pause_restores_the_scenery") {
     // the opening screen carries a cloud and the first big hill
     const int clouds = count_family(gameboy, 0x35, 0x44);
     const int hills = count_family(gameboy, 0x45, 0x50);
-    const int hills_below = count_family(gameboy, 0x45, 0x50, kPauseBandBottomY);
     REQUIRE(clouds > 200);
     REQUIRE(hills > 200);
     open_pause(gameboy);
-    run(gameboy, 8);
-    REQUIRE(count_family(gameboy, 0x45, 0x50, kPauseBandBottomY) == hills_below);
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 60 && on_pause(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, 8);
+    // black, top left: the card has no sky cell for sky_color to find
+    REQUIRE(gameboy.framebuffer_color()[0] == 0);
+    close_pause(gameboy);
     REQUIRE(count_family(gameboy, 0x35, 0x44) == clouds);
     REQUIRE(count_family(gameboy, 0x45, 0x50) == hills);
 }
 
-// m20's first bug was a resume that refilled the ring from column zero and repainted 1-2's
-// underground like the overworld. the overlay never repaints, so the palette has nothing to lose;
-// this pins that the frozen level and his place in it come back untouched underground too
+// m20's first bug: flow_resume_from_card refills the ring from column zero, which reloads the
+// palette set for column zero too - and on 1-2 that is its above-ground start segment, so
+// unpausing underground used to come back painted like the overworld. the resume re-syncs the
+// palette against the camera it has just put back, and nothing else about the frozen level moves
 TEST_CASE("mario_pause_keeps_the_underground_palette") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -13758,21 +13767,16 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     const Mario before = mario_at(gameboy);
     REQUIRE(before.found);
     open_pause(gameboy);
+    close_pause(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
-    run(gameboy, 8);
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 60 && on_pause(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, 8);
-    REQUIRE(sky_color(gameboy) == kSkyUnderground);
+    // and the grid and his place in it came back untouched, the way an overworld resume already did
     const Mario after = mario_at(gameboy);
     REQUIRE(after.found);
     REQUIRE(after.box_left() == before.box_left());
     REQUIRE(after.box_top() == before.box_top());
 }
 
-// with a file open the menu is RESUME / SAVE / QUIT: down twice puts the cursor on QUIT and a hands
+// with a file open the menu is CONTINUE / SAVE / END: down twice puts the cursor on END and a hands
 // the run back to the world map, at the node of the level he walked out of, with nothing spent
 TEST_CASE("mario_pause_menu_quits_to_the_map") {
     const std::vector<uint8_t> rom = read_mario_rom();
@@ -13784,7 +13788,9 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     gameboy.set_button(gb::Button::Right, false);
     run(gameboy, 30);
     open_pause(gameboy);
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 2 * 8 + 3) == kGlyphQ);
+    // END's N sits in the second glyph column of the third entry
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) ==
+            kGlyphN);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
@@ -13817,18 +13823,14 @@ TEST_CASE("mario_pause_menu_saves_the_file") {
     run(gameboy, 2);
     REQUIRE(on_pause(gameboy));
     // SAVE became SAVED: the D lands in the fifth glyph column of the entry
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 5 + 3, kPauseMenuY + 8 + 3) == kGlyphD);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 5 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphD);
     // slot 0's used flag, mario.h kSaveSlotBase (the save tests below spell the layout out)
     REQUIRE(gameboy.external_ram()[8] == 1);
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 60 && on_pause(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(!on_pause(gameboy));
+    close_pause(gameboy);
 }
 
 // a run that never opened a file (the title's own level select) has nothing to save into, so its
-// menu is RESUME / QUIT
+// menu is CONTINUE / END
 TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -13836,7 +13838,7 @@ TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
     enter_level(gameboy, kLevel11);
     run(gameboy, 30);
     open_pause(gameboy);
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 8 + 3) == kGlyphQ);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphN);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
@@ -13852,7 +13854,7 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
     REQUIRE(grow_on_the_pyramid(gameboy, sim));
     REQUIRE(mario_at(gameboy).big);
 
-    // out to the map through the pause menu's QUIT (past SAVE, this run has a file), which records
+    // out to the map through the pause menu's END (past SAVE, this run has a file), which records
     // nothing and spends nothing
     open_pause(gameboy);
     press(gameboy, gb::Button::Down, 2);

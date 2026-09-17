@@ -239,6 +239,15 @@ uint8_t title_frame(uint8_t pressed, uint8_t* level) BANKED {
     return kTitleStay;
 }
 
+// smbdis WorldLivesDisplay: WORLD x-y over the player and his lives, held before every level and
+// every respawn (DisplayIntermediate), never after a pipe. text where smb draws his sprite
+void card_lives(uint8_t level) {
+    card_begin(kTitleRow);
+    card_print_value(kTitleRow, "WORLD 1-", (uint16_t)(level + 1U), 1, 0);
+    card_print_value((uint8_t)(kTitleRow + 3U), "MARIO x ", hud_lives, hud_lives >= 10U ? 2U : 1U, 0);
+    card_end();
+}
+
 void card_game_over(void) {
     card_begin(kTitleRow);
     card_print_centered(kTitleRow, "GAME OVER");

@@ -93,6 +93,9 @@ uint8_t flow_after_death(void) BANKED;
 
 // one frame of the game over card; 1 when it has been up long enough to go back to the title
 uint8_t flow_game_over_frame(void) BANKED;
+// the world/lives card before a level and before a respawn, and its hold
+void flow_lives_card(uint8_t level) BANKED;
+uint8_t flow_lives_card_frame(void) BANKED;
 
 // paints the level-clear card, then one frame of it: the countdown converting into points, the
 // hold, and finally the file's record. m19 hands back to the world map rather than straight into

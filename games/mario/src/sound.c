@@ -948,6 +948,13 @@ void music_screen(uint8_t bits) BANKED {
     }
 }
 
+void music_quiet(void) BANKED {
+    screen_music = 0;
+    if (event_buf == 0U) {
+        area_queue = kMusicSilence;
+    }
+}
+
 void music_level_again(void) BANKED {
     area_queue = level_music;
 }

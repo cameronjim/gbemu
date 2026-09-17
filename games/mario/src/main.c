@@ -99,8 +99,9 @@ void main(void) {
             const uint8_t action = front_frame(pressed, &level_number);
 
             if (action == (uint8_t)kFrontPlay) {
-                states_enter_play();
-                state = kStatePlay;
+                // smb's world/lives card first; the level loads when it has held its time
+                flow_lives_card(level_number);
+                state = kStateLivesCard;
             } else if (action == (uint8_t)kFrontCamera) {
                 current_area = kAreaMain;
                 state = kStateCamera;

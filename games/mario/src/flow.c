@@ -206,7 +206,7 @@ void flow_score_flag(int16_t feet) BANKED {
 }
 
 // how long the card on screen has been up; the states that own one all live here
-static uint8_t card_timer;
+static uint16_t card_timer;
 
 // which of the three bg palette sets is on screen, so a card resume can put the same one back
 static uint8_t palette_set;
@@ -238,7 +238,19 @@ uint8_t flow_after_death(void) BANKED {
 
 uint8_t flow_game_over_frame(void) BANKED {
     ++card_timer;
-    return (card_timer >= (uint8_t)kGameOverFrames) ? 1U : 0U;
+    return (card_timer >= (uint16_t)kGameOverFrames) ? 1U : 0U;
+}
+
+void flow_lives_card(uint8_t level) BANKED {
+    card_lives(level);
+    card_timer = 0;
+    // smb's intermediate is silent; a death jingle still going plays out first
+    music_quiet();
+}
+
+uint8_t flow_lives_card_frame(void) BANKED {
+    ++card_timer;
+    return (card_timer >= (uint16_t)kLivesCardFrames) ? 1U : 0U;
 }
 
 void flow_clear_card(void) BANKED {
@@ -249,14 +261,7 @@ void flow_clear_card(void) BANKED {
 uint8_t flow_clear_frame(uint8_t* level) BANKED {
     uint8_t next;
 
-    // smb converts whatever is left of the countdown into points before the card clears
-    if (hud_spend_time_bonus() != 0U) {
-        card_clear_refresh();
-        return kAfterCardStay;
-    }
-    if (card_timer == 0U) {
-        card_clear_refresh();
-    }
+    // the countdown and the fireworks ran in the clear itself, over the castle, as smb's do
     ++card_timer;
     if (card_timer < (uint8_t)kClearCardFrames) {
         return kAfterCardStay;

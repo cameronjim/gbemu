@@ -8,6 +8,7 @@
 // the title from play; b walks the front end back a screen at a time
 enum GameState {
     kStateFront,
+    kStateLivesCard,
     kStatePlay,
     kStateClear,
     kStateClearCard,

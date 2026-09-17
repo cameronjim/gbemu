@@ -58,6 +58,8 @@ void music_event(uint8_t bits) BANKED;
 void music_level(uint8_t level_type) BANKED;
 // a front screen's theme: plays now, or once the event jingle that is still going has ended
 void music_screen(uint8_t bits) BANKED;
+// silence for a card, unless an event jingle is still playing, which ends into silence anyway
+void music_quiet(void) BANKED;
 // back to the level's theme when the star runs out
 void music_level_again(void) BANKED;
 void sound_pause(uint8_t on) BANKED;

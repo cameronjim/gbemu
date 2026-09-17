@@ -8,6 +8,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "sound.h"
+#include "states.h"
 
 #include <gb/gb.h>
 #include <stdint.h>
@@ -183,7 +184,6 @@ static void tick_down(void) {
 }
 
 uint8_t hud_frame(void) BANKED {
-    uint8_t i;
     uint8_t timeout = 0;
 
     if (hud_coins != last_coins) {
@@ -191,6 +191,7 @@ uint8_t hud_frame(void) BANKED {
         if (hud_coins >= (uint8_t)kCoinsPerLife) {
             hud_coins = (uint8_t)(hud_coins - (uint8_t)kCoinsPerLife);
             hud_add_life();
+            sfx_square2(kSfxExtraLife);
         }
         last_coins = hud_coins;
         hud_split(hud_coins, coin_digit, (uint8_t)kHudCoinDigits);
@@ -213,6 +214,18 @@ uint8_t hud_frame(void) BANKED {
             timeout = (hud_time == 0U) ? 1U : 0U;
         }
     }
+    hud_draw_counters();
+    return timeout;
+}
+
+// the cells that moved, straight after vblank; the clear's countdown repaints through this too
+void hud_draw_counters(void) BANKED {
+    uint8_t i;
+
+    if (hud_score != last_score) {
+        last_score = hud_score;
+        hud_split(hud_score, score_digit, (uint8_t)kHudScoreDigits);
+    }
     for (i = 0; i < (uint8_t)kHudScoreDigits; ++i) {
         put_digit((uint8_t)(kHudSlotScore + i), (uint8_t)(kHudScoreCol + i), score_digit[i]);
     }
@@ -222,16 +235,19 @@ uint8_t hud_frame(void) BANKED {
     for (i = 0; i < (uint8_t)kHudTimeDigits; ++i) {
         put_digit((uint8_t)(kHudSlotTime + i), (uint8_t)(kHudTimeCol + i), time_digit[i]);
     }
-    return timeout;
 }
 
-uint8_t hud_spend_time_bonus(void) {
-    uint8_t n = (uint8_t)kTimeBonusTicksPerFrame;
-
-    while (n != 0U && hud_time != 0U) {
-        --hud_time;
-        hud_score = (uint16_t)(hud_score + kScoreTens(kTimeBonusPoints));
-        --n;
+// smbdis AwardGameTimerPoints: one interval a frame, and the tick queued on the frames whose
+// counter has d2 set
+uint8_t hud_spend_time_bonus(void) BANKED {
+    if (hud_time == 0U) {
+        return 0;
+    }
+    --hud_time;
+    hud_split(hud_time, time_digit, (uint8_t)kHudTimeDigits);
+    hud_score = (uint16_t)(hud_score + kScoreTens(kTimeBonusPoints));
+    if ((frame_tick & 0x04U) != 0U) {
+        sfx_square2(kSfxTimerTick);
     }
     return (hud_time != 0U) ? 1U : 0U;
 }

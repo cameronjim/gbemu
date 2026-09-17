@@ -1451,9 +1451,26 @@
 
 // the cards, all our own cadence. the clear card counts the remaining time into points at smb's
 // own 50 a tick, a few ticks a frame so a full 400 does not outlast the card
-#define kGameOverFrames 120U
+// smbdis GameOverInter: ScreenTimer $12, an interval timer, and IntervalTimerControl reloads $14,
+// so 18 intervals of 21 frames; start ends it early (RunGameOver)
+#define kGameOverFrames 378U
 #define kClearCardFrames 90U
-#define kTimeBonusTicksPerFrame 8U
+// smbdis DisplayIntermediate: the world/lives card holds ScreenTimer 7 intervals
+#define kLivesCardFrames 147U
+// smbdis AwardGameTimerPoints: one interval a frame at 50 points, a tick every frame d2 is set;
+// then GameTimerFireworks: a last digit of 1, 3 or 6 is that many bursts. InitFireworks spaces
+// them FrenzyEnemyTimer $20 apart, 48 px left of the castle flag plus its table; RunFireworks
+// runs three frames of 8 and FireworksSoundScore pays 500. smb's flag pole sits at $b0 over a
+// ground our grid puts 32 px lower
+#define kFireworksSpacingFrames 32U
+#define kFireworksBurstFrames 24U
+#define kFireworksPoints 500U
+#define kFireworksFlagPx 40U
+#define kFireworksLeftPx 48U
+#define kFireworksGroundShiftPx 32U
+// smb's sky is 240 lines tall and ours 144, so the highest bursts would open over the top of the
+// view: they are held to just under the hud strip instead (unmeasured against smbd)
+#define kFireworksTopPx 16U
 
 // sram (games/mario/src/save.c). the cart is MBC5+RAM+BATTERY with one 8 kb bank, so three slots
 // cost 32 of the 8192 bytes and no bank switching. layout:

@@ -8,6 +8,7 @@
 
 #include "blocks.h"
 #include "camera.h"
+#include "debris.h"
 #include "flow.h"
 #include "hazards.h"
 #include "hud.h"
@@ -39,7 +40,11 @@ uint8_t hazard_active;
 uint8_t hazard_near;
 // the level load and the respawn share this: both refill the whole ring, far more vram traffic
 // than one vblank holds, so both do it with the lcd off
+// 0 walking in, 1 the countdown and the fireworks: set on the frame he steps into the doorway
+static uint8_t clear_stage;
+
 void states_enter_play(void) BANKED {
+    clear_stage = 0;
     DISPLAY_OFF;
     current_area = kAreaMain;
     pending_area = 0xFF;
@@ -98,7 +103,80 @@ static void leave_sub_area(void) {
     DISPLAY_ON;
 }
 
+// smbdis GameTimerFireworks / InitFireworks: the last digit of the time picks the count and where
+// in the two tables the bursts start; FireworksXPosData is added to the flag's x less 48
+static const uint8_t kFireworksX[6] = {0x00, 0x30, 0x60, 0x60, 0x00, 0x20};
+static const uint8_t kFireworksY[6] = {0x60, 0x40, 0x70, 0x40, 0x60, 0x30};
+static uint8_t fireworks_left;
+static uint8_t fireworks_base;
+static uint8_t fireworks_timer;
+static uint8_t fireworks_burst;
+
+static void fireworks_setup(void) {
+    uint16_t digit = hud_time;
+
+    while (digit >= 10U) {
+        digit = (uint16_t)(digit - 10U);
+    }
+    fireworks_left = 0;
+    fireworks_base = 0;
+    if (digit == 1U) {
+        fireworks_left = 1;
+        fireworks_base = 5;
+    } else if (digit == 3U) {
+        fireworks_left = 3;
+        fireworks_base = 3;
+    } else if (digit == 6U) {
+        fireworks_left = 6;
+    }
+    fireworks_timer = (uint8_t)kFireworksSpacingFrames;
+    fireworks_burst = 0;
+}
+
+// 1 while a burst is still owed or burning. the puff is smb's own explosion tiles (debris.c), and
+// the blast and the 500 land when it goes out, as FireworksSoundScore pays them
+static uint8_t fireworks_step(void) {
+    uint8_t index;
+    int16_t y;
+
+    if (fireworks_burst != 0U) {
+        --fireworks_burst;
+        if (fireworks_burst == 0U) {
+            sfx_square2(kSfxBlast);
+            hud_score = (uint16_t)(hud_score + kScoreTens(kFireworksPoints));
+        }
+        return 1;
+    }
+    if (fireworks_left == 0U) {
+        return 0;
+    }
+    if (fireworks_timer != 0U) {
+        --fireworks_timer;
+        return 1;
+    }
+    fireworks_timer = (uint8_t)kFireworksSpacingFrames;
+    --fireworks_left;
+    index = (uint8_t)(fireworks_left + fireworks_base);
+    y = (int16_t)(kFireworksY[index] + kFireworksGroundShiftPx);
+    if (y < (int16_t)(camera_pos_y + kFireworksTopPx)) {
+        y = (int16_t)(camera_pos_y + kFireworksTopPx);
+    }
+    debris_poof((uint16_t)(((uint16_t)level->castle_column << 4) + kFireworksFlagPx - kFireworksLeftPx +
+                           kFireworksX[index]),
+                y);
+    fireworks_burst = (uint8_t)kFireworksBurstFrames;
+    return 1;
+}
+
 uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
+    if (state == kStateLivesCard) {
+        if (flow_lives_card_frame() != 0U) {
+            states_enter_play();
+            state = kStatePlay;
+        }
+        return state;
+    }
+
     if (state == kStateDeath) {
         // the world is frozen: nothing steps but mario falling out of it
         if (player_death_update() != 0U) {
@@ -106,9 +184,10 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
                 music_event(kMusicGameOver);
                 state = kStateGameOver;
             } else {
-                // the level reloads whole, spent blocks and all, which is smb's own respawn
-                states_enter_play();
-                state = kStatePlay;
+                // the world/lives card, then the level reloads whole, spent blocks and all, which
+                // is smb's own respawn
+                flow_lives_card(level_number);
+                state = kStateLivesCard;
             }
             return state;
         }
@@ -137,7 +216,8 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     }
 
     if (state == kStateGameOver) {
-        if (flow_game_over_frame() != 0U) {
+        // smbdis RunGameOver: start ends the hold early
+        if (flow_game_over_frame() != 0U || (pressed & J_START) != 0U) {
             // a game over ends the run, so the file is let go of: whatever it recorded stands,
             // and the next thing the player picks starts a fresh three lives
             level_number = 0;
@@ -185,10 +265,30 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     if (state == kStateClear) {
         // the bridge is still coming apart a cell at a time behind him and bowser is still on his
         // way into the lava; the play loop that stepped bank 5 is over, so this frame does it
+        uint8_t done;
+
         if (hazard_clear_busy != 0U) {
             hazards_clear_step();
         }
-        if (player_clear_update() != 0U) {
+        done = player_clear_update();
+        // once he is in the doorway the time left pays out an interval a frame and the fireworks
+        // go off, the way smb's star flag tasks run; a castle has neither (the manual: no time
+        // bonus in the castles)
+        if (level->has_flag != 0U && (player_pose() & kPoseGone) != 0U) {
+            if (clear_stage == 0U) {
+                clear_stage = 1;
+                fireworks_setup();
+            }
+            if (hud_time != 0U) {
+                hud_spend_time_bonus();
+                done = 0;
+            } else if (fireworks_step() != 0U) {
+                done = 0;
+            }
+            // the strip shows the time draining and the score rising, as smb's UpdateNumber does
+            hud_draw_counters();
+        }
+        if (done != 0U) {
             flow_clear_card();
             state = kStateClearCard;
             return state;

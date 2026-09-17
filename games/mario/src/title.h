@@ -33,6 +33,7 @@ void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digi
 // while one is up, so the bg map is theirs to overwrite and flow_resume_from_card puts it back.
 // the pause menu is not one of them any more: pause.c draws it over the frozen level
 // the rest are flow.c's, which shares bank 5 with them, so none needs a trampoline
+void card_lives(uint8_t level);
 void card_game_over(void);
 // the clear card, redrawn each frame while the countdown converts into points
 void card_clear(void);

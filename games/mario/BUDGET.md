@@ -67,7 +67,7 @@ candidates to move next, largest first:
 | 3 | hazards.c, 1-3 grid and lists | 8205 |
 | 4 | enemies.c, assets.c and every ripped tile array | 16215 (full) |
 | 5 | flow.c, powerup.c, title.c, hud.c, save.c, mapscreen.c, camera.c, level.c | 11595 |
-| 6 | the draw passes (player_draw, blocks_draw, debris, popup), states.c, pause.c, toad.c, castle art, 1-4 grid | 9053 |
+| 6 | the draw passes (player_draw, blocks_draw, debris, popup), states.c, pause.c, toad.c, castle art, 1-4 grid | 8942 |
 | 7 | title, file select and map screens, the level table (`kLevels`), sub-area grids | 12303 |
 | 8 | sound.c: smb's sound engine and its music data, `gen/smb_audio_data.h` | 4409 |
 | 9 to 15 | empty | 0 |

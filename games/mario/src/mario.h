@@ -13,7 +13,8 @@
 #define kBannerRows 3U
 // smbd's pause screen, measured off a capture (160x144, cells of 8): PAUSE on row 1, WORLD 1-x on
 // row 3 from column 6, mario's sprite on rows 5-6 at column 7 with x and his lives on row 6, then
-// CONTINUE / SAVE / END every other row from row 8 with the cursor in column 6. white ink on black;
+// CONTINUE / END every other row from row 8 with the cursor in column 6 (smbd's SAVE is left out, the
+// file keeps itself). white ink on black;
 // mario's cells wear his own colours in a bg slot the level gets back on resume
 #define kPauseTitleRow 1U
 #define kPauseTitleCol 7U
@@ -27,6 +28,7 @@
 #define kPauseMenuRow 8U
 #define kPauseMenuStep 2U
 #define kPauseMenuCol 6U
+#define kPauseEntries 2U
 #define kPausePalMario kCamPalGround
 
 // the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in

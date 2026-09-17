@@ -1,5 +1,6 @@
 // smbd's pause screen, off a capture: a black card in place of the level. PAUSE on the top row,
-// WORLD 1-x under it, mario's own sprite beside x and his lives, then a CONTINUE / SAVE / END menu
+// WORLD 1-x under it, mario's own sprite beside x and his lives, then a CONTINUE / END menu (smbd's
+// SAVE is left out: the file records every clear by itself, so there is nothing for it to write)
 // with the cursor on the left. the level's map and palettes are repainted on the way back, the
 // same lcd-off rebuild every card pays (states.c leave_card)
 #pragma bank 6
@@ -8,7 +9,6 @@
 
 #include "hud.h"
 #include "mario.h"
-#include "save.h"
 #include "terrain.h"
 
 #include <gb/cgb.h>
@@ -18,9 +18,7 @@
 // the level's own map, parked at scroll 0 so a cell is where it is drawn
 #define kBgMapBase ((uint8_t*)0x9800U)
 
-static uint8_t pause_level;
 static uint8_t cursor;
-static uint8_t entries;
 static uint8_t row_cells[kRingTileCols];
 
 // the same two glyph lists assets_load_hud_font copies in; hud.c keeps its own copy of this lookup
@@ -76,20 +74,13 @@ static void put_number(uint8_t row, uint8_t col, uint8_t value) {
 }
 
 static const char* item_label(uint8_t item) {
-    if (item == 0U) {
-        return "CONTINUE";
-    }
-    // a run without an open file (the title's level select, the labs) has nothing to save into
-    if (entries == 3U && item == 1U) {
-        return "SAVE";
-    }
-    return "END";
+    return (item == 0U) ? "CONTINUE" : "END";
 }
 
 static void put_cursor(void) {
     uint8_t i;
 
-    for (i = 0; i < entries; ++i) {
+    for (i = 0; i < (uint8_t)kPauseEntries; ++i) {
         put_cell((uint8_t)(kPauseMenuRow + i * kPauseMenuStep), kPauseMenuCol,
                  glyph(i == cursor ? '>' : ' '));
     }
@@ -121,9 +112,7 @@ void pause_begin(uint8_t level) BANKED {
     uint8_t x;
     uint8_t i;
 
-    pause_level = level;
     cursor = 0;
-    entries = (save_current() == (uint8_t)kSaveNoSlot) ? 2U : 3U;
     DISPLAY_OFF;
     HIDE_SPRITES;
     // the strip goes with the scroll: the card owns the whole screen
@@ -148,7 +137,7 @@ void pause_begin(uint8_t level) BANKED {
     put_mario(kPauseMarioRow, kPauseMarioCol);
     put_text(kPauseLivesRow, kPauseLivesXCol, "x");
     put_number(kPauseLivesRow, kPauseLivesCol, hud_lives);
-    for (i = 0; i < entries; ++i) {
+    for (i = 0; i < (uint8_t)kPauseEntries; ++i) {
         put_text((uint8_t)(kPauseMenuRow + i * kPauseMenuStep), (uint8_t)(kPauseMenuCol + 1U), item_label(i));
     }
     put_cursor();
@@ -164,21 +153,13 @@ uint8_t pause_frame(uint8_t pressed) BANKED {
         if (cursor == 0U) {
             return kPauseResume;
         }
-        if (cursor == (uint8_t)(entries - 1U)) {
-            return kPauseQuit;
-        }
-        // the file already holds the furthest node the map opened, so this records the score
-        // against it and says so; the english smbd keeps level progress and drops the score on a
-        // reload, which is what the slot keeps too
-        save_record(pause_level, hud_score);
-        put_text((uint8_t)(kPauseMenuRow + kPauseMenuStep), (uint8_t)(kPauseMenuCol + 1U), "SAVED");
-        return kPauseStay;
+        return kPauseQuit;
     }
     if ((pressed & J_UP) != 0U) {
-        cursor = (cursor == 0U) ? (uint8_t)(entries - 1U) : (uint8_t)(cursor - 1U);
+        cursor = (cursor == 0U) ? (uint8_t)(kPauseEntries - 1U) : (uint8_t)(cursor - 1U);
         put_cursor();
     } else if ((pressed & J_DOWN) != 0U) {
-        cursor = (cursor == (uint8_t)(entries - 1U)) ? 0U : (uint8_t)(cursor + 1U);
+        cursor = (cursor == (uint8_t)(kPauseEntries - 1U)) ? 0U : (uint8_t)(cursor + 1U);
         put_cursor();
     }
     return kPauseStay;

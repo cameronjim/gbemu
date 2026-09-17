@@ -13310,8 +13310,9 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
 constexpr int kCardSettleFrames = 60;
 
 // smbd's pause card (pause.c): black, PAUSE on row 1, WORLD 1-x on row 3, mario's sprite as bg
-// cells on rows 6-7 with x and his lives beside it, CONTINUE / SAVE / END every other row from row
-// 8. the glyphs are the hud font's runs, so a tile id names a letter: P opens PAUSE
+// cells on rows 6-7 with x and his lives beside it, CONTINUE / END every other row from row 8
+// (no SAVE: the file records every clear by itself). the glyphs are the hud font's runs, so a tile id names a
+// letter: P opens PAUSE
 constexpr int kPauseTitleX = 7 * 8;
 constexpr int kPauseTitleY = 1 * 8;
 constexpr int kPauseWorldY = 3 * 8;
@@ -13320,7 +13321,6 @@ constexpr int kPauseLivesX = 11 * 8;
 constexpr int kPauseMenuY = 8 * 8;
 constexpr int kPauseMenuStepY = 16;
 constexpr int kPauseMenuX = 6 * 8;
-constexpr uint8_t kGlyphD = 0x91;
 constexpr uint8_t kGlyphCursor = 0xC4;
 constexpr uint8_t kGlyphC = 0xC5;
 constexpr uint8_t kGlyphN = 0xC6;
@@ -13909,8 +13909,8 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     REQUIRE(after.box_top() == before.box_top());
 }
 
-// with a file open the menu is CONTINUE / SAVE / END: down twice puts the cursor on END and a hands
-// the run back to the world map, at the node of the level he walked out of, with nothing spent
+// the menu is CONTINUE / END: down puts the cursor on END and a hands the run back to the world
+// map, at the node of the level he walked out of, with nothing spent
 TEST_CASE("mario_pause_menu_quits_to_the_map") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -13921,15 +13921,12 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     gameboy.set_button(gb::Button::Right, false);
     run(gameboy, 30);
     open_pause(gameboy);
-    // END's N sits in the second glyph column of the third entry
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) ==
-            kGlyphN);
+    // END's N sits in the second glyph column of the second entry, and there is no third
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphN);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) != kGlyphN);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 2);
     press(gameboy, gb::Button::A, 2);
     REQUIRE(wait_for_map(gameboy, 1500) >= 0);
     run(gameboy, kScreenSettleFrames);
@@ -13940,31 +13937,10 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
 }
 
-// the manual: "from pause, access save". SAVE writes the file and says so, and the game stays
-// paused; the slot keeps level progress, which the map had already recorded for this node
-TEST_CASE("mario_pause_menu_saves_the_file") {
-    const std::vector<uint8_t> rom = read_mario_rom();
-    gb::Gameboy gameboy;
-    REQUIRE(gameboy.load_rom(rom));
-    enter_play(gameboy);
-    run(gameboy, 30);
-    open_pause(gameboy);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 1);
-    press(gameboy, gb::Button::A, 2);
-    run(gameboy, 2);
-    REQUIRE(on_pause(gameboy));
-    // SAVE became SAVED: the D lands in the fifth glyph column of the entry
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 5 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphD);
-    // slot 0's used flag, mario.h kSaveSlotBase (the save tests below spell the layout out)
-    REQUIRE(gameboy.external_ram()[8] == 1);
-    close_pause(gameboy);
-}
-
-// a run that never opened a file (the title's own level select) has nothing to save into, so its
-// menu is CONTINUE / END
-TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
+// smbd's manual says "from pause, access save", but the file here records every clear by itself,
+// so the menu carries no SAVE: a run without a file (the title's level select) looks the same, and
+// the cursor wraps between the two entries
+TEST_CASE("mario_pause_menu_has_no_save") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
@@ -13975,6 +13951,9 @@ TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 0);
 }
 TEST_CASE("mario_powerup_carries_into_the_next_level") {
     const std::vector<uint8_t> rom = read_mario_rom();
@@ -13987,14 +13966,11 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
     REQUIRE(grow_on_the_pyramid(gameboy, sim));
     REQUIRE(mario_at(gameboy).big);
 
-    // out to the map through the pause menu's END (past SAVE, this run has a file), which records
-    // nothing and spends nothing
+    // out to the map through the pause menu's END, which records nothing and spends nothing
     open_pause(gameboy);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 2);
+    REQUIRE(pause_cursor_row(gameboy) == 1);
     press(gameboy, gb::Button::A, 2);
     REQUIRE(wait_for_map(gameboy, 1500) >= 0);
 

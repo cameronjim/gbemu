@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 // smbd's pause screen (a capture): a black card with PAUSE, WORLD 1-x, mario's sprite and his
-// lives, and a CONTINUE / SAVE / END menu. the level comes back through states.c's leave_card
+// lives, and a CONTINUE / END menu. the level comes back through states.c's leave_card
 void pause_begin(uint8_t level) BANKED;
 
 // one frame of the menu: up/down move the cursor, a picks, start always continues

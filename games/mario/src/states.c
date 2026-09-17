@@ -121,14 +121,12 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
 
         if (choice == (uint8_t)kPauseResume) {
             sound_pause(0);
-            // the overlay never touched the level's map or its actors, so nothing is repainted
-            pause_end();
+            leave_card();
             state = kStatePlay;
         } else if (choice == (uint8_t)kPauseQuit) {
             // the jingle plays out and the held theme is dropped rather than resumed on the map
             sound_pause(0);
             music_area(kMusicSilence);
-            pause_end();
             // the run is abandoned, not cleared: nothing is recorded and the lives and score
             // stand. the next level entry reloads everything through enter_play, so whatever
             // sub-area or segment he quit from leaves nothing behind

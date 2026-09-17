@@ -11,17 +11,23 @@
 // it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over and
 // course clear cards
 #define kBannerRows 3U
-// the pause overlay: window map rows under the hud strip (row 0), shown by moving the lyc handler
-// that drops the window down to kPauseBandLines. row 2 carries WORLD 1-x and MARIO xNN, rows 4-6
-// the RESUME / SAVE / QUIT menu with the cursor in column kPauseMenuCol. the real smbd layout is
-// unmeasured; this is what the sources say it carries (systems.md, the manual)
-#define kPauseRows 7U
-#define kPauseInfoRow 2U
-#define kPauseWorldCol 0U
+// smbd's pause screen, measured off a capture (160x144, cells of 8): PAUSE on row 1, WORLD 1-x on
+// row 3 from column 6, mario's sprite on rows 5-6 at column 7 with x and his lives on row 6, then
+// CONTINUE / SAVE / END every other row from row 8 with the cursor in column 6. white ink on black;
+// mario's cells wear his own colours in a bg slot the level gets back on resume
+#define kPauseTitleRow 1U
+#define kPauseTitleCol 7U
+#define kPauseWorldRow 3U
+#define kPauseWorldCol 6U
+#define kPauseMarioRow 5U
+#define kPauseMarioCol 7U
+#define kPauseLivesRow 6U
+#define kPauseLivesXCol 9U
 #define kPauseLivesCol 11U
-#define kPauseMenuRow 4U
+#define kPauseMenuRow 8U
+#define kPauseMenuStep 2U
 #define kPauseMenuCol 6U
-#define kPauseBandLines (kHudRowTopPx + 8U * (kPauseRows + 1U))
+#define kPausePalMario kCamPalGround
 
 // the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in
 // games/mario/src/file_art.h and its labels are drawn art cells, not printed lines
@@ -1408,11 +1414,11 @@
 #define kTileHudCoin 0x8BU
 // and one id per character of the two lists below, in that order: the first run fills the reserved
 // headroom up to 0x95 (0x96 is bowser's first sprite tile, same bytes), the second sits in the gap
-// between his jaw tile and the toad at 0xbe-0xc7. the pause overlay prints the letters
+// between his jaw tile and the toad at 0xbe-0xc7. the pause card prints the letters
 #define kTileHudLetterFirst 0x8CU // 0x8c-0x95
 #define kHudGlyphChars "xWORLD-ESU"
-#define kTileHudLetterSecond 0xBEU // 0xbe-0xc4
-#define kHudGlyphChars2 "MAVQIT>"
+#define kTileHudLetterSecond 0xBEU // 0xbe-0xc7
+#define kHudGlyphChars2 "MAVQIT>CNP"
 #define kHudBarAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
 // the coin icon takes the used block's slot rather than the coin one or the question block's:
 // color 0 is the level's own sky in all three sets there, colors 1 and 2 are the coin's gold and

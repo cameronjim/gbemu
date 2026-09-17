@@ -4,13 +4,11 @@
 #include <gb/gb.h>
 #include <stdint.h>
 
-// smbd's pause is an overlay on the frozen level (systems.md, the manual): the band under the hud
-// strip carries the level name and the lives the small-screen hud dropped, and a menu with SAVE
-// beside RESUME and QUIT. nothing under it is touched, so resume repaints nothing
+// smbd's pause screen (a capture): a black card with PAUSE, WORLD 1-x, mario's sprite and his
+// lives, and a CONTINUE / SAVE / END menu. the level comes back through states.c's leave_card
 void pause_begin(uint8_t level) BANKED;
-void pause_end(void) BANKED;
 
-// one frame of the menu: up/down move the cursor, a picks, start always resumes
+// one frame of the menu: up/down move the cursor, a picks, start always continues
 #define kPauseStay 0U
 #define kPauseResume 1U
 #define kPauseQuit 2U

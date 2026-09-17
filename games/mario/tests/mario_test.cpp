@@ -10586,6 +10586,39 @@ TEST_CASE("mario_1_2_changes_to_the_underground_theme_down_the_pipe") {
     REQUIRE(below.ch2_notes.count(note_period(0x62)) == 1);
 }
 
+// the title plays the ground theme, as smb1's attract mode does, from the moment it comes up
+TEST_CASE("mario_title_plays_the_ground_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // the lead-in and the first part together, from the first frame
+    const MusicSeen heard = music_seen(gameboy, 300);
+    REQUIRE(heard.ch2_notes.count(note_period(0x34)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x3A)) == 1);
+}
+
+// the map plays smb1's coin heaven tune (Star_CloudMData: $2c and $2a on square 2, no $34), and
+// the level's own theme takes over on entry
+TEST_CASE("mario_map_plays_the_cloud_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    leave_title(gameboy, gb::Button::Start);
+    press(gameboy, gb::Button::A, 2);
+    const MusicSeen map = music_seen(gameboy, 150);
+    REQUIRE(map.ch2_notes.count(note_period(0x2A)) == 1);
+    REQUIRE(map.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(map.ch2_notes.count(note_period(0x34)) == 0);
+    step_screen(gameboy, gb::Button::A);
+    wait_off_map(gameboy);
+    const MusicSeen level = music_seen(gameboy, 150);
+    REQUIRE(level.ch2_notes.count(note_period(0x34)) == 1);
+}
+
 // smbdis InPause: the pause jingle is $44 then $64 twice over 42 frames with every other channel
 // cut, the music held where it was and taken up again after the unpause jingle
 TEST_CASE("mario_pause_plays_smb_s_jingle_and_holds_the_music") {

@@ -46,6 +46,8 @@ static uint8_t sq2_len_buf;
 static uint8_t tri_len_buf;
 static uint8_t alt_sweep;
 static uint8_t level_music;
+// the front screen's theme, held back while a game over or a clear fanfare is still playing
+static uint8_t screen_music;
 // the period each square sits at, so a control-only write can retrigger it in place
 static uint16_t sq1_period;
 static uint16_t sq2_period;
@@ -616,6 +618,11 @@ static uint8_t end_of_music(void) {
     NR30_REG = 0;
     NR12_REG = 0;
     NR22_REG = 0;
+    // the title or map asked for its theme while a jingle played; it starts as that ends
+    if (screen_music != 0U) {
+        load_area(screen_music);
+        return 1;
+    }
     return 0;
 }
 
@@ -874,6 +881,7 @@ void sound_init(void) BANKED {
     pause_mode = 0;
     pause_buf = 0;
     level_music = kMusicGround;
+    screen_music = 0;
     sq1_period = 0;
     sq2_period = 0;
 }
@@ -925,9 +933,18 @@ void music_level(uint8_t level_type) BANKED {
         music = kMusicCastle;
     }
     level_music = music;
-    // a card's rebuild syncs the palette too, and that must not start the theme over
-    if (area_buf != music) {
+    // a card's rebuild syncs the palette too, and that must not start the theme over; coming in
+    // from the title or the map does start it over, as smb's area load does
+    if (area_buf != music || screen_music != 0U) {
         area_queue = music;
+    }
+    screen_music = 0;
+}
+
+void music_screen(uint8_t bits) BANKED {
+    screen_music = bits;
+    if (event_buf == 0U && area_buf != bits) {
+        area_queue = bits;
     }
 }
 

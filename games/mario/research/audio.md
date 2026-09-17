@@ -68,7 +68,10 @@ the coin); those become the `k*SecondPeriod` constants so the rom never converts
   the lives run out; the pole slide's end queues `EndOfLevelMusic`; the axe queues `EndOfCastleMusic`
   and the bowser-fall effect; the hurry-up jingle goes out at 100 seconds and hands back to the
   area theme by itself (`AreaMusicBuffer_Alt`); the star swaps the area theme for `StarPowerMusic`
-  and `music_level_again` restores it when the timer ends.
+  and `music_level_again` restores it when the timer ends. the clear's countdown queues the timer
+  tick on frames whose counter has d2 set (`AwardGameTimerPoints`), each firework pays with the
+  blast (`FireworksSoundScore`), and the hundredth coin plays the 1-up (`CoinTally`); the
+  world/lives card asks for quiet through `music_quiet`, which yields to a jingle still playing.
 - pause runs smb's `InPause`: everything cut, the two-tone jingle, the music held where it was and
   taken up again after the unpause jingle.
 - the front screens borrow smb1 pieces, since smb deluxe's own menu tunes are not in the

@@ -179,20 +179,14 @@ void leave_title(gb::Gameboy& gameboy, gb::Button button) {
 // the map's rebuilt top/bottom bands are near-black (kMapSkyRgb in mario.h) rather than the old
 // placeholder's sky blue - a host probe still needs the eyedropper to land on it
 constexpr int kSkyMap = 1 | (1 << 5) | (1 << 10);
-// the between-states cards paint card_begin's own sky; smb's world/lives card holds it for
-// kLivesCardFrames between the map and every level, and between a death and its respawn
+// the between-states cards paint card_begin's own sky
 constexpr int kSkyCard = 20 | (24 << 5) | (31 << 10);
-constexpr int kLivesCardFrames = 147;
 int sky_color(const gb::Gameboy& gameboy);
 
 // mario is drawn on the map too, so "he is on screen" cannot say a level has loaded: what does is
 // the backdrop no longer being the map's
 void wait_off_map(gb::Gameboy& gameboy) {
     for (int i = 0; i < 400 && sky_color(gameboy) == kSkyMap; ++i) {
-        gameboy.run_frame();
-    }
-    // and through the world/lives card the level entry holds up first
-    for (int i = 0; i < kLivesCardFrames + 60 && sky_color(gameboy) == kSkyCard; ++i) {
         gameboy.run_frame();
     }
 }
@@ -213,11 +207,6 @@ void enter_play(gb::Gameboy& gameboy) {
 void enter_lab(gb::Gameboy& gameboy) {
     run(gameboy, kBootFrames);
     press(gameboy, gb::Button::Select, 2);
-    // the world/lives card holds kLivesCardFrames first
-    run(gameboy, 4);
-    for (int i = 0; i < 400 && sky_color(gameboy) == kSkyCard; ++i) {
-        gameboy.run_frame();
-    }
     run(gameboy, 64);
 }
 
@@ -6367,9 +6356,8 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
     gameboy.set_button(gb::Button::Right, false);
     REQUIRE(fell);
 
-    // and the respawn puts him back on the bible's start cell with the camera back at the level
-    // start, once the world/lives card has held its time
-    run(gameboy, 90 + kLivesCardFrames + 60);
+    // and the respawn puts him back on the bible's start cell with the camera back at the level start
+    run(gameboy, 90);
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.box_top() == kStandTop);
@@ -7848,9 +7836,8 @@ TEST_CASE("mario_side_contact_respawns") {
     replay(gameboy, walk.script, 0, walk.script.size());
     replay(gameboy, into, 0, into.size());
 
-    // m8b's death beat holds, leaps him and drops him through the floor, and the world/lives card
-    // holds its time before the level reloads
-    run(gameboy, 200 + kLivesCardFrames + 60);
+    // m8b's death beat holds, leaps him and drops him through the floor before the level reloads
+    run(gameboy, 200);
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.box_top() == kStandTop);
@@ -8679,7 +8666,6 @@ void enter_level(gb::Gameboy& gameboy, int level) {
     gameboy.set_button(gb::Button::Up, false);
     // the lcd-off rebuild outruns a whole host frame, so the wait is for mario to be drawn rather
     // than for a frame count; from there the game and the host advance one for one
-    // the world/lives card holds kLivesCardFrames first
     for (int i = 0; i < 400 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
     }
@@ -13293,7 +13279,6 @@ void enter_timer_lab(gb::Gameboy& gameboy) {
     run(gameboy, 2);
     press(gameboy, gb::Button::Select, 2);
     gameboy.set_button(gb::Button::Down, false);
-    // the world/lives card holds kLivesCardFrames first
     for (int i = 0; i < 400 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
     }
@@ -13711,37 +13696,6 @@ TEST_CASE("mario_game_over_card_holds_smb_s_time") {
     // 378 frames less the few the detection loop already spent on it
     REQUIRE(held >= 360);
     REQUIRE(held <= 400);
-}
-
-// smbdis DisplayIntermediate: WORLD 1-1 over MARIO x 3 holds seven intervals between the map and
-// the level, and the level only loads once it has
-TEST_CASE("mario_lives_card_precedes_the_level") {
-    const std::vector<uint8_t> rom = read_mario_rom();
-
-    gb::Gameboy gameboy;
-    REQUIRE(gameboy.load_rom(rom));
-    run(gameboy, kBootFrames);
-    leave_title(gameboy, gb::Button::Start);
-    press(gameboy, gb::Button::A, 2);
-    step_screen(gameboy, gb::Button::A);
-    for (int i = 0; i < 400 && sky_color(gameboy) == kSkyMap; ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    REQUIRE(card_number(gameboy, kTitleRow) == 11);
-    REQUIRE(card_number(gameboy, kTitleRow + 3) == kStartLives);
-    int held = 0;
-    for (; held < 300 && on_card(gameboy); ++held) {
-        gameboy.run_frame();
-    }
-    REQUIRE(held >= kLivesCardFrames - 10);
-    // plus the level's own lcd-off load behind it
-    REQUIRE(held <= kLivesCardFrames + 30);
-    REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 120) >= 0);
-    for (int i = 0; i < 60 && !mario_at(gameboy).found; ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(mario_at(gameboy).found);
 }
 
 // smbdis AwardGameTimerPoints: once he is in the doorway the strip's time drops one a frame, the
@@ -15198,12 +15152,8 @@ TEST_CASE("mario_deliberate_presses_still_reach_a_level") {
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_color(gameboy) == kSkyMap);
 
-    // and a on the map, past its own lockout, starts the level mario is standing on, behind the
-    // world/lives card
+    // and a on the map, past its own lockout, starts the level mario is standing on
     step_screen(gameboy, gb::Button::A);
-    run(gameboy, kScreenSettleFrames);
-    REQUIRE(on_card(gameboy));
-    wait_off_map(gameboy);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(sky_is_gameplay(sky_color(gameboy)));
 }

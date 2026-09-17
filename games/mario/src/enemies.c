@@ -10,6 +10,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "popup.h"
+#include "sound.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -575,6 +576,7 @@ static void collide_enemies(void) {
 }
 
 static uint8_t stomp(Enemy* e) {
+    sfx_square1(kSfxEnemyStomp);
     if (e->state == kEnemyShellMove) {
         // re-stomping a travelling shell stops it dead and starts its wake over
         e->state = kEnemyShellIdle;
@@ -618,6 +620,7 @@ static uint8_t stomp(Enemy* e) {
 // star's consecutive-defeat scoring escalates but calls its smb1-era values must-verify, so the
 // escalation is left out rather than invented
 static void award_kill(const Enemy* e) {
+    sfx_square1(kSfxEnemySmack);
     const uint16_t tens = e->kind == kEnemyGoomba ? (uint16_t)kScoreTens(kGoombaKillPoints)
                                                   : (uint16_t)kScoreTens(kKoopaKillPoints);
 
@@ -682,6 +685,7 @@ static uint8_t collide_player(uint16_t player_px, int16_t player_py, uint8_t pla
                     ? (int8_t)1
                     : (int8_t)-1;
             e->state = kEnemyShellMove;
+            sfx_square1(kSfxEnemySmack);
             e->grace = kShellGraceFrames;
             e->x_force = 0;
             e->lead_col = lead_of(e);

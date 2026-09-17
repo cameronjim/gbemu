@@ -13,6 +13,7 @@
 #include "mario.h"
 #include "physics_constants.h"
 #include "popup.h"
+#include "sound.h"
 #include "states.h"
 #include "terrain.h"
 
@@ -134,15 +135,19 @@ uint8_t powerup_collect(uint8_t item_kind) BANKED {
     popup_show(blocks_item_x, blocks_item_y,
                item_kind == kItemOneup ? (uint16_t)kPopupOneUp : (uint16_t)kScoreTens(kPowerupPoints));
     if (item_kind == kItemStar) {
+        sfx_square2(kSfxPowerUpGrab);
+        music_area(kMusicStarPower);
         star_timer = (uint16_t)kStarFrames;
         publish();
         return 0;
     }
     if (item_kind == kItemOneup) {
+        sfx_square2(kSfxExtraLife);
         hud_add_life();
         return 0;
     }
     if (item_kind == kItemFlower) {
+        sfx_square2(kSfxPowerUpGrab);
         // the dispenser only pays a flower to a grown mario, so this is a palette change alone;
         // smb would grow a small mario instead, which the branch below still covers
         if (power != kPowerSmall) {
@@ -157,6 +162,7 @@ uint8_t powerup_collect(uint8_t item_kind) BANKED {
     if (item_kind != kItemMushroom || power != kPowerSmall) {
         return 0;
     }
+    sfx_square2(kSfxPowerUpGrab);
     begin_anim(kPowerSuper, 0, 1);
     publish();
     return 1;
@@ -168,6 +174,7 @@ uint8_t powerup_damage(void) BANKED {
     }
     // roster.json, Mario (Fire): "reverts directly to Small Mario if hit (no cushioning step)"
     if (power != kPowerSmall) {
+        sfx_square1(kSfxPipeDownInjury);
         begin_anim(kPowerSmall, 1, 0);
         publish();
         return 0;
@@ -277,12 +284,16 @@ void powerup_update(uint8_t keys, uint16_t player_px, int16_t player_py, uint8_t
     }
     if (star_timer != 0U) {
         --star_timer;
+        if (star_timer == 0U) {
+            music_level_again();
+        }
     }
     if (injury_timer != 0U) {
         --injury_timer;
     }
 
     if (power == kPowerFire && (keys & J_B) != 0U && b_prev == 0U && live < (uint8_t)kFireballSlots) {
+        sfx_square1(kSfxFireball);
         throw_ball(player_px, player_py, facing_left);
     }
     b_prev = (keys & J_B) != 0U ? 1U : 0U;

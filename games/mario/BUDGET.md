@@ -25,7 +25,7 @@ work lands, and how the build and the tests catch a bank or a frame going over. 
 - cpu runs at double speed (`cpu_fast()` in main.c): the merged play frame overran single speed on
   heavy jump frames before that, and a dropped frame desyncs every scripted host test.
 
-## bank 0: the home bank, 14875 of 16384 used
+## bank 0: the home bank, 15148 of 16384 used
 
 bank 0 cannot grow. it is the fixed window at 0x0000 to 0x3fff. the only relief is moving code and
 data into a switched bank behind a `BANKED` entry point, which costs a bank switch per call.
@@ -38,6 +38,8 @@ what is there and why:
   player every frame.
 - terrain.c (2252): the ring streamer, scroll and the lyc split. feeds every frame.
 - main.c (1323): the play loop and `main_present`, which orders the frame's vram traffic.
+- the sound hooks (about 270 across player, blocks, main): each is a `BANKED` call into bank 8,
+  queued on the frame of the event and played at the top of the next.
 - romcopy.c (49): `rom_copy`, the one bank switch in the engine. it must be in bank 0 because the
   code that switches banks has to still be mapped after the switch.
 - gbdk's `_HOME` (2068): crt0, `memcpy`, the console and font code, and `font_ibm` (993). gbdk's
@@ -64,14 +66,15 @@ candidates to move next, largest first:
 | 2 | 1-2 grid and lists | 4242 |
 | 3 | hazards.c, 1-3 grid and lists | 8205 |
 | 4 | enemies.c, assets.c and every ripped tile array | 16215 (full) |
-| 5 | flow.c, powerup.c, title.c, hud.c, save.c, mapscreen.c, camera.c, level.c | 11571 |
+| 5 | flow.c, powerup.c, title.c, hud.c, save.c, mapscreen.c, camera.c, level.c | 11778 |
 | 6 | the draw passes (player_draw, blocks_draw, debris, popup), states.c, toad.c, castle art, 1-4 grid | 7690 |
 | 7 | title, file select and map screens, the level table (`kLevels`), sub-area grids | 12303 |
-| 8 to 15 | empty | 0 |
+| 8 | sound.c: smb's sound engine and its music data, `gen/smb_audio_data.h` | 4393 |
+| 9 to 15 | empty | 0 |
 
 rules:
 
-- new features land in banks 5, 6 or 8 and up, never bank 0. a new tile family goes in a bank
+- new features land in banks 5, 6 or 9 and up, never bank 0. a new tile family goes in a bank
   with its own `set_bkg_data` loader, called through a `BANKED` function (castle_art.c is the
   pattern); bank 4 is full.
 - a level's lists (blocks, enemies, objects, jumps, segments, area coins and warps) compile into
@@ -82,5 +85,5 @@ rules:
 
 ## wram
 
-6348 of 8192 used, 1844 free. the big residents are `level_grid` (3984) and the level arena
+6388 of 8192 used, 1804 free. the big residents are `level_grid` (3984) and the level arena
 (about 450). the arena grows with `LEVEL_MAX_*` in levels.h.

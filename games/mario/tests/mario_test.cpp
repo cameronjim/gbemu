@@ -31,6 +31,7 @@ namespace sprite_art {
 #include "gen/piranha.c"
 #include "gen/shell_green.c"
 #include "gen/shell_red.c"
+#include "gen/smb_audio_data.h"
 #pragma GCC diagnostic pop
 } // namespace sprite_art
 
@@ -10403,6 +10404,241 @@ TEST_CASE("mario_world_one_play_frames_never_drop") {
             REQUIRE(match.ticks_missed == 0);
         }
     }
+}
+
+// the apu's channels as the picture shows them; smb's engine plays a frame's sounds at the top of
+// the next, so a trigger frame is heard one picture later
+struct ApuSeen {
+    uint16_t ch1_freq;
+    uint8_t ch1_vol;
+    uint16_t ch2_freq;
+    uint8_t ch2_vol;
+    bool ch3;
+    uint8_t ch4_vol;
+};
+
+ApuSeen apu_seen(const gb::Gameboy& gameboy) {
+    const gb::Apu& apu = gameboy.debug_apu();
+    return {apu.debug_ch1_freq(),   apu.debug_ch1_volume(),  apu.debug_ch2_freq(),
+            apu.debug_ch2_volume(), apu.debug_ch3_enabled(), apu.debug_ch4_volume()};
+}
+
+// smb's note byte as the period the rom converts it to (extract_smb_audio.py)
+uint16_t note_period(uint8_t note) {
+    return sprite_art::kNotePeriod[note >> 1];
+}
+
+// square 1 reached the note at no less than the volume on some picture of the next frames
+bool hears_square1(gb::Gameboy& gameboy, uint8_t note, uint8_t min_volume, int frames) {
+    for (int i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const ApuSeen s = apu_seen(gameboy);
+        if (s.ch1_freq == note_period(note) && s.ch1_vol >= min_volume) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// what the music channels played over the next frames: square 2's notes, and whether the wave
+// and noise channels sounded at all
+struct MusicSeen {
+    std::set<uint16_t> ch2_notes;
+    bool ch3 = false;
+    bool ch4 = false;
+};
+
+MusicSeen music_seen(gb::Gameboy& gameboy, int frames) {
+    MusicSeen out;
+    for (int i = 0; i < frames; ++i) {
+        gameboy.run_frame();
+        const ApuSeen s = apu_seen(gameboy);
+        if (s.ch2_vol != 0) {
+            out.ch2_notes.insert(s.ch2_freq);
+        }
+        out.ch3 = out.ch3 || s.ch3;
+        out.ch4 = out.ch4 || s.ch4_vol != 0;
+    }
+    return out;
+}
+
+// smbdis PlaySmallJump: note $26 on square 1, ctrl $82 - a decay from full volume
+TEST_CASE("mario_jump_plays_smb_s_jump_on_square_1") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    gameboy.set_button(gb::Button::A, true);
+    gameboy.run_frame();
+    gameboy.set_button(gb::Button::A, false);
+    REQUIRE(hears_square1(gameboy, 0x26, 12, 3));
+}
+
+// smbdis PlaySwimStomp: note $26 too, but SwimStompEnvelopeData takes over at once, read from
+// the top down: 2, 3, 5, 7, 10. its sweep ($9c, shift 4) has already moved the pitch a step by
+// the time the picture is out
+TEST_CASE("mario_stomp_plays_smb_s_stomp_on_square_1") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route walk = plan_walk_to(spawn_stand_x(kLevel11Enemies[0].column));
+    REQUIRE(walk.reached);
+    const StompPlan stomp = plan_stomp(walk.end);
+    REQUIRE(stomp.found);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, walk.script, 0, walk.script.size());
+    std::vector<ApuSeen> saw;
+    for (size_t i = 0; i < stomp.script.size(); ++i) {
+        replay(gameboy, stomp.script, i, i + 1);
+        saw.push_back(apu_seen(gameboy));
+    }
+    for (int i = 0; i < 3; ++i) {
+        gameboy.run_frame();
+        saw.push_back(apu_seen(gameboy));
+    }
+    bool heard = false;
+    const uint16_t p = note_period(0x26);
+    for (size_t i = 0; i + 4 < saw.size(); ++i) {
+        const bool pitch = saw[i].ch1_freq == p || saw[i].ch1_freq == static_cast<uint16_t>(p + (p >> 4));
+        if (pitch && saw[i].ch1_vol == 2 && saw[i + 1].ch1_vol == 3 && saw[i + 2].ch1_vol == 5 &&
+            saw[i + 3].ch1_vol == 7 && saw[i + 4].ch1_vol == 10) {
+            heard = true;
+        }
+    }
+    REQUIRE(heard);
+}
+
+// smbdis PlayCoinGrab: note $42 on square 2, ctrl $8d - d4 clear, so a decay from full volume
+TEST_CASE("mario_coin_plays_smb_s_coin_on_square_2") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const HostLevel& lv = kHostLevels[kLevel11];
+    REQUIRE(lv.blocks[0].content == 1);
+    const Route walk = plan_route(static_cast<uint16_t>((lv.blocks[0].column - 6) * kBlockPx), false, 4000);
+    REQUIRE(walk.reached);
+    PlayerSim sim = walk.end;
+    std::vector<uint8_t> script = walk.script;
+    REQUIRE(append_bump_at(sim, script, lv.blocks[0].column, lv.blocks[0].row));
+    REQUIRE(script.size() > walk.script.size());
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    bool heard = false;
+    for (size_t i = 0; i < script.size() + 3; ++i) {
+        if (i < script.size()) {
+            replay(gameboy, script, i, i + 1);
+        } else {
+            gameboy.run_frame();
+        }
+        const ApuSeen s = apu_seen(gameboy);
+        heard = heard || (s.ch2_freq == note_period(0x42) && s.ch2_vol >= 14);
+    }
+    REQUIRE(heard);
+}
+
+// GroundLevelLeadInHdr then GroundLevelPart1Hdr: $34, $2c and $3a are in both, and the theme has
+// a bass line on the triangle and a beat on the noise channel
+TEST_CASE("mario_1_1_plays_the_ground_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel11);
+    const MusicSeen heard = music_seen(gameboy, 150);
+    REQUIRE(heard.ch2_notes.count(note_period(0x34)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x3A)) == 1);
+    REQUIRE(heard.ch3);
+    REQUIRE(heard.ch4);
+}
+
+// CastleMusData opens $22, $28, $22, $26 in five-frame notes, and castle music has no beat
+TEST_CASE("mario_1_4_plays_the_castle_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel14);
+    const MusicSeen heard = music_seen(gameboy, 60);
+    REQUIRE(heard.ch2_notes.count(note_period(0x22)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x28)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x26)) == 1);
+    REQUIRE(!heard.ch4);
+}
+
+// 1-2 starts under the sky on the ground theme; the pipe down changes the palette set and, with
+// it, the theme: UndergroundMusData opens $14, $2c, $62
+TEST_CASE("mario_1_2_changes_to_the_underground_theme_down_the_pipe") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel12);
+    const MusicSeen above = music_seen(gameboy, 60);
+    REQUIRE(above.ch2_notes.count(note_period(0x14)) == 0);
+    enter_1_2_underground(gameboy);
+    // the phrase is nine notes of nine frames and comes round again inside this window
+    const MusicSeen below = music_seen(gameboy, 150);
+    REQUIRE(below.ch2_notes.count(note_period(0x14)) == 1);
+    REQUIRE(below.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(below.ch2_notes.count(note_period(0x62)) == 1);
+}
+
+// the title plays the ground theme, as smb1's attract mode does, from the moment it comes up
+TEST_CASE("mario_title_plays_the_ground_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    // the lead-in and the first part together, from the first frame
+    const MusicSeen heard = music_seen(gameboy, 300);
+    REQUIRE(heard.ch2_notes.count(note_period(0x34)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(heard.ch2_notes.count(note_period(0x3A)) == 1);
+}
+
+// the map plays smb1's coin heaven tune (Star_CloudMData: $2c and $2a on square 2, no $34), and
+// the level's own theme takes over on entry
+TEST_CASE("mario_map_plays_the_cloud_theme") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    run(gameboy, kBootFrames);
+    leave_title(gameboy, gb::Button::Start);
+    press(gameboy, gb::Button::A, 2);
+    const MusicSeen map = music_seen(gameboy, 150);
+    REQUIRE(map.ch2_notes.count(note_period(0x2A)) == 1);
+    REQUIRE(map.ch2_notes.count(note_period(0x2C)) == 1);
+    REQUIRE(map.ch2_notes.count(note_period(0x34)) == 0);
+    step_screen(gameboy, gb::Button::A);
+    wait_off_map(gameboy);
+    const MusicSeen level = music_seen(gameboy, 150);
+    REQUIRE(level.ch2_notes.count(note_period(0x34)) == 1);
+}
+
+// smbdis InPause: the pause jingle is $44 then $64 twice over 42 frames with every other channel
+// cut, the music held where it was and taken up again after the unpause jingle
+TEST_CASE("mario_pause_plays_smb_s_jingle_and_holds_the_music") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    press(gameboy, gb::Button::Start, 1);
+    // the card's lcd-off rebuild holds the loop for a picture or two first
+    REQUIRE(hears_square1(gameboy, 0x44, 10, 8));
+    run(gameboy, 48);
+    const ApuSeen held = apu_seen(gameboy);
+    REQUIRE(held.ch1_vol == 0);
+    REQUIRE(held.ch2_vol == 0);
+    REQUIRE(!held.ch3);
+    press(gameboy, gb::Button::Start, 1);
+    REQUIRE(hears_square1(gameboy, 0x44, 10, 8));
+    const MusicSeen resumed = music_seen(gameboy, 120);
+    REQUIRE(!resumed.ch2_notes.empty());
 }
 
 TEST_CASE("mario_1_2_small_mario_walks_the_one_block_crawl") {

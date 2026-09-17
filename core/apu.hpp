@@ -60,8 +60,23 @@ public:
     uint16_t debug_ch1_freq() const {
         return ch1_.freq;
     }
+    uint8_t debug_ch1_volume() const {
+        return ch1_.enabled ? ch1_.volume : uint8_t{0};
+    }
+    uint16_t debug_ch2_freq() const {
+        return ch2_.freq;
+    }
     uint8_t debug_ch2_volume() const {
-        return ch2_.volume;
+        return ch2_.enabled ? ch2_.volume : uint8_t{0};
+    }
+    uint16_t debug_ch3_freq() const {
+        return ch3_.freq;
+    }
+    bool debug_ch3_enabled() const {
+        return ch3_.enabled;
+    }
+    uint8_t debug_ch4_volume() const {
+        return ch4_.enabled ? ch4_.volume : uint8_t{0};
     }
 
     static constexpr size_t kStateSize = 1 + 0x17 + 0x10 + 4 + 1 + 4 + 16384 * 2 + 4 + 4 + 20 + 20 + 11 + 14;

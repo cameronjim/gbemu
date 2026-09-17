@@ -16,6 +16,7 @@
 #include "map_art.h"
 #include "mario.h"
 #include "save.h"
+#include "sound.h"
 #include "states.h"
 #include "terrain.h"
 #include "title.h"
@@ -529,6 +530,8 @@ void front_title(void) BANKED {
     screen = kScreenTitle;
     title_reset();
     lock_begin();
+    // the ground theme, as smb's own attract mode plays it; it waits out a game over jingle
+    music_screen(kMusicGround);
 }
 
 void front_cleared(uint8_t* level) BANKED {
@@ -541,6 +544,7 @@ void front_cleared(uint8_t* level) BANKED {
     }
     screen = kScreenMap;
     map_reset(*level);
+    music_screen(kMusicCloud);
 }
 
 void front_map(uint8_t level) BANKED {
@@ -552,6 +556,7 @@ void front_map(uint8_t level) BANKED {
     }
     screen = kScreenMap;
     map_reset(level);
+    music_screen(kMusicCloud);
 }
 
 uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED {
@@ -578,6 +583,8 @@ uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED {
         action = file_frame(pressed, level);
         if (action == (uint8_t)kFileMap) {
             screen = kScreenMap;
+            // smb1's coin heaven tune (Star_CloudHdr) for picking a level
+            music_screen(kMusicCloud);
             map_reset(*level);
         } else if (action == (uint8_t)kFileTitle) {
             front_title();
@@ -591,6 +598,7 @@ uint8_t front_frame(uint8_t pressed, uint8_t* level) BANKED {
     if (action == (uint8_t)kMapBack) {
         screen = kScreenFile;
         file_reset();
+        music_screen(kMusicGround);
     }
     return kFrontStay;
 }

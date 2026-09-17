@@ -6,6 +6,7 @@
 #include "level.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "sound.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -136,6 +137,7 @@ static int16_t find_coin(int16_t column, int16_t row) {
 }
 
 static void start_bump(int16_t column, int16_t row) {
+    sfx_square1(kSfxBump);
     if (bump_timer != 0U) {
         terrain_restore_block(bump_column, bump_row);
     }
@@ -146,6 +148,7 @@ static void start_bump(int16_t column, int16_t row) {
 }
 
 static void pop_coin(int16_t column, int16_t row) {
+    sfx_square2(kSfxCoinGrab);
     // the 8 px sprite sits centered in the block's 16 px cell and leaves from the cell's own top,
     // as smb's does (SetupJumpCoin). kCoinPopFresh: blocks_draw arms the arc on its first frame
     blocks_coin_x = (uint16_t)(((uint16_t)column << 4) + 4U);
@@ -159,6 +162,7 @@ static void pop_coin(int16_t column, int16_t row) {
 }
 
 static void spawn_item(uint8_t content) {
+    sfx_square2(kSfxGrowPowerUp);
     if (content == kContentStar) {
         blocks_item_kind = kItemStar;
     } else if (content == kContentOneup) {
@@ -378,6 +382,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
             return;
         }
         hud_score = (uint16_t)(hud_score + kScoreTens(kBrickPoints));
+        sfx_noise(kSfxBrickShatter);
         // straight into the ram grid, which needs no override bookkeeping: a death reloads the
         // grid from rom and the brick is back, exactly as smb leaves it
         terrain_clear_cell(column, row);
@@ -392,6 +397,7 @@ void blocks_head_bump(int16_t column, int16_t row) {
         blocks_player_big != 0U) {
         // the break path: compiled, but only m7's grown mario ever reaches it
         hud_score = (uint16_t)(hud_score + kScoreTens(kBrickPoints));
+        sfx_noise(kSfxBrickShatter);
         state[index] = kBlockStateGone;
         altered[altered_count] = (uint8_t)index;
         ++altered_count;
@@ -524,6 +530,7 @@ static void collect_world_coins(uint16_t player_px, int16_t player_py, uint8_t p
             continue;
         }
         coin_taken[i] = 1;
+        sfx_square2(kSfxCoinGrab);
         ++coins_taken;
         ++blocks_override_count;
         ++coins_collected;

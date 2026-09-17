@@ -142,6 +142,7 @@ struct Options {
     const char* rom_path = nullptr;
     const char* doctor_path = nullptr;
     const char* dump_ppm_path = nullptr;
+    const char* state_path = nullptr;
     uint64_t trace_from = 0;
     uint64_t frames = 600;
     int volume = 25;
@@ -160,6 +161,8 @@ Options parse_args(int argc, char* argv[]) {
             opt.dump_ppm_path = argv[++i];
         } else if (arg == "--frames" && i + 1 < argc) {
             opt.frames = std::strtoull(argv[++i], nullptr, 10);
+        } else if (arg == "--state" && i + 1 < argc) {
+            opt.state_path = argv[++i];
         } else if (arg == "--volume" && i + 1 < argc) {
             opt.volume = std::atoi(argv[++i]);
             opt.volume = opt.volume < 0 ? 0 : (opt.volume > 100 ? 100 : opt.volume);
@@ -513,7 +516,7 @@ int main_impl(int argc, char* argv[]) {
     const Options& opt = app.opt;
     if (!opt.ok || (opt.doctor_path != nullptr && opt.rom_path == nullptr)) {
         std::fprintf(stderr, "usage: gbemu-sdl [--doctor <path>] [--trace-from <n>] [--dump-ppm <path>] "
-                             "[--frames <n>] [--volume 0-100] [rom]\n");
+                             "[--frames <n>] [--volume 0-100] [--state <path>] [rom]\n");
         return 1;
     }
 
@@ -538,6 +541,14 @@ int main_impl(int argc, char* argv[]) {
         }
         configure_look(app, *app.gameboy, bytes);
         load_battery_ram(*app.gameboy, opt.rom_path);
+        // a state saved elsewhere (a host test, f5 in an earlier run) picks the game up mid-level
+        if (opt.state_path != nullptr) {
+            const std::vector<uint8_t> state = read_file(opt.state_path);
+            if (state.empty() || !app.gameboy->load_state(state)) {
+                std::fprintf(stderr, "state load failed: %s\n", opt.state_path);
+                return 1;
+            }
+        }
         if (opt.dump_ppm_path != nullptr) {
             return dump_framebuffer_ppm(app, opt.frames, opt.dump_ppm_path);
         }
@@ -562,6 +573,13 @@ int main_impl(int argc, char* argv[]) {
     app.audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (app.audio_dev != 0) {
         SDL_PauseAudioDevice(app.audio_dev, 0);
+        std::fprintf(stderr,
+                     "audio: %s, %d hz, %d channels, volume %d%%"
+                     "%c",
+                     SDL_GetCurrentAudioDriver(), have.freq, have.channels, opt.volume, 10);
+    } else {
+        // the game runs on without sound, so say why rather than stay silent about it
+        std::fprintf(stderr, "sdl audio failed: %s\n", SDL_GetError());
     }
 
     const int pos = SDL_WINDOWPOS_CENTERED;

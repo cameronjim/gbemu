@@ -7,6 +7,7 @@
 #include "assets.h"
 #include "mario.h"
 #include "physics_constants.h"
+#include "sound.h"
 
 #include <gb/gb.h>
 #include <stdint.h>
@@ -197,6 +198,9 @@ uint8_t hud_frame(void) BANKED {
         if (tick_frames >= (uint8_t)kTimerFramesPerTick) {
             tick_frames = 0;
             --hud_time;
+            if (hud_time == 100U) {
+                music_event(kMusicTimeRunningOut);
+            }
             tick_down();
             // roster.json gives no hurry-up behaviour beyond the music, which is m10's, so an
             // expired countdown does the one thing it still does in smb: it kills him

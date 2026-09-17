@@ -19,6 +19,7 @@
 #include "physics_constants.h"
 #include "player.h"
 #include "popup.h"
+#include "sound.h"
 #include "terrain.h"
 
 #include <gb/gb.h>
@@ -452,6 +453,7 @@ static void step_bowser_fire(void) {
     }
     fire_timer = 0;
     fire_drop = 0;
+    sfx_noise(kSfxBowserFlame);
     edge = (uint16_t)(camera_pos_x + kScreenWidthPx);
     if (bowser_x >= edge) {
         // the zone throw: while his body is still off the right edge the dart comes in at that

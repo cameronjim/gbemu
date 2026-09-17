@@ -15,6 +15,7 @@
 #include "mapscreen.h"
 #include "mario.h"
 #include "player.h"
+#include "sound.h"
 #include "terrain.h"
 #include "title.h"
 
@@ -101,6 +102,7 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
         // the world is frozen: nothing steps but mario falling out of it
         if (player_death_update() != 0U) {
             if (flow_after_death() != (uint8_t)kAfterDeathRespawn) {
+                music_event(kMusicGameOver);
                 state = kStateGameOver;
             } else {
                 // the level reloads whole, spent blocks and all, which is smb's own respawn
@@ -117,9 +119,13 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
         const uint8_t choice = pause_frame(pressed);
 
         if (choice == (uint8_t)kPauseResume) {
+            sound_pause(0);
             leave_card();
             state = kStatePlay;
         } else if (choice == (uint8_t)kPauseQuit) {
+            // the jingle plays out and the held theme is dropped rather than resumed on the map
+            sound_pause(0);
+            music_area(kMusicSilence);
             // the run is abandoned, not cleared: nothing is recorded and the lives and score
             // stand. the next level entry reloads everything through enter_play, so whatever
             // sub-area or segment he quit from leaves nothing behind

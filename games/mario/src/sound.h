@@ -60,6 +60,8 @@ void music_level(uint8_t level_type) BANKED;
 void music_screen(uint8_t bits) BANKED;
 // back to the level's theme when the star runs out
 void music_level_again(void) BANKED;
+// 1 while an event jingle (death, game over, a clear fanfare) is still playing
+uint8_t music_event_busy(void) BANKED;
 void sound_pause(uint8_t on) BANKED;
 
 #endif

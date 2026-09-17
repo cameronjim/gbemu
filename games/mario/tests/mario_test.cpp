@@ -6356,8 +6356,11 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
     gameboy.set_button(gb::Button::Right, false);
     REQUIRE(fell);
 
-    // and the respawn puts him back on the bible's start cell with the camera back at the level start
-    run(gameboy, 90);
+    // and the respawn puts him back on the bible's start cell with the camera back at the level start,
+    // once the death jingle has run its course
+    for (int i = 0; i < 500 && !at_start_cell(gameboy); ++i) {
+        gameboy.run_frame();
+    }
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.box_top() == kStandTop);
@@ -14016,6 +14019,50 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
 
 // ...and the death path is what does take it away: the reset moved onto flow_after_death, so the
 // life that follows a pit starts small again
+// smbdis 5651: the lose-life routine waits on EventMusicBuffer, so the level does not come back
+// until the death jingle (216 frames) is over. he is off the bottom long before that, and square 2
+// is still carrying the tune while the screen is empty
+TEST_CASE("mario_death_waits_for_the_jingle") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const uint16_t gap = first_gap_column();
+    REQUIRE(gap > 0u);
+    const Route approach = plan_route(static_cast<uint16_t>((gap - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, approach.script, 0, approach.script.size());
+
+    bool fell = false;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < 240 && !fell; ++i) {
+        gameboy.run_frame();
+        fell = !mario_at(gameboy).found;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(fell);
+
+    // a hundred frames into the empty screen the tune is still going and he is still away
+    bool heard = false;
+    for (int i = 0; i < 100; ++i) {
+        gameboy.run_frame();
+        heard = heard || apu_seen(gameboy).ch2_vol > 0;
+    }
+    REQUIRE(heard);
+    REQUIRE(!mario_at(gameboy).found);
+
+    // and the respawn comes only after the jingle: no earlier than its length, less the drop
+    int back = -1;
+    for (int i = 0; i < 400 && back < 0; ++i) {
+        gameboy.run_frame();
+        if (at_start_cell(gameboy)) {
+            back = i;
+        }
+    }
+    REQUIRE(back >= 20);
+}
+
 TEST_CASE("mario_death_takes_the_powerup_away") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const uint16_t gap = first_gap_column();

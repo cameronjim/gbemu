@@ -42,6 +42,8 @@ uint8_t hazard_near;
 // than one vblank holds, so both do it with the lcd off
 // 0 walking in, 1 the countdown and the fireworks: set on the frame he steps into the doorway
 static uint8_t clear_stage;
+// 1 once the death drop has carried him off the bottom and the jingle is being waited out
+static uint8_t death_fell;
 
 void states_enter_play(void) BANKED {
     clear_stage = 0;
@@ -171,7 +173,19 @@ static uint8_t fireworks_step(void) {
 uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     if (state == kStateDeath) {
         // the world is frozen: nothing steps but mario falling out of it
-        if (player_death_update() != 0U) {
+        if (death_fell == 0U) {
+            if (player_death_update() == 0U) {
+                main_present();
+                return state;
+            }
+            death_fell = 1;
+        }
+        // smbdis 5651: once he is off the bottom, the lose-life routine waits for the death music
+        if (music_event_busy() != 0U) {
+            return state;
+        }
+        death_fell = 0;
+        {
             if (flow_after_death() != (uint8_t)kAfterDeathRespawn) {
                 music_event(kMusicGameOver);
                 state = kStateGameOver;
@@ -182,8 +196,6 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
             }
             return state;
         }
-        main_present();
-        return state;
     }
 
     if (state == kStatePause) {
@@ -278,6 +290,10 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
             }
             // the strip shows the time draining and the score rising, as smb's UpdateNumber does
             hud_draw_counters();
+        }
+        // smbdis DelayToAreaEnd: the area ends only when the fanfare has, castle or flag
+        if (done != 0U && music_event_busy() != 0U) {
+            done = 0;
         }
         if (done != 0U) {
             flow_clear_card();

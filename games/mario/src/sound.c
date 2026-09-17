@@ -948,6 +948,10 @@ void music_screen(uint8_t bits) BANKED {
     }
 }
 
+uint8_t music_event_busy(void) BANKED {
+    return (event_buf != 0U) ? 1U : 0U;
+}
+
 void music_level_again(void) BANKED {
     area_queue = level_music;
 }

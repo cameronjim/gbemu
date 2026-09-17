@@ -415,6 +415,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     ${CMAKE_SOURCE_DIR}/games/mario/src/assets_data.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/castle_art.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/popup.c
+                    ${CMAKE_SOURCE_DIR}/games/mario/src/pause.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/player_draw.c
                     ${CMAKE_SOURCE_DIR}/games/mario/src/sound.c
                     ${GB_MARIO_ASSET_C}
@@ -449,6 +450,7 @@ if(GBDK_HOME AND EXISTS "${GB_LCC}")
                     games/mario/src/assets_data.c
                     games/mario/src/castle_art.c games/mario/src/castle_art.h
                     games/mario/src/popup.c games/mario/src/popup.h
+                    games/mario/src/pause.c games/mario/src/pause.h
                     games/mario/src/player_draw.c
                     games/mario/src/sound.c games/mario/src/sound.h games/mario/src/gen/smb_audio_data.h
                     ${GB_MARIO_ASSET_C} ${GB_MARIO_ASSET_DEPS}

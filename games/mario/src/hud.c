@@ -67,6 +67,7 @@ static void put_cell(uint8_t row, uint8_t col, uint8_t tile) {
 // list assets_load_hud_font copied in rather than costing an id per ascii code
 static uint8_t glyph(char c) {
     static const char kLetters[] = kHudGlyphChars;
+    static const char kMore[] = kHudGlyphChars2;
     uint8_t i;
 
     if (c >= '0' && c <= '9') {
@@ -75,6 +76,11 @@ static uint8_t glyph(char c) {
     for (i = 0; kLetters[i] != '\0'; ++i) {
         if (kLetters[i] == c) {
             return (uint8_t)(kTileHudLetterFirst + i);
+        }
+    }
+    for (i = 0; kMore[i] != '\0'; ++i) {
+        if (kMore[i] == c) {
+            return (uint8_t)(kTileHudLetterSecond + i);
         }
     }
     return kTileHudBlank;

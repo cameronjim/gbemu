@@ -773,9 +773,10 @@ static void hud_glyph(uint8_t id, char c) {
 }
 
 void assets_load_hud_font(void) BANKED {
-    // the same list hud.c maps a character to an id with, expanded here so the copy order and the
-    // ids cannot drift apart. it is one character long now: the row prints digits and an x
+    // the same two lists hud.c and pause.c map a character to an id with, expanded here so the copy
+    // order and the ids cannot drift apart: the row's x, then the pause overlay's letters
     static const char kLetters[] = kHudGlyphChars;
+    static const char kMore[] = kHudGlyphChars2;
     uint8_t i;
 
     for (i = 0; i < 10U; ++i) {
@@ -784,6 +785,9 @@ void assets_load_hud_font(void) BANKED {
     hud_glyph(kTileHudBlank, ' ');
     for (i = 0; kLetters[i] != '\0'; ++i) {
         hud_glyph((uint8_t)(kTileHudLetterFirst + i), kLetters[i]);
+    }
+    for (i = 0; kMore[i] != '\0'; ++i) {
+        hud_glyph((uint8_t)(kTileHudLetterSecond + i), kMore[i]);
     }
     VBK_REG = VBK_BANK_1;
     set_bkg_data(kTileHudCoin, 1, kHudCoinTile);

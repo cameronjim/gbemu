@@ -11,18 +11,17 @@
 // it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over and
 // course clear cards
 #define kBannerRows 3U
-// the pause card's own heading row, 2 rows above kTitleRow: it carries more lines (world, score,
-// lives, footer) than the title/game-over/clear cards do, so it sits higher to leave the footer
-// some breathing room above the bottom of the 18-row screen
-#define kPauseRow 4U
-// its RESUME/QUIT menu, on the same two-row pitch the readout above it uses, and the footer hint
-// on the last row of the screen. the widest entry plus the cursor column is 7 glyphs, and both
-// lines are padded to it so the cursor does not shift the text when it moves
-#define kPauseMenuRow 13U
-#define kPauseItemStep 2U
-#define kPauseItemCount 2U
-#define kPauseItemWidth 7U
-#define kPauseHintRow 17U
+// the pause overlay: window map rows under the hud strip (row 0), shown by moving the lyc handler
+// that drops the window down to kPauseBandLines. row 2 carries WORLD 1-x and MARIO xNN, rows 4-6
+// the RESUME / SAVE / QUIT menu with the cursor in column kPauseMenuCol. the real smbd layout is
+// unmeasured; this is what the sources say it carries (systems.md, the manual)
+#define kPauseRows 7U
+#define kPauseInfoRow 2U
+#define kPauseWorldCol 0U
+#define kPauseLivesCol 11U
+#define kPauseMenuRow 4U
+#define kPauseMenuCol 6U
+#define kPauseBandLines (kHudRowTopPx + 8U * (kPauseRows + 1U))
 
 // the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in
 // games/mario/src/file_art.h and its labels are drawn art cells, not printed lines
@@ -1407,9 +1406,13 @@
 // kHudCoinAttr instead of kHudBarAttr: kCamPalCoin also keeps the sky in color 0, and its colors
 // 1 and 2 are the gold ramp in the overworld and underground and the lava ramp in the castle
 #define kTileHudCoin 0x8BU
-// and one id per character of the list below, in that order
-#define kTileHudLetterFirst 0x8CU // 0x8c, just the x
-#define kHudGlyphChars "x"
+// and one id per character of the two lists below, in that order: the first run fills the reserved
+// headroom up to 0x95 (0x96 is bowser's first sprite tile, same bytes), the second sits in the gap
+// between his jaw tile and the toad at 0xbe-0xc7. the pause overlay prints the letters
+#define kTileHudLetterFirst 0x8CU // 0x8c-0x95
+#define kHudGlyphChars "xWORLD-ESU"
+#define kTileHudLetterSecond 0xBEU // 0xbe-0xc4
+#define kHudGlyphChars2 "MAVQIT>"
 #define kHudBarAttr ((uint8_t)(kCamPalSky | kCamAttrVram1))
 // the coin icon takes the used block's slot rather than the coin one or the question block's:
 // color 0 is the level's own sky in all three sets there, colors 1 and 2 are the coin's gold and

@@ -124,7 +124,7 @@ void save_select(uint8_t slot) {
     current = (slot < (uint8_t)kSaveSlots) ? slot : (uint8_t)kSaveNoSlot;
 }
 
-uint8_t save_current(void) {
+uint8_t save_current(void) BANKED {
     return current;
 }
 
@@ -138,7 +138,7 @@ void save_begin(void) BANKED {
     DISABLE_RAM;
 }
 
-void save_record(uint8_t level, uint16_t score) {
+void save_record(uint8_t level, uint16_t score) BANKED {
     if (current >= (uint8_t)kSaveSlots || level > (uint8_t)kLevelCount ||
         (slot_used[current] != 0U && level <= slot_level[current])) {
         return;

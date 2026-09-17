@@ -8,6 +8,7 @@
 #include "level.h"
 #include "mapscreen.h"
 #include "mario.h"
+#include "pause.h"
 #include "physics_constants.h"
 #include "player.h"
 #include "powerup.h"
@@ -118,7 +119,7 @@ void main(void) {
             }
             if ((pressed & J_START) != 0U) {
                 sound_pause(1);
-                card_pause(level_number);
+                pause_begin(level_number);
                 state = kStatePause;
                 continue;
             }

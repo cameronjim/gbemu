@@ -71,9 +71,14 @@ the coin); those become the `k*SecondPeriod` constants so the rom never converts
   and `music_level_again` restores it when the timer ends.
 - pause runs smb's `InPause`: everything cut, the two-tone jingle, the music held where it was and
   taken up again after the unpause jingle.
+- the front screens borrow smb1 pieces, since smb deluxe's own menu tunes are not in the
+  disassembly: the title and file select play the ground theme (smb1's attract mode does the
+  same), the map plays the coin heaven tune (`Star_CloudHdr`, the star theme's data under
+  `CloudMusic`). `music_screen` holds a screen's theme back until a game over jingle or a clear
+  fanfare has ended, and `music_level` starts the level theme over when coming in from a screen.
 
 ## budget
 
-sound.c and its data are 4350 bytes of bank 8. the hooks cost bank 0 about 270 bytes of banked
+sound.c and its data are 4393 bytes of bank 8. the hooks cost bank 0 about 270 bytes of banked
 call sites. the frame probe (`mario_world_one_play_frames_never_drop`) runs with the engine on
 every frame and still sees no dropped picture on 1-1 to 1-4.

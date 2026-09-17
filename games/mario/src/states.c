@@ -169,14 +169,6 @@ static uint8_t fireworks_step(void) {
 }
 
 uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
-    if (state == kStateLivesCard) {
-        if (flow_lives_card_frame() != 0U) {
-            states_enter_play();
-            state = kStatePlay;
-        }
-        return state;
-    }
-
     if (state == kStateDeath) {
         // the world is frozen: nothing steps but mario falling out of it
         if (player_death_update() != 0U) {
@@ -184,10 +176,9 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
                 music_event(kMusicGameOver);
                 state = kStateGameOver;
             } else {
-                // the world/lives card, then the level reloads whole, spent blocks and all, which
-                // is smb's own respawn
-                flow_lives_card(level_number);
-                state = kStateLivesCard;
+                // the level reloads whole, spent blocks and all, which is smb's own respawn
+                states_enter_play();
+                state = kStatePlay;
             }
             return state;
         }

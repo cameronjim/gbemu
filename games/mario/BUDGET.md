@@ -25,7 +25,7 @@ work lands, and how the build and the tests catch a bank or a frame going over. 
 - cpu runs at double speed (`cpu_fast()` in main.c): the merged play frame overran single speed on
   heavy jump frames before that, and a dropped frame desyncs every scripted host test.
 
-## bank 0: the home bank, 15155 of 16384 used
+## bank 0: the home bank, 15148 of 16384 used
 
 bank 0 cannot grow. it is the fixed window at 0x0000 to 0x3fff. the only relief is moving code and
 data into a switched bank behind a `BANKED` entry point, which costs a bank switch per call.
@@ -66,10 +66,10 @@ candidates to move next, largest first:
 | 2 | 1-2 grid and lists | 4242 |
 | 3 | hazards.c, 1-3 grid and lists | 8205 |
 | 4 | enemies.c, assets.c and every ripped tile array | 16215 (full) |
-| 5 | flow.c, powerup.c, title.c, hud.c, save.c, mapscreen.c, camera.c, level.c | 11713 |
-| 6 | the draw passes (player_draw, blocks_draw, debris, popup), states.c, pause.c, toad.c, castle art, 1-4 grid | 8866 |
+| 5 | flow.c, powerup.c, title.c, hud.c, save.c, mapscreen.c, camera.c, level.c | 11595 |
+| 6 | the draw passes (player_draw, blocks_draw, debris, popup), states.c, pause.c, toad.c, castle art, 1-4 grid | 9023 |
 | 7 | title, file select and map screens, the level table (`kLevels`), sub-area grids | 12303 |
-| 8 | sound.c: smb's sound engine and its music data, `gen/smb_audio_data.h` | 4415 |
+| 8 | sound.c: smb's sound engine and its music data, `gen/smb_audio_data.h` | 4400 |
 | 9 to 15 | empty | 0 |
 
 rules:
@@ -85,5 +85,5 @@ rules:
 
 ## wram
 
-6396 of 8192 used, 1796 free. the big residents are `level_grid` (3984) and the level arena
+6428 of 8192 used, 1764 free. the big residents are `level_grid` (3984) and the level arena
 (about 450). the arena grows with `LEVEL_MAX_*` in levels.h.

@@ -241,18 +241,6 @@ uint8_t flow_game_over_frame(void) BANKED {
     return (card_timer >= (uint16_t)kGameOverFrames) ? 1U : 0U;
 }
 
-void flow_lives_card(uint8_t level) BANKED {
-    card_lives(level);
-    card_timer = 0;
-    // smb's intermediate is silent; a death jingle still going plays out first
-    music_quiet();
-}
-
-uint8_t flow_lives_card_frame(void) BANKED {
-    ++card_timer;
-    return (card_timer >= (uint16_t)kLivesCardFrames) ? 1U : 0U;
-}
-
 void flow_clear_card(void) BANKED {
     card_clear();
     card_timer = 0;

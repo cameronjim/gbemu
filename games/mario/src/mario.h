@@ -1455,8 +1455,6 @@
 // so 18 intervals of 21 frames; start ends it early (RunGameOver)
 #define kGameOverFrames 378U
 #define kClearCardFrames 90U
-// smbdis DisplayIntermediate: the world/lives card holds ScreenTimer 7 intervals
-#define kLivesCardFrames 147U
 // smbdis AwardGameTimerPoints: one interval a frame at 50 points, a tick every frame d2 is set;
 // then GameTimerFireworks: a last digit of 1, 3 or 6 is that many bursts. InitFireworks spaces
 // them FrenzyEnemyTimer $20 apart, 48 px left of the castle flag plus its table; RunFireworks

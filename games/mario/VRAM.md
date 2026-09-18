@@ -227,7 +227,7 @@ what is actually resident in vram when each screen is up — i.e. which loader f
 and not since been overwritten. a screen not listed as calling a loader draws with whatever the
 previous screen left behind; only the bg map cells and window-layer content change.
 
-- **erase confirm card, pause card, game over card, clear card** — none of these calls any
+- **erase confirm card, pause card, game over card** — none of these calls any
   `assets_load_*` function (`title.c`/`states.c` only call `card_begin`/`card_print_*`, which write
   bg map cell ids out of the resident font). they draw text with the gbdk ibm font loaded once at
   boot (bank 0 bg 0x00-0x5f) and nothing else. whatever tile data the world map or a level loaded

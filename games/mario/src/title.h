@@ -34,9 +34,6 @@ void card_print_value(uint8_t y, const char* label, uint16_t value, uint8_t digi
 // the pause menu is not one of them any more: pause.c draws it over the frozen level
 // the rest are flow.c's, which shares bank 5 with them, so none needs a trampoline
 void card_game_over(void);
-// the clear card, redrawn each frame while the countdown converts into points
-void card_clear(void);
-void card_clear_refresh(void);
 
 // the m2 debug camera: no player, no physics, just d-pad scroll and pan over the compiled terrain.
 // banked for the same reason the title card is - it is never entered from a frame of play

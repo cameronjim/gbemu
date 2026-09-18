@@ -1056,7 +1056,7 @@
 #define kToadSignLine0Row 15U
 #define kToadSignLine1Row 19U
 #define kToadSignLine2Row 21U
-// and how long the whole tableau holds before the course-clear card takes over: three seconds,
+// and how long the whole tableau holds before the map takes over: three seconds,
 // which is about what smb1 leaves it up for
 #define kToadHoldFrames 180U
 // the glyph run, in vram BANK 1 at bg ids 0xec-0xfd - one id per distinct character of the three
@@ -1451,12 +1451,9 @@
 #define kDeathFromHit 0U
 #define kDeathFromPit 1U
 
-// the cards, all our own cadence. the clear card counts the remaining time into points at smb's
-// own 50 a tick, a few ticks a frame so a full 400 does not outlast the card
 // smbdis GameOverInter: ScreenTimer $12, an interval timer, and IntervalTimerControl reloads $14,
 // so 18 intervals of 21 frames; start ends it early (RunGameOver)
 #define kGameOverFrames 378U
-#define kClearCardFrames 90U
 // smbdis AwardGameTimerPoints: one interval a frame at 50 points, a tick every frame d2 is set;
 // then GameTimerFireworks: a last digit of 1, 3 or 6 is that many bursts. InitFireworks spaces
 // them FrenzyEnemyTimer $20 apart, 48 px left of the castle flag plus its table; RunFireworks

@@ -4399,7 +4399,7 @@ void map_enter_level(gb::Gameboy& gameboy) {
     wait_off_map(gameboy);
 }
 
-// the whole hand-off: the clear card, the map, and the level the node it opened holds
+// the whole hand-off: the clear, the map, and the level the node it opened holds
 int clear_into(gb::Gameboy& gameboy, int want, int cap) {
     if (wait_for_map(gameboy, cap) < 0) {
         return -1;
@@ -12795,7 +12795,7 @@ TEST_CASE("mario_axe_ends_1_4") {
 //
 // smb does not end a castle on the axe. the bridge goes, bowser goes with it, and mario walks
 // right off the pedestal the axe stood on, drops into the room past it and stops in front of the
-// mushroom retainer while the sign goes up over him - and only then does the course-clear card
+// mushroom retainer while the sign goes up over him - and only then does the map
 // take the screen. before m22 he walked along an invisible line at the pedestal's own height and
 // nothing whatever happened at the end of it, which is what the user reported.
 
@@ -13444,6 +13444,21 @@ int fireworks_for(int time) {
     return digit == 1 ? 1 : (digit == 3 ? 3 : (digit == 6 ? 6 : 0));
 }
 
+// the strip's last score before the map takes the screen: there is no card after a clear, so the
+// final total is what the readout showed on the level's last drawn frame
+int final_score_before_map(gb::Gameboy& gameboy, int cap) {
+    int last = -1;
+    for (int i = 0; i < cap && sky_color(gameboy) != kSkyMap; ++i) {
+        gameboy.run_frame();
+        const int shown = hud_score_shown(gameboy);
+        if (shown >= 0) {
+            last = shown;
+        }
+    }
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+    return last;
+}
+
 // plays a run to the pole and answers with the points it scored before the clear's time bonus and
 // fireworks: the clear pays every remaining tick at kTimeBonus and 500 a burst, so both subtract
 // back out. the strip holds the contact time until he is in the doorway, so it is read right after
@@ -13452,15 +13467,10 @@ int base_score_after(gb::Gameboy& gameboy, const Route& route) {
     replay(gameboy, route.script, 0, route.script.size());
     const int at_contact = hud_time(gameboy);
     REQUIRE(at_contact >= 0);
-    // the slide, the walk, an interval a frame of countdown and up to six bursts
-    for (int i = 0; i < 1500 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    REQUIRE(card_number(gameboy, kCardClearTimeRow) == 0);
-    run(gameboy, 4);
-    return card_number(gameboy, kCardClearScoreRow) - at_contact * kTimeBonus -
-           fireworks_for(at_contact) * kFireworksPoints;
+    // the slide, the walk, an interval a frame of countdown, up to six bursts and the fanfare
+    const int total = final_score_before_map(gameboy, 1500);
+    REQUIRE(total >= 0);
+    return total - at_contact * kTimeBonus - fireworks_for(at_contact) * kFireworksPoints;
 }
 
 } // namespace
@@ -13763,18 +13773,23 @@ TEST_CASE("mario_clear_fires_the_fireworks_the_time_s_last_digit_names") {
         const int score_before = hud_score_shown(gameboy);
         int bursts = 0;
         bool burning = false;
-        for (int f = 0; f < 400 && !on_card(gameboy); ++f) {
+        int last_score = -1;
+        for (int f = 0; f < 600 && sky_color(gameboy) != kSkyMap; ++f) {
             gameboy.run_frame();
             const bool puff = sprite_box(gameboy, kTilePuffA, kTilePuffB + 1).found;
             if (puff && !burning) {
                 ++bursts;
             }
             burning = puff;
+            const int shown = hud_score_shown(gameboy);
+            if (shown >= 0) {
+                last_score = shown;
+            }
         }
+        REQUIRE(sky_color(gameboy) == kSkyMap);
         REQUIRE(bursts == 3);
-        REQUIRE(on_card(gameboy));
-        run(gameboy, 4);
-        REQUIRE(card_number(gameboy, kCardClearScoreRow) == score_before + 3 * kFireworksPoints);
+        // every burst paid, on the strip the fanfare held up until the map
+        REQUIRE(last_score == score_before + 3 * kFireworksPoints);
     }
     REQUIRE(found);
 }
@@ -14642,7 +14657,7 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     map_play(gameboy);
     replay(gameboy, route.script, 0, route.script.size());
 
-    // the clear card hands back to the map, not to 1-2, and mario is standing on the node it opened
+    // the clear hands back to the map, not to 1-2, and mario is standing on the node it opened
     REQUIRE(wait_for_map(gameboy, 1500) >= 0);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(mario_at(gameboy).box_left() == map_node_left(1));
@@ -14962,7 +14977,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
     // seeded straight to kHostLevelCount rather than actually playing all four levels: this is the
-    // same save-slot value flow_clear_frame would leave behind the instant 1-4's clear card hands
+    // same save-slot value flow_clear_done leaves behind the instant 1-4's clear hands
     // back to the map (see mario_autopilot_completes_1_4)
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
@@ -15013,7 +15028,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     // is parked off screen while it is up rather than left floating on top of it
     REQUIRE_FALSE(mario_at(gameboy).found);
 
-    // a dismisses it: the lockout that guarded the clear card's own confirm re-arms the instant the
+    // a dismisses it: the lockout that guarded the clear's last press re-arms the instant the
     // map opens, so this is a fresh press, not the one that opened the file
     step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);

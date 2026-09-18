@@ -1,5 +1,5 @@
 // the game loop's states that never run on a frame of play: the pipe transitions, the death beat,
-// the pause and clear cards and the game over. every one of them is a handful of frames between
+// the pause card, the clear and the game over. every one of them is a handful of frames between
 // levels and none of them can happen inside a frame of play, so they ride in bank 6 with blocks_draw
 // and hand bank 0 back the room its own hot path needs
 #pragma bank 6
@@ -296,8 +296,11 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
             done = 0;
         }
         if (done != 0U) {
-            flow_clear_card();
-            state = kStateClearCard;
+            // straight back to the map with the next node open and the file written: neither smb
+            // nor smbd puts a card here, and picking what to play is the map's job
+            flow_clear_done(&level_number);
+            front_cleared(&level_number);
+            state = kStateFront;
             return state;
         }
         // the sequence owns mario, so the camera tracks him as a supported-but-moving actor, and
@@ -308,15 +311,6 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
         return state;
     }
 
-    if (state == kStateClearCard) {
-        if (flow_clear_frame(&level_number) == (uint8_t)kAfterCardMap) {
-            // back to the map with the next node open and the file written, not straight on
-            // into the next level: picking what to play is the map's job now
-            front_cleared(&level_number);
-            state = kStateFront;
-        }
-        return state;
-    }
     return state;
 }
 

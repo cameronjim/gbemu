@@ -241,26 +241,14 @@ uint8_t flow_game_over_frame(void) BANKED {
     return (card_timer >= (uint16_t)kGameOverFrames) ? 1U : 0U;
 }
 
-void flow_clear_card(void) BANKED {
-    card_clear();
-    card_timer = 0;
-}
-
-uint8_t flow_clear_frame(uint8_t* level) BANKED {
-    uint8_t next;
-
-    // the countdown and the fireworks ran in the clear itself, over the castle, as smb's do
-    ++card_timer;
-    if (card_timer < (uint8_t)kClearCardFrames) {
-        return kAfterCardStay;
-    }
+void flow_clear_done(uint8_t* level) BANKED {
     // the node after this one, which may be kLevelCount: world one finished, every node cleared.
     // the file records that as is - it is what "furthest unlocked" means - and front_cleared is
     // what opens the node and clamps this back to a real one before the map puts mario down
-    next = (uint8_t)(*level + 1U);
+    const uint8_t next = (uint8_t)(*level + 1U);
+
     save_record(next, hud_score);
     *level = next;
-    return kAfterCardMap;
 }
 
 // the card wrote over the whole bg map, and every actor is exactly where it was frozen: the ring

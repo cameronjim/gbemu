@@ -10,7 +10,6 @@ enum GameState {
     kStateFront,
     kStatePlay,
     kStateClear,
-    kStateClearCard,
     kStateDeath,
     kStatePause,
     kStateGameOver,

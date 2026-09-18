@@ -246,21 +246,6 @@ void card_game_over(void) {
     card_end();
 }
 
-// the clear card's score line moves every frame while the countdown converts, so the two are split:
-// this paints the whole card once with the lcd off
-void card_clear(void) {
-    card_begin(kTitleRow);
-    card_print_centered(kTitleRow, "COURSE CLEAR");
-    card_clear_refresh();
-    card_end();
-}
-
-// ...and this rewrites the two lines that move, which is twenty cells inside one vblank
-void card_clear_refresh(void) {
-    card_print_value((uint8_t)(kTitleRow + 3U), "TIME ", hud_time, 3, 0);
-    card_print_value((uint8_t)(kTitleRow + 5U), "SCORE ", hud_score, 5, 1);
-}
-
 // debug_camera_enter/debug_camera_frame moved to states.c (bank 6): bank 5 is nearly full and the
 // title wordmark's second line plus the map's world-two popup left no room for them here. neither
 // touches title.c's card machinery or its banked string literals, and every function they call

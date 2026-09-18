@@ -179,6 +179,8 @@ void leave_title(gb::Gameboy& gameboy, gb::Button button) {
 // the map's rebuilt top/bottom bands are near-black (kMapSkyRgb in mario.h) rather than the old
 // placeholder's sky blue - a host probe still needs the eyedropper to land on it
 constexpr int kSkyMap = 1 | (1 << 5) | (1 << 10);
+// the between-states cards paint card_begin's own sky
+constexpr int kSkyCard = 20 | (24 << 5) | (31 << 10);
 int sky_color(const gb::Gameboy& gameboy);
 
 // mario is drawn on the map too, so "he is on screen" cannot say a level has loaded: what does is
@@ -4363,9 +4365,8 @@ constexpr int kSkyOverworld = 13 | (17 << 5) | (31 << 10);
 // m23 read the room off the smbd capture, which draws it on flat black rather than navy
 constexpr int kSkyUnderground = 0;
 constexpr int kSkyCastle = 1 | (1 << 5) | (3 << 10);
-// the between-states cards still paint card_begin's own sky; the title is generated art with its
-// own, the top-left cell of games/mario/art/title/title_screen.png
-constexpr int kSkyCard = 20 | (24 << 5) | (31 << 10);
+// the title is generated art with its own sky, the top-left cell of
+// games/mario/art/title/title_screen.png
 constexpr int kSkyTitle = 12 | (19 << 5) | (31 << 10);
 // the file select is generated art too, and its own top-left cell is the black the frame sits on
 constexpr int kSkyFile = 0;
@@ -4398,7 +4399,7 @@ void map_enter_level(gb::Gameboy& gameboy) {
     wait_off_map(gameboy);
 }
 
-// the whole hand-off: the clear card, the map, and the level the node it opened holds
+// the whole hand-off: the clear, the map, and the level the node it opened holds
 int clear_into(gb::Gameboy& gameboy, int want, int cap) {
     if (wait_for_map(gameboy, cap) < 0) {
         return -1;
@@ -6355,8 +6356,11 @@ TEST_CASE("mario_pits_swallow_him_at_the_first_gap") {
     gameboy.set_button(gb::Button::Right, false);
     REQUIRE(fell);
 
-    // and the respawn puts him back on the bible's start cell with the camera back at the level start
-    run(gameboy, 90);
+    // and the respawn puts him back on the bible's start cell with the camera back at the level start,
+    // once the death jingle has run its course
+    for (int i = 0; i < 500 && !at_start_cell(gameboy); ++i) {
+        gameboy.run_frame();
+    }
     const Mario back = mario_at(gameboy);
     REQUIRE(back.found);
     REQUIRE(back.box_top() == kStandTop);
@@ -6488,7 +6492,7 @@ TEST_CASE("mario_autopilot_completes_1_1") {
     // the walk off the pole, the level-clear beat, and back out to the world map with 1-2's node
     // unlocked under him; start off it opens 1-2, which now begins above ground (see 1-2's
     // segments[]) rather than underground
-    REQUIRE(clear_into(gameboy, kSkyOverworld, 900) >= 0);
+    REQUIRE(clear_into(gameboy, kSkyOverworld, 1500) >= 0);
 }
 
 // the clear sequence smb actually plays: he grabs the pole, the pennant comes down it alongside him
@@ -6963,6 +6967,12 @@ int hud_score_shown(const gb::Gameboy& gameboy);
 // crosses the room and leaves through its sideways mouth, retrying the last stretch from a standing
 // start if the walk got hung up on the platform. returns whether he is out
 bool leave_through_exit_mouth(gb::Gameboy& gameboy) {
+    // the walk that collected the coins can already have carried him out through the mouth: from
+    // out here another 900 frames of right would walk him into the first pit, and the death and
+    // respawn (now behind the world/lives card) used to pass for "the sky changed"
+    if (sky_color(gameboy) == kSkyOverworld) {
+        return true;
+    }
     const int room_sky = family_color(gameboy, kTileSky, kTileSky);
     if (cross_room_to_exit(gameboy, 900)) {
         return true;
@@ -7427,8 +7437,18 @@ TEST_CASE("mario_bonus_room_coin_stays_collected_after_reentry") {
     REQUIRE(leave_through_exit_mouth(gameboy));
     run(gameboy, 20);
     const int taken = hud_coins(gameboy);
-    press(gameboy, gb::Button::Down, 4);
-    run(gameboy, 60);
+    // the return stands him on the cap's left edge, and smb's entry wants both foot points over
+    // the cap's two columns (HandlePipeEntry, #24), so he shuffles right a step at a time until
+    // down takes; the pipe-down beat and the room's lcd-off rebuild follow, then the strip repaints
+    bool back_in = false;
+    for (int step = 0; step < 12 && !back_in; ++step) {
+        press(gameboy, gb::Button::Right, 4);
+        run(gameboy, 30);
+        press(gameboy, gb::Button::Down, 4);
+        back_in = wait_for_sky(gameboy, kSkyUnderground, 150) >= 0;
+    }
+    REQUIRE(back_in);
+    run(gameboy, 20);
 
     // the room repaints on reentry; only the coins still there when he left should be, not the ones
     // he already spent - without the fix every one of coins_before would be back
@@ -8649,7 +8669,7 @@ void enter_level(gb::Gameboy& gameboy, int level) {
     gameboy.set_button(gb::Button::Up, false);
     // the lcd-off rebuild outruns a whole host frame, so the wait is for mario to be drawn rather
     // than for a frame count; from there the game and the host advance one for one
-    for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
+    for (int i = 0; i < 400 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
     }
     run(gameboy, kLevelSettleFrames);
@@ -9003,7 +9023,7 @@ TEST_CASE("mario_level_progression") {
     const Route route = plan_route(0, true, 4000);
     REQUIRE(route.reached);
     replay(gameboy, route.script, 0, route.script.size());
-    REQUIRE(clear_into(gameboy, kSkyOverworld, 900) >= 0);
+    REQUIRE(clear_into(gameboy, kSkyOverworld, 1500) >= 0);
 }
 
 // 1-2 is now three segments - above ground, underground, above ground again - joined by two
@@ -11500,7 +11520,7 @@ TEST_CASE("mario_autopilot_completes_1_3") {
     REQUIRE(match.drops <= kMaxVsyncMisses);
 
     // the pole, the walk off it, and the world map between the two levels
-    REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
+    REQUIRE((match.saw_map || wait_for_map(gameboy, 1500) >= 0));
     REQUIRE(settle_into(gameboy, kSkyCastle, 900) >= 0);
 }
 
@@ -11525,7 +11545,7 @@ TEST_CASE("mario_autopilot_completes_1_4") {
 
     // world one is over, so the clear walk hands back to the map with every node cleared and
     // mario left standing on the last one
-    REQUIRE((match.saw_map || wait_for_map(gameboy, 900) >= 0));
+    REQUIRE((match.saw_map || wait_for_map(gameboy, 1500) >= 0));
 }
 
 TEST_CASE("mario_tree_platforms") {
@@ -12775,7 +12795,7 @@ TEST_CASE("mario_axe_ends_1_4") {
 //
 // smb does not end a castle on the axe. the bridge goes, bowser goes with it, and mario walks
 // right off the pedestal the axe stood on, drops into the room past it and stops in front of the
-// mushroom retainer while the sign goes up over him - and only then does the course-clear card
+// mushroom retainer while the sign goes up over him - and only then does the map
 // take the screen. before m22 he walked along an invisible line at the pedestal's own height and
 // nothing whatever happened at the end of it, which is what the user reported.
 
@@ -13166,13 +13186,15 @@ constexpr int kHudScoreDigits = 5;
 // the card rows title.c prints on, off kTitleRow; the pause menu is an overlay now, read by its own
 // helpers below
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
-constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
-constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
 // gbdk's ibm font puts ascii '0' on tile 0x10
 constexpr uint8_t kFontDigitLo = 0x10;
 constexpr uint8_t kFontDigitHi = 0x19;
-// roster.json's per-tick time bonus, which the clear card converts the whole countdown at
+// roster.json's per-tick time bonus, which the clear converts the whole countdown at
 constexpr int kTimeBonus = kTimeBonusPoints;
+// mario.h: smb's 500 a burst, and the fireball puff's sprite tiles the bursts are drawn with
+constexpr int kFireworksPoints = 500;
+constexpr uint8_t kTilePuffA = 0x8E;
+constexpr uint8_t kTilePuffB = 0x90;
 constexpr int kShortTimerTicks = 70;
 constexpr int kStartLives = 3;
 // how long a is held at the pole to clear its top row entirely, which is what misses the contact
@@ -13258,7 +13280,7 @@ void enter_timer_lab(gb::Gameboy& gameboy) {
     run(gameboy, 2);
     press(gameboy, gb::Button::Select, 2);
     gameboy.set_button(gb::Button::Down, false);
-    for (int i = 0; i < 200 && !mario_at(gameboy).found; ++i) {
+    for (int i = 0; i < 400 && !mario_at(gameboy).found; ++i) {
         gameboy.run_frame();
     }
     run(gameboy, kLevelSettleFrames);
@@ -13285,18 +13307,18 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
 // of its loop, so a press after one has to wait for the burst to drain
 constexpr int kCardSettleFrames = 60;
 
-// smbd's pause card (pause.c): black, PAUSE on row 1, WORLD 1-x on row 3, mario's sprite as bg
-// cells on rows 6-7 with x and his lives beside it, CONTINUE / SAVE / END every other row from row
-// 8. the glyphs are the hud font's runs, so a tile id names a letter: P opens PAUSE
+// the pause card (pause.c, mario.h's kPause* rows): black, PAUSE on row 2, WORLD 1-x on row 5,
+// mario's sprite as bg cells on rows 8-9 with x and his lives beside it, CONTINUE / END every
+// other row from row 12 (no SAVE: the file records every clear by itself). the glyphs are the hud
+// font's runs, so a tile id names a letter: P opens PAUSE
 constexpr int kPauseTitleX = 7 * 8;
-constexpr int kPauseTitleY = 1 * 8;
-constexpr int kPauseWorldY = 3 * 8;
-constexpr int kPauseLivesY = 6 * 8;
-constexpr int kPauseLivesX = 11 * 8;
-constexpr int kPauseMenuY = 8 * 8;
+constexpr int kPauseTitleY = 2 * 8;
+constexpr int kPauseWorldY = 5 * 8;
+constexpr int kPauseLivesY = 9 * 8;
+constexpr int kPauseLivesX = 12 * 8;
+constexpr int kPauseMenuY = 12 * 8;
 constexpr int kPauseMenuStepY = 16;
 constexpr int kPauseMenuX = 6 * 8;
-constexpr uint8_t kGlyphD = 0x91;
 constexpr uint8_t kGlyphCursor = 0xC4;
 constexpr uint8_t kGlyphC = 0xC5;
 constexpr uint8_t kGlyphN = 0xC6;
@@ -13414,32 +13436,39 @@ Route plan_flag_contact(bool low) {
     return route;
 }
 
-// plays a run to the pole and answers with the points it scored before the clear card's time
-// bonus: the card converts every remaining tick at kTimeBonus, so the bonus subtracts back out
-int base_score_after(gb::Gameboy& gameboy, const Route& route) {
-    int at_contact = -1;
+// smbdis GameTimerFireworks: a time ending in 1, 3 or 6 is that many bursts of 500
+int fireworks_for(int time) {
+    const int digit = time % 10;
+    return digit == 1 ? 1 : (digit == 3 ? 3 : (digit == 6 ? 6 : 0));
+}
 
-    replay(gameboy, route.script, 0, route.script.size());
-    for (int i = 0; i < 900 && !on_card(gameboy); ++i) {
-        const int now = hud_time(gameboy);
-
-        if (now >= 0) {
-            at_contact = now;
+// the strip's last score before the map takes the screen: there is no card after a clear, so the
+// final total is what the readout showed on the level's last drawn frame
+int final_score_before_map(gb::Gameboy& gameboy, int cap) {
+    int last = -1;
+    for (int i = 0; i < cap && sky_color(gameboy) != kSkyMap; ++i) {
+        gameboy.run_frame();
+        const int shown = hud_score_shown(gameboy);
+        if (shown >= 0) {
+            last = shown;
         }
-        gameboy.run_frame();
     }
+    REQUIRE(sky_color(gameboy) == kSkyMap);
+    return last;
+}
+
+// plays a run to the pole and answers with the points it scored before the clear's time bonus and
+// fireworks: the clear pays every remaining tick at kTimeBonus and 500 a burst, so both subtract
+// back out. the strip holds the contact time until he is in the doorway, so it is read right after
+// the route, before the countdown starts
+int base_score_after(gb::Gameboy& gameboy, const Route& route) {
+    replay(gameboy, route.script, 0, route.script.size());
+    const int at_contact = hud_time(gameboy);
     REQUIRE(at_contact >= 0);
-    // the card converts eight ticks a frame, so a couple of hundred frames sees it out
-    for (int i = 0; i < 400 && card_number(gameboy, kCardClearTimeRow) != 0; ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(card_number(gameboy, kCardClearTimeRow) == 0);
-    // the card rewrites its time line and its score line in the same vblank, but the frame that
-    // spends the last of the countdown can land the two either side of a scanline, and then the
-    // clock reads zero one frame before the score it paid for shows up. so the score is read a
-    // few frames after the countdown is out rather than on the frame it first reads zero
-    run(gameboy, 4);
-    return card_number(gameboy, kCardClearScoreRow) - at_contact * kTimeBonus;
+    // the slide, the walk, an interval a frame of countdown, up to six bursts and the fanfare
+    const int total = final_score_before_map(gameboy, 1500);
+    REQUIRE(total >= 0);
+    return total - at_contact * kTimeBonus - fireworks_for(at_contact) * kFireworksPoints;
 }
 
 } // namespace
@@ -13637,13 +13666,130 @@ TEST_CASE("mario_lives_and_game_over") {
     REQUIRE(over);
     REQUIRE(card_number(gameboy, kCardOverScoreRow) >= 0);
 
-    // and the card hands back to the title, which the generated art's own sky names
+    // smbdis GameOverInter: the card holds 18 intervals of 21 frames, so it is still up well past
+    // the old two seconds; RunGameOver lets start end it early, into the title, which the
+    // generated art's own sky names
+    run(gameboy, 200);
+    REQUIRE(on_card(gameboy));
+    press(gameboy, gb::Button::Start, 2);
     bool titled = false;
-    for (int i = 0; i < 300 && !titled; ++i) {
+    for (int i = 0; i < 120 && !titled; ++i) {
         gameboy.run_frame();
         titled = sky_color(gameboy) == kSkyTitle;
     }
     REQUIRE(titled);
+}
+
+// left alone, the game over card hands back on its own once smb's hold is up
+TEST_CASE("mario_game_over_card_holds_smb_s_time") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_timer_lab(gameboy);
+    const int window = kTimerFramesPerTick * kShortTimerTicks + 400;
+    REQUIRE(wait_for_respawn(gameboy, window) >= 0);
+    REQUIRE(wait_for_respawn(gameboy, window) >= 0);
+    int at = -1;
+    for (int i = 0; i < window && at < 0; ++i) {
+        gameboy.run_frame();
+        if (on_card(gameboy) &&
+            glyph_span(gameboy, kTitleRow, kFontFirstTile + 1, kFontLastTile) == std::pair<int, int>{5, 13}) {
+            at = i;
+        }
+    }
+    REQUIRE(at >= 0);
+    int held = 0;
+    for (; held < 500 && sky_color(gameboy) != kSkyTitle; ++held) {
+        gameboy.run_frame();
+    }
+    REQUIRE(sky_color(gameboy) == kSkyTitle);
+    // 378 frames less the few the detection loop already spent on it
+    REQUIRE(held >= 360);
+    REQUIRE(held <= 400);
+}
+
+// smbdis AwardGameTimerPoints: once he is in the doorway the strip's time drops one a frame, the
+// score rises 50 a frame, and the tick (PlayTimerTick, $42 at volume 8 on square 2) is heard
+TEST_CASE("mario_clear_pays_the_time_an_interval_a_frame_with_smb_s_tick") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_flag_contact(true);
+    REQUIRE(route.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, route.script, 0, route.script.size());
+    const int at_contact = hud_time(gameboy);
+    REQUIRE(at_contact > 0);
+    // the slide and the walk to the castle: the time stands still until the doorway
+    int i = 0;
+    for (; i < 900 && hud_time(gameboy) == at_contact; ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(i < 900);
+    const int time_now = hud_time(gameboy);
+    const int score_now = hud_score_shown(gameboy);
+    REQUIRE(time_now >= 0);
+    bool ticked = false;
+    for (int f = 1; f <= 8; ++f) {
+        gameboy.run_frame();
+        REQUIRE(hud_time(gameboy) == time_now - f);
+        REQUIRE(hud_score_shown(gameboy) == score_now + f * kTimeBonus);
+        const gb::Apu& apu = gameboy.debug_apu();
+        ticked = ticked || (apu.debug_ch2_freq() == note_period(0x42) && apu.debug_ch2_volume() == 8);
+    }
+    REQUIRE(ticked);
+}
+
+// smbdis GameTimerFireworks / FireworksSoundScore: a contact time ending in 3 sets off three bursts
+// of smb's explosion (the fireball puff's tiles) after the countdown, each worth 500 with the blast
+TEST_CASE("mario_clear_fires_the_fireworks_the_time_s_last_digit_names") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const Route route = plan_flag_contact(true);
+    REQUIRE(route.reached);
+
+    // idling a whole interval before the run moves the contact time one down; one of ten lands a 3
+    bool found = false;
+    for (int idle = 0; idle < 10 && !found; ++idle) {
+        gb::Gameboy gameboy;
+        REQUIRE(gameboy.load_rom(rom));
+        enter_play(gameboy);
+        run(gameboy, static_cast<uint32_t>(idle) * kTimerFramesPerTick);
+        replay(gameboy, route.script, 0, route.script.size());
+        const int at_contact = hud_time(gameboy);
+        REQUIRE(at_contact > 0);
+        if (at_contact % 10 != 3) {
+            continue;
+        }
+        found = true;
+        int i = 0;
+        for (; i < 900 && hud_time(gameboy) != 0; ++i) {
+            gameboy.run_frame();
+        }
+        REQUIRE(i < 900);
+        const int score_before = hud_score_shown(gameboy);
+        int bursts = 0;
+        bool burning = false;
+        int last_score = -1;
+        for (int f = 0; f < 600 && sky_color(gameboy) != kSkyMap; ++f) {
+            gameboy.run_frame();
+            const bool puff = sprite_box(gameboy, kTilePuffA, kTilePuffB + 1).found;
+            if (puff && !burning) {
+                ++bursts;
+            }
+            burning = puff;
+            const int shown = hud_score_shown(gameboy);
+            if (shown >= 0) {
+                last_score = shown;
+            }
+        }
+        REQUIRE(sky_color(gameboy) == kSkyMap);
+        REQUIRE(bursts == 3);
+        // every burst paid, on the strip the fanfare held up until the map
+        REQUIRE(last_score == score_before + 3 * kFireworksPoints);
+    }
+    REQUIRE(found);
 }
 
 TEST_CASE("mario_oneup_grants_a_life") {
@@ -13776,8 +13922,8 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     REQUIRE(after.box_top() == before.box_top());
 }
 
-// with a file open the menu is CONTINUE / SAVE / END: down twice puts the cursor on END and a hands
-// the run back to the world map, at the node of the level he walked out of, with nothing spent
+// the menu is CONTINUE / END: down puts the cursor on END and a hands the run back to the world
+// map, at the node of the level he walked out of, with nothing spent
 TEST_CASE("mario_pause_menu_quits_to_the_map") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
@@ -13788,17 +13934,14 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     gameboy.set_button(gb::Button::Right, false);
     run(gameboy, 30);
     open_pause(gameboy);
-    // END's N sits in the second glyph column of the third entry
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) ==
-            kGlyphN);
+    // END's N sits in the second glyph column of the second entry, and there is no third
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphN);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) != kGlyphN);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 2);
     press(gameboy, gb::Button::A, 2);
-    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    REQUIRE(wait_for_map(gameboy, 1500) >= 0);
     run(gameboy, kScreenSettleFrames);
     // it is the real map, walkable mario and all, not just a screen the palette matches
     REQUIRE(mario_at(gameboy).found);
@@ -13807,31 +13950,11 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
 }
 
-// the manual: "from pause, access save". SAVE writes the file and says so, and the game stays
-// paused; the slot keeps level progress, which the map had already recorded for this node
-TEST_CASE("mario_pause_menu_saves_the_file") {
-    const std::vector<uint8_t> rom = read_mario_rom();
-    gb::Gameboy gameboy;
-    REQUIRE(gameboy.load_rom(rom));
-    enter_play(gameboy);
-    run(gameboy, 30);
-    open_pause(gameboy);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 1);
-    press(gameboy, gb::Button::A, 2);
-    run(gameboy, 2);
-    REQUIRE(on_pause(gameboy));
-    // SAVE became SAVED: the D lands in the fifth glyph column of the entry
-    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 5 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphD);
-    // slot 0's used flag, mario.h kSaveSlotBase (the save tests below spell the layout out)
-    REQUIRE(gameboy.external_ram()[8] == 1);
-    close_pause(gameboy);
-}
+// smbd's manual says "from pause, access save", but the file here records every clear by itself,
+// so the menu carries no SAVE: a run without a file (the title's level select) looks the same, and
+// the cursor wraps between the two entries
 
-// a run that never opened a file (the title's own level select) has nothing to save into, so its
-// menu is CONTINUE / END
-TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
+TEST_CASE("mario_pause_menu_has_no_save") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
@@ -13842,6 +13965,9 @@ TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
     REQUIRE(pause_cursor_row(gameboy) == 1);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 0);
 }
 TEST_CASE("mario_powerup_carries_into_the_next_level") {
     const std::vector<uint8_t> rom = read_mario_rom();
@@ -13854,16 +13980,13 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
     REQUIRE(grow_on_the_pyramid(gameboy, sim));
     REQUIRE(mario_at(gameboy).big);
 
-    // out to the map through the pause menu's END (past SAVE, this run has a file), which records
-    // nothing and spends nothing
+    // out to the map through the pause menu's END, which records nothing and spends nothing
     open_pause(gameboy);
     press(gameboy, gb::Button::Down, 2);
     run(gameboy, 2);
-    press(gameboy, gb::Button::Down, 2);
-    run(gameboy, 2);
-    REQUIRE(pause_cursor_row(gameboy) == 2);
+    REQUIRE(pause_cursor_row(gameboy) == 1);
     press(gameboy, gb::Button::A, 2);
-    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    REQUIRE(wait_for_map(gameboy, 1500) >= 0);
 
     // and back in through the node he was standing on: a whole level load, grid, blocks, enemies
     // and mario, with no powerup_reset in it any more
@@ -13886,6 +14009,50 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
 
 // ...and the death path is what does take it away: the reset moved onto flow_after_death, so the
 // life that follows a pit starts small again
+// smbdis 5651: the lose-life routine waits on EventMusicBuffer, so the level does not come back
+// until the death jingle (216 frames) is over. he is off the bottom long before that, and square 2
+// is still carrying the tune while the screen is empty
+TEST_CASE("mario_death_waits_for_the_jingle") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    const uint16_t gap = first_gap_column();
+    REQUIRE(gap > 0u);
+    const Route approach = plan_route(static_cast<uint16_t>((gap - 6) * kBlockPx), false, 4000);
+    REQUIRE(approach.reached);
+
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    replay(gameboy, approach.script, 0, approach.script.size());
+
+    bool fell = false;
+    gameboy.set_button(gb::Button::Right, true);
+    for (int i = 0; i < 240 && !fell; ++i) {
+        gameboy.run_frame();
+        fell = !mario_at(gameboy).found;
+    }
+    gameboy.set_button(gb::Button::Right, false);
+    REQUIRE(fell);
+
+    // a hundred frames into the empty screen the tune is still going and he is still away
+    bool heard = false;
+    for (int i = 0; i < 100; ++i) {
+        gameboy.run_frame();
+        heard = heard || apu_seen(gameboy).ch2_vol > 0;
+    }
+    REQUIRE(heard);
+    REQUIRE(!mario_at(gameboy).found);
+
+    // and the respawn comes only after the jingle: no earlier than its length, less the drop
+    int back = -1;
+    for (int i = 0; i < 400 && back < 0; ++i) {
+        gameboy.run_frame();
+        if (at_start_cell(gameboy)) {
+            back = i;
+        }
+    }
+    REQUIRE(back >= 20);
+}
+
 TEST_CASE("mario_death_takes_the_powerup_away") {
     const std::vector<uint8_t> rom = read_mario_rom();
     const uint16_t gap = first_gap_column();
@@ -14286,7 +14453,7 @@ TEST_CASE("mario_three_slots_are_independent") {
     open_file(gameboy, 2);
     map_play(gameboy);
     replay(gameboy, route.script, 0, route.script.size());
-    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    REQUIRE(wait_for_map(gameboy, 1500) >= 0);
 
     const std::span<const uint8_t> ram = gameboy.external_ram();
     // the file it was played on carries 1-2; the other two are untouched, in use flag included
@@ -14308,7 +14475,7 @@ TEST_CASE("mario_save_survives_a_power_cycle") {
     open_file(first, 0);
     map_play(first);
     replay(first, route.script, 0, route.script.size());
-    REQUIRE(wait_for_map(first, 900) >= 0);
+    REQUIRE(wait_for_map(first, 1500) >= 0);
 
     // the battery bytes the frontend would write out to a .sav, carried to a brand new machine
     const std::vector<uint8_t> saved(first.external_ram().begin(), first.external_ram().end());
@@ -14489,8 +14656,8 @@ TEST_CASE("mario_clearing_a_level_unlocks_exactly_the_next_node") {
     map_play(gameboy);
     replay(gameboy, route.script, 0, route.script.size());
 
-    // the clear card hands back to the map, not to 1-2, and mario is standing on the node it opened
-    REQUIRE(wait_for_map(gameboy, 900) >= 0);
+    // the clear hands back to the map, not to 1-2, and mario is standing on the node it opened
+    REQUIRE(wait_for_map(gameboy, 1500) >= 0);
     run(gameboy, kScreenSettleFrames);
     REQUIRE(mario_at(gameboy).box_left() == map_node_left(1));
     REQUIRE(gameboy.external_ram()[slot_at(0) + kSlotLevel] == 1);
@@ -14799,7 +14966,7 @@ TEST_CASE("mario_map_clear_list_fills_with_progress") {
     open_file(played, 0);
     map_play(played);
     replay(played, route.script, 0, route.script.size());
-    REQUIRE(wait_for_map(played, 900) >= 0);
+    REQUIRE(wait_for_map(played, 1500) >= 0);
     run(played, kScreenSettleFrames);
     REQUIRE(clear_list_cell_filled(played, 0));
     REQUIRE_FALSE(clear_list_cell_filled(played, 1));
@@ -14809,7 +14976,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
     // seeded straight to kHostLevelCount rather than actually playing all four levels: this is the
-    // same save-slot value flow_clear_frame would leave behind the instant 1-4's clear card hands
+    // same save-slot value flow_clear_done leaves behind the instant 1-4's clear hands
     // back to the map (see mario_autopilot_completes_1_4)
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
@@ -14860,7 +15027,7 @@ TEST_CASE("mario_map_shows_world_two_popup_once_world_one_is_cleared") {
     // is parked off screen while it is up rather than left floating on top of it
     REQUIRE_FALSE(mario_at(gameboy).found);
 
-    // a dismisses it: the lockout that guarded the clear card's own confirm re-arms the instant the
+    // a dismisses it: the lockout that guarded the clear's last press re-arms the instant the
     // map opens, so this is a fresh press, not the one that opened the file
     step_screen(gameboy, gb::Button::A);
     run(gameboy, kScreenSettleFrames);

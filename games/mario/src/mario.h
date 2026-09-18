@@ -8,25 +8,27 @@
 #define kTitleRow 6U
 // every card banner is a padding row, the text row, then another padding row, so the tinted band
 // reads as a band rather than exactly the glyph height. the title card carries no text at all now -
-// it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over and
-// course clear cards
+// it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over card
 #define kBannerRows 3U
 // smbd's pause screen, measured off a capture (160x144, cells of 8): PAUSE on row 1, WORLD 1-x on
 // row 3 from column 6, mario's sprite on rows 5-6 at column 7 with x and his lives on row 6, then
-// CONTINUE / SAVE / END every other row from row 8 with the cursor in column 6. white ink on black;
-// mario's cells wear his own colours in a bg slot the level gets back on resume
-#define kPauseTitleRow 1U
+// CONTINUE / SAVE / END every other row from row 8 with the cursor in column 6. ours drops SAVE (the
+// file keeps itself) and, with the shorter menu, spreads the same pieces over rows 2-14 so the card
+// sits centred on the 18-row screen. white ink on black; mario's cells wear his own colours in a bg
+// slot the level gets back on resume
+#define kPauseTitleRow 2U
 #define kPauseTitleCol 7U
-#define kPauseWorldRow 3U
+#define kPauseWorldRow 5U
 #define kPauseWorldCol 6U
-#define kPauseMarioRow 5U
+#define kPauseMarioRow 8U
 #define kPauseMarioCol 7U
-#define kPauseLivesRow 6U
-#define kPauseLivesXCol 9U
-#define kPauseLivesCol 11U
-#define kPauseMenuRow 8U
+#define kPauseLivesRow 9U
+#define kPauseLivesXCol 10U
+#define kPauseLivesCol 12U
+#define kPauseMenuRow 12U
 #define kPauseMenuStep 2U
 #define kPauseMenuCol 6U
+#define kPauseEntries 2U
 #define kPausePalMario kCamPalGround
 
 // the SELECT FILE screen is generated art now, not a text card: its layout lives with the art in
@@ -1054,7 +1056,7 @@
 #define kToadSignLine0Row 15U
 #define kToadSignLine1Row 19U
 #define kToadSignLine2Row 21U
-// and how long the whole tableau holds before the course-clear card takes over: three seconds,
+// and how long the whole tableau holds before the map takes over: three seconds,
 // which is about what smb1 leaves it up for
 #define kToadHoldFrames 180U
 // the glyph run, in vram BANK 1 at bg ids 0xec-0xfd - one id per distinct character of the three
@@ -1449,11 +1451,23 @@
 #define kDeathFromHit 0U
 #define kDeathFromPit 1U
 
-// the cards, all our own cadence. the clear card counts the remaining time into points at smb's
-// own 50 a tick, a few ticks a frame so a full 400 does not outlast the card
-#define kGameOverFrames 120U
-#define kClearCardFrames 90U
-#define kTimeBonusTicksPerFrame 8U
+// smbdis GameOverInter: ScreenTimer $12, an interval timer, and IntervalTimerControl reloads $14,
+// so 18 intervals of 21 frames; start ends it early (RunGameOver)
+#define kGameOverFrames 378U
+// smbdis AwardGameTimerPoints: one interval a frame at 50 points, a tick every frame d2 is set;
+// then GameTimerFireworks: a last digit of 1, 3 or 6 is that many bursts. InitFireworks spaces
+// them FrenzyEnemyTimer $20 apart, 48 px left of the castle flag plus its table; RunFireworks
+// runs three frames of 8 and FireworksSoundScore pays 500. smb's flag pole sits at $b0 over a
+// ground our grid puts 32 px lower
+#define kFireworksSpacingFrames 32U
+#define kFireworksBurstFrames 24U
+#define kFireworksPoints 500U
+#define kFireworksFlagPx 40U
+#define kFireworksLeftPx 48U
+#define kFireworksGroundShiftPx 32U
+// smb's sky is 240 lines tall and ours 144, so the highest bursts would open over the top of the
+// view: they are held to just under the hud strip instead (unmeasured against smbd)
+#define kFireworksTopPx 16U
 
 // sram (games/mario/src/save.c). the cart is MBC5+RAM+BATTERY with one 8 kb bank, so three slots
 // cost 32 of the 8192 bytes and no bank switching. layout:

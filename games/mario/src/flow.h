@@ -94,14 +94,11 @@ uint8_t flow_after_death(void) BANKED;
 // one frame of the game over card; 1 when it has been up long enough to go back to the title
 uint8_t flow_game_over_frame(void) BANKED;
 
-// paints the level-clear card, then one frame of it: the countdown converting into points, the
-// hold, and finally the file's record. m19 hands back to the world map rather than straight into
-// the next level, so `level` comes back as the RAW next node - which is kLevelCount once world one
-// is finished; front_cleared is what opens that node on the map and clamps this back to a real one
-#define kAfterCardStay 0U
-#define kAfterCardMap 1U
-void flow_clear_card(void) BANKED;
-uint8_t flow_clear_frame(uint8_t* level) BANKED;
+// the file's record once the clear has run out, countdown, fireworks and fanfare: the run hands
+// back to the world map rather than straight into the next level, so `level` comes back as the
+// RAW next node - which is kLevelCount once world one is finished; front_cleared is what opens
+// that node on the map and clamps this back to a real one. no card: neither smb nor smbd has one
+void flow_clear_done(uint8_t* level) BANKED;
 
 // puts the level's own bg back after a card overwrote it, without touching a single actor
 void flow_resume_from_card(uint8_t area, uint16_t camera_x) BANKED;

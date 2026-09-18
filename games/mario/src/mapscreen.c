@@ -461,10 +461,9 @@ static uint8_t map_frame(uint8_t pressed, uint8_t* level) {
         map_art_animate(map_water_frame);
     }
     // the popup eats every button until it is dismissed - lock_gate already stripped the edge that
-    // was still held from whatever closed the clear card, so this can only fire on a fresh press.
-    // map_draw_popup_hide rebuilds everything the card covered - no DISPLAY_OFF needed, the same
-    // mid-frame vram write style card_clear_refresh already uses to tick the clear card's timer
-    // while the display stays on
+    // was still held from whatever ended the clear, so this can only fire on a fresh press.
+    // map_draw_popup_hide rebuilds everything the card covered - no DISPLAY_OFF needed, a
+    // mid-frame vram write while the display stays on
     if (map_popup != 0U) {
         if ((pressed & (uint8_t)(J_A | J_START | J_B)) != 0U) {
             map_popup = 0;

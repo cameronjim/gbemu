@@ -40,7 +40,8 @@ void hud_add_life(void) BANKED;
 
 // spends up to kTimeBonusTicksPerFrame of the remaining countdown at the roster's per-tick rate;
 // 1 while there is still time left to convert
-uint8_t hud_spend_time_bonus(void);
+uint8_t hud_spend_time_bonus(void) BANKED;
+void hud_draw_counters(void) BANKED;
 
 // writes `count` decimal digits of `value`, most significant first; the cards print with it
 void hud_split(uint16_t value, uint8_t* out, uint8_t count);

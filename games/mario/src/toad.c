@@ -1,7 +1,7 @@
 // smb does not end a castle on the axe. the bridge goes, bowser goes into the lava with it, and
 // mario walks right off the pedestal the axe stood on, drops into the room past it and stops in
 // front of the mushroom retainer while the sign's three lines go up over him - and only then does
-// the course-clear card take the screen. player.c's clear sequence owns the walk, because that is the
+// the map take the screen. player.c's clear sequence owns the walk, because that is the
 // physics pass; everything the walk ends in is here, in bank 6 with the other draw passes, because
 // bank 0 has sixty-odd bytes left in it and bank 5 seventeen
 #pragma bank 6

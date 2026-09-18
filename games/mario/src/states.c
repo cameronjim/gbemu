@@ -1,5 +1,5 @@
 // the game loop's states that never run on a frame of play: the pipe transitions, the death beat,
-// the pause and clear cards and the game over. every one of them is a handful of frames between
+// the pause card, the clear and the game over. every one of them is a handful of frames between
 // levels and none of them can happen inside a frame of play, so they ride in bank 6 with blocks_draw
 // and hand bank 0 back the room its own hot path needs
 #pragma bank 6
@@ -8,6 +8,7 @@
 
 #include "blocks.h"
 #include "camera.h"
+#include "debris.h"
 #include "flow.h"
 #include "hazards.h"
 #include "hud.h"
@@ -39,7 +40,13 @@ uint8_t hazard_active;
 uint8_t hazard_near;
 // the level load and the respawn share this: both refill the whole ring, far more vram traffic
 // than one vblank holds, so both do it with the lcd off
+// 0 walking in, 1 the countdown and the fireworks: set on the frame he steps into the doorway
+static uint8_t clear_stage;
+// 1 once the death drop has carried him off the bottom and the jingle is being waited out
+static uint8_t death_fell;
+
 void states_enter_play(void) BANKED {
+    clear_stage = 0;
     DISPLAY_OFF;
     current_area = kAreaMain;
     pending_area = 0xFF;
@@ -98,10 +105,87 @@ static void leave_sub_area(void) {
     DISPLAY_ON;
 }
 
+// smbdis GameTimerFireworks / InitFireworks: the last digit of the time picks the count and where
+// in the two tables the bursts start; FireworksXPosData is added to the flag's x less 48
+static const uint8_t kFireworksX[6] = {0x00, 0x30, 0x60, 0x60, 0x00, 0x20};
+static const uint8_t kFireworksY[6] = {0x60, 0x40, 0x70, 0x40, 0x60, 0x30};
+static uint8_t fireworks_left;
+static uint8_t fireworks_base;
+static uint8_t fireworks_timer;
+static uint8_t fireworks_burst;
+
+static void fireworks_setup(void) {
+    uint16_t digit = hud_time;
+
+    while (digit >= 10U) {
+        digit = (uint16_t)(digit - 10U);
+    }
+    fireworks_left = 0;
+    fireworks_base = 0;
+    if (digit == 1U) {
+        fireworks_left = 1;
+        fireworks_base = 5;
+    } else if (digit == 3U) {
+        fireworks_left = 3;
+        fireworks_base = 3;
+    } else if (digit == 6U) {
+        fireworks_left = 6;
+    }
+    fireworks_timer = (uint8_t)kFireworksSpacingFrames;
+    fireworks_burst = 0;
+}
+
+// 1 while a burst is still owed or burning. the puff is smb's own explosion tiles (debris.c), and
+// the blast and the 500 land when it goes out, as FireworksSoundScore pays them
+static uint8_t fireworks_step(void) {
+    uint8_t index;
+    int16_t y;
+
+    if (fireworks_burst != 0U) {
+        --fireworks_burst;
+        if (fireworks_burst == 0U) {
+            sfx_square2(kSfxBlast);
+            hud_score = (uint16_t)(hud_score + kScoreTens(kFireworksPoints));
+        }
+        return 1;
+    }
+    if (fireworks_left == 0U) {
+        return 0;
+    }
+    if (fireworks_timer != 0U) {
+        --fireworks_timer;
+        return 1;
+    }
+    fireworks_timer = (uint8_t)kFireworksSpacingFrames;
+    --fireworks_left;
+    index = (uint8_t)(fireworks_left + fireworks_base);
+    y = (int16_t)(kFireworksY[index] + kFireworksGroundShiftPx);
+    if (y < (int16_t)(camera_pos_y + kFireworksTopPx)) {
+        y = (int16_t)(camera_pos_y + kFireworksTopPx);
+    }
+    debris_poof((uint16_t)(((uint16_t)level->castle_column << 4) + kFireworksFlagPx - kFireworksLeftPx +
+                           kFireworksX[index]),
+                y);
+    fireworks_burst = (uint8_t)kFireworksBurstFrames;
+    return 1;
+}
+
 uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     if (state == kStateDeath) {
         // the world is frozen: nothing steps but mario falling out of it
-        if (player_death_update() != 0U) {
+        if (death_fell == 0U) {
+            if (player_death_update() == 0U) {
+                main_present();
+                return state;
+            }
+            death_fell = 1;
+        }
+        // smbdis 5651: once he is off the bottom, the lose-life routine waits for the death music
+        if (music_event_busy() != 0U) {
+            return state;
+        }
+        death_fell = 0;
+        {
             if (flow_after_death() != (uint8_t)kAfterDeathRespawn) {
                 music_event(kMusicGameOver);
                 state = kStateGameOver;
@@ -112,8 +196,6 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
             }
             return state;
         }
-        main_present();
-        return state;
     }
 
     if (state == kStatePause) {
@@ -137,7 +219,8 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     }
 
     if (state == kStateGameOver) {
-        if (flow_game_over_frame() != 0U) {
+        // smbdis RunGameOver: start ends the hold early
+        if (flow_game_over_frame() != 0U || (pressed & J_START) != 0U) {
             // a game over ends the run, so the file is let go of: whatever it recorded stands,
             // and the next thing the player picks starts a fresh three lives
             level_number = 0;
@@ -185,12 +268,39 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
     if (state == kStateClear) {
         // the bridge is still coming apart a cell at a time behind him and bowser is still on his
         // way into the lava; the play loop that stepped bank 5 is over, so this frame does it
+        uint8_t done;
+
         if (hazard_clear_busy != 0U) {
             hazards_clear_step();
         }
-        if (player_clear_update() != 0U) {
-            flow_clear_card();
-            state = kStateClearCard;
+        done = player_clear_update();
+        // once he is in the doorway the time left pays out an interval a frame and the fireworks
+        // go off, the way smb's star flag tasks run; a castle has neither (the manual: no time
+        // bonus in the castles)
+        if (level->has_flag != 0U && (player_pose() & kPoseGone) != 0U) {
+            if (clear_stage == 0U) {
+                clear_stage = 1;
+                fireworks_setup();
+            }
+            if (hud_time != 0U) {
+                hud_spend_time_bonus();
+                done = 0;
+            } else if (fireworks_step() != 0U) {
+                done = 0;
+            }
+            // the strip shows the time draining and the score rising, as smb's UpdateNumber does
+            hud_draw_counters();
+        }
+        // smbdis DelayToAreaEnd: the area ends only when the fanfare has, castle or flag
+        if (done != 0U && music_event_busy() != 0U) {
+            done = 0;
+        }
+        if (done != 0U) {
+            // straight back to the map with the next node open and the file written: neither smb
+            // nor smbd puts a card here, and picking what to play is the map's job
+            flow_clear_done(&level_number);
+            front_cleared(&level_number);
+            state = kStateFront;
             return state;
         }
         // the sequence owns mario, so the camera tracks him as a supported-but-moving actor, and
@@ -201,15 +311,6 @@ uint8_t states_off_play(uint8_t state, uint8_t keys, uint8_t pressed) BANKED {
         return state;
     }
 
-    if (state == kStateClearCard) {
-        if (flow_clear_frame(&level_number) == (uint8_t)kAfterCardMap) {
-            // back to the map with the next node open and the file written, not straight on
-            // into the next level: picking what to play is the map's job now
-            front_cleared(&level_number);
-            state = kStateFront;
-        }
-        return state;
-    }
     return state;
 }
 

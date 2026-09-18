@@ -6,7 +6,7 @@
 
 // one frame of the beat past 1-4's axe: the mushroom retainer drawn where the bible put him, the
 // sign put up over him on the frame tick is 0, and the whole tableau held for kToadHoldFrames.
-// answers 1 on the last frame of the hold, which is the clear card's cue.
+// answers 1 on the last frame of the hold, which is the map's cue.
 //
 // the caller owns the tick, so this side keeps no state of its own - player.c's clear sequence
 // already has a frame counter per phase and bank 0 has no bytes for a second one

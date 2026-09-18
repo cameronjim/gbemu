@@ -26,7 +26,7 @@ void save_erase(uint8_t slot) BANKED;
 // the file the running game records into. kSaveNoSlot while nothing is picked, which is what a
 // debug or lab run leaves it at so a lab clear cannot invent a save
 void save_select(uint8_t slot);
-uint8_t save_current(void);
+uint8_t save_current(void) BANKED;
 
 // marks the current slot in use, writing an empty file if it had none. called when a file is
 // picked, so an untouched NEW slot becomes a real one the moment the player commits to it
@@ -34,6 +34,6 @@ void save_begin(void) BANKED;
 
 // records reaching `level` in the current slot; an earlier level never overwrites a further one,
 // and kSaveNoSlot records nothing at all
-void save_record(uint8_t level, uint16_t score);
+void save_record(uint8_t level, uint16_t score) BANKED;
 
 #endif

@@ -14,6 +14,7 @@
 #include "level.h"
 #include "mapscreen.h"
 #include "mario.h"
+#include "pause.h"
 #include "player.h"
 #include "sound.h"
 #include "terrain.h"

@@ -13163,11 +13163,8 @@ constexpr int kHudTimeDigits = 3;
 // hud_score counts tens: the strip prints five of its digits and a fixed trailing zero
 constexpr int kHudScoreDigits = 5;
 
-// the card rows title.c prints on; the pause card is measured off its own kPauseRow (it sits
-// higher than the title/game-over/clear cards to leave its footer some room), the rest off kTitleRow
-constexpr uint32_t kCardWorldRow = kPauseRow + 3;
-constexpr uint32_t kCardPauseScoreRow = kPauseRow + 5;
-constexpr uint32_t kCardLivesRow = kPauseRow + 7;
+// the card rows title.c prints on, off kTitleRow; the pause menu is an overlay now, read by its own
+// helpers below
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
 constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
 constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
@@ -13284,31 +13281,107 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
     return -1;
 }
 
-// pauses, reads the lives the card prints, and resumes. the card's lcd-off rewrite outruns a whole
-// host frame, and the rom only samples the pad at the top of its loop, so the resume press has to
-// wait for the burst to drain or the edge lands while nothing is reading
+// a card's lcd-off rewrite outruns a whole host frame, and the rom only samples the pad at the top
+// of its loop, so a press after one has to wait for the burst to drain
 constexpr int kCardSettleFrames = 60;
 
-// pauses, reads one of the card's numeric lines and resumes; the card is the second place every
-// counter shows, which is what lets the strip be checked against it
-int paused_number(gb::Gameboy& gameboy, uint32_t row) {
+// smbd's pause card (pause.c): black, PAUSE on row 1, WORLD 1-x on row 3, mario's sprite as bg
+// cells on rows 6-7 with x and his lives beside it, CONTINUE / SAVE / END every other row from row
+// 8. the glyphs are the hud font's runs, so a tile id names a letter: P opens PAUSE
+constexpr int kPauseTitleX = 7 * 8;
+constexpr int kPauseTitleY = 1 * 8;
+constexpr int kPauseWorldY = 3 * 8;
+constexpr int kPauseLivesY = 6 * 8;
+constexpr int kPauseLivesX = 11 * 8;
+constexpr int kPauseMenuY = 8 * 8;
+constexpr int kPauseMenuStepY = 16;
+constexpr int kPauseMenuX = 6 * 8;
+constexpr uint8_t kGlyphD = 0x91;
+constexpr uint8_t kGlyphCursor = 0xC4;
+constexpr uint8_t kGlyphC = 0xC5;
+constexpr uint8_t kGlyphN = 0xC6;
+constexpr uint8_t kGlyphP = 0xC7;
+constexpr uint8_t kTileMarioIdle = 0xE0;
+
+// the bg tile id under a pixel, or -1 where a sprite covers it
+int pause_tile_at(const gb::Gameboy& gameboy, int x, int y) {
+    const uint16_t id =
+        gameboy.framebuffer_tiles()[static_cast<size_t>(y) * gb::kLcdWidth + static_cast<size_t>(x)];
+    return (id & 0x100u) != 0 ? -1 : static_cast<int>(id & 0xFFu);
+}
+
+bool on_pause(const gb::Gameboy& gameboy) {
+    return pause_tile_at(gameboy, kPauseTitleX + 3, kPauseTitleY + 3) == kGlyphP;
+}
+
+// the menu row the cursor sits on, or -1
+int pause_cursor_row(const gb::Gameboy& gameboy) {
+    for (int i = 0; i < 3; ++i) {
+        if (pause_tile_at(gameboy, kPauseMenuX + 3, kPauseMenuY + i * kPauseMenuStepY + 3) == kGlyphCursor) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// the card's lcd-off paint outruns a host frame, so the press waits for it to be up
+void open_pause(gb::Gameboy& gameboy) {
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 120 && !on_pause(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(on_pause(gameboy));
+    run(gameboy, 4);
+}
+
+// start continues; the card's rebuild of the level outruns a host frame too
+void close_pause(gb::Gameboy& gameboy) {
+    press(gameboy, gb::Button::Start, 2);
+    for (int i = 0; i < 120 && on_pause(gameboy); ++i) {
+        gameboy.run_frame();
+    }
+    REQUIRE(!on_pause(gameboy));
+    run(gameboy, 8);
+}
+
+// bg cells of a tile family on screen
+int count_family(const gb::Gameboy& gameboy, uint8_t lo, uint8_t hi) {
+    const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
+    int n = 0;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if ((ids[i] & 0x100u) != 0) {
+            continue;
+        }
+        const uint8_t tile = static_cast<uint8_t>(ids[i]);
+        if (tile >= lo && tile <= hi) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+// pauses, reads the lives the overlay prints, and resumes; the overlay is the one place the lives
+// show during a level, which is what lets a life won or lost be checked
+int paused_lives(gb::Gameboy& gameboy) {
     int value = -1;
     press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && value < 0; ++i) {
+    for (int i = 0; i < 120 && value < 0; ++i) {
         gameboy.run_frame();
-        value = card_number(gameboy, row);
+        if (on_pause(gameboy)) {
+            // one digit under ten lives, two from ten up
+            value = hud_number(gameboy, kPauseLivesX, kPauseLivesY, 1);
+            if (hud_number(gameboy, kPauseLivesX + 8, kPauseLivesY, 1) >= 0) {
+                value = value * 10 + hud_number(gameboy, kPauseLivesX + 8, kPauseLivesY, 1);
+            }
+        }
     }
-    run(gameboy, kCardSettleFrames);
+    run(gameboy, 4);
     press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
+    for (int i = 0; i < 120 && on_pause(gameboy); ++i) {
         gameboy.run_frame();
     }
     run(gameboy, 8);
     return value;
-}
-
-int paused_lives(gb::Gameboy& gameboy) {
-    return paused_number(gameboy, kCardLivesRow);
 }
 
 // the pole, taken two ways. the measured 1-1 leaves nine clear columns between the top of the
@@ -13441,7 +13514,8 @@ TEST_CASE("mario_hud_shows_coins_and_timer") {
     // whatever the total is, it is the same number the pause card prints from the same counter
     const int scored = hud_score_shown(gameboy);
     REQUIRE(scored >= kCoinPoints);
-    REQUIRE(paused_number(gameboy, kCardPauseScoreRow) == scored);
+    // a pause round trip leaves the strip exactly as it was
+    REQUIRE(paused_lives(gameboy) == kStartLives);
     // resuming repaints the strip, and the score is still there rather than blank
     REQUIRE(hud_score_shown(gameboy) == scored);
 }
@@ -13623,7 +13697,6 @@ TEST_CASE("mario_oneup_grants_a_life") {
 
 TEST_CASE("mario_pause_freezes") {
     const std::vector<uint8_t> rom = read_mario_rom();
-
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_play(gameboy);
@@ -13631,33 +13704,24 @@ TEST_CASE("mario_pause_freezes") {
     run(gameboy, 60);
     gameboy.set_button(gb::Button::Right, false);
     run(gameboy, 30);
-
     const Mario before = mario_at(gameboy);
     const int time_before = hud_time(gameboy);
     REQUIRE(before.found);
     REQUIRE(time_before > 0);
-
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 120 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    // the card carries the lives and the level the in-level hud has no room for
-    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
-    REQUIRE(card_number(gameboy, kCardWorldRow) == 11);
-    REQUIRE(card_number(gameboy, kCardPauseScoreRow) >= 0);
-
+    open_pause(gameboy);
+    // the card carries the level and the lives the in-level hud has no room for, and his sprite
+    REQUIRE(hud_number(gameboy, 12 * 8, kPauseWorldY, 1) == 1);
+    REQUIRE(hud_number(gameboy, 14 * 8, kPauseWorldY, 1) == 1);
+    REQUIRE(hud_number(gameboy, kPauseLivesX, kPauseLivesY, 1) == kStartLives);
+    REQUIRE(pause_tile_at(gameboy, 7 * 8 + 3, kPauseLivesY - 8 + 3) == kTileMarioIdle);
+    REQUIRE(pause_cursor_row(gameboy) == 0);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 + 3, kPauseMenuY + 3) == kGlyphC);
     // the world is frozen: right does nothing at all for as long as the card is up
     gameboy.set_button(gb::Button::Right, true);
     run(gameboy, 120);
     gameboy.set_button(gb::Button::Right, false);
-    REQUIRE(!mario_at(gameboy).found);
-
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, 4);
+    REQUIRE(on_pause(gameboy));
+    close_pause(gameboy);
     const Mario after = mario_at(gameboy);
     REQUIRE(after.found);
     REQUIRE(after.box_left() == before.box_left());
@@ -13666,64 +13730,32 @@ TEST_CASE("mario_pause_freezes") {
     REQUIRE(hud_time(gameboy) == time_before);
 }
 
+// the card wipes the map and paints its own; coming back, terrain_init reloads the scenery tiles
+// into vram bank 1 and refills the ring, so the same cloud and the same hill are painted as before
 TEST_CASE("mario_pause_restores_the_scenery") {
     const std::vector<uint8_t> rom = read_mario_rom();
-
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_play(gameboy);
-
     // the opening screen carries a cloud and the first big hill
-    const auto count_family = [&](uint8_t lo, uint8_t hi) {
-        const std::span<const uint16_t> ids = gameboy.framebuffer_tiles();
-        int n = 0;
-        for (size_t i = 0; i < ids.size(); ++i) {
-            if ((ids[i] & 0x100u) != 0) {
-                continue;
-            }
-            const uint8_t tile = static_cast<uint8_t>(ids[i]);
-            if (tile >= lo && tile <= hi) {
-                ++n;
-            }
-        }
-        return n;
-    };
-    const int clouds = count_family(0x35, 0x44);
-    const int hills = count_family(0x45, 0x50);
+    const int clouds = count_family(gameboy, 0x35, 0x44);
+    const int hills = count_family(gameboy, 0x45, 0x50);
     REQUIRE(clouds > 200);
     REQUIRE(hills > 200);
-
-    // the card wipes the bg map and prints glyphs whose tile ids are the very ones the scenery
-    // uses - 0x35 is both the cloud cap's top-left and the letter U. that they can share the ids
-    // is the point: the glyphs live in vram bank 0 and the scenery in bank 1, so the card printing
-    // is proof the font was never overwritten
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, kCardSettleFrames);
-    REQUIRE(on_card(gameboy));
-    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
-    REQUIRE(card_number(gameboy, kCardWorldRow) == 11);
-
-    // and resuming puts the level back: terrain_init reloads the scenery tiles into vram bank 1
-    // and refills the ring, so the same cloud and the same hill are painted exactly as they were
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, 8);
-    REQUIRE(count_family(0x35, 0x44) == clouds);
-    REQUIRE(count_family(0x45, 0x50) == hills);
+    open_pause(gameboy);
+    // black, top left: the card has no sky cell for sky_color to find
+    REQUIRE(gameboy.framebuffer_color()[0] == 0);
+    close_pause(gameboy);
+    REQUIRE(count_family(gameboy, 0x35, 0x44) == clouds);
+    REQUIRE(count_family(gameboy, 0x45, 0x50) == hills);
 }
 
 // m20's first bug: flow_resume_from_card refills the ring from column zero, which reloads the
 // palette set for column zero too - and on 1-2 that is its above-ground start segment, so
-// unpausing underground used to come back painted like the overworld. the resume now re-syncs the
+// unpausing underground used to come back painted like the overworld. the resume re-syncs the
 // palette against the camera it has just put back, and nothing else about the frozen level moves
 TEST_CASE("mario_pause_keeps_the_underground_palette") {
     const std::vector<uint8_t> rom = read_mario_rom();
-
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_level(gameboy, kLevel12);
@@ -13732,22 +13764,10 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     // the entrance is an eleven row drop, so he is still falling when it hands back
     run(gameboy, 120);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
-
     const Mario before = mario_at(gameboy);
     REQUIRE(before.found);
-
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    run(gameboy, kCardSettleFrames);
-
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 300 && on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    run(gameboy, 8);
+    open_pause(gameboy);
+    close_pause(gameboy);
     REQUIRE(sky_color(gameboy) == kSkyUnderground);
     // and the grid and his place in it came back untouched, the way an overworld resume already did
     const Mario after = mario_at(gameboy);
@@ -13756,11 +13776,10 @@ TEST_CASE("mario_pause_keeps_the_underground_palette") {
     REQUIRE(after.box_top() == before.box_top());
 }
 
-// the pause card is a two entry menu now: down puts the cursor on QUIT and a hands the run back to
-// the world map, at the node of the level he walked out of, with nothing recorded and nothing spent
+// with a file open the menu is CONTINUE / SAVE / END: down twice puts the cursor on END and a hands
+// the run back to the world map, at the node of the level he walked out of, with nothing spent
 TEST_CASE("mario_pause_menu_quits_to_the_map") {
     const std::vector<uint8_t> rom = read_mario_rom();
-
     gb::Gameboy gameboy;
     REQUIRE(gameboy.load_rom(rom));
     enter_play(gameboy);
@@ -13768,38 +13787,62 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
     run(gameboy, 60);
     gameboy.set_button(gb::Button::Right, false);
     run(gameboy, 30);
-
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    REQUIRE(card_number(gameboy, kCardLivesRow) == kStartLives);
-    run(gameboy, kCardSettleFrames);
-
-    // resume is lit first, so one press of down is what moves onto quit; the move repaints the
-    // whole card with the lcd off, which outruns a host frame the same way every other card does
+    open_pause(gameboy);
+    // END's N sits in the second glyph column of the third entry
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + 2 * kPauseMenuStepY + 3) ==
+            kGlyphN);
     press(gameboy, gb::Button::Down, 2);
-    run(gameboy, kCardSettleFrames);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 1);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 2);
     press(gameboy, gb::Button::A, 2);
     REQUIRE(wait_for_map(gameboy, 900) >= 0);
     run(gameboy, kScreenSettleFrames);
     // it is the real map, walkable mario and all, not just a screen the palette matches
     REQUIRE(mario_at(gameboy).found);
-
     // and it is live: the node he quit out of still opens the level behind it
     map_enter_level(gameboy);
     REQUIRE(wait_for_sky(gameboy, kSkyOverworld, 900) >= 0);
 }
 
-// smb1 carries mario's form from level to level and only a death takes it away, which is what
-// flow_enter_level's powerup_reset used to break: he arrived at every level small. the carry is
-// proven across the map hand-off rather than across a live autopilot clear, because a frame-matched
-// route cannot be replayed as super mario: the grow waits an unknown number of frames for the
-// mushroom to walk back, so the rom's enemies are a different phase from the twin's by the time
-// the route starts and he takes a hit the planner did not see (measured at frame 678 of 1460). the
-// path being proven is the same one either way - the map's own enter_play into flow_enter_level,
-// which is exactly what front_cleared hands to
+// the manual: "from pause, access save". SAVE writes the file and says so, and the game stays
+// paused; the slot keeps level progress, which the map had already recorded for this node
+TEST_CASE("mario_pause_menu_saves_the_file") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_play(gameboy);
+    run(gameboy, 30);
+    open_pause(gameboy);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 1);
+    press(gameboy, gb::Button::A, 2);
+    run(gameboy, 2);
+    REQUIRE(on_pause(gameboy));
+    // SAVE became SAVED: the D lands in the fifth glyph column of the entry
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 5 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphD);
+    // slot 0's used flag, mario.h kSaveSlotBase (the save tests below spell the layout out)
+    REQUIRE(gameboy.external_ram()[8] == 1);
+    close_pause(gameboy);
+}
+
+// a run that never opened a file (the title's own level select) has nothing to save into, so its
+// menu is CONTINUE / END
+TEST_CASE("mario_pause_menu_has_no_save_without_a_file") {
+    const std::vector<uint8_t> rom = read_mario_rom();
+    gb::Gameboy gameboy;
+    REQUIRE(gameboy.load_rom(rom));
+    enter_level(gameboy, kLevel11);
+    run(gameboy, 30);
+    open_pause(gameboy);
+    REQUIRE(pause_tile_at(gameboy, kPauseMenuX + 8 * 2 + 3, kPauseMenuY + kPauseMenuStepY + 3) == kGlyphN);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 1);
+}
 TEST_CASE("mario_powerup_carries_into_the_next_level") {
     const std::vector<uint8_t> rom = read_mario_rom();
 
@@ -13811,15 +13854,14 @@ TEST_CASE("mario_powerup_carries_into_the_next_level") {
     REQUIRE(grow_on_the_pyramid(gameboy, sim));
     REQUIRE(mario_at(gameboy).big);
 
-    // out to the map through the pause menu's QUIT, which records nothing and spends nothing
-    press(gameboy, gb::Button::Start, 2);
-    for (int i = 0; i < 200 && !on_card(gameboy); ++i) {
-        gameboy.run_frame();
-    }
-    REQUIRE(on_card(gameboy));
-    run(gameboy, kCardSettleFrames);
+    // out to the map through the pause menu's END (past SAVE, this run has a file), which records
+    // nothing and spends nothing
+    open_pause(gameboy);
     press(gameboy, gb::Button::Down, 2);
-    run(gameboy, kCardSettleFrames);
+    run(gameboy, 2);
+    press(gameboy, gb::Button::Down, 2);
+    run(gameboy, 2);
+    REQUIRE(pause_cursor_row(gameboy) == 2);
     press(gameboy, gb::Button::A, 2);
     REQUIRE(wait_for_map(gameboy, 900) >= 0);
 

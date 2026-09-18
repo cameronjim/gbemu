@@ -13186,12 +13186,10 @@ constexpr int kHudScoreDigits = 5;
 // the card rows title.c prints on, off kTitleRow; the pause menu is an overlay now, read by its own
 // helpers below
 constexpr uint32_t kCardOverScoreRow = kTitleRow + 3;
-constexpr uint32_t kCardClearTimeRow = kTitleRow + 3;
-constexpr uint32_t kCardClearScoreRow = kTitleRow + 5;
 // gbdk's ibm font puts ascii '0' on tile 0x10
 constexpr uint8_t kFontDigitLo = 0x10;
 constexpr uint8_t kFontDigitHi = 0x19;
-// roster.json's per-tick time bonus, which the clear card converts the whole countdown at
+// roster.json's per-tick time bonus, which the clear converts the whole countdown at
 constexpr int kTimeBonus = kTimeBonusPoints;
 // mario.h: smb's 500 a burst, and the fireball puff's sprite tiles the bursts are drawn with
 constexpr int kFireworksPoints = 500;
@@ -13309,16 +13307,16 @@ int wait_for_respawn(gb::Gameboy& gameboy, int cap) {
 // of its loop, so a press after one has to wait for the burst to drain
 constexpr int kCardSettleFrames = 60;
 
-// smbd's pause card (pause.c): black, PAUSE on row 1, WORLD 1-x on row 3, mario's sprite as bg
-// cells on rows 6-7 with x and his lives beside it, CONTINUE / END every other row from row 8
-// (no SAVE: the file records every clear by itself). the glyphs are the hud font's runs, so a tile id names a
-// letter: P opens PAUSE
+// the pause card (pause.c, mario.h's kPause* rows): black, PAUSE on row 2, WORLD 1-x on row 5,
+// mario's sprite as bg cells on rows 8-9 with x and his lives beside it, CONTINUE / END every
+// other row from row 12 (no SAVE: the file records every clear by itself). the glyphs are the hud
+// font's runs, so a tile id names a letter: P opens PAUSE
 constexpr int kPauseTitleX = 7 * 8;
-constexpr int kPauseTitleY = 1 * 8;
-constexpr int kPauseWorldY = 3 * 8;
-constexpr int kPauseLivesY = 6 * 8;
-constexpr int kPauseLivesX = 11 * 8;
-constexpr int kPauseMenuY = 8 * 8;
+constexpr int kPauseTitleY = 2 * 8;
+constexpr int kPauseWorldY = 5 * 8;
+constexpr int kPauseLivesY = 9 * 8;
+constexpr int kPauseLivesX = 12 * 8;
+constexpr int kPauseMenuY = 12 * 8;
 constexpr int kPauseMenuStepY = 16;
 constexpr int kPauseMenuX = 6 * 8;
 constexpr uint8_t kGlyphCursor = 0xC4;
@@ -13955,6 +13953,7 @@ TEST_CASE("mario_pause_menu_quits_to_the_map") {
 // smbd's manual says "from pause, access save", but the file here records every clear by itself,
 // so the menu carries no SAVE: a run without a file (the title's level select) looks the same, and
 // the cursor wraps between the two entries
+
 TEST_CASE("mario_pause_menu_has_no_save") {
     const std::vector<uint8_t> rom = read_mario_rom();
     gb::Gameboy gameboy;

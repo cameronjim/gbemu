@@ -1,4 +1,4 @@
-// smbd's pause screen, off a capture: a black card in place of the level. PAUSE on the top row,
+// smbd's pause screen, off a capture: a black card in place of the level. PAUSE, then
 // WORLD 1-x under it, mario's own sprite beside x and his lives, then a CONTINUE / END menu (smbd's
 // SAVE is left out: the file records every clear by itself, so there is nothing for it to write)
 // with the cursor on the left. the level's map and palettes are repainted on the way back, the

@@ -8,24 +8,24 @@
 #define kTitleRow 6U
 // every card banner is a padding row, the text row, then another padding row, so the tinted band
 // reads as a band rather than exactly the glyph height. the title card carries no text at all now -
-// it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over and
-// course clear cards
+// it is the generated smbd frame, see title_art.c - so kTitleRow only heads the game over card
 #define kBannerRows 3U
 // smbd's pause screen, measured off a capture (160x144, cells of 8): PAUSE on row 1, WORLD 1-x on
 // row 3 from column 6, mario's sprite on rows 5-6 at column 7 with x and his lives on row 6, then
-// CONTINUE / END every other row from row 8 with the cursor in column 6 (smbd's SAVE is left out, the
-// file keeps itself). white ink on black;
-// mario's cells wear his own colours in a bg slot the level gets back on resume
-#define kPauseTitleRow 1U
+// CONTINUE / SAVE / END every other row from row 8 with the cursor in column 6. ours drops SAVE (the
+// file keeps itself) and, with the shorter menu, spreads the same pieces over rows 2-14 so the card
+// sits centred on the 18-row screen. white ink on black; mario's cells wear his own colours in a bg
+// slot the level gets back on resume
+#define kPauseTitleRow 2U
 #define kPauseTitleCol 7U
-#define kPauseWorldRow 3U
+#define kPauseWorldRow 5U
 #define kPauseWorldCol 6U
-#define kPauseMarioRow 5U
+#define kPauseMarioRow 8U
 #define kPauseMarioCol 7U
-#define kPauseLivesRow 6U
-#define kPauseLivesXCol 9U
-#define kPauseLivesCol 11U
-#define kPauseMenuRow 8U
+#define kPauseLivesRow 9U
+#define kPauseLivesXCol 10U
+#define kPauseLivesCol 12U
+#define kPauseMenuRow 12U
 #define kPauseMenuStep 2U
 #define kPauseMenuCol 6U
 #define kPauseEntries 2U

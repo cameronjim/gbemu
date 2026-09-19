@@ -119,6 +119,11 @@ void save_battery_ram(gb::Gameboy& gameboy, const char* rom_path) {
         return;
     }
     out.write(reinterpret_cast<const char*>(ram.data()), static_cast<std::streamsize>(ram.size()));
+    out.close();
+#ifdef __EMSCRIPTEN__
+    // the save lives on idbfs (shell.html mounts it): memfs alone is gone on reload
+    EM_ASM({ FS.syncfs(false, function(err){}); });
+#endif
 }
 
 bool print_cartridge(std::span<const uint8_t> bytes) {
@@ -368,6 +373,9 @@ struct App {
     std::array<bool, 4> dpad_held{};
     std::array<bool, 4> stick_held{};
     bool controller_fast_forward = false;
+    // browser pacing: wall clock owed to the emulator, in ms
+    double wasm_last_ms = 0.0;
+    double wasm_owed_ms = 0.0;
 };
 
 App g_app;
@@ -485,8 +493,11 @@ int dump_framebuffer_ppm(App& app, uint64_t frames, const char* path) {
 } // namespace
 
 #ifdef __EMSCRIPTEN__
-// browser file input lands here through the shell page
-extern "C" EMSCRIPTEN_KEEPALIVE void wasm_load_rom(const uint8_t* data, int len) {
+// the picked game's path on the browser's persistent fs, which the battery save hangs off
+std::string g_wasm_rom_path;
+
+// the shell page lands a fetched or chosen rom here; `name` keys its save file
+extern "C" EMSCRIPTEN_KEEPALIVE void wasm_load_rom(const uint8_t* data, int len, const char* name) {
     if (data == nullptr || len <= 0) {
         return;
     }
@@ -496,9 +507,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void wasm_load_rom(const uint8_t* data, int len)
         std::printf("rom rejected\n");
         return;
     }
+    if (g_app.gameboy != nullptr && g_app.opt.rom_path != nullptr) {
+        save_battery_ram(*g_app.gameboy, g_app.opt.rom_path);
+    }
+    g_wasm_rom_path = std::string("/saves/") + ((name != nullptr && *name != 0) ? name : "rom");
+    g_app.opt.rom_path = g_wasm_rom_path.c_str();
     g_app.gameboy = std::move(next);
     configure_look(g_app, *g_app.gameboy, bytes);
+    load_battery_ram(*g_app.gameboy, g_app.opt.rom_path);
+    g_app.paused = false;
     std::printf("rom loaded\n");
+}
+
+// the page is going away or being hidden: flush the battery now rather than at the next 30s mark
+extern "C" EMSCRIPTEN_KEEPALIVE void wasm_save_now(void) {
+    if (g_app.gameboy != nullptr && g_app.opt.rom_path != nullptr) {
+        save_battery_ram(*g_app.gameboy, g_app.opt.rom_path);
+    }
 }
 #endif
 
@@ -507,12 +532,6 @@ namespace {
 int main_impl(int argc, char* argv[]) {
     App& app = g_app;
     app.opt = parse_args(argc, argv);
-#ifdef __EMSCRIPTEN__
-    // the embedded homebrew demo boots by default
-    if (app.opt.rom_path == nullptr) {
-        app.opt.rom_path = "demo.gb";
-    }
-#endif
     const Options& opt = app.opt;
     if (!opt.ok || (opt.doctor_path != nullptr && opt.rom_path == nullptr)) {
         std::fprintf(stderr, "usage: gbemu-sdl [--doctor <path>] [--trace-from <n>] [--dump-ppm <path>] "
@@ -637,6 +656,20 @@ int main_impl(int argc, char* argv[]) {
     SDL_DestroyWindow(app.window);
     SDL_Quit();
     return 0;
+}
+
+// drains the core's sample buffer into the device at the chosen volume
+void queue_audio(App& app, gb::Gameboy& gameboy) {
+    size_t n;
+    while ((n = gameboy.read_audio(app.audio_buf)) > 0) {
+        if (app.audio_dev == 0) {
+            continue;
+        }
+        for (size_t i = 0; i < n; ++i) {
+            app.audio_buf[i] = static_cast<int16_t>(app.audio_buf[i] * app.opt.volume / 100);
+        }
+        SDL_QueueAudio(app.audio_dev, app.audio_buf.data(), static_cast<uint32_t>(n * sizeof(int16_t)));
+    }
 }
 
 void main_loop_step(void* arg) {
@@ -799,8 +832,10 @@ void main_loop_step(void* arg) {
 
         const bool fast_forward =
             SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0 || app.controller_fast_forward;
+#ifndef __EMSCRIPTEN__
         // audio drives pacing: keep the queue in a 50-100ms band; vsync is presentation only
         const bool audio_paced = app.audio_dev != 0 && opt.rom_path != nullptr;
+#endif
         if (paused) {
             SDL_Delay(10);
         } else if (fast_forward && opt.rom_path != nullptr) {
@@ -810,20 +845,38 @@ void main_loop_step(void* arg) {
             }
             while (gameboy.read_audio(app.audio_buf) > 0) {
             }
+#ifdef __EMSCRIPTEN__
+        } else if (opt.rom_path != nullptr) {
+            // the browser calls this once per display refresh, so the clock meters the frames: a
+            // blocked or muted audio sink never drains the queue and would freeze an audio-paced loop
+            constexpr double kFrameMs = 1000.0 * 70224.0 / 4194304.0;
+            constexpr uint32_t kMaxQueuedBytes = 48000 * 2 * sizeof(int16_t) / 4;
+            const double now = emscripten_get_now();
+            if (app.wasm_last_ms != 0.0) {
+                app.wasm_owed_ms += now - app.wasm_last_ms;
+            }
+            app.wasm_last_ms = now;
+            // a hidden tab owes seconds on return; those frames are dropped, not replayed
+            if (app.wasm_owed_ms > 4.0 * kFrameMs) {
+                app.wasm_owed_ms = kFrameMs;
+            }
+            while (app.wasm_owed_ms >= kFrameMs) {
+                app.wasm_owed_ms -= kFrameMs;
+                gameboy.run_frame();
+                queue_audio(app, gameboy);
+            }
+            if (app.audio_dev != 0 && SDL_GetQueuedAudioSize(app.audio_dev) > kMaxQueuedBytes) {
+                SDL_ClearQueuedAudio(app.audio_dev);
+            }
+#else
         } else if (audio_paced) {
             constexpr uint32_t kTargetBytes = 48000 * 2 * sizeof(int16_t) / 10;
             uint32_t frames_this_pass = 0;
             while (SDL_GetQueuedAudioSize(app.audio_dev) < kTargetBytes && frames_this_pass++ < 8) {
                 gameboy.run_frame();
-                size_t n;
-                while ((n = gameboy.read_audio(app.audio_buf)) > 0) {
-                    for (size_t i = 0; i < n; ++i) {
-                        app.audio_buf[i] = static_cast<int16_t>(app.audio_buf[i] * opt.volume / 100);
-                    }
-                    SDL_QueueAudio(app.audio_dev, app.audio_buf.data(),
-                                   static_cast<uint32_t>(n * sizeof(int16_t)));
-                }
+                queue_audio(app, gameboy);
             }
+#endif
         } else {
             gameboy.run_frame();
         }

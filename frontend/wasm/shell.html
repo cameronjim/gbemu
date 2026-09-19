@@ -2,33 +2,125 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gbemu</title>
 <style>
-  body { background: #1a1e1a; color: #cde; font-family: monospace; text-align: center; }
-  canvas { image-rendering: pixelated; width: 480px; height: 432px; border: 2px solid #465; margin-top: 12px; }
-  .bar { margin-top: 10px; }
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #1a1e1a; color: #cde; font-family: monospace; text-align: center; }
+  h1 { font-size: 20px; margin: 18px 0 6px; }
+  h1 a { color: inherit; text-decoration: none; }
+  .games { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 16px; }
+  .games button {
+    background: #253025; color: #cde; border: 2px solid #465; border-radius: 6px;
+    padding: 10px 18px; font: inherit; font-size: 16px; cursor: pointer; min-width: 120px;
+  }
+  .games button:hover, .games button:focus-visible { border-color: #8c8; outline: none; }
+  .games button.playing { background: #365a36; border-color: #8c8; }
+  .games button:disabled { opacity: 0.5; cursor: default; }
+  canvas {
+    image-rendering: pixelated; width: 480px; height: 432px; max-width: calc(100vw - 32px);
+    aspect-ratio: 10 / 9; border: 2px solid #465; margin-top: 8px; background: #000;
+  }
+  .bar { margin: 10px 16px; font-size: 13px; color: #9ab; }
+  .bar label { cursor: pointer; text-decoration: underline; }
+  #status { min-height: 1.2em; color: #8c8; }
+  kbd { background: #2a332a; border: 1px solid #465; border-radius: 3px; padding: 0 4px; }
 </style>
 </head>
 <body>
-<h3>gbemu</h3>
-<div class="bar">
-  <input type="file" id="romfile" accept=".gb">
-  <span>arrows move &middot; z = a &middot; x = b &middot; enter = start &middot; click the page once for audio</span>
+<h1><a href="https://github.com/cameronjim/gameboy-emulator">gbemu</a></h1>
+<div class="games" id="games">
+  <button data-rom="tetris.gb">Tetris</button>
+  <button data-rom="flappy.gb">Flappy Bird</button>
+  <button data-rom="crossy.gb">Crossy Road</button>
+  <button data-rom="mario.gbc">Mario</button>
 </div>
+<div class="bar" id="status">loading...</div>
 <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<div class="bar">
+  <kbd>arrows</kbd>/<kbd>wasd</kbd> move &middot; <kbd>f</kbd>/<kbd>space</kbd>/<kbd>z</kbd> = a &middot;
+  <kbd>g</kbd>/<kbd>x</kbd> = b &middot; <kbd>enter</kbd> = start &middot; <kbd>backspace</kbd> = select
+</div>
+<div class="bar">
+  <label>or open your own <code>.gb</code>/<code>.gbc</code> file<input type="file" id="romfile" accept=".gb,.gbc" hidden></label>
+  &middot; saves stay in this browser
+</div>
 <script>
-  var Module = { canvas: document.getElementById('canvas') };
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    // battery saves go to /saves on idbfs so they survive a reload; the picker waits for the
+    // first sync so a game never boots ahead of its own save file
+    onRuntimeInitialized: function () {
+      FS.mkdir('/saves');
+      FS.mount(IDBFS, {}, '/saves');
+      FS.syncfs(true, function (err) {
+        if (err) { console.warn('saves unavailable', err); }
+        ready();
+      });
+    }
+  };
+  var statusLine = document.getElementById('status');
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('#games button'));
+  buttons.forEach(function (b) { b.disabled = true; });
+
+  function ready() {
+    buttons.forEach(function (b) { b.disabled = false; });
+    statusLine.textContent = 'pick a game';
+  }
+
+  function loadBytes(bytes, name) {
+    var ptr = Module._malloc(bytes.length);
+    Module.HEAPU8.set(bytes, ptr);
+    Module.ccall('wasm_load_rom', null, ['number', 'number', 'string'], [ptr, bytes.length, name]);
+    Module._free(ptr);
+    Module.canvas.focus();
+  }
+
+  function mark(rom) {
+    buttons.forEach(function (b) { b.classList.toggle('playing', b.dataset.rom === rom); });
+  }
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var rom = b.dataset.rom;
+      statusLine.textContent = 'loading ' + rom + '...';
+      fetch('roms/' + rom).then(function (r) {
+        if (!r.ok) { throw new Error(r.status + ' ' + r.statusText); }
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        loadBytes(new Uint8Array(buf), rom);
+        mark(rom);
+        statusLine.textContent = 'playing ' + b.textContent;
+      }).catch(function (e) {
+        statusLine.textContent = 'could not load ' + rom + ': ' + e.message;
+      });
+    });
+  });
+
   document.getElementById('romfile').addEventListener('change', function (e) {
     var file = e.target.files[0];
     if (!file) { return; }
     file.arrayBuffer().then(function (buf) {
-      var bytes = new Uint8Array(buf);
-      var ptr = Module._malloc(bytes.length);
-      Module.HEAPU8.set(bytes, ptr);
-      Module.ccall('wasm_load_rom', null, ['number', 'number'], [ptr, bytes.length]);
-      Module._free(ptr);
-      Module.canvas.focus();
+      loadBytes(new Uint8Array(buf), file.name);
+      mark(null);
+      statusLine.textContent = 'playing ' + file.name;
     });
+  });
+
+  // a tab switch or a close flushes the battery straight away
+  function flush() {
+    if (Module._wasm_save_now) { Module._wasm_save_now(); }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { flush(); }
+  });
+  window.addEventListener('pagehide', flush);
+
+  // arrows and space scroll the page otherwise
+  window.addEventListener('keydown', function (e) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].indexOf(e.key) >= 0) {
+      e.preventDefault();
+    }
   });
 </script>
 {{{ SCRIPT }}}

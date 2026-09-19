@@ -26,6 +26,24 @@ If the search bar isn't returning any results, run any of the following inside t
 .\mario.cmd
 ```
 
+## Play in the browser
+
+The same emulator runs on the web: every push to `main` builds it with emscripten and publishes
+it to GitHub Pages (`.github/workflows/deploy.yml`). The page has a button per game and can open
+any `.gb`/`.gbc` file from disk. Battery saves (Mario's files, Tetris's best score) live in the
+browser's own storage, so they survive a reload on that machine. Nothing in the native build
+changes: cloning and running locally works as before.
+
+To build it yourself, with the [emscripten sdk](https://emscripten.org/docs/getting_started/downloads.html) active:
+
+```bash
+emcmake cmake -B build-wasm -DCMAKE_BUILD_TYPE=Release && cmake --build build-wasm --target gbemu-sdl
+```
+
+then serve `build-wasm/index.html`, `index.js`, `index.wasm` and a `roms/` folder holding the four
+files from `assets/roms/` from any static host. The page must be served over http, not opened as a
+file, because it fetches the games.
+
 ## Controls
 
 | Key | Game Boy button |

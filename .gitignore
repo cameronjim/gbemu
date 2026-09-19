@@ -13,3 +13,4 @@ OVERVIEW.md
 games/mario/art/
 __pycache__/
 build-rel/
+build-wasm/

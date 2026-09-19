@@ -29,12 +29,12 @@ if(EMSCRIPTEN)
     target_link_libraries(gbemu-sdl PRIVATE gbcore)
     set_target_properties(gbemu-sdl PROPERTIES OUTPUT_NAME index SUFFIX ".html")
     # emscripten default stack is 64kb; native code assumes megabytes
+    # the page fetches the games from roms/ beside it and keeps battery saves on idbfs
     target_link_options(gbemu-sdl PRIVATE -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sMINIFY_HTML=0
-        -sSTACK_SIZE=1048576
-        "-sEXPORTED_FUNCTIONS=_main,_wasm_load_rom,_malloc,_free"
-        "-sEXPORTED_RUNTIME_METHODS=ccall"
-        "--shell-file=${CMAKE_SOURCE_DIR}/frontend/wasm/shell.html"
-        "--embed-file=${CMAKE_SOURCE_DIR}/assets/roms/tetris.gb@demo.gb")
+        -sSTACK_SIZE=1048576 -sENVIRONMENT=web -lidbfs.js
+        "-sEXPORTED_FUNCTIONS=_main,_wasm_load_rom,_wasm_save_now,_malloc,_free"
+        "-sEXPORTED_RUNTIME_METHODS=ccall,FS,HEAPU8"
+        "--shell-file=${CMAKE_SOURCE_DIR}/frontend/wasm/shell.html")
 else()
     # macos: homebrew installs outside cmake's default search prefixes
     if(APPLE)

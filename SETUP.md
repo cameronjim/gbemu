@@ -36,13 +36,13 @@ variables, click Edit, then New, paste the folder path, then OK everywhere.
 Open PowerShell and run the following command where you want to store the source code:
 
 ```powershell
-git clone https://github.com/cameronjim/gameboy-emulator.git
-cd gameboy-emulator
+git clone https://github.com/cameronjim/gbemu.git
+cd gbemu
 ```
 
 ## 3. The easy path
 
-Open PowerShell inside the `gameboy-emulator` folder and run:
+Open PowerShell inside the `gbemu` folder and run:
 
 ```powershell
 powershell -File tools/make-dist.ps1
@@ -86,8 +86,8 @@ sudo apt install build-essential cmake ninja-build libsdl2-dev
 Then get the code and run the setup script:
 
 ```bash
-git clone https://github.com/cameronjim/gameboy-emulator.git
-cd gameboy-emulator
+git clone https://github.com/cameronjim/gbemu.git
+cd gbemu
 ./tools/make-dist.sh
 ```
 

@@ -28,7 +28,7 @@ If the search bar isn't returning any results, run any of the following inside t
 
 ## Play in the browser
 
-The same emulator runs on the web: every push to `main` builds it with emscripten and publishes
+**Live at [gb.cameronjim.com](https://gb.cameronjim.com).** The same emulator runs on the web: every push to `main` builds it with emscripten and publishes
 it to GitHub Pages (`.github/workflows/deploy.yml`). The page has a button per game and can open
 any `.gb`/`.gbc` file from disk. Battery saves (Mario's files, Tetris's best score) live in the
 browser's own storage, so they survive a reload on that machine. Nothing in the native build
